@@ -38,6 +38,7 @@ const ML_API = "https://api.mercadolibre.com";
 const MEMBROS = "tenant_membros";   // tenant_membros/{uid}
 const LICENCAS = "licencas";        // licencas/{email}
 const CONEXOES = "ml_conexoes";     // ml_conexoes/{tenantId}  ← por TENANT
+const TENANTS = "tenants";          // tenants/{tenantId}
 
 export type ContextoTenant = {
   uid: string;
@@ -344,4 +345,73 @@ export async function desconectarML(tenantId: string): Promise<void> {
     },
     { merge: true },
   );
+}
+
+// ── Cron multi-tenant ──────────────────────────────────────────────
+
+/**
+ * Todos os tenants com a licença do dono anexada, pro cron decidir quem
+ * sincroniza (ver lib/domain/cron-tenants.ts).
+ *
+ * A licença é indexada por E-MAIL e o tenant por id, então o vínculo vem de
+ * `tenant_membros`: o owner daquele tenant é quem carrega a licença. Um
+ * tenant sem owner (estado inconsistente) volta com licença null e é pulado
+ * com motivo, em vez de sumir da lista sem explicação.
+ */
+export async function listarTenantsComLicenca(): Promise<
+  { tenantId: string; email: string; licenca: { status?: string | null; expiresAt?: number | null } | null }[]
+> {
+  const db = getAdminDb();
+  const [tenantsSnap, membrosSnap] = await Promise.all([
+    db.collection(TENANTS).get(),
+    db.collection(MEMBROS).where("papel", "==", "owner").get(),
+  ]);
+
+  const ownerPorTenant = new Map<string, string>();
+  for (const d of membrosSnap.docs) {
+    const m = d.data();
+    const tid = String(m?.tenantId ?? "");
+    const email = String(m?.email ?? "").toLowerCase();
+    if (tid && email && !ownerPorTenant.has(tid)) ownerPorTenant.set(tid, email);
+  }
+
+  const emails = Array.from(new Set(ownerPorTenant.values()));
+  const licencas = new Map<string, { status?: string | null; expiresAt?: number | null }>();
+  await Promise.all(
+    emails.map(async (email) => {
+      const l = await getLicenca(email);
+      if (l) licencas.set(email, { status: l.status, expiresAt: l.expiresAt });
+    }),
+  );
+
+  return tenantsSnap.docs.map((d) => {
+    const email = ownerPorTenant.get(d.id) ?? "";
+    return { tenantId: d.id, email, licenca: email ? licencas.get(email) ?? null : null };
+  });
+}
+
+/**
+ * Onde o rodízio do cron para. Guardado num doc único e global: é estado da
+ * EXECUÇÃO, não de nenhum tenant — colocá-lo dentro de um deles faria um
+ * cliente carregar o ponteiro dos outros.
+ */
+const CRON_ESTADO = "cron_estado";
+
+export async function lerUltimoTenantSincronizado(): Promise<string | null> {
+  try {
+    const d = await getAdminDb().collection(CRON_ESTADO).doc("sync").get();
+    const v = d.data()?.ultimoTenant;
+    return typeof v === "string" && v ? v : null;
+  } catch {
+    return null; // sem ponteiro, começa do topo — nunca trava o cron
+  }
+}
+
+export async function salvarUltimoTenantSincronizado(tenantId: string): Promise<void> {
+  try {
+    await getAdminDb().collection(CRON_ESTADO).doc("sync").set(
+      { ultimoTenant: tenantId, em: Date.now() },
+      { merge: true },
+    );
+  } catch { /* perder o ponteiro só reinicia o rodízio */ }
 }

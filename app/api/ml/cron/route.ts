@@ -3,7 +3,14 @@ import { isCronRequest } from "@/lib/api-auth";
 import { currentMonthRangeBR, previousMonthRangeBR, syncOrdersRange, syncReturnsRange, syncClaimsRange } from "@/lib/ml/sync";
 import { enviarLembretesDeTarefa } from "@/lib/task-reminders-run";
 import { ehDomingoBR, fazerBackupSemanal } from "@/lib/backup-run";
-import { getMlAccessToken, getSellerId, resolverTenantDaRequisicao } from "@/lib/tenant";
+import {
+  getMlAccessToken,
+  getSellerId,
+  lerUltimoTenantSincronizado,
+  listarTenantsComLicenca,
+  salvarUltimoTenantSincronizado,
+} from "@/lib/tenant";
+import { cabeMaisUm, planejarSync } from "@/lib/domain/cron-tenants";
 
 export const maxDuration = 60;
 
@@ -25,81 +32,119 @@ export const maxDuration = 60;
  * Sincroniza o mês atual (pedidos + devoluções) para manter o dashboard
  * sempre atualizado sem depender do botão manual.
  */
+
+/**
+ * Sincroniza UM tenant. Extraído do handler porque agora ele roda em laço —
+ * e porque o erro de um cliente não pode derrubar o dos outros: cada volta é
+ * um try próprio, e o resultado (ou a falha) entra no relatório.
+ */
+async function sincronizarTenant(tenantId: string) {
+  const accessToken = await getMlAccessToken(tenantId);
+  if (!accessToken) return { tenantId, ok: false, erro: "sem conexão com o Mercado Livre" };
+
+  const sellerId = await getSellerId(tenantId);
+
+  /**
+   * Mes corrente + MES ANTERIOR.
+   *
+   * So o mes corrente deixava um buraco real: no dia 1o, tudo que ainda ia
+   * mudar no mes que acabou parava de ser atualizado pra sempre — repasse do
+   * Mercado Pago (money_release_date/net_received costumam cair dias depois
+   * da venda), devolucao concluida em disputa, status de envio finalizando.
+   */
+  const atual = currentMonthRangeBR();
+  const anterior = previousMonthRangeBR();
+
+  const [ordensAtual, devAtual, claimsAtual, ordensAnterior, devAnterior, claimsAnterior] = await Promise.all([
+    syncOrdersRange(tenantId, accessToken, sellerId, atual),
+    syncReturnsRange(tenantId, accessToken, sellerId, atual),
+    // Best-effort: reclamacao que falha nao pode derrubar a sincronizacao de
+    // pedidos, que e o que realmente importa aqui.
+    syncClaimsRange(tenantId, accessToken, atual).catch(() => 0),
+    syncOrdersRange(tenantId, accessToken, sellerId, anterior),
+    syncReturnsRange(tenantId, accessToken, sellerId, anterior),
+    syncClaimsRange(tenantId, accessToken, anterior).catch(() => 0),
+  ]);
+
+  // Lembrete e backup pegam carona nesta execucao diaria em vez de virarem
+  // cron proprio (ver o aviso do plano Hobby acima). Best-effort, os dois.
+  const lembretes = await enviarLembretesDeTarefa(tenantId).catch((err: unknown) => {
+    console.error(`[cron] lembrete de tarefa falhou (${tenantId})`, err);
+    return null;
+  });
+  const backup = ehDomingoBR()
+    ? await fazerBackupSemanal(tenantId).catch((err: unknown) => {
+        console.error(`[cron] backup semanal falhou (${tenantId})`, err);
+        return null;
+      })
+    : null;
+
+  return {
+    tenantId,
+    ok: true,
+    atual: { orders: ordensAtual, returns: devAtual, claims: claimsAtual },
+    anterior: { orders: ordensAnterior, returns: devAnterior, claims: claimsAnterior },
+    lembretesTarefa: lembretes,
+    backupSemanal: backup,
+  };
+}
+
 export async function GET(req: Request) {
   if (!isCronRequest(req)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  // Cron identifica-se como uid "cron" (ver lib/api-auth.ts) — sem sessão de
-  // usuário, resolverTenantDaRequisicao usa o único tenant existente, e passa
-  // a RECUSAR sozinha quando existir um segundo (ver o comentário em
-  // lib/tenant.ts). É a trava que força a Fase 4 antes do segundo cliente.
-  const tenant = await resolverTenantDaRequisicao({ uid: "cron", email: "cron@system" });
-  if (!tenant) {
-    return NextResponse.json({ error: "tenant_nao_resolvido" }, { status: 409 });
-  }
+  const inicio = Date.now();
 
-  try {
-    const accessToken = await getMlAccessToken(tenant.tenantId);
-    if (!accessToken) {
-      return NextResponse.json({ error: "Token ML não encontrado" }, { status: 400 });
-    }
-    const sellerId = await getSellerId(tenant.tenantId);
+  /**
+   * ── AGORA PERCORRE TODOS OS TENANTS ──
+   *
+   * Antes isto resolvia UM tenant e recusava quando existia um segundo — trava
+   * deliberada, porque sincronizar o cliente errado seria pior que não rodar.
+   * O plano de execução (quem roda, em que ordem) vive em
+   * lib/domain/cron-tenants.ts, testado à parte.
+   */
+  const [tenants, ultimo] = await Promise.all([
+    listarTenantsComLicenca(),
+    lerUltimoTenantSincronizado(),
+  ]);
+  const plano = planejarSync(tenants, Date.now(), ultimo);
 
+  const resultados: unknown[] = [];
+  const semTempo: string[] = [];
+
+  for (const t of plano.rodar) {
     /**
-     * Mes corrente + MES ANTERIOR.
-     *
-     * So o mes corrente deixava um buraco real: no dia 1o, tudo que ainda ia
-     * mudar no mes que acabou parava de ser atualizado pra sempre — repasse do
-     * Mercado Pago (money_release_date/net_received costumam cair dias depois
-     * da venda), devolucao concluida em disputa, status de envio finalizando.
-     * O fechamento do mes ficava congelado num estado que ainda ia mudar.
+     * Orçamento de tempo: começar um tenant e ser cortado no meio deixa
+     * escrita parcial e nenhum registro. Parar antes, com o nome de quem
+     * ficou pra próxima, troca falha silenciosa por informação — e o rodízio
+     * garante que ele venha primeiro na rodada seguinte.
      */
-    const atual = currentMonthRangeBR();
-    const anterior = previousMonthRangeBR();
-
-    const resultados = await Promise.all([
-      syncOrdersRange(tenant.tenantId, accessToken, sellerId, atual),
-      syncReturnsRange(tenant.tenantId, accessToken, sellerId, atual),
-      // Reclamacoes/devolucoes ja rodavam no sync-all (botao manual) mas NAO
-      // no cron: sem alguem abrir o app, devolucao nunca era atualizada
-      // sozinha. Best-effort, igual la — nao pode derrubar o resto.
-      syncClaimsRange(tenant.tenantId, accessToken, atual).catch(() => 0),
-      syncOrdersRange(tenant.tenantId, accessToken, sellerId, anterior),
-      syncReturnsRange(tenant.tenantId, accessToken, sellerId, anterior),
-      syncClaimsRange(tenant.tenantId, accessToken, anterior).catch(() => 0),
-    ]);
-    const [ordensAtual, devAtual, claimsAtual, ordensAnterior, devAnterior, claimsAnterior] = resultados;
-
-    // Lembrete de prazo das tarefas pega carona nesta execução diária em vez
-    // de virar um cron próprio (ver o aviso do Hobby acima). Best-effort: um
-    // erro aqui não pode derrubar a sincronização de pedidos, que é o que
-    // realmente importa neste endpoint.
-    const lembretes = await enviarLembretesDeTarefa(tenant.tenantId).catch((err: unknown) => {
-      console.error("[cron] lembrete de tarefa falhou", err);
-      return null;
-    });
-
-    // Backup semanal (ver lib/backup-run.ts) — igual ao lembrete, pega carona
-    // nesta execução diária em vez de virar cron próprio, e só faz algo aos
-    // domingos. Best-effort: nunca pode derrubar a sincronização de pedidos.
-    const backup = ehDomingoBR()
-      ? await fazerBackupSemanal(tenant.tenantId).catch((err: unknown) => {
-          console.error("[cron] backup semanal falhou", err);
-          return null;
-        })
-      : null;
-
-    return NextResponse.json({
-      ok: true,
-      atual: { orders: ordensAtual, returns: devAtual, claims: claimsAtual, range: atual },
-      anterior: { orders: ordensAnterior, returns: devAnterior, claims: claimsAnterior, range: anterior },
-      lembretesTarefa: lembretes,
-      backupSemanal: backup,
-      at: new Date().toISOString(),
-    });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: "cron_sync_failed", details: msg }, { status: 500 });
+    if (!cabeMaisUm(inicio, Date.now(), maxDuration * 1000)) {
+      semTempo.push(t.tenantId);
+      continue;
+    }
+    try {
+      resultados.push(await sincronizarTenant(t.tenantId));
+      await salvarUltimoTenantSincronizado(t.tenantId);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Um cliente com token expirado nao pode impedir a sincronizacao dos
+      // outros — este catch e a diferenca entre "um cliente parado" e "todos".
+      console.error(`[cron] falhou (${t.tenantId})`, err);
+      resultados.push({ tenantId: t.tenantId, ok: false, erro: msg.slice(0, 200) });
+    }
   }
+
+  return NextResponse.json({
+    ok: true,
+    tenants: { total: tenants.length, sincronizados: resultados.length },
+    resultados,
+    // Nada some sem explicacao: licenca vencida/suspensa e falta de tempo
+    // aparecem nomeados.
+    pulados: plano.pulados,
+    semTempo,
+    duracaoMs: Date.now() - inicio,
+    at: new Date().toISOString(),
+  });
 }
