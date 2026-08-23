@@ -331,6 +331,13 @@ export async function syncOrdersRange(tenantId: string, accessToken: string, sel
          * remontar a venda inteira nem saber o lucro real dela.
          */
         pack_id: o.pack_id ? String(o.pack_id) : null,
+        /**
+         * O id do ENVIO. Nao era persistido, e sem ele o rateio do frete so
+         * podia agrupar por pack_id (ver lib/domain/frete-pacote.ts). O envio
+         * e a chave mais precisa: dois pedidos podem compartilhar envio sem
+         * compartilhar pacote.
+         */
+        shipping_id: String((o.shipping as Record<string, unknown>)?.id ?? "") || null,
         updatedAt: new Date().toISOString(),
       };
       if (moneyRelease) doc.money_release_date = moneyRelease;

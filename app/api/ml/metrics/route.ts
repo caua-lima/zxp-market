@@ -6,6 +6,7 @@ import { getMlAccessToken, getSellerId, resolverTenantDaRequisicao, tenantCol } 
 import { custoNaData, impostoNaData, type CustoFaixa, type ImpostoFaixa } from "@/lib/domain/types";
 import { diaBRDe, recortarPorDiaBR } from "@/lib/domain/periodo-br";
 import { classificarVenda, detectarPedidosSubstituidos } from "@/lib/domain/venda-status";
+import { ratearFretePorPedido } from "@/lib/domain/frete-pacote";
 
 export const maxDuration = 30;
 
@@ -201,6 +202,25 @@ function computeAggregates(
   let substituidasCount = 0;
   let substituidasValor = 0;
 
+  /**
+   * FRETE POR ENVIO, não por pedido.
+   *
+   * Uma compra com produtos diferentes vira vários pedidos e UM envio só, e a
+   * API repete o custo daquele envio em cada pedido. Somar pedido a pedido
+   * contava o mesmo frete 2, 4, 5 vezes — medido: R$ 99,30 somados contra
+   * R$ 45,80 reais num único dia, o bastante pra fazer o dia parecer negativo
+   * quando era positivo. Ver lib/domain/frete-pacote.ts.
+   */
+  const rateio = ratearFretePorPedido(
+    orders.map((o) => ({
+      orderId: String(o.order_id ?? ""),
+      packId: o.pack_id as string | null | undefined,
+      shippingId: o.shipping_id as string | null | undefined,
+      shippingCost: Number(o.shipping_cost ?? 0),
+      unidades: ((o.items as OrderItem[]) ?? []).reduce((s, it) => s + Number(it.quantity ?? 1), 0),
+    })),
+  );
+
   const anunciosMap = new Map<string, AnuncioResult>();
   // Um pedido pode ter várias unidades do mesmo anúncio: 'vendas' conta o
   // PEDIDO uma vez só, enquanto 'qty' soma as unidades.
@@ -278,7 +298,8 @@ function computeAggregates(
 
     // Frete Full do pedido distribuído por unidade (envio é por pedido)
     const totalUnits = items.reduce((s, it) => s + Number(it.quantity ?? 1), 0);
-    const orderShipping = Number(o.shipping_cost ?? 0);
+    // Fatia DESTE pedido no envio (já sem a duplicação do pacote).
+    const orderShipping = rateio.porPedido.get(oid) ?? 0;
     const envioPerUnit = totalUnits > 0 ? orderShipping / totalUnits : 0;
 
     // Conferência com o líquido real (independe de o produto estar cadastrado).

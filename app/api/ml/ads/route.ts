@@ -22,6 +22,7 @@ import { getSellerId, getValidMlAccessToken, resolverTenantDaRequisicao, tenantC
 import { fetchOrdersLive, loadOrders, readShippingCosts } from "@/lib/ml/orders";
 import { classificarVenda, detectarPedidosSubstituidos } from "@/lib/domain/venda-status";
 import { diaBRDe } from "@/lib/domain/periodo-br";
+import { ratearFretePorPedido } from "@/lib/domain/frete-pacote";
 
 export const maxDuration = 30;
 
@@ -65,6 +66,18 @@ function vendasPorItem(
       })),
     })),
   );
+  // Mesmo rateio do Dashboard: o frete e do ENVIO, e um pacote tem um envio
+  // so — sem isto o custo do anuncio saia inflado e o ROAS, pessimista.
+  const rateio = ratearFretePorPedido(
+    orders.map((o) => ({
+      orderId: String(o.order_id ?? ""),
+      packId: o.pack_id as string | null | undefined,
+      shippingId: o.shipping_id as string | null | undefined,
+      shippingCost: Number(o.shipping_cost ?? 0),
+      unidades: ((o.items as OrderItem[]) ?? []).reduce((s, it) => s + Number(it.quantity ?? 1), 0),
+    })),
+  );
+
   for (const o of orders) {
     const oid = String(o.order_id ?? "");
     /**
@@ -81,7 +94,7 @@ function vendasPorItem(
     }).classe !== "valida") continue;
     const items = (o.items as OrderItem[]) ?? [];
     const totalUnits = items.reduce((s, it) => s + Number(it.quantity ?? 1), 0);
-    const envioPerUnit = totalUnits > 0 ? Number(o.shipping_cost ?? 0) / totalUnits : 0;
+    const envioPerUnit = totalUnits > 0 ? (rateio.porPedido.get(oid) ?? 0) / totalUnits : 0;
     for (const it of items) {
       const id = String(it.item_id ?? "").trim().toUpperCase();
       if (!id) continue;
