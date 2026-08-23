@@ -9,7 +9,9 @@ import {
   getAccessBootstrap,
 } from "@/lib/firebase/data";
 import type { AccessEntry, PermissionTab } from "@/lib/domain/types";
+import type { SituacaoConta } from "@/lib/domain/tenant";
 import { carregarMembro } from "@/lib/firebase/tenant-client";
+import { authedFetch } from "@/lib/api/authed-fetch";
 
 type AccessInfo = {
   role: AccessEntry["role"];
@@ -39,6 +41,8 @@ type AccessResult = {
   email: string;
   granted: boolean;
   entry: AccessEntry | null;
+  /** Presente só quando o bloqueio é de LICENÇA (vínculo existe, mas não vale) — distingue de "nunca teve acesso". */
+  bloqueio?: { situacao: Exclude<SituacaoConta, "ok">; expiresAt: number | null };
 };
 
 type AccessCache = AccessResult & {
@@ -151,6 +155,42 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
             displayName: membro.displayName,
             permissoesEdicao: membro.permissoesEdicao,
           };
+
+          /**
+           * Vínculo existe, mas isso não basta: sem licença válida, TODA
+           * leitura direta do Firestore em tenants/{tid}/… é negada pelas
+           * regras (licencaAtiva() em firestore.rules.saas). Sem esta
+           * checagem, um cliente suspenso ou vencido ficaria preso num
+           * "carregando" infinito — cada painel esperando um onSnapshot que
+           * nunca chega, sem nenhuma explicação na tela.
+           */
+          let bloqueio: AccessResult["bloqueio"];
+          try {
+            const r = await authedFetch("/api/conta/status", { cache: "no-store" });
+            if (r.ok) {
+              const j = await r.json();
+              if (j.situacao && j.situacao !== "ok") {
+                bloqueio = { situacao: j.situacao, expiresAt: j.licenca?.expiresAt ?? null };
+              }
+            }
+            // Falha de rede/servidor na checagem: não é o papel dela travar o
+            // app quando o problema é ELA, não a licença — segue liberado.
+          } catch {
+            /* mesma decisão acima */
+          }
+          if (cancelled) return;
+
+          if (bloqueio) {
+            // Não cacheia o bloqueio: se o master renovar a licença, o
+            // próximo reload já libera — cachear até 10min manteria alguém
+            // recém-renovado vendo tela de bloqueio por engano.
+            const nextAccess: AccessResult = { email, granted: false, entry: null, bloqueio };
+            setAccess((prev) =>
+              prev && prev.email === email && prev.bloqueio?.situacao === bloqueio!.situacao ? prev : nextAccess,
+            );
+            return;
+          }
+
           const nextAccess = { email, granted: true, entry };
           writeCachedAccess(nextAccess);
           setAccess((prev) =>
@@ -253,6 +293,8 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
   const isPending = !access || access.email !== currentEmail;
 
   if (isPending) return <LoadingScreen />;
+  if (access.bloqueio)
+    return <LicenseBlockedScreen onLogout={signOut} userEmail={user.email ?? ""} bloqueio={access.bloqueio} />;
   if (!access.granted)
     return <DeniedScreen onLogout={signOut} userEmail={user.email ?? ""} />;
 
@@ -286,6 +328,61 @@ function LoadingScreen() {
       </div>
       <p style={{ fontSize: ".9rem" }}>Verificando acesso…</p>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
+const dataBR = (ms: number | null) => (ms ? new Date(ms).toLocaleDateString("pt-BR") : "");
+
+/** Copy por situação — "fale com o suporte" não ajuda quem só precisa renovar. */
+function textoBloqueio(bloqueio: NonNullable<AccessResult["bloqueio"]>): { titulo: string; corpo: string } {
+  switch (bloqueio.situacao) {
+    case "suspenso":
+      return {
+        titulo: "Assinatura suspensa",
+        corpo: "Sua conta foi suspensa. Fale com quem te vendeu o acesso pra reativar.",
+      };
+    case "vencido":
+      return {
+        titulo: "Assinatura vencida",
+        corpo: bloqueio.expiresAt
+          ? `Sua licença venceu em ${dataBR(bloqueio.expiresAt)}. Renove pra voltar a usar o sistema.`
+          : "Sua licença venceu. Renove pra voltar a usar o sistema.",
+      };
+    default:
+      return {
+        titulo: "Conta sem licença",
+        corpo: "Essa conta ainda não tem uma licença ativa. Fale com quem te vendeu o acesso.",
+      };
+  }
+}
+
+function LicenseBlockedScreen({
+  onLogout,
+  userEmail,
+  bloqueio,
+}: {
+  onLogout: () => void;
+  userEmail: string;
+  bloqueio: NonNullable<AccessResult["bloqueio"]>;
+}) {
+  const { titulo, corpo } = textoBloqueio(bloqueio);
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "0 16px" }}>
+      <div style={{
+        background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16,
+        padding: "40px 32px", maxWidth: 400, width: "100%", textAlign: "center",
+      }}>
+        <div style={{ fontSize: "3rem", marginBottom: 16 }}>⏳</div>
+        <h2 style={{ fontSize: "1.2rem", fontWeight: 700, marginBottom: 8, color: "var(--text)" }}>{titulo}</h2>
+        <p style={{ fontSize: ".88rem", color: "var(--muted)", lineHeight: 1.6, marginBottom: 24 }}>{corpo}</p>
+        <p style={{ fontSize: ".76rem", color: "var(--muted)", marginBottom: 16 }}>
+          Conectado como <strong style={{ color: "var(--text)" }}>{userEmail}</strong>
+        </p>
+        <button type="button" className="btn btn-primary" onClick={onLogout} style={{ width: "100%", justifyContent: "center" }}>
+          Trocar conta / Sair
+        </button>
+      </div>
     </div>
   );
 }

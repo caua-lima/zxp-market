@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ehOwner, licencaValida, normalizarPapel, podeAcessarTenant, podeEditarAba,
+  ehOwner, licencaValida, normalizarPapel, podeAcessarTenant, podeEditarAba, situacaoDaConta,
   type Licenca, type MembroTenant,
 } from "./tenant";
 
@@ -45,6 +45,42 @@ describe("licencaValida", () => {
   it("o vencimento e estrito: no instante exato ja nao vale", () => {
     expect(licencaValida(licenca({ expiresAt: AGORA }), AGORA)).toBe(false);
     expect(licencaValida(licenca({ expiresAt: AGORA + 1 }), AGORA)).toBe(true);
+  });
+});
+
+describe("situacaoDaConta — o motivo por trás do licencaValida()==false", () => {
+  it("ativa e no prazo: ok", () => {
+    expect(situacaoDaConta(licenca(), AGORA)).toBe("ok");
+  });
+
+  it("sem licenca: sem_licenca, nao 'suspenso' nem 'vencido'", () => {
+    expect(situacaoDaConta(null, AGORA)).toBe("sem_licenca");
+    expect(situacaoDaConta(undefined, AGORA)).toBe("sem_licenca");
+  });
+
+  it("suspensa: suspenso, mesmo se o prazo ainda nao venceu", () => {
+    expect(situacaoDaConta(licenca({ status: "suspenso", expiresAt: AGORA + DIA }), AGORA)).toBe("suspenso");
+  });
+
+  it("vencida: vencido", () => {
+    expect(situacaoDaConta(licenca({ expiresAt: AGORA - DIA }), AGORA)).toBe("vencido");
+  });
+
+  it("suspensa E vencida: suspenso ganha — e a causa mais direta de bloquear", () => {
+    expect(situacaoDaConta(licenca({ status: "suspenso", expiresAt: AGORA - DIA }), AGORA)).toBe("suspenso");
+  });
+
+  it("sem prazo (dono do SaaS) nunca vence", () => {
+    expect(situacaoDaConta(licenca({ expiresAt: null }), AGORA)).toBe("ok");
+  });
+
+  it("concorda com licencaValida() em toda combinacao: ok se e só se valida", () => {
+    for (const status of ["ativo", "suspenso"] as const) {
+      for (const expiresAt of [null, AGORA - DIA, AGORA, AGORA + DIA]) {
+        const l = licenca({ status, expiresAt });
+        expect(situacaoDaConta(l, AGORA) === "ok").toBe(licencaValida(l, AGORA));
+      }
+    }
   });
 });
 

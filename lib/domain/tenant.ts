@@ -111,6 +111,23 @@ export function licencaValida(licenca: Licenca | null | undefined, agora: number
   return licenca.expiresAt > agora;
 }
 
+export type SituacaoConta = "ok" | "sem_licenca" | "suspenso" | "vencido";
+
+/**
+ * Por que a conta está bloqueada — pra mostrar mensagem certa, não só negar.
+ *
+ * `licencaValida()` já decide SE deixa passar; isto decide O QUÊ dizer pra
+ * quem não passou. Sem isto, um cliente com licença vencida via a MESMA tela
+ * genérica de "acesso negado" que alguém que nunca teve conta — e "fale com o
+ * suporte" não ajuda quem só precisa renovar.
+ */
+export function situacaoDaConta(licenca: Licenca | null | undefined, agora: number): SituacaoConta {
+  if (!licenca) return "sem_licenca";
+  if (licenca.status === "suspenso") return "suspenso";
+  if (licenca.expiresAt != null && licenca.expiresAt <= agora) return "vencido";
+  return "ok";
+}
+
 /** Owner edita tudo, sempre. Colaborador só a aba que o owner liberou. */
 export function podeEditarAba(membro: MembroTenant | null | undefined, aba: PermissionTab): boolean {
   if (!membro) return false;
