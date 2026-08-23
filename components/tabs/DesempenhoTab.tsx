@@ -19,6 +19,32 @@ const OPCOES_MESES = [3, 6, 12, 24];
  */
 const OPCOES_DIAS = [7, 15, 30];
 
+
+/**
+ * Dias do 1º do mês até hoje.
+ *
+ * O período aqui é expresso em DIAS PRA TRÁS (a rota recebe `dias=N`), então
+ * "este mês" precisa virar uma contagem — e não um intervalo de datas. Fuso BR
+ * de propósito: em UTC, no começo da madrugada, o dia 1º cairia no mês anterior.
+ */
+function diasDesdeInicioDoMes(): number {
+  const br = new Date(Date.now() - 3 * 3600 * 1000);
+  return br.getUTCDate();
+}
+
+/**
+ * Dias suficientes pra alcançar o 1º do mês PASSADO.
+ *
+ * A janela sempre conta a partir de hoje, então "mês passado" inclui também o
+ * mês corrente — não há como pedir um intervalo fechado nesta rota. O rótulo
+ * diz "cobre", não "é", justamente por isso.
+ */
+function diasCobrindoMesPassado(): number {
+  const br = new Date(Date.now() - 3 * 3600 * 1000);
+  const diasDoMesPassado = new Date(Date.UTC(br.getUTCFullYear(), br.getUTCMonth(), 0)).getUTCDate();
+  return br.getUTCDate() + diasDoMesPassado;
+}
+
 export default function DesempenhoTab() {
   const [months, setMonths] = useState(12);
   // null = periodo em meses; numero = periodo em dias (tem prioridade).
@@ -58,6 +84,27 @@ export default function DesempenhoTab() {
           <h2 className="tab-title">Desempenho</h2>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Atalhos de mês, antes dos dias avulsos: "este mês" e "mês passado"
+              são o recorte que o usuário usa pra fechar resultado, e sem eles
+              era preciso contar dias na mão pra chegar no mesmo lugar. */}
+          <div className="seg">
+            <button
+              type="button"
+              className={`seg-btn ${dias === diasDesdeInicioDoMes() ? "active" : ""}`}
+              onClick={() => setDias(diasDesdeInicioDoMes())}
+              title="Do dia 1º até hoje"
+            >
+              Este mês
+            </button>
+            <button
+              type="button"
+              className={`seg-btn ${dias === diasCobrindoMesPassado() ? "active" : ""}`}
+              onClick={() => setDias(diasCobrindoMesPassado())}
+              title="Cobre o mês anterior inteiro (a janela conta pra trás a partir de hoje)"
+            >
+              Mês passado
+            </button>
+          </div>
           <div className="seg">
             {OPCOES_DIAS.map((d) => (
               <button key={`d${d}`} type="button" className={`seg-btn ${dias === d ? "active" : ""}`} onClick={() => setDias(d)}>

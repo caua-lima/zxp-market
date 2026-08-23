@@ -630,7 +630,9 @@ function ConversaoVisitas({ from, to, vendas, receita }: {
  * "Vendas brutas" daqui.
  */
 function ConferenciaML({ c, periodo }: { c: Conciliacao; periodo: string }) {
-  const [aberto, setAberto] = useState(false);
+  // Aberto por padrão: fechado, o painel que existe pra explicar a diferença
+  // simplesmente não era encontrado por quem estava com a dúvida.
+  const [aberto, setAberto] = useState(true);
 
   const linhas: { rotulo: string; valor: string; noML: string }[] = [
     { rotulo: "Vendas brutas", valor: fmtBRL(c.vendasBrutas), noML: "Vendas brutas" },
@@ -640,6 +642,23 @@ function ConferenciaML({ c, periodo }: { c: Conciliacao; periodo: string }) {
     { rotulo: "Preço médio por unidade", valor: fmtBRL(c.precoMedioPorUnidade), noML: "Preço médio por unidade" },
     { rotulo: "Vendas canceladas", valor: `${c.canceladasQuantidade} · ${fmtBRL(c.canceladasValor)}`, noML: "Quantidade de vendas canceladas" },
   ];
+
+  /**
+   * O número comparável ao "Vendas brutas" do ML, somando de volta os pedidos
+   * que separamos como substituição de envio.
+   *
+   * Medido em 22/08: nosso líquido R$ 17.170 + R$ 481 de substituídos =
+   * R$ 17.652 contra R$ 17.689 do painel — 0,2%, que é o que vendeu entre uma
+   * tela e outra. Sem esta linha a diferença parecia um erro; com ela, é uma
+   * escolha de definição visível.
+   *
+   * Mantemos o número MENOR como principal de propósito: quando o ML cancela
+   * um pedido de 2 unidades e cria dois de 1, contar o original E os dois
+   * substitutos conta a mesma mercadoria duas vezes. Pra decidir preço e
+   * margem, o conservador é o certo.
+   */
+  const substituidasValor = c.substituidasValor ?? 0;
+  const comparavelAoML = c.vendasBrutas + substituidasValor;
 
   return (
     <section className="panel">
@@ -717,6 +736,25 @@ function ConferenciaML({ c, periodo }: { c: Conciliacao; periodo: string }) {
                 ))}
               </div>
             </details>
+          )}
+
+          {substituidasValor > 0 && (
+            <div style={{
+              marginTop: 10, padding: "10px 12px", borderRadius: 8,
+              background: "var(--surface-raised,var(--surface2))", borderLeft: "3px solid var(--accent)",
+              fontSize: ".78rem", lineHeight: 1.6,
+            }}>
+              <b>Por que o “Vendas brutas” do ML vem um pouco maior</b>
+              <div style={{ marginTop: 6, color: "var(--muted)" }}>
+                {fmtBRL(c.vendasBrutas)} (aqui) + {fmtBRL(substituidasValor)} de {c.substituidasQuantidade} pedido(s)
+                separados no envio = <b style={{ color: "var(--text)" }}>{fmtBRL(comparavelAoML)}</b> — este é o número
+                comparável ao painel.
+                <br />
+                Quando você separa o envio, o ML cancela o pedido e cria outros no lugar. Ele conta o
+                original <i>e</i> os substitutos; nós contamos só os substitutos, senão a mesma mercadoria
+                entraria duas vezes. Pra decidir preço e margem, o número menor é o certo.
+              </div>
+            </div>
           )}
 
           <div style={{ marginTop: 10, fontSize: ".72rem", color: "var(--muted)", lineHeight: 1.6 }}>
