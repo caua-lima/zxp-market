@@ -530,6 +530,91 @@ function VendasDoDiaHero({ hoje }: { hoje?: HojeBreakdown }) {
   );
 }
 
+
+/**
+ * ── Conversão de visitas ──
+ *
+ * Espelha o painel do Seller Center, com uma diferença que a tela declara em
+ * vez de disfarçar: o ML mostra TRÊS degraus (visitas → intenção de compra →
+ * vendas) e a "intenção de compra" não existe em nenhum endpoint público —
+ * vem de sinais internos deles (carrinho, checkout iniciado).
+ *
+ * Estimar aquele degrau seria pior que não tê-lo: quem comparasse com o ML
+ * acharia o app quebrado, e poderia decidir em cima de um número inventado.
+ * Dois degraus honestos valem mais que três com um chutado.
+ */
+function ConversaoVisitas({ from, to, vendas, receita }: {
+  from?: string; to?: string; vendas: number; receita: number;
+}) {
+  const [dados, setDados] = useState<{ visitas: number | null; observacao?: string; parcial?: boolean; error?: string } | null>(null);
+
+  const chave = from && to ? `${from}|${to}` : "";
+  useEffect(() => {
+    if (!chave) return;
+    let vivo = true;
+    authedFetch(`/api/ml/visitas?from=${from}&to=${to}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((j) => { if (vivo) setDados(j); })
+      .catch(() => { if (vivo) setDados({ visitas: null, error: "falha" }); });
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chave]);
+
+  if (!dados) return null;
+
+  const visitas = dados.visitas;
+  // Conversão só existe com visitas > 0. Sem elas o número seria divisão por
+  // zero disfarçada de 0%.
+  const conversao = visitas != null && visitas > 0 ? (vendas / visitas) * 100 : null;
+
+  return (
+    <section className="panel">
+      <div className="panel-head" style={{ marginBottom: 10 }}>
+        <span className="panel-title">Conversão de visitas</span>
+        <span className="panel-sub">
+          compare com “Conversão de visitas” do Seller Center
+          {dados.parcial ? " · período além do alcance da API: número parcial" : ""}
+        </span>
+      </div>
+
+      {visitas == null ? (
+        <div style={{ fontSize: ".82rem", color: "var(--muted)" }}>
+          O Mercado Livre não devolveu as visitas agora. O número não aparece como zero
+          de propósito — “ninguém visitou” e “não consegui perguntar” levam a decisões opostas.
+        </div>
+      ) : (
+        <>
+          <div className="kpi-grid">
+            <div className="kpi">
+              <div className="k-lbl">Visitas</div>
+              <div className="k-val">{visitas.toLocaleString("pt-BR")}</div>
+              <div className="k-sub">nos anúncios da conta</div>
+            </div>
+            <div className="kpi">
+              <div className="k-lbl">Vendas</div>
+              <div className="k-val">{vendas.toLocaleString("pt-BR")}</div>
+              <div className="k-sub">{fmtBRL(receita)}</div>
+            </div>
+            <div className="kpi">
+              <div className="k-lbl">Conversão</div>
+              <div className="k-val" style={{ color: "var(--accent)" }}>
+                {conversao != null ? `${conversao.toFixed(1)}%` : "—"}
+              </div>
+              <div className="k-sub">vendas ÷ visitas</div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: ".72rem", color: "var(--muted)", lineHeight: 1.6 }}>
+            O Seller Center mostra um degrau a mais no meio (“intenção de compra”). Ele vem de
+            sinais internos do Mercado Livre e <b>nenhum endpoint público devolve</b> — em vez de
+            estimar, ele fica de fora. {dados.observacao}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 /**
  * ── Conferência com o Mercado Livre ──
  *
@@ -1647,6 +1732,13 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
               <Kpi label="Devoluções" value={mlMetrics?.vendasDevolvidas ?? 0} tone="neg" sub="0 a 0 (produto volta ao estoque)" />
             </div>
           </section>
+
+          <ConversaoVisitas
+            from={mlMetrics?.from}
+            to={mlMetrics?.to}
+            vendas={mlMetrics?.ordersCount ?? 0}
+            receita={fatLiquido}
+          />
 
           {mlMetrics?.conciliacao && (
             <ConferenciaML

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Modal from "@/components/Modal";
 import { fmtBRL } from "@/lib/domain/calc";
 import { agregarPorCampanha, type CampanhaAgregada, type ItemParaCampanha } from "@/lib/domain/ads-campaigns";
-import { corRoas, num, type Modo } from "./ads-types";
+import { corMargem, corRoas, num, type Modo } from "./ads-types";
 import AdsFunnel from "./AdsFunnel";
 
 /**
@@ -41,6 +41,7 @@ export default function AdsCampaignList({ itens, modo }: { itens: ItemParaCampan
               <th>Receita</th>
               <th>ROAS</th>
               <th>Lucro após Ads</th>
+              <th title="Lucro após Ads ÷ receita da campanha. Comparar campanhas pelo valor absoluto escala a errada: R$ 373 sobre R$ 2.369 é 15,8%, e R$ 125 sobre R$ 992 é 12,7%.">Margem</th>
               <th></th>
             </tr>
           </thead>
@@ -85,6 +86,15 @@ export default function AdsCampaignList({ itens, modo }: { itens: ItemParaCampan
                   }}
                 >
                   {c.lucroAposAds != null ? fmtBRL(c.lucroAposAds) : "—"}
+                </td>
+                <td
+                  data-label="Margem"
+                  style={{
+                    fontWeight: 700, whiteSpace: "nowrap",
+                    color: c.margem == null ? "var(--muted)" : corMargem(c.margem),
+                  }}
+                >
+                  {c.margem != null ? `${num(c.margem, 1)}%` : "—"}
                 </td>
                 <td data-cell="acoes" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                   <button type="button" className="btn btn-ghost btn-xs" onClick={() => setAberta(c)}>
