@@ -596,7 +596,9 @@ canvas.chart-canvas{width:100%!important;height:100%!important}
   .drp-pop{padding:12px;max-height:78vh;overflow-y:auto}
   .drp-preset{padding:5px 10px;font-size:.72rem}
   /* modal ocupa a tela toda com folga, rolando por dentro */
-  .modal-box{width:96%;max-height:88vh}
+  /* a barra de gestos do iPhone come o rodape do modal: sem esta folga,
+     o botao "Fechar" fica sob ela e nao aceita toque. */
+  .modal-box{width:96%;max-height:85vh;margin-bottom:env(safe-area-inset-bottom)}
 }
 
 /* =========================================================================
@@ -793,13 +795,16 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
    que empurrava "Reconectar ML" pra fora da tela no celular e criava
    rolagem horizontal. Em classe, dá pra compactar por media query.
    ========================================================================= */
-.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:30;min-width:0;max-width:100%}
+/* padding-top compensa o notch: env() vale 0 quando nao ha recorte, entao o
+   max() mantem o espacamento normal no resto dos aparelhos. Depende de
+   viewportFit:"cover" em app/layout.tsx pra env() reportar algo. */
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:max(12px,env(safe-area-inset-top)) max(24px,env(safe-area-inset-right)) 12px max(24px,env(safe-area-inset-left));display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:30;min-width:0;max-width:100%}
 .topbar-title{display:flex;align-items:center;gap:9px;font-weight:700;font-size:.95rem;flex:1 1 auto;min-width:0;overflow:hidden}
 .topbar-actions{display:flex;align-items:center;gap:10px;min-width:0}
 .cmdk-hint{font-size:.72rem;opacity:.7;margin-left:2px}
 
 @media(max-width:720px){
-  .topbar{padding:10px 12px;gap:8px}
+  .topbar{padding:max(10px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 10px max(12px,env(safe-area-inset-left));gap:8px}
   /* PODE encolher aqui — era o flex-shrink:0 que estourava a largura */
   .topbar-actions{gap:6px;min-width:0}
   /* Rede de segurança: com busca + sino da Central + toggle de push + menu
