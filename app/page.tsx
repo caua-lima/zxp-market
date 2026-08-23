@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/firebase/auth-context";
+import { authedFetch } from "@/lib/api/authed-fetch";
 import { initForegroundPush } from "@/lib/firebase/push";
 import { PushNotificationToggle } from "@/components/PushNotificationToggle";
 import { NotificationCenter } from "@/components/NotificationCenter";
@@ -17,6 +18,7 @@ import EstoqueTab from "@/components/tabs/EstoqueTab";
 import FullTab from "@/components/tabs/FullTab";
 import DesempenhoTab from "@/components/tabs/DesempenhoTab";
 import AccessControlTab from "@/components/tabs/AccessControlTab";
+import ClientesTab from "@/components/tabs/ClientesTab";
 import DreTab from "@/components/tabs/DreTab";
 import PrecoTab from "@/components/tabs/PrecoTab";
 import TarefasTab from "@/components/tabs/TarefasTab";
@@ -28,7 +30,7 @@ import MyProfileModal from "@/components/MyProfileModal";
 import CommandPalette from "@/components/CommandPalette";
 import { SaleNotificationProvider } from "@/components/SaleNotificationProvider";
 
-type Tab = "dashboard" | "pedidos" | "ads" | "preco" | "metas" | "custos" | "estoque" | "full" | "desempenho" | "dre" | "tarefas" | "acesso";
+type Tab = "dashboard" | "pedidos" | "ads" | "preco" | "metas" | "custos" | "estoque" | "full" | "desempenho" | "dre" | "tarefas" | "acesso" | "clientes";
 
 // Owner e colaborador veem tudo, exceto Acesso — essa é só do owner (a aba
 // nem aparece na navegação pra colaborador). Tarefas é a única aba em que o
@@ -47,6 +49,7 @@ const NAV_ITEMS: { id: Tab; label: string }[] = [
   { id: "dre", label: "DRE" },
   { id: "tarefas", label: "Tarefas" },
   { id: "acesso", label: "Acesso" },
+  { id: "clientes", label: "Clientes" },
 ];
 
 // Ícones em linha (herdam a cor via currentColor) — visual limpo e profissional.
@@ -63,6 +66,7 @@ const ICON_PATHS: Record<Tab, React.ReactNode> = {
   dre: (<><path d="M5 3h9l5 5v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" /><path d="M14 3v5h5" /><path d="M8 13h8M8 17h5" /></>),
   tarefas: (<><rect x="3" y="4" width="5" height="16" rx="1.2" /><rect x="9.5" y="4" width="5" height="10" rx="1.2" /><rect x="16" y="4" width="5" height="13" rx="1.2" /></>),
   acesso: (<><circle cx="12" cy="8" r="3.5" /><path d="M5.5 20a6.5 6.5 0 0 1 13 0" /></>),
+  clientes: (<><circle cx="9" cy="8" r="3" /><path d="M3 19a6 6 0 0 1 12 0" /><path d="M16 5.5a3 3 0 0 1 0 5.6" /><path d="M17.5 14.4A5.5 5.5 0 0 1 21 19" /></>),
 };
 
 function NavIcon({ id }: { id: Tab }) {
@@ -108,7 +112,7 @@ export default function Page() {
   );
 }
 
-const VALID_TABS: readonly Tab[] = ["dashboard", "pedidos", "ads", "preco", "metas", "custos", "estoque", "full", "desempenho", "dre", "tarefas", "acesso"];
+const VALID_TABS: readonly Tab[] = ["dashboard", "pedidos", "ads", "preco", "metas", "custos", "estoque", "full", "desempenho", "dre", "tarefas", "acesso", "clientes"];
 
 function AppShell() {
   const { user, signOut, signInWithAccountSelection } = useAuth();
@@ -173,6 +177,33 @@ function AppShell() {
 
   const data = useUserData(user?.uid);
   const { isOwner, displayName } = useAccess();
+
+  /**
+   * Admin master do SaaS — quem cria contas de cliente. NÃO é o mesmo que
+   * `isOwner`, que é o dono de UMA loja (ver lib/domain/tenant.ts). Descoberto
+   * perguntando ao servidor, nunca deduzido do e-mail: a lista de masters vive
+   * numa coleção que o cliente não consegue escrever.
+   *
+   * Isto só ESCONDE a aba. A segurança de verdade está nas rotas
+   * /api/saas/*, que recusam quem não é master — esconder botão nunca foi
+   * controle de acesso.
+   */
+  const [masterUid, setMasterUid] = useState<string | null>(null);
+  useEffect(() => {
+    // Espera o login RESOLVER. Sem o uid na dependência, isto dispararia na
+    // primeira renderização, quando `getAuth().currentUser` ainda é null — a
+    // rota devolveria 401 e o master nunca mais veria a aba nessa sessão.
+    const uid = user?.uid;
+    if (!uid) return;
+    let vivo = true;
+    authedFetch("/api/saas/clientes", { cache: "no-store" })
+      .then((r) => { if (vivo && r.ok) setMasterUid(uid); })
+      .catch(() => { /* sem resposta, segue sem a aba */ });
+    return () => { vivo = false; };
+  }, [user?.uid]);
+  // Guardar o UID em vez de um booleano faz a permissão CAIR sozinha ao trocar
+  // de conta: um `true` solto sobreviveria à troca até o efeito responder.
+  const ehMasterSaas = !!user?.uid && masterUid === user.uid;
   const [profileOpen, setProfileOpen] = useState(false);
 
   // Sem isto, uma venda que chega com o app ABERTO não mostra notificação
@@ -183,10 +214,17 @@ function AppShell() {
   }, []);
 
   // Acesso é só do owner — colaborador nem vê o item na navegação.
-  const navItems = isOwner ? NAV_ITEMS : NAV_ITEMS.filter((n) => n.id !== "acesso");
+  const navItems = NAV_ITEMS.filter((n) => {
+    if (n.id === "acesso") return isOwner;
+    if (n.id === "clientes") return ehMasterSaas;
+    return true;
+  });
   // Defesa extra: se por algum motivo o tab ativo for "acesso" sem ser owner
   // (ex.: papel rebaixado com a aba já aberta), cai pro Dashboard.
-  const activeTab: Tab = tab === "acesso" && !isOwner ? "dashboard" : tab;
+  // Defesa extra, igual à de "acesso": tab escolhida na URL não pode driblar
+  // a checagem de master.
+  const activeTab: Tab =
+    (tab === "acesso" && !isOwner) || (tab === "clientes" && !ehMasterSaas) ? "dashboard" : tab;
 
   if (!user) return null;
 
@@ -516,6 +554,7 @@ function AppShell() {
                 {activeTab === "dre" && <DreTab />}
                 {activeTab === "tarefas" && <TarefasTab openTaskId={openTaskId} />}
                 {activeTab === "acesso" && isOwner && <AccessControlTab uid={user.uid} data={data} />}
+                {activeTab === "clientes" && ehMasterSaas && <ClientesTab />}
               </>
             )}
           </main>

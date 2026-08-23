@@ -415,3 +415,87 @@ export async function salvarUltimoTenantSincronizado(tenantId: string): Promise<
     );
   } catch { /* perder o ponteiro só reinicia o rodízio */ }
 }
+
+// ── Admin master do SaaS ───────────────────────────────────────────
+
+const SAAS_ADMINS = "saas_admins";   // saas_admins/{email}
+
+/**
+ * O e-mail é admin master do SaaS?
+ *
+ * Master NÃO é "owner" de um tenant: owner é dono de UMA loja, master é dono
+ * do negócio — vê todas as licenças e cria contas. A separação é deliberada
+ * (ver lib/domain/tenant.ts): no modelo antigo `role == "owner"` queria dizer
+ * as duas coisas, e um merge que compilasse transformaria todo cliente em
+ * admin do SaaS.
+ *
+ * A coleção tem `allow write: if false` nas regras — só o Admin SDK escreve,
+ * e só pelo script. Esta função apenas LÊ.
+ */
+export async function ehMaster(email: string): Promise<boolean> {
+  const e = String(email ?? "").trim().toLowerCase();
+  if (!e) return false;
+  try {
+    return (await getAdminDb().collection(SAAS_ADMINS).doc(e).get()).exists;
+  } catch {
+    // Falha de leitura NUNCA vira permissão: no escuro, o acesso é negado.
+    return false;
+  }
+}
+
+export type ClienteResumo = {
+  tenantId: string;
+  nome: string;
+  ownerEmail: string;
+  criadoEm: number | null;
+  licenca: { status: string; expiresAt: number | null } | null;
+  /** true = a conta do ML já foi conectada por eles. */
+  mlConectado: boolean;
+};
+
+/**
+ * Todos os clientes, com licença e estado da conexão — a visão do master.
+ *
+ * `mlConectado` importa mais do que parece: é o único passo do onboarding que
+ * o master NÃO pode fazer pelo cliente (o token do ML dá acesso à conta
+ * inteira dele). Sem esta coluna, "criei a conta e o cliente diz que não
+ * funciona" vira investigação; com ela, é uma olhada.
+ */
+export async function listarClientes(): Promise<ClienteResumo[]> {
+  const db = getAdminDb();
+  const [tenants, membros, conexoes] = await Promise.all([
+    db.collection(TENANTS).get(),
+    db.collection(MEMBROS).where("papel", "==", "owner").get(),
+    db.collection(CONEXOES).get(),
+  ]);
+
+  const ownerPorTenant = new Map<string, string>();
+  for (const d of membros.docs) {
+    const m = d.data();
+    const tid = String(m?.tenantId ?? "");
+    const email = String(m?.email ?? "").toLowerCase();
+    if (tid && email && !ownerPorTenant.has(tid)) ownerPorTenant.set(tid, email);
+  }
+  const conectados = new Set(conexoes.docs.filter((d) => d.data()?.refresh_token).map((d) => d.id));
+
+  const emails = Array.from(new Set(ownerPorTenant.values()));
+  const licencas = new Map<string, { status: string; expiresAt: number | null }>();
+  await Promise.all(emails.map(async (email) => {
+    const l = await getLicenca(email);
+    if (l) licencas.set(email, { status: String(l.status ?? "ativo"), expiresAt: l.expiresAt ?? null });
+  }));
+
+  return tenants.docs
+    .map((d) => {
+      const email = ownerPorTenant.get(d.id) ?? "";
+      return {
+        tenantId: d.id,
+        nome: String(d.data()?.nome ?? d.id),
+        ownerEmail: email,
+        criadoEm: Number(d.data()?.criadoEm ?? 0) || null,
+        licenca: email ? licencas.get(email) ?? null : null,
+        mlConectado: conectados.has(d.id),
+      };
+    })
+    .sort((a, b) => (b.criadoEm ?? 0) - (a.criadoEm ?? 0));
+}
