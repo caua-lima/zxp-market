@@ -131,15 +131,35 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
          * qualquer aba tentar ler. É a primeira coisa depois de saber quem é
          * o usuário, de propósito.
          *
-         * ESTADO INTERMEDIÁRIO, e é intencional: o tenantId já vem de
-         * `tenant_membros`, mas o PAPEL (owner/colaborador, permissoesEdicao)
-         * abaixo ainda vem de `controleAcesso`. São duas fontes para a mesma
-         * pergunta durante o porte. A unificação é o próximo commit — foi
-         * separada porque trocar caminho de dado e trocar modelo de permissão
-         * ao mesmo tempo esconderia qual dos dois quebrou, se quebrasse.
+         * UNIFICADO: quando existe vínculo em `tenant_membros`, ELE decide
+         * papel e permissoesEdicao — sem tocar em `controleAcesso`. Esse
+         * fallback abaixo (bootstrap/checkAccess) só roda pra quem AINDA não
+         * foi migrado pro modelo novo (ver comentário abaixo).
          */
-        await carregarMembro(u.uid);
+        const membro = await carregarMembro(u.uid);
         if (cancelled) return;
+
+        if (membro) {
+          // Cliente do SaaS (ou já migrado): tenant_membros já tem tudo que
+          // este componente precisa. NÃO cai no fluxo de controleAcesso —
+          // essa coleção é global, sem escopo de tenant, e usá-la aqui abriria
+          // a Central de Acesso de um cliente pros dados de outro (ver o
+          // porquê completo em lib/api-auth.ts, requireAccess()).
+          const entry: AccessEntry = {
+            email,
+            role: membro.papel === "owner" ? "owner" : "colaborador",
+            displayName: membro.displayName,
+            permissoesEdicao: membro.permissoesEdicao,
+          };
+          const nextAccess = { email, granted: true, entry };
+          writeCachedAccess(nextAccess);
+          setAccess((prev) =>
+            prev && prev.email === email && prev.granted === true && prev.entry?.role === entry.role
+              ? prev
+              : nextAccess,
+          );
+          return;
+        }
 
         const bootstrap = await getAccessBootstrap();
         if (cancelled) return;
