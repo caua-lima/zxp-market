@@ -3,6 +3,7 @@
 import {
   type User,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut as firebaseSignOut,
@@ -18,6 +19,7 @@ type AuthState = {
   signIn: () => Promise<void>;
   signInWithAccountSelection: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -51,6 +53,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await signInWithEmailAndPassword(auth, email.trim(), password);
   }
 
+  /**
+   * Manda o e-mail de redefinição pelo próprio Firebase Auth, em vez de um
+   * código numérico feito à mão. O link cumpre a mesma verificação que um
+   * código cumpriria — só quem acessa a caixa de entrada consegue trocar a
+   * senha —, e o Firebase já cuida de expiração e uso único sem precisar de
+   * uma coleção própria pra guardar código pendente.
+   *
+   * Não revela se o e-mail existe: o Firebase responde sucesso mesmo pra
+   * e-mail não cadastrado, e é assim que fica — devolver erro diferente daria
+   * a quem tenta adivinhar contas uma forma de confirmar quais existem.
+   */
+  async function resetPassword(email: string) {
+    const { auth } = getFirebase();
+    await sendPasswordResetEmail(auth, email.trim());
+  }
+
   async function signOut() {
     const { auth } = getFirebase();
     await firebaseSignOut(auth);
@@ -66,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signInWithAccountSelection, signInWithEmail, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signInWithAccountSelection, signInWithEmail, resetPassword, signOut }}>
       {children}
     </AuthContext.Provider>
   );
