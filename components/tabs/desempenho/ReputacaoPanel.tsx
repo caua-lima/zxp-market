@@ -1,11 +1,15 @@
 "use client";
 
 import {
+  CORES_NIVEL,
   METRIC_LABELS,
+  METRIC_LIMITES,
+  SITUACAO_COR,
   formatTaxaDecimal,
   getPowerSellerLabel,
   getProximoNivelLabel,
   getReputationLevelMeta,
+  situacaoDaMetrica,
   type SellerReputation,
 } from "@/lib/domain/reputation";
 
@@ -59,6 +63,29 @@ export default function ReputacaoPanel({
         <span className="panel-sub" style={{ color: nivel.cor, fontWeight: 700 }}>{nivel.label}</span>
       </div>
 
+      {/* A barra de 5 degraus — é como o vendedor reconhece a reputação de
+          relance no painel do próprio Mercado Livre. Sem ela, "5_green" é
+          jargão; com ela, a posição é imediata. */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+        {CORES_NIVEL.map((c) => {
+          const atual = c.id === reputation.level_id;
+          return (
+            <div
+              key={c.id}
+              title={atual ? "Seu nível atual" : undefined}
+              style={{
+                flex: 1, height: 8, borderRadius: 4, background: c.cor,
+                // O atual ganha altura e contorno: cor sozinha não distingue
+                // quando os tons vizinhos são próximos.
+                transform: atual ? "scaleY(1.6)" : undefined,
+                outline: atual ? "2px solid var(--text)" : "none",
+                outlineOffset: 2,
+              }}
+            />
+          );
+        })}
+      </div>
+
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14, padding: "10px 14px", borderRadius: 10, background: "var(--surface2)" }}>
         <div>
           <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Selo atual</div>
@@ -102,12 +129,39 @@ export default function ReputacaoPanel({
             Métricas que o Mercado Livre usa pra calcular seu nível:
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {linhasMetricas.map(({ key, label, entry }) => (
-              <div key={key} style={{ display: "flex", justifyContent: "space-between", fontSize: ".82rem", padding: "6px 10px", background: "var(--surface2)", borderRadius: 6 }}>
-                <span>{label}{entry?.period ? <span style={{ color: "var(--muted)" }}> · {entry.period}</span> : null}</span>
-                <span style={{ fontWeight: 700 }}>{fmtPct01(entry?.rate) ?? "—"}</span>
-              </div>
-            ))}
+            {linhasMetricas.map(({ key, label, entry }) => {
+              const lim = METRIC_LIMITES[key];
+              const sit = situacaoDaMetrica(key, entry?.rate);
+              return (
+                <div
+                  key={key}
+                  style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10,
+                    fontSize: ".82rem", padding: "8px 10px", background: "var(--surface2)", borderRadius: 6,
+                    borderLeft: `3px solid ${SITUACAO_COR[sit]}`,
+                  }}
+                >
+                  <span>
+                    {label}{entry?.period ? <span style={{ color: "var(--muted)" }}> · {entry.period}</span> : null}
+                    {/* O teto é o que dá sentido à taxa: "0%" sozinho não diz
+                        se 0,5% seria tranquilo ou já problema. */}
+                    {lim && (
+                      <span style={{ display: "block", fontSize: ".68rem", color: "var(--muted)", fontWeight: 400 }}>
+                        permitido até {lim.permitido}% · MercadoLíder exige até {lim.mercadoLider}%
+                      </span>
+                    )}
+                  </span>
+                  <span style={{ fontWeight: 700, whiteSpace: "nowrap", color: SITUACAO_COR[sit] }}>
+                    {fmtPct01(entry?.rate) ?? "—"}
+                    {sit === "atencao" && (
+                      <span style={{ display: "block", fontSize: ".64rem", fontWeight: 400 }}>
+                        trava o MercadoLíder
+                      </span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

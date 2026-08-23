@@ -4,6 +4,7 @@ import { isCronRequest } from "@/lib/api-auth";
 import { currentMonthRangeBR, previousMonthRangeBR, syncOrdersRange, syncReturnsRange, syncClaimsRange } from "@/lib/ml/sync";
 import { enviarLembretesDeTarefa } from "@/lib/task-reminders-run";
 import { ehDomingoBR, fazerBackupSemanal } from "@/lib/backup-run";
+import { verificarMarcos } from "@/lib/marcos-run";
 
 export const maxDuration = 60;
 
@@ -80,8 +81,37 @@ export async function GET(req: Request) {
         })
       : null;
 
+    /**
+     * Marcos comemorativos. Pega carona nesta execucao diaria, como o lembrete
+     * e o backup — o plano Hobby da Vercel so aceita um cron por dia (ver o
+     * aviso no topo). Best-effort: comemoracao nao pode derrubar a
+     * sincronizacao, que e o que mantem o painel correto.
+     *
+     * O faturamento vem do MESMO agregado que o Dashboard usa. Recalcular aqui
+     * criaria uma segunda definicao de faturamento, e definicao duplicada foi a
+     * origem de quase todo numero errado nesta base.
+     */
+    const marcos = await (async () => {
+      try {
+        const mesAtual = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 7);
+        const origem = new URL(req.url).origin;
+        const auth = req.headers.get("authorization");
+        const rm = await fetch(`${origem}/api/ml/metrics?month=${mesAtual}`, {
+          headers: auth ? { Authorization: auth } : {},
+          cache: "no-store",
+        });
+        if (!rm.ok) return null;
+        const j = (await rm.json()) as { faturamentoLiquido?: number };
+        return await verificarMarcos(Number(j.faturamentoLiquido ?? 0), mesAtual);
+      } catch (err) {
+        console.error("[cron] marcos falharam", err);
+        return null;
+      }
+    })();
+
     return NextResponse.json({
       ok: true,
+      marcos,
       atual: { orders: ordensAtual, returns: devAtual, claims: claimsAtual, range: atual },
       anterior: { orders: ordensAnterior, returns: devAnterior, claims: claimsAnterior, range: anterior },
       lembretesTarefa: lembretes,

@@ -234,3 +234,42 @@ export async function notificarVendaConfirmada(
   // "resumo_silencioso": o resumo já saiu na venda que disparou o agrupamento.
   return { estado: "agrupada", eventId };
 }
+
+// ── Marcos comemorativos ───────────────────────────────────────────
+
+/**
+ * Cria o evento de um marco e manda o push, se ainda não existir.
+ *
+ * A dedupe é a peça central: a `chave` do marco vira o `dedupeKey`, e o
+ * Firestore garante criação única com `create()`. Sem isso, o faturamento que
+ * passou dos R$ 10 mil no dia 5 geraria um aviso a cada sync — cerca de 1.900
+ * até o fim do mês — e o usuário desligaria as notificações no primeiro dia.
+ *
+ * NUNCA agrupa na janela de resumo (registrarVendaNaJanela): marco é raro e
+ * é a única notícia boa que o app manda. Perdê-la dentro de um "4 vendas nos
+ * últimos 90s" seria o oposto do ponto.
+ */
+export async function notificarMarco(marco: { chave: string; titulo: string; corpo: string }): Promise<boolean> {
+  const { created, eventId } = await createNotificationEventIdempotent({
+    type: "system",
+    severity: "success",
+    entityType: "system",
+    entityId: marco.chave,
+    dedupeKey: marco.chave,
+    title: marco.titulo,
+    body: marco.corpo,
+    financialState: "confirmed",
+    deepLink: "/",
+  });
+  if (!created) return false;
+
+  await enviarEPersistirEntrega(
+    eventId,
+    "system",
+    buildPayload(eventId, "system", marco.titulo, marco.corpo, {
+      orderId: "",
+      tag: marco.chave,
+    }),
+  );
+  return true;
+}
