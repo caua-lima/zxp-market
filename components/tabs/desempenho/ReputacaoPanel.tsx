@@ -1,5 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { authedFetch } from "@/lib/api/authed-fetch";
+import { fmtBRL } from "@/lib/domain/calc";
+
 import {
   CORES_NIVEL,
   METRIC_LABELS,
@@ -15,6 +19,70 @@ import {
 
 function fmtPct01(v: number | undefined): string | null {
   return formatTaxaDecimal(v);
+}
+
+
+/**
+ * "Acompanhamos suas vendas nos últimos 60 dias" — o bloco que o Seller Center
+ * mostra no topo da Reputação, e que é a base de tudo que ele julga.
+ *
+ * Vem de uma rota própria, buscando AO VIVO: o sync cobre mês atual +
+ * anterior, e 60 dias alcançam o mês retrasado. Medido em 22/08 — junho tinha
+ * zero pedidos no banco, e a conta fechava 691 contra 750 do painel.
+ *
+ * As definições de cada número estão em lib/domain/reputacao-vendas.ts. Duas
+ * surpreendem: "Com Envios" são ENVIOS distintos (um pacote de 5 pedidos conta
+ * 1) e "Vendas" inclui cancelados.
+ */
+function BlocoUltimos60Dias() {
+  const [d, setD] = useState<{ bloco: { vendas: number; comEnvios: number; concluidas: number; faturado: number } | null; de?: string; ate?: string } | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    authedFetch("/api/ml/reputacao-vendas?dias=60", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((j) => { if (vivo) setD(j); })
+      .catch(() => { if (vivo) setD({ bloco: null }); });
+    return () => { vivo = false; };
+  }, []);
+
+  if (!d) return null;
+
+  if (!d.bloco) {
+    return (
+      <div style={{ marginBottom: 12, fontSize: ".76rem", color: "var(--muted)" }}>
+        Não consegui buscar as vendas dos últimos 60 dias agora. Os números não aparecem
+        zerados de propósito — “não vendeu nada” e “não consegui perguntar” dizem coisas opostas
+        sobre a reputação.
+      </div>
+    );
+  }
+
+  const b = d.bloco;
+  const itens: { rotulo: string; valor: string; nota?: string }[] = [
+    { rotulo: "Vendas", valor: String(b.vendas), nota: "inclui canceladas" },
+    { rotulo: "Com envios", valor: String(b.comEnvios), nota: "envios distintos" },
+    { rotulo: "Concluídas", valor: String(b.concluidas) },
+    { rotulo: "Faturado", valor: fmtBRL(b.faturado), nota: "em vendas concluídas" },
+  ];
+
+  return (
+    <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 10, background: "var(--surface2)" }}>
+      <div style={{ fontSize: ".72rem", color: "var(--muted)", marginBottom: 8 }}>
+        Vendas dos últimos 60 dias{d.de ? ` · de ${d.de.split("-").reverse().join("/")} até hoje` : ""} —
+        é a janela que o Mercado Livre usa pra julgar sua reputação
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 10 }}>
+        {itens.map((i) => (
+          <div key={i.rotulo}>
+            <div style={{ fontSize: ".7rem", color: "var(--muted)" }}>{i.rotulo}</div>
+            <div style={{ fontSize: "1.05rem", fontWeight: 800 }}>{i.valor}</div>
+            {i.nota && <div style={{ fontSize: ".62rem", color: "var(--muted)" }}>{i.nota}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export default function ReputacaoPanel({
@@ -85,6 +153,8 @@ export default function ReputacaoPanel({
           );
         })}
       </div>
+
+      <BlocoUltimos60Dias />
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14, padding: "10px 14px", borderRadius: 10, background: "var(--surface2)" }}>
         <div>
