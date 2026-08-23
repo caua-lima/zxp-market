@@ -1758,6 +1758,25 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
               <Kpi label="Faturamento bruto" value={fatBruto} tone="acc" sub="tudo, inclui cancelados/devolvidos" />
               <Kpi label="Faturamento líquido" value={fatLiquido} tone="acc" sub="− canceladas − devoluções"
                 delta={<Delta current={fatLiquido} previous={prevMetrics?.faturamentoLiquido} mode="pct" />} />
+              {/* O número do painel do Mercado Livre, pra conferir sem abrir a
+                  Conferência. É o líquido MAIS os pedidos que o ML cancelou só
+                  pra recriar na separação de envio: ele conta o original e os
+                  substitutos, nós contamos só os substitutos.
+                  Fica ao lado, nunca no lugar do líquido — contar os dois é
+                  contar a mesma mercadoria duas vezes, e é o líquido que deve
+                  mandar em decisão de preço e margem. */}
+              {mlMetrics?.conciliacao && (
+                <Kpi
+                  label="Faturamento do ML"
+                  value={fatLiquido + (mlMetrics.conciliacao.substituidasValor ?? 0)}
+                  tone="acc"
+                  sub={
+                    (mlMetrics.conciliacao.substituidasQuantidade ?? 0) > 0
+                      ? `líquido + ${mlMetrics.conciliacao.substituidasQuantidade} separação(ões) de envio`
+                      : "igual ao líquido — nenhuma separação no período"
+                  }
+                />
+              )}
               <Kpi label="Retorno sobre vendas" value={retorno} tone="acc"
                 delta={<Delta current={retorno} previous={prevMetrics?.totalRetorno} mode="pct" />} />
               <Kpi label="Lucro líquido" value={lucroLiquido} tone={lucroLiquido >= 0 ? "pos" : "neg"} sub="já com custos operacionais"
