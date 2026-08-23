@@ -79,3 +79,75 @@ export function getProximoNivelLabel(status: string | null | undefined): string 
   const ordem = getPowerSellerOrdem(status);
   return ordem >= 3 ? null : PROXIMO_DEGRAU[ordem];
 }
+
+/**
+ * Tetos de cada métrica, como o Seller Center os apresenta.
+ *
+ * ─── POR QUE O LIMITE IMPORTA MAIS QUE A TAXA ───────────────────────────
+ *
+ * "Reclamações 0%" sozinho não diz nada: não dá pra saber se 0,5% seria
+ * tranquilo ou já problema. O painel do Mercado Livre sempre mostra a taxa
+ * AO LADO do teto ("Abaixo de 2% permitido"), e é a distância entre os dois
+ * que informa. Sem o teto, o número vira decoração.
+ *
+ * O segundo teto é o de MercadoLíder, sempre mais apertado — é ele que
+ * transforma "estou bem" em "estou bem, mas ainda não o suficiente pro selo".
+ *
+ * Valores conferidos contra o painel da conta em 23/08/2026: reclamações
+ * 2%/1%, cancelamentos 1,5%/0,5%, atraso no envio 10%/6%.
+ */
+export type LimiteMetrica = {
+  /** Teto pra manter a cor verde, em % (não decimal). */
+  permitido: number;
+  /** Teto mais apertado, exigido pra ser MercadoLíder. */
+  mercadoLider: number;
+};
+
+export const METRIC_LIMITES: Record<keyof SellerReputationMetrics, LimiteMetrica> = {
+  claims: { permitido: 2, mercadoLider: 1 },
+  cancellations: { permitido: 1.5, mercadoLider: 0.5 },
+  delayed_handling_time: { permitido: 10, mercadoLider: 6 },
+};
+
+export type SituacaoMetrica = "ok" | "atencao" | "estourado" | "indisponivel";
+
+/**
+ * Onde a taxa está em relação aos dois tetos.
+ *
+ * `atencao` é a faixa entre o limite de MercadoLíder e o permitido: a conta
+ * está saudável, mas aquele número é o que impede o selo. Sem esse degrau, a
+ * tela mostraria "ok" até o momento em que a cor cai — tarde demais pra agir.
+ *
+ * `rate` chega em decimal (0 a 1), como a API devolve.
+ */
+export function situacaoDaMetrica(
+  chave: keyof SellerReputationMetrics,
+  rate: number | null | undefined,
+): SituacaoMetrica {
+  if (rate == null || !Number.isFinite(rate)) return "indisponivel";
+  const lim = METRIC_LIMITES[chave];
+  if (!lim) return "indisponivel";
+  const pct = rate * 100;
+  if (pct > lim.permitido) return "estourado";
+  if (pct > lim.mercadoLider) return "atencao";
+  return "ok";
+}
+
+export const SITUACAO_COR: Record<SituacaoMetrica, string> = {
+  ok: "var(--green)",
+  atencao: "var(--warning)",
+  estourado: "var(--red)",
+  indisponivel: "var(--muted)",
+};
+
+/**
+ * Os cinco degraus de cor do Mercado Livre, do pior pro melhor — a barra que
+ * o vendedor reconhece de cara no painel deles.
+ */
+export const CORES_NIVEL = [
+  { id: "1_red", cor: "#f5b7c0" },
+  { id: "2_orange", cor: "#fadfb4" },
+  { id: "3_yellow", cor: "#f5eeb4" },
+  { id: "4_light_green", cor: "#cfe8b4" },
+  { id: "5_green", cor: "#00a650" },
+] as const;

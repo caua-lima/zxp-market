@@ -96,6 +96,15 @@ export type CampanhaAgregada = {
    */
   dailyBudget: number;
   roasTarget: number;
+  /**
+   * Margem do lucro após ads sobre a receita da campanha, em %.
+   *
+   * O lucro em reais sozinho engana ao comparar campanhas de tamanhos
+   * diferentes: R$ 373 numa que faturou R$ 2.369 é 15,8%; R$ 125 numa de
+   * R$ 992 é 12,7% — quem só olha o valor absoluto escala a errada.
+   * null quando não há lucro apurado ou receita.
+   */
+  margem: number | null;
 };
 
 /** Anúncio sem campanha identificada — agrupado à parte pra não sumir da soma. */
@@ -119,7 +128,7 @@ export function agregarPorCampanha(
         campaignName: f.campaignName || (id === CAMPANHA_SEM_ID ? "Sem campanha identificada" : id),
         anuncios: 0, prints: 0, clicks: 0, cost: 0, receita: 0, unidades: 0,
         lucroAposAds: 0, roas: null, acos: null, roasMlAds: null, receitaAtribuida: 0,
-        dailyBudget: 0, roasTarget: 0,
+        dailyBudget: 0, roasTarget: 0, margem: null,
         temDireto: false,
       };
       // A config e da CAMPANHA: o primeiro anuncio que a trouxer ja define.
@@ -188,6 +197,7 @@ export function agregarPorCampanha(
         receitaAtribuida: c.receitaAtribuida,
         dailyBudget: c.dailyBudget,
         roasTarget: c.roasTarget,
+        margem: lucroAposAds != null && c.receita > 0 ? (lucroAposAds / c.receita) * 100 : null,
       };
     })
     // Maior investimento primeiro: é onde uma decisão errada custa mais caro.

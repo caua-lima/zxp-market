@@ -530,6 +530,91 @@ function VendasDoDiaHero({ hoje }: { hoje?: HojeBreakdown }) {
   );
 }
 
+
+/**
+ * ── Conversão de visitas ──
+ *
+ * Espelha o painel do Seller Center, com uma diferença que a tela declara em
+ * vez de disfarçar: o ML mostra TRÊS degraus (visitas → intenção de compra →
+ * vendas) e a "intenção de compra" não existe em nenhum endpoint público —
+ * vem de sinais internos deles (carrinho, checkout iniciado).
+ *
+ * Estimar aquele degrau seria pior que não tê-lo: quem comparasse com o ML
+ * acharia o app quebrado, e poderia decidir em cima de um número inventado.
+ * Dois degraus honestos valem mais que três com um chutado.
+ */
+function ConversaoVisitas({ from, to, vendas, receita }: {
+  from?: string; to?: string; vendas: number; receita: number;
+}) {
+  const [dados, setDados] = useState<{ visitas: number | null; observacao?: string; parcial?: boolean; error?: string } | null>(null);
+
+  const chave = from && to ? `${from}|${to}` : "";
+  useEffect(() => {
+    if (!chave) return;
+    let vivo = true;
+    authedFetch(`/api/ml/visitas?from=${from}&to=${to}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((j) => { if (vivo) setDados(j); })
+      .catch(() => { if (vivo) setDados({ visitas: null, error: "falha" }); });
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chave]);
+
+  if (!dados) return null;
+
+  const visitas = dados.visitas;
+  // Conversão só existe com visitas > 0. Sem elas o número seria divisão por
+  // zero disfarçada de 0%.
+  const conversao = visitas != null && visitas > 0 ? (vendas / visitas) * 100 : null;
+
+  return (
+    <section className="panel">
+      <div className="panel-head" style={{ marginBottom: 10 }}>
+        <span className="panel-title">Conversão de visitas</span>
+        <span className="panel-sub">
+          compare com “Conversão de visitas” do Seller Center
+          {dados.parcial ? " · período além do alcance da API: número parcial" : ""}
+        </span>
+      </div>
+
+      {visitas == null ? (
+        <div style={{ fontSize: ".82rem", color: "var(--muted)" }}>
+          O Mercado Livre não devolveu as visitas agora. O número não aparece como zero
+          de propósito — “ninguém visitou” e “não consegui perguntar” levam a decisões opostas.
+        </div>
+      ) : (
+        <>
+          <div className="kpi-grid">
+            <div className="kpi">
+              <div className="k-lbl">Visitas</div>
+              <div className="k-val">{visitas.toLocaleString("pt-BR")}</div>
+              <div className="k-sub">nos anúncios da conta</div>
+            </div>
+            <div className="kpi">
+              <div className="k-lbl">Vendas</div>
+              <div className="k-val">{vendas.toLocaleString("pt-BR")}</div>
+              <div className="k-sub">{fmtBRL(receita)}</div>
+            </div>
+            <div className="kpi">
+              <div className="k-lbl">Conversão</div>
+              <div className="k-val" style={{ color: "var(--accent)" }}>
+                {conversao != null ? `${conversao.toFixed(1)}%` : "—"}
+              </div>
+              <div className="k-sub">vendas ÷ visitas</div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: ".72rem", color: "var(--muted)", lineHeight: 1.6 }}>
+            O Seller Center mostra um degrau a mais no meio (“intenção de compra”). Ele vem de
+            sinais internos do Mercado Livre e <b>nenhum endpoint público devolve</b> — em vez de
+            estimar, ele fica de fora. {dados.observacao}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 /**
  * ── Conferência com o Mercado Livre ──
  *
@@ -545,7 +630,9 @@ function VendasDoDiaHero({ hoje }: { hoje?: HojeBreakdown }) {
  * "Vendas brutas" daqui.
  */
 function ConferenciaML({ c, periodo }: { c: Conciliacao; periodo: string }) {
-  const [aberto, setAberto] = useState(false);
+  // Aberto por padrão: fechado, o painel que existe pra explicar a diferença
+  // simplesmente não era encontrado por quem estava com a dúvida.
+  const [aberto, setAberto] = useState(true);
 
   const linhas: { rotulo: string; valor: string; noML: string }[] = [
     { rotulo: "Vendas brutas", valor: fmtBRL(c.vendasBrutas), noML: "Vendas brutas" },
@@ -555,6 +642,23 @@ function ConferenciaML({ c, periodo }: { c: Conciliacao; periodo: string }) {
     { rotulo: "Preço médio por unidade", valor: fmtBRL(c.precoMedioPorUnidade), noML: "Preço médio por unidade" },
     { rotulo: "Vendas canceladas", valor: `${c.canceladasQuantidade} · ${fmtBRL(c.canceladasValor)}`, noML: "Quantidade de vendas canceladas" },
   ];
+
+  /**
+   * O número comparável ao "Vendas brutas" do ML, somando de volta os pedidos
+   * que separamos como substituição de envio.
+   *
+   * Medido em 22/08: nosso líquido R$ 17.170 + R$ 481 de substituídos =
+   * R$ 17.652 contra R$ 17.689 do painel — 0,2%, que é o que vendeu entre uma
+   * tela e outra. Sem esta linha a diferença parecia um erro; com ela, é uma
+   * escolha de definição visível.
+   *
+   * Mantemos o número MENOR como principal de propósito: quando o ML cancela
+   * um pedido de 2 unidades e cria dois de 1, contar o original E os dois
+   * substitutos conta a mesma mercadoria duas vezes. Pra decidir preço e
+   * margem, o conservador é o certo.
+   */
+  const substituidasValor = c.substituidasValor ?? 0;
+  const comparavelAoML = c.vendasBrutas + substituidasValor;
 
   return (
     <section className="panel">
@@ -632,6 +736,25 @@ function ConferenciaML({ c, periodo }: { c: Conciliacao; periodo: string }) {
                 ))}
               </div>
             </details>
+          )}
+
+          {substituidasValor > 0 && (
+            <div style={{
+              marginTop: 10, padding: "10px 12px", borderRadius: 8,
+              background: "var(--surface-raised,var(--surface2))", borderLeft: "3px solid var(--accent)",
+              fontSize: ".78rem", lineHeight: 1.6,
+            }}>
+              <b>Por que o “Vendas brutas” do ML vem um pouco maior</b>
+              <div style={{ marginTop: 6, color: "var(--muted)" }}>
+                {fmtBRL(c.vendasBrutas)} (aqui) + {fmtBRL(substituidasValor)} de {c.substituidasQuantidade} pedido(s)
+                separados no envio = <b style={{ color: "var(--text)" }}>{fmtBRL(comparavelAoML)}</b> — este é o número
+                comparável ao painel.
+                <br />
+                Quando você separa o envio, o ML cancela o pedido e cria outros no lugar. Ele conta o
+                original <i>e</i> os substitutos; nós contamos só os substitutos, senão a mesma mercadoria
+                entraria duas vezes. Pra decidir preço e margem, o número menor é o certo.
+              </div>
+            </div>
           )}
 
           <div style={{ marginTop: 10, fontSize: ".72rem", color: "var(--muted)", lineHeight: 1.6 }}>
@@ -1635,6 +1758,25 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
               <Kpi label="Faturamento bruto" value={fatBruto} tone="acc" sub="tudo, inclui cancelados/devolvidos" />
               <Kpi label="Faturamento líquido" value={fatLiquido} tone="acc" sub="− canceladas − devoluções"
                 delta={<Delta current={fatLiquido} previous={prevMetrics?.faturamentoLiquido} mode="pct" />} />
+              {/* O número do painel do Mercado Livre, pra conferir sem abrir a
+                  Conferência. É o líquido MAIS os pedidos que o ML cancelou só
+                  pra recriar na separação de envio: ele conta o original e os
+                  substitutos, nós contamos só os substitutos.
+                  Fica ao lado, nunca no lugar do líquido — contar os dois é
+                  contar a mesma mercadoria duas vezes, e é o líquido que deve
+                  mandar em decisão de preço e margem. */}
+              {mlMetrics?.conciliacao && (
+                <Kpi
+                  label="Faturamento do ML"
+                  value={fatLiquido + (mlMetrics.conciliacao.substituidasValor ?? 0)}
+                  tone="acc"
+                  sub={
+                    (mlMetrics.conciliacao.substituidasQuantidade ?? 0) > 0
+                      ? `líquido + ${mlMetrics.conciliacao.substituidasQuantidade} separação(ões) de envio`
+                      : "igual ao líquido — nenhuma separação no período"
+                  }
+                />
+              )}
               <Kpi label="Retorno sobre vendas" value={retorno} tone="acc"
                 delta={<Delta current={retorno} previous={prevMetrics?.totalRetorno} mode="pct" />} />
               <Kpi label="Lucro líquido" value={lucroLiquido} tone={lucroLiquido >= 0 ? "pos" : "neg"} sub="já com custos operacionais"
@@ -1647,6 +1789,13 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
               <Kpi label="Devoluções" value={mlMetrics?.vendasDevolvidas ?? 0} tone="neg" sub="0 a 0 (produto volta ao estoque)" />
             </div>
           </section>
+
+          <ConversaoVisitas
+            from={mlMetrics?.from}
+            to={mlMetrics?.to}
+            vendas={mlMetrics?.ordersCount ?? 0}
+            receita={fatLiquido}
+          />
 
           {mlMetrics?.conciliacao && (
             <ConferenciaML

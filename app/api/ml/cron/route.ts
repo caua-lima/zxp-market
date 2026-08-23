@@ -7,10 +7,13 @@ import {
   getMlAccessToken,
   getSellerId,
   lerUltimoTenantSincronizado,
+  tenantCol,
   listarTenantsComLicenca,
   salvarUltimoTenantSincronizado,
 } from "@/lib/tenant";
 import { cabeMaisUm, planejarSync } from "@/lib/domain/cron-tenants";
+import { verificarMarcos } from "@/lib/marcos-run";
+import { classificarVenda, detectarPedidosSubstituidos } from "@/lib/domain/venda-status";
 
 export const maxDuration = 60;
 
@@ -32,6 +35,52 @@ export const maxDuration = 60;
  * Sincroniza o mês atual (pedidos + devoluções) para manter o dashboard
  * sempre atualizado sem depender do botão manual.
  */
+
+
+/**
+ * Faturamento liquido do mes, do tenant, lido dos pedidos ja sincronizados.
+ *
+ * Le do banco (nao ao vivo) porque roda LOGO DEPOIS do sync daquele tenant —
+ * os pedidos acabaram de ser gravados. Buscar de novo no ML seria pagar duas
+ * vezes pela mesma informacao.
+ *
+ * Usa a MESMA classificacao do Dashboard (classificarVenda), incluindo a
+ * separacao de envio: um marco disparado sobre um numero inflado comemoraria
+ * o que nao aconteceu.
+ */
+async function faturamentoDoMes(tenantId: string, mes: string): Promise<number> {
+  const snap = await tenantCol(tenantId, "ml_orders")
+    .where("date_created", ">=", `${mes}-01`)
+    .where("date_created", "<=", `${mes}-31T23:59:59.999-03:00`)
+    .get();
+
+  const pedidos = snap.docs.map((d) => d.data());
+  const substituidos = detectarPedidosSubstituidos(
+    pedidos.map((o) => ({
+      orderId: String(o.order_id ?? ""),
+      packId: o.pack_id as string | null | undefined,
+      status: o.status,
+      buyerId: (o.buyer_id as string | null | undefined) ?? null,
+      dia: String(o.date_created ?? "").slice(0, 10),
+      itens: ((o.items as { item_id?: string; quantity?: number }[]) ?? []).map((it) => ({
+        itemId: String(it.item_id ?? ""),
+        qty: Number(it.quantity ?? 1),
+      })),
+    })),
+  );
+
+  let total = 0;
+  for (const o of pedidos) {
+    const classe = classificarVenda({
+      status: o.status,
+      noCacheDeCancelados: false,
+      temDevolucaoConcluida: false,
+      substituidoNoPacote: substituidos.has(String(o.order_id ?? "")),
+    }).classe;
+    if (classe === "valida") total += Number(o.total_amount ?? 0);
+  }
+  return total;
+}
 
 /**
  * Sincroniza UM tenant. Extraído do handler porque agora ele roda em laço —
@@ -79,9 +128,32 @@ async function sincronizarTenant(tenantId: string) {
       })
     : null;
 
+  /**
+   * Marcos comemorativos DESTE tenant. Dentro de sincronizarTenant de
+   * proposito: o faturamento e a reputacao sao de cada cliente, e um marco
+   * disparado com o numero de outro seria pior que marco nenhum.
+   *
+   * Best-effort: comemoracao nunca pode derrubar a sincronizacao, que e o que
+   * mantem o painel correto.
+   */
+  const marcos = await (async () => {
+    try {
+      const mes = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 7);
+      // Faturamento do MESMO agregado que o painel usa — recalcular aqui
+      // criaria uma segunda definicao, e definicao duplicada foi a origem de
+      // quase todo numero errado nesta base.
+      const liquido = ordensAtual > 0 ? await faturamentoDoMes(tenantId, mes) : 0;
+      return await verificarMarcos(tenantId, liquido, mes);
+    } catch (err) {
+      console.error(`[cron] marcos falharam (${tenantId})`, err);
+      return null;
+    }
+  })();
+
   return {
     tenantId,
     ok: true,
+    marcos,
     atual: { orders: ordensAtual, returns: devAtual, claims: claimsAtual },
     anterior: { orders: ordensAnterior, returns: devAnterior, claims: claimsAnterior },
     lembretesTarefa: lembretes,

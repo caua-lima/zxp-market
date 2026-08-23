@@ -40,6 +40,17 @@ export const viewport: Viewport = {
   themeColor: "#10100E",
   width: "device-width",
   initialScale: 1,
+  /**
+   * `cover` é o que faz o iOS reportar as áreas seguras via
+   * `env(safe-area-inset-*)`. Sem ele aquelas variáveis valem SEMPRE zero, e
+   * qualquer tentativa de compensar o notch no CSS vira código morto.
+   *
+   * Com `apple-mobile-web-app-capable` ligado (acima), o app instalado ocupa a
+   * tela inteira — incluindo a faixa do notch. Sem compensar, a barra de topo
+   * fica embaixo do relógio e da bateria: foi o "bugado lá em cima" relatado
+   * num iPhone 13. O contrapeso está em `.topbar` (app/globals.css).
+   */
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
