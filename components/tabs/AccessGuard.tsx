@@ -29,9 +29,19 @@ type AccessInfo = {
   canEdit: boolean;
   /** Edição granular por aba — sempre true pro owner; pro colaborador, depende de permissoesEdicao. */
   canEditTab: (tab: PermissionTab) => boolean;
+  /**
+   * true só pra quem passou pelo fluxo LEGADO (controleAcesso). Um owner do
+   * SaaS (tenant_membros) também vira `isOwner`, mas a aba Acesso gerencia
+   * uma coleção GLOBAL sem escopo de tenant — mostrá-la pra ele abriria a
+   * lista de colaboradores de operações que não são a dele. Até essa aba
+   * ganhar uma versão por tenant, ela só aparece pra quem é dono no modelo
+   * antigo. Ver o mesmo raciocínio em lib/api-auth.ts (requireAccess).
+   */
+  gerenciaAcessoLegado: boolean;
 };
 const AccessCtx = createContext<AccessInfo>({
   role: "colaborador", email: "", isOwner: false, displayName: "", canEdit: false, canEditTab: () => false,
+  gerenciaAcessoLegado: false,
 });
 export function useAccess() {
   return useContext(AccessCtx);
@@ -43,6 +53,8 @@ type AccessResult = {
   entry: AccessEntry | null;
   /** Presente só quando o bloqueio é de LICENÇA (vínculo existe, mas não vale) — distingue de "nunca teve acesso". */
   bloqueio?: { situacao: Exclude<SituacaoConta, "ok">; expiresAt: number | null };
+  /** true quando `granted` veio do fluxo legado (controleAcesso) — ver gerenciaAcessoLegado em AccessInfo. */
+  viaLegado?: boolean;
 };
 
 type AccessCache = AccessResult & {
@@ -213,7 +225,7 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
           };
           await bootstrapAccessOwner(newEntry);
           if (!cancelled) {
-            const nextAccess = { email, granted: true, entry: newEntry };
+            const nextAccess: AccessResult = { email, granted: true, entry: newEntry, viaLegado: true };
             writeCachedAccess(nextAccess);
             setAccess((prev) =>
               prev && prev.email === email && prev.granted === true ? prev : nextAccess,
@@ -244,7 +256,7 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
                 updateAccessEntry(email, { displayName: u.displayName ?? undefined }),
               );
             }
-            const nextAccess = { email, granted: true, entry: found };
+            const nextAccess: AccessResult = { email, granted: true, entry: found, viaLegado: true };
             writeCachedAccess(nextAccess);
             setAccess((prev) =>
               prev && prev.email === email && prev.granted === true && prev.entry === found
@@ -303,8 +315,9 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
   const permissoes = access.entry?.permissoesEdicao ?? [];
   const canEditTab = (tab: PermissionTab) => isOwner || permissoes.includes(tab);
   const displayName = access.entry?.displayName || user.displayName || currentEmail;
+  const gerenciaAcessoLegado = isOwner && !!access.viaLegado;
   return (
-    <AccessCtx.Provider value={{ role, email: currentEmail, isOwner, displayName, canEdit: isOwner, canEditTab }}>
+    <AccessCtx.Provider value={{ role, email: currentEmail, isOwner, displayName, canEdit: isOwner, canEditTab, gerenciaAcessoLegado }}>
       {children}
     </AccessCtx.Provider>
   );

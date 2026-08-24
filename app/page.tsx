@@ -176,7 +176,7 @@ function AppShell() {
   }, [sidebarOpen]);
 
   const data = useUserData(user?.uid);
-  const { isOwner, displayName } = useAccess();
+  const { isOwner, gerenciaAcessoLegado, displayName } = useAccess();
 
   /**
    * Admin master do SaaS — quem cria contas de cliente. NÃO é o mesmo que
@@ -215,7 +215,10 @@ function AppShell() {
 
   // Acesso é só do owner — colaborador nem vê o item na navegação.
   const navItems = NAV_ITEMS.filter((n) => {
-    if (n.id === "acesso") return isOwner;
+    // Acesso gerencia controleAcesso, uma coleção GLOBAL sem escopo de
+    // tenant — mostrar pra owner do SaaS abriria a lista de outra operação
+    // (ver gerenciaAcessoLegado em AccessGuard.tsx).
+    if (n.id === "acesso") return gerenciaAcessoLegado;
     if (n.id === "clientes") return ehMasterSaas;
     return true;
   });
@@ -224,7 +227,7 @@ function AppShell() {
   // Defesa extra, igual à de "acesso": tab escolhida na URL não pode driblar
   // a checagem de master.
   const activeTab: Tab =
-    (tab === "acesso" && !isOwner) || (tab === "clientes" && !ehMasterSaas) ? "dashboard" : tab;
+    (tab === "acesso" && !gerenciaAcessoLegado) || (tab === "clientes" && !ehMasterSaas) ? "dashboard" : tab;
 
   if (!user) return null;
 
@@ -553,7 +556,7 @@ function AppShell() {
                 {activeTab === "desempenho" && <DesempenhoTab />}
                 {activeTab === "dre" && <DreTab />}
                 {activeTab === "tarefas" && <TarefasTab openTaskId={openTaskId} />}
-                {activeTab === "acesso" && isOwner && <AccessControlTab uid={user.uid} data={data} />}
+                {activeTab === "acesso" && gerenciaAcessoLegado && <AccessControlTab uid={user.uid} data={data} />}
                 {activeTab === "clientes" && ehMasterSaas && <ClientesTab />}
               </>
             )}
