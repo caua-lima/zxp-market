@@ -17,6 +17,7 @@ import AdsFunnel from "@/components/tabs/ads/AdsFunnel";
 import AdsCampaignList from "@/components/tabs/ads/AdsCampaignList";
 import AdsParticipacao from "@/components/tabs/ads/AdsParticipacao";
 import AdsDecisionPanel from "@/components/tabs/ads/AdsDecisionPanel";
+import AdsChat from "@/components/tabs/ads/AdsChat";
 import AdsDataQuality from "@/components/tabs/ads/AdsDataQuality";
 import AdsFilters, { AdsStatusQuickFilters, type FiltrosAdsState } from "@/components/tabs/ads/AdsFilters";
 import AdsTable from "@/components/tabs/ads/AdsTable";
@@ -417,6 +418,11 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
                   <AdsCampaignList itens={items} modo={modo} />
 
                   <AdsDecisionPanel linhas={linhas} changelog={changelog} onAbrirAnuncio={abrirAnuncio} />
+
+                  {/* Logo abaixo do painel de decisão: ele mostra os grupos
+                      prontos, o chat responde o "e este aqui especificamente?".
+                      Usa as MESMAS `linhas`, então os números nunca divergem. */}
+                  <AdsChat linhas={linhas} metaMargem={metaMargem} />
 
                   <AdsDataQuality
                     investimentoTotal={t.cost} gastoOrfao={gastoOrfao} gastoSemVinculo={gastoSemVinculo}
