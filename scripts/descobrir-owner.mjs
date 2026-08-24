@@ -11,8 +11,8 @@
  * no lugar do uid, ou o uid de outra conta. O `--owner` decide de quem é a
  * operação inteira — errar ali cria o tenant no dono errado.
  *
- * Como a chave de serviço já está na raiz (a migração precisa dela de
- * qualquer forma), dá pra perguntar direto ao Firebase quem existe.
+ * Usa a mesma credencial do app (.env.local) — dá pra perguntar direto ao
+ * Firebase quem existe, sem depender de arquivo solto na raiz.
  *
  * SOMENTE LEITURA. Não escreve nada, em lugar nenhum.
  *
@@ -23,12 +23,7 @@
  */
 
 import admin from "firebase-admin";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const RAIZ = join(__dirname, "..");
+import { carregarCredencial } from "./_lib/credencial.mjs";
 
 function arg(nome) {
   const p = process.argv.find((a) => a.startsWith(`--${nome}=`));
@@ -37,19 +32,15 @@ function arg(nome) {
 
 const TENANT = arg("tenant") || "vazxpress";
 
-let chave;
+let credencial;
 try {
-  chave = JSON.parse(readFileSync(join(RAIZ, "serviceAccountKey.json"), "utf8"));
-} catch {
-  console.error(
-    "Não achei serviceAccountKey.json na raiz do projeto.\n" +
-    "É o mesmo arquivo que a migração usa (Firebase Console → Configurações do " +
-    "projeto → Contas de serviço → Gerar nova chave privada).",
-  );
+  credencial = carregarCredencial();
+} catch (err) {
+  console.error(err.message);
   process.exit(1);
 }
 
-admin.initializeApp({ credential: admin.credential.cert(chave) });
+admin.initializeApp({ credential: admin.credential.cert(credencial) });
 
 const db = admin.firestore();
 const auth = admin.auth();
@@ -79,7 +70,7 @@ if (usuarios.length === 0) {
 
 const papelDe = (email) => acessos.find((a) => a.email?.toLowerCase() === String(email).toLowerCase())?.papel ?? "";
 
-console.log(`\nProjeto Firebase: ${chave.project_id}`);
+console.log(`\nProjeto Firebase: ${credencial.projectId}  (via ${credencial.origem})`);
 console.log(`Usuários no Authentication: ${usuarios.length}\n`);
 
 const linhas = usuarios.map((u) => ({

@@ -21,12 +21,7 @@
  */
 
 import admin from "firebase-admin";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const RAIZ = join(__dirname, "..");
+import { carregarCredencial } from "./_lib/credencial.mjs";
 
 const arg = (n) => {
   const p = process.argv.find((a) => a.startsWith(`--${n}=`));
@@ -41,22 +36,22 @@ if (!EMAIL) {
   process.exit(1);
 }
 
-let chave;
+let credencial;
 try {
-  chave = JSON.parse(readFileSync(join(RAIZ, "serviceAccountKey.json"), "utf8"));
-} catch {
-  console.error("Não achei serviceAccountKey.json na raiz.");
+  credencial = carregarCredencial();
+} catch (err) {
+  console.error(err.message);
   process.exit(1);
 }
 
-admin.initializeApp({ credential: admin.credential.cert(chave) });
+admin.initializeApp({ credential: admin.credential.cert(credencial) });
 const db = admin.firestore();
 const auth = admin.auth();
 
 console.log(`\n${"═".repeat(66)}`);
 console.log(`  ADMIN MASTER — ${APLICAR ? "GRAVANDO (--apply)" : "SIMULAÇÃO (dry-run)"}`);
 console.log("═".repeat(66));
-console.log(`  projeto : ${chave.project_id}`);
+console.log(`  projeto : ${credencial.projectId}  (via ${credencial.origem})`);
 console.log(`  e-mail  : ${EMAIL}\n`);
 
 /**

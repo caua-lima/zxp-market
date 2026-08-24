@@ -1,14 +1,12 @@
 const admin = require("firebase-admin");
-const fs = require("fs");
-const path = require("path");
+const { carregarCredencial } = require("./_lib/credencial.cjs");
 
-const serviceAccount = JSON.parse(
-  fs.readFileSync(path.join(__dirname, "../serviceAccountKey.json"), "utf8")
-);
+const credencial = carregarCredencial();
+console.log(`projeto : ${credencial.projectId}  (via ${credencial.origem})`);
 
 if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
+    credential: admin.credential.cert(credencial),
   });
 }
 

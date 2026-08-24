@@ -29,15 +29,12 @@
  * "Identificador do usuário"), NÃO o e-mail. É ele que o app usa pra
  * descobrir o tenant no login.
  *
- * Requer serviceAccountKey.json na raiz (mesmo arquivo dos outros scripts).
+ * Usa a mesma credencial do app (.env.local), com serviceAccountKey.json
+ * como fallback — ver scripts/_lib/credencial.mjs.
  */
 
 import admin from "firebase-admin";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import { carregarCredencial } from "./_lib/credencial.mjs";
 
 /**
  * Coleções que são DADO DA OPERAÇÃO e vão para dentro do tenant.
@@ -140,9 +137,16 @@ if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ownerEmail)) {
   process.exit(1);
 }
 
-const serviceAccount = JSON.parse(readFileSync(join(__dirname, "../serviceAccountKey.json"), "utf8"));
+let credencial;
+try {
+  credencial = carregarCredencial();
+} catch (err) {
+  console.error(err.message);
+  process.exit(1);
+}
+console.log(`projeto : ${credencial.projectId}  (via ${credencial.origem})\n`);
 if (!admin.apps.length) {
-  admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+  admin.initializeApp({ credential: admin.credential.cert(credencial) });
 }
 const db = admin.firestore();
 
