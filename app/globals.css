@@ -653,9 +653,15 @@ canvas.chart-canvas{width:100%!important;height:100%!important}
 .inp::-webkit-outer-spin-button,.inp::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .inp:focus{border-color:var(--focus);box-shadow:0 0 0 3px var(--focus-bg)}
 .inp:read-only,.inp:disabled{opacity:.75;cursor:not-allowed}
-.inp-money{padding-left:32px;font-weight:700;color:var(--red)}
+/* O "R$" é sobreposto ao input, então o padding precisa reservar a largura
+   dele. O seletor tem que repetir `.field` porque `.field .inp` acima tem
+   especificidade (0,2,0) e vencia de `.inp-money` (0,1,0): o padding-left
+   daqui era simplesmente ignorado dentro de um .field, o texto começava nos
+   12px do padding genérico e o número ficava POR BAIXO do cifrão.
+   Medido no navegador: "R$" a .85rem ocupa 17,5px e termina em ~29,5px. */
+.field .inp-money,.inp-money{padding-left:40px;font-weight:700;color:var(--red)}
 .inp-wrap{position:relative;min-width:0}
-.inp-prefix{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.85rem;pointer-events:none}
+.inp-prefix{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.85rem;pointer-events:none}
 .search-inp{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:11px 14px;color:var(--text);font-size:.9rem;outline:none;transition:border-color .15s,box-shadow .15s}
 .search-inp:focus{border-color:var(--focus);box-shadow:0 0 0 3px var(--focus-bg)}
 
