@@ -14,6 +14,7 @@ import type { UserData } from "@/components/useUserData";
 import { useAccess } from "@/components/tabs/AccessGuard";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import { getRevenuePaceLabel, getRevenuePaceStatus, selectActiveGoal } from "@/lib/domain/gauge";
+import { calcularMetaDiaria, idealAteHoje } from "@/lib/domain/meta-diaria";
 
 type MetricsAtivo = { faturamentoLiquido: number; lucroComCustos: number; margemComCustos: number; faturamentoHoje: number };
 
@@ -91,19 +92,24 @@ export default function MetasTab({
   const totalDiasAtivo = activeEntry ? diasNoMes(activeEntry.mes) : 30;
   const diasRestantesAtivo = Math.max(totalDiasAtivo - diaAtual + 1, 1);
 
-  // Meta diária adaptativa — mesma fórmula do Dashboard (metaDiariaAtiva):
-  // usa o acumulado até ONTEM (exclui o dia de hoje, ainda em andamento) e
-  // redistribui o que falta pelos dias que restam, pra não fugir da própria
-  // medição conforme as vendas de hoje entram. Fora do mês em andamento não
-  // tem "hoje" pra excluir, então cai na meta plana (meta1 ÷ dias do mês).
-  const metaDiariaPlana = activeEntry?.meta1 ? activeEntry.meta1 / totalDiasAtivo : null;
-  const metaDiariaAtiva = useMemo(() => {
-    if (!activeEntry?.meta1) return null;
-    if (!isMesAtualAtivo || !metricsAtivo) return metaDiariaPlana;
-    const fatAteOntem = Math.max(metricsAtivo.faturamentoLiquido - metricsAtivo.faturamentoHoje, 0);
-    const falta = Math.max(activeEntry.meta1 - fatAteOntem, 0);
-    return falta / diasRestantesAtivo;
-  }, [activeEntry?.meta1, isMesAtualAtivo, metricsAtivo, metaDiariaPlana, diasRestantesAtivo]);
+  /**
+   * Meta diária adaptativa — MESMA função do Dashboard
+   * (lib/domain/meta-diaria.ts). Era código duplicado aqui, e a cópia
+   * carregava o mesmo bug: perseguia `meta1` fixo, então zerava assim que a
+   * primeira meta era batida, mesmo com a meta vigente ainda longe.
+   */
+  const { diaria: metaDiariaAtiva, plana: metaDiariaPlana } = useMemo(() => {
+    if (!activeEntry) return { diaria: null, plana: null };
+    const fat = metricsAtivo?.faturamentoLiquido ?? 0;
+    const { activeMeta } = selectActiveGoal(fat, activeEntry.meta1, activeEntry.meta2, activeEntry.meta3);
+    return calcularMetaDiaria({
+      metaAtiva: activeMeta,
+      faturamentoMes: fat,
+      faturamentoHoje: metricsAtivo?.faturamentoHoje ?? 0,
+      diasRestantes: isMesAtualAtivo && metricsAtivo ? diasRestantesAtivo : null,
+      diasNoMes: totalDiasAtivo,
+    });
+  }, [activeEntry, metricsAtivo, isMesAtualAtivo, diasRestantesAtivo, totalDiasAtivo]);
 
   const metasProgresso = useMemo(() => {
     if (!activeEntry || !metricsAtivo) return [];
@@ -115,7 +121,7 @@ export default function MetasTab({
     ] as { idx: number; valor: number | null }[])
       .filter((m): m is { idx: number; valor: number } => !!m.valor && m.valor > 0)
       .map((m) => {
-        const idealDia = isMesAtualAtivo ? (m.valor / totalDiasAtivo) * diaAtual : m.valor;
+        const idealDia = isMesAtualAtivo ? idealAteHoje(m.valor, diaAtual, totalDiasAtivo) : m.valor;
         const tone = getRevenuePaceStatus(fat, m.valor, idealDia);
         const falta = Math.max(m.valor - fat, 0);
         return {
@@ -133,7 +139,7 @@ export default function MetasTab({
     if (!activeEntry?.metaLucro || !metricsAtivo) return null;
     const meta = activeEntry.metaLucro;
     const lucro = metricsAtivo.lucroComCustos;
-    const idealDia = isMesAtualAtivo ? (meta / totalDiasAtivo) * diaAtual : meta;
+    const idealDia = isMesAtualAtivo ? idealAteHoje(meta, diaAtual, totalDiasAtivo) : meta;
     const tone = getRevenuePaceStatus(lucro, meta, idealDia);
     return {
       meta, lucro, tone,

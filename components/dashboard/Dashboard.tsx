@@ -18,6 +18,7 @@ import {
   isFullMonth,
   prevPeriod,
 } from "@/lib/domain/calc";
+import { calcularMetaDiaria, idealAteHoje } from "@/lib/domain/meta-diaria";
 import type { UserData } from "@/components/useUserData";
 import { useAccess } from "@/components/tabs/AccessGuard";
 import ExpensesDoughnut from "./ExpensesDoughnut";
@@ -856,13 +857,15 @@ function ConferenciaML({ c, periodo }: { c: Conciliacao; periodo: string }) {
 
 // ── Meta Diária (velocímetro) ──────────────────────────────────
 function MetaDiariaCard({
-  faturamentoHoje, pedidosHoje, metaDiaria, metaPlana, diasRestantes,
+  faturamentoHoje, pedidosHoje, metaDiaria, metaPlana, diasRestantes, metaIndex,
 }: {
   faturamentoHoje: number;
   pedidosHoje: number;
   metaDiaria: number | null;
   metaPlana: number | null;
   diasRestantes: number | null;
+  /** Qual degrau (1, 2 ou 3) esta meta diária persegue — o card precisa dizer. */
+  metaIndex: number;
 }) {
   const semMeta = metaDiaria == null;
   // metaDiaria == 0 → não falta mais nada: a meta do mês já foi batida.
@@ -883,7 +886,7 @@ function MetaDiariaCard({
   // calculado acima — nenhuma fórmula nova, só a leitura visual dele.
   const tone = getGaugeStatus("revenue", pct);
   const statusLabel = mesBatido
-    ? "Meta do mês batida"
+    ? `Meta ${metaIndex} do mês batida`
     : batida
       ? `Meta batida · ${pedidosHoje} pedido(s)`
       : `Faltam ${fmtBRL(falta)} · ${pedidosHoje} pedido(s)`;
@@ -898,8 +901,8 @@ function MetaDiariaCard({
       ) : (
         <>
           <PerformanceGauge
-            title="Meta Diária de Hoje"
-            eyebrow="Meta Diária de Hoje"
+            title={`Meta Diária de Hoje (Meta ${metaIndex})`}
+            eyebrow={`Meta Diária de Hoje · Meta ${metaIndex}`}
             compact
             showNeedle={false}
             // Quando o mês já bateu a meta não existe mais "alvo de hoje" (metaDiaria
@@ -966,7 +969,8 @@ function MetasOverviewCard({
   onVerMetas?: () => void;
 }) {
   const { activeMeta, metaIndex, metas } = selectActiveGoal(fatBruto, meta1, meta2, meta3);
-  const idealDia = activeMeta > 0 ? (activeMeta / totalDias) * diaAtual : 0;
+  // Segue a meta VIGENTE, e trava o dia dentro do mês (ver idealAteHoje).
+  const idealDia = idealAteHoje(activeMeta, diaAtual, totalDias);
   const deltaIdeal = fatBruto - idealDia;
 
   const falta = Math.max(activeMeta - fatBruto, 0);
@@ -1598,24 +1602,21 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
   const { activeMeta, metaIndex } = selectActiveGoal(fatLiquido, goals?.meta1 ?? 0, goals?.meta2 ?? null, goals?.meta3 ?? null);
 
   // ── Meta diária DINÂMICA ──────────────────────────────────────
-  // Plana = meta do mês ÷ dias do mês (só referência de "ritmo ideal").
-  const metaDiariaPlana = goals?.meta1 ? goals.meta1 / diasNoMes(mes) : null;
-
+  // Persegue a meta VIGENTE (activeMeta), não a Meta 1: com a primeira já
+  // batida, o alvo do dia dava zero e o painel anunciava "meta do mês batida"
+  // enquanto a meta ativa ainda estava longe. Ver lib/domain/meta-diaria.ts.
   const diasRestantesMes = isMesAtual ? Math.max(diasNoMes(mes) - diaAtualNoMes() + 1, 1) : null;
 
-  // Meta de HOJE = o que ainda falta pra meta do mês ÷ dias que restam (hoje
-  // incluso). Se um dia fica abaixo, o que sobrou se redistribui e a meta dos
-  // dias seguintes sobe sozinha.
-  //
-  // Usa o acumulado até ONTEM de propósito: se usasse o de hoje, o alvo cairia
-  // conforme as vendas do dia entrassem — a meta fugiria da própria medição.
-  const metaDiariaAtiva = useMemo(() => {
-    if (!goals?.meta1) return null;
-    if (!isMesAtual || !diasRestantesMes) return metaDiariaPlana; // outro período: plana
-    const fatAteOntem = Math.max(fatLiquido - (mlMetrics?.faturamentoHoje ?? 0), 0);
-    const falta = Math.max(goals.meta1 - fatAteOntem, 0);
-    return falta / diasRestantesMes;
-  }, [goals?.meta1, isMesAtual, diasRestantesMes, metaDiariaPlana, fatLiquido, mlMetrics?.faturamentoHoje]);
+  const { diaria: metaDiariaAtiva, plana: metaDiariaPlana } = useMemo(
+    () => calcularMetaDiaria({
+      metaAtiva: activeMeta,
+      faturamentoMes: fatLiquido,
+      faturamentoHoje: mlMetrics?.faturamentoHoje ?? 0,
+      diasRestantes: diasRestantesMes,
+      diasNoMes: diasNoMes(mes),
+    }),
+    [activeMeta, fatLiquido, mlMetrics?.faturamentoHoje, diasRestantesMes, mes],
+  );
 
   const totalCustos =
     (mlMetrics?.totalCMV ?? 0) + (mlMetrics?.totalEnvio ?? 0) + (mlMetrics?.totalTaxasML ?? 0) +
@@ -1910,6 +1911,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
             metaDiaria={metaDiariaAtiva}
             metaPlana={metaDiariaPlana}
             diasRestantes={diasRestantesMes}
+            metaIndex={metaIndex}
           />
 
           {(mlMetrics?.pedidosSemVinculo ?? 0) > 0 && (
