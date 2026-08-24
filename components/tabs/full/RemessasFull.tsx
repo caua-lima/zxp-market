@@ -495,7 +495,16 @@ export default function RemessasFull({ movimentos }: { movimentos: EstoqueMovime
           {/* TODAS as coletas, inclusive as já resolvidas. A lista acima some
               conforme a baixa é dada, e o custo sumia junto — sem como
               conferir nem corrigir um valor que entra na DRE. */}
-          <CustosColetaFull remessas={remessas} onSalvo={() => buscar(true)} />
+          <CustosColetaFull
+            remessas={remessas.map((r) => ({
+              remessa: r.remessa, data: r.data, recebido: r.recebido,
+              // `custo` ausente e `null` querem dizer a mesma coisa aqui: não
+              // informado. Zero seria coleta grátis, e não é o caso.
+              custo: r.custo ?? null,
+              custoEstimado: r.custoEstimado === true,
+            }))}
+            onSalvo={() => buscar(true)}
+          />
         </div>
       )}
     </div>
