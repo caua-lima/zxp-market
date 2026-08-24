@@ -66,6 +66,8 @@ type HojeBreakdown = {
   totalImposto:     number;
   lucroLiquido:     number;
   pedidos:          number;
+  /** Receita das vendas por CLIQUE no anúncio pago (sem assistida). */
+  vendaDiretaAds?:  number;
 };
 
 type MlMetrics = {
@@ -500,8 +502,20 @@ function VendasDoDiaHero({ hoje }: { hoje?: HojeBreakdown }) {
   };
   const margem = h.faturamentoBruto > 0 ? (h.lucroLiquido / h.faturamentoBruto) * 100 : 0;
 
+  /**
+   * TACOS — quanto do faturamento do dia foi embora em publicidade.
+   *
+   * Divide pelo faturamento TOTAL, não pelo que o Ads vendeu: é a pergunta
+   * "quanto da minha receita eu paguei de anúncio hoje", e é ela que se
+   * compara com a margem. Dividir pela venda de Ads daria ACOS, que responde
+   * outra coisa (eficiência da campanha) e já vive na aba Ads.
+   */
+  const tacos = h.faturamentoBruto > 0 ? (h.totalAds / h.faturamentoBruto) * 100 : null;
+  const vendaDiretaAds = h.vendaDiretaAds ?? 0;
+
   const stats: { label: string; icon: string; value: number; color: string }[] = [
     { label: "Faturamento bruto", icon: "", value: h.faturamentoBruto, color: "var(--green)" },
+    { label: "Vendas por ADS",    icon: "", value: vendaDiretaAds,     color: "var(--green)" },
     { label: "CMV (produto)",     icon: "", value: h.totalCMV,         color: "var(--red)" },
     { label: "Frete/Full",        icon: "", value: h.totalEnvio,       color: "var(--red)" },
     { label: "Taxas ML",          icon: "", value: h.totalTaxasML,     color: "var(--red)" },
@@ -516,6 +530,20 @@ function VendasDoDiaHero({ hoje }: { hoje?: HojeBreakdown }) {
         <span className="hero-title">Vendas do Dia</span>
         <span className="hero-badge">
           {h.pedidos} pedido(s) · margem <b style={{ color: margem >= 0 ? "var(--green)" : "var(--red)" }}>{margem.toFixed(1)}%</b>
+          {tacos != null && (
+            <>
+              {" · "}ADS{" "}
+              {/* Vermelho quando o anúncio come mais que a margem que sobrou:
+                  aí cada real de venda a mais está estreitando o resultado. */}
+              <b
+                style={{ color: tacos > Math.max(margem, 0) ? "var(--red)" : "var(--text)" }}
+                title="Quanto do faturamento do dia foi gasto em publicidade (TACOS). Fica vermelho quando passa da margem."
+              >
+                {tacos.toFixed(1)}%
+              </b>
+              {" do faturamento"}
+            </>
+          )}
         </span>
       </div>
       <div className="hero-grid">
@@ -526,7 +554,12 @@ function VendasDoDiaHero({ hoje }: { hoje?: HojeBreakdown }) {
           </div>
         ))}
       </div>
-      <div className="hero-foot">Lucro líquido = retorno − CMV − ADS − Full − taxas ML − imposto</div>
+      <div className="hero-foot">
+        Lucro líquido = retorno − CMV − ADS − Full − taxas ML − imposto ·{" "}
+        <span title="Receita das vendas em que o comprador clicou no anúncio pago. Não inclui venda assistida (viu o anúncio e comprou depois por outro caminho), que o painel do ML soma em 'vendas atribuídas'.">
+          “Vendas por ADS” conta só o clique direto
+        </span>
+      </div>
     </section>
   );
 }

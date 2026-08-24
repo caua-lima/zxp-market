@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
-import { getAdsSpendByItem, probeAds } from "@/lib/ml/ads";
+import { getAdsGastoEDireto, getAdsSpendByItem, probeAds } from "@/lib/ml/ads";
 import { completarFretesFaltantes, fetchOrdersLive, loadOrders, readShippingCosts } from "@/lib/ml/orders";
 import { getMlAccessToken } from "../token";
 import { custoNaData, impostoNaData, type CustoFaixa, type ImpostoFaixa } from "@/lib/domain/types";
@@ -511,7 +511,14 @@ export async function GET(req: Request) {
         }
       }
     }
-    const adsHoje: Record<string, number> = await getAdsSpendByItem(hj, hj).catch(() => ({}));
+    /**
+     * Gasto e venda DIRETA de Ads de hoje. `direct_amount` vem junto do
+     * `cost` na mesma requisição — sem chamada extra ao Mercado Ads.
+     */
+    const adsHojeResumo = await getAdsGastoEDireto(hj, hj).catch(
+      () => ({ gastoPorItem: {} as Record<string, number>, gastoTotal: 0, vendaDiretaTotal: 0 }),
+    );
+    const adsHoje: Record<string, number> = adsHojeResumo.gastoPorItem;
 
     // ── 4. Pedidos do período + de hoje (AO VIVO, com fallback) ─
     const token = await getMlAccessToken();
@@ -788,6 +795,12 @@ export async function GET(req: Request) {
         totalImposto: aggHoje.totalImposto,
         lucroLiquido: lucroLiquidoHoje,
         pedidos: aggHoje.ordersCount,
+        /**
+         * Receita das vendas em que o comprador CLICOU no anúncio pago.
+         * Não inclui venda assistida — é a leitura conservadora do que a
+         * publicidade trouxe (ver getAdsGastoEDireto).
+         */
+        vendaDiretaAds: adsHojeResumo.vendaDiretaTotal,
       },
       /**
        * ── Conciliação com o Seller Center ──

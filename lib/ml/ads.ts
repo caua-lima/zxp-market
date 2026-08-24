@@ -311,14 +311,37 @@ async function adItemRows(from: string, to: string, metrics: string): Promise<Re
 export async function getAdsSpendByItem(
   from: string, to: string, mlbs: string[] = [],
 ): Promise<Record<string, number>> {
+  const { gastoPorItem } = await getAdsGastoEDireto(from, to, mlbs);
+  return gastoPorItem;
+}
+
+/**
+ * Gasto E receita de venda DIRETA de Ads no período, na mesma chamada.
+ *
+ * `direct_amount` viaja de graça junto do `cost` — a API cobra por
+ * requisição, não por métrica pedida. Buscar as duas aqui evita uma segunda
+ * ida ao Mercado Ads só pra saber quanto a publicidade vendeu direto.
+ *
+ * "Direta" é a leitura conservadora: o comprador clicou no anúncio pago e
+ * comprou. Não inclui venda assistida (viu o anúncio, comprou depois por
+ * outro caminho), que o painel do ML soma em "vendas atribuídas".
+ */
+export async function getAdsGastoEDireto(
+  from: string, to: string, mlbs: string[] = [],
+): Promise<{ gastoPorItem: Record<string, number>; gastoTotal: number; vendaDiretaTotal: number }> {
   const token = await getValidMlAccessToken();
-  const rows = await resolverMlb(await adItemRows(from, to, "cost"), token, mlbs);
-  const adsByItem: Record<string, number> = {};
+  const rows = await resolverMlb(await adItemRows(from, to, "cost,direct_amount"), token, mlbs);
+  const gastoPorItem: Record<string, number> = {};
+  let gastoTotal = 0;
+  let vendaDiretaTotal = 0;
   for (const row of rows) {
+    const custo = metrica(row, "cost");
+    gastoTotal += custo;
+    vendaDiretaTotal += metrica(row, "direct_amount");
     const itemId = itemIdDe(row);
-    if (itemId) adsByItem[itemId] = (adsByItem[itemId] ?? 0) + metrica(row, "cost");
+    if (itemId) gastoPorItem[itemId] = (gastoPorItem[itemId] ?? 0) + custo;
   }
-  return adsByItem;
+  return { gastoPorItem, gastoTotal, vendaDiretaTotal };
 }
 
 export type AdItemFull = {
