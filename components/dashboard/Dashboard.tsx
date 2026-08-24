@@ -1755,7 +1755,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
               {mlMetrics && <span className="panel-sub">{formatDateBR(mlMetrics.from)} a {formatDateBR(mlMetrics.to)} · {periodoLabel}{prevMetrics ? ` · setas ${prevLabel}` : ""}</span>}
             </div>
             <div className="kpi-grid">
-              <Kpi label="Faturamento bruto" value={fatBruto} tone="acc" sub="tudo, inclui cancelados/devolvidos" />
+              <Kpi label="Faturamento bruto" value={fatBruto} tone="acc" sub="tudo, inclui cancelados/devolvidos — não é o comparável ao ML" />
               <Kpi label="Faturamento líquido" value={fatLiquido} tone="acc" sub="− canceladas − devoluções"
                 delta={<Delta current={fatLiquido} previous={prevMetrics?.faturamentoLiquido} mode="pct" />} />
               {/* O número do painel do Mercado Livre, pra conferir sem abrir a
@@ -1772,8 +1772,8 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
                   tone="acc"
                   sub={
                     (mlMetrics.conciliacao.substituidasQuantidade ?? 0) > 0
-                      ? `líquido + ${mlMetrics.conciliacao.substituidasQuantidade} separação(ões) de envio`
-                      : "igual ao líquido — nenhuma separação no período"
+                      ? `compare com "Vendas brutas" do Seller Center — líquido + ${mlMetrics.conciliacao.substituidasQuantidade} separação(ões) de envio`
+                      : `compare com "Vendas brutas" do Seller Center — igual ao líquido, nenhuma separação no período`
                   }
                 />
               )}
