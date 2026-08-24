@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { EstoqueMovimento } from "@/lib/domain/types";
 import { movIdRemessa, remessaTemBaixa, type Remessa } from "@/lib/domain/remessas";
+import CustosColetaFull from "@/components/tabs/full/CustosColetaFull";
 import { separarParaAutoBaixa } from "@/lib/domain/full-auto-baixa";
 import { addMovimento, ignorarRemessaFull, reabrirRemessaFull, salvarCustoRemessaFull, watchRemessasIgnoradas } from "@/lib/firebase/data";
 import { authedFetch } from "@/lib/api/authed-fetch";
@@ -490,6 +491,11 @@ export default function RemessasFull({ movimentos }: { movimentos: EstoqueMovime
               então não geram baixa.
             </div>
           )}
+
+          {/* TODAS as coletas, inclusive as já resolvidas. A lista acima some
+              conforme a baixa é dada, e o custo sumia junto — sem como
+              conferir nem corrigir um valor que entra na DRE. */}
+          <CustosColetaFull remessas={remessas} onSalvo={() => buscar(true)} />
         </div>
       )}
     </div>
