@@ -7,39 +7,49 @@ import {
 } from "./estoque-alerta";
 
 function prod(over: Partial<ProdutoEstoque> = {}): ProdutoEstoque {
-  return { id: "p1", nome: "Menta Stronger", full: 100, casa: 0, ...over };
+  return { id: "p1", nome: "Menta Stronger", full: 100, casa: 0, ehFull: true, ...over };
 }
 const nenhum = new Set<string>();
 
-describe("detectarEstoqueBaixo — avisa na travessia, não no estado", () => {
-  it("avisa quando chega exatamente no mínimo de 25", () => {
+describe("detectarEstoqueBaixo — o gatilho é o Full, não o total", () => {
+  it("avisa quando o Full chega exatamente em 25", () => {
     const r = detectarEstoqueBaixo([prod({ full: 25 })], nenhum);
     expect(r.avisar).toHaveLength(1);
-    expect(r.avisar[0].total).toBe(25);
+    expect(r.avisar[0].full).toBe(25);
   });
 
-  it("não avisa acima do mínimo", () => {
+  it("não avisa com o Full acima do mínimo", () => {
     expect(detectarEstoqueBaixo([prod({ full: 26 })], nenhum).avisar).toEqual([]);
   });
 
-  it("NÃO repete o aviso enquanto continua baixo — é o que evita o push a cada 15min", () => {
-    const jaAvisado = new Set(["p1"]);
-    const r = detectarEstoqueBaixo([prod({ full: 20 })], jaAvisado);
+  it("estoque em casa NÃO segura o aviso — é ele que permite a coleta", () => {
+    // O ponto do módulo: 300 em casa é o motivo pra agendar coleta, não pra
+    // silenciar. Somar os dois esconderia o aviso justo quando dá pra agir.
+    const r = detectarEstoqueBaixo([prod({ full: 10, casa: 300 })], nenhum);
+    expect(r.avisar).toHaveLength(1);
+    expect(r.avisar[0].corpo).toMatch(/agende a coleta/i);
+    expect(r.avisar[0].casa).toBe(300);
+  });
+
+  it("produto FORA do Full nunca gera aviso de coleta", () => {
+    expect(detectarEstoqueBaixo([prod({ full: 0, ehFull: false })], nenhum).avisar).toEqual([]);
+  });
+});
+
+describe("detectarEstoqueBaixo — avisa na travessia, não no estado", () => {
+  it("NÃO repete enquanto continua baixo — é o que evita push a cada 15min", () => {
+    const r = detectarEstoqueBaixo([prod({ full: 20 })], new Set(["p1"]));
     expect(r.avisar).toEqual([]);
   });
 
-  it("depois de repor, volta a ficar elegível", () => {
-    const jaAvisado = new Set(["p1"]);
-    const r = detectarEstoqueBaixo([prod({ full: 200 })], jaAvisado);
+  it("depois da coleta chegar, volta a ficar elegível", () => {
+    const r = detectarEstoqueBaixo([prod({ full: 200 })], new Set(["p1"]));
     expect(r.rearmar).toEqual(["p1"]);
     expect(r.avisar).toEqual([]);
   });
 
-  it("repôs e caiu de novo: avisa outra vez (ciclo completo)", () => {
-    const jaAvisado = new Set(["p1"]);
-    // 1) repôs → rearma
-    expect(detectarEstoqueBaixo([prod({ full: 200 })], jaAvisado).rearmar).toEqual(["p1"]);
-    // 2) com o estado limpo, cair de novo avisa
+  it("reabasteceu e caiu de novo: avisa outra vez (ciclo completo)", () => {
+    expect(detectarEstoqueBaixo([prod({ full: 200 })], new Set(["p1"])).rearmar).toEqual(["p1"]);
     expect(detectarEstoqueBaixo([prod({ full: 10 })], nenhum).avisar).toHaveLength(1);
   });
 
@@ -48,30 +58,34 @@ describe("detectarEstoqueBaixo — avisa na travessia, não no estado", () => {
   });
 });
 
-describe("detectarEstoqueBaixo — soma Full + casa", () => {
-  it("Full baixo mas com estoque em casa NÃO dispara", () => {
-    // 10 no Full + 300 em casa = não precisa comprar nada.
-    expect(detectarEstoqueBaixo([prod({ full: 10, casa: 300 })], nenhum).avisar).toEqual([]);
+describe("detectarEstoqueBaixo — a ação depende de ter estoque em casa", () => {
+  it("com estoque em casa, manda agendar coleta", () => {
+    const r = detectarEstoqueBaixo([prod({ full: 5, casa: 120 })], nenhum);
+    expect(r.avisar[0].podeColetar).toBe(true);
+    expect(r.avisar[0].corpo).toMatch(/120 un em casa/);
   });
 
-  it("a soma é o que conta pro limite", () => {
-    const r = detectarEstoqueBaixo([prod({ full: 15, casa: 5 })], nenhum);
-    expect(r.avisar[0].total).toBe(20);
+  it("sem estoque em casa, a ação é comprar — não adianta mandar coletar", () => {
+    const r = detectarEstoqueBaixo([prod({ full: 5, casa: 0 })], nenhum);
+    expect(r.avisar[0].podeColetar).toBe(false);
+    expect(r.avisar[0].corpo).toMatch(/precisa comprar/i);
+    expect(r.avisar[0].corpo).not.toMatch(/agende a coleta/i);
+  });
+
+  it("Full zerado tem tratamento próprio no título", () => {
+    const r = detectarEstoqueBaixo([prod({ full: 0, casa: 50 })], nenhum);
+    expect(r.avisar[0].titulo).toMatch(/ZEROU no Full/);
   });
 
   it("quantidade negativa não vira crédito", () => {
-    const r = detectarEstoqueBaixo([prod({ full: -5, casa: 20 })], nenhum);
-    expect(r.avisar[0].total).toBe(20);
+    const r = detectarEstoqueBaixo([prod({ full: -5, casa: -3 })], nenhum);
+    expect(r.avisar[0].full).toBe(0);
+    expect(r.avisar[0].casa).toBe(0);
   });
 });
 
-describe("detectarEstoqueBaixo — texto do aviso", () => {
-  it("zerado tem tratamento próprio", () => {
-    const r = detectarEstoqueBaixo([prod({ full: 0, casa: 0 })], nenhum);
-    expect(r.avisar[0].titulo).toMatch(/ZEROU/);
-  });
-
-  it("cita os dias de cobertura quando há média de venda", () => {
+describe("detectarEstoqueBaixo — cobertura e texto", () => {
+  it("cita os dias de cobertura do FULL quando há média de venda", () => {
     const r = detectarEstoqueBaixo([prod({ full: 20, mediaDiaria: 4 })], nenhum);
     expect(r.avisar[0].diasRestantes).toBe(5);
     expect(r.avisar[0].corpo).toMatch(/5 dia/);

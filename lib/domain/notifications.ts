@@ -260,6 +260,6 @@ export const NOTIFICATION_TYPE_META: Record<
   return_completed: { label: "Devolução concluída", severity: "warning", group: "alertas" },
   sync_warning: { label: "Aviso de sincronização", severity: "warning", group: "sistema" },
   task_assigned: { label: "Tarefa atribuída", severity: "info", group: "alertas" },
-  stock_low: { label: "Estoque no mínimo", severity: "warning", group: "alertas" },
+  stock_low: { label: "Full no mínimo (agendar coleta)", severity: "warning", group: "alertas" },
   system: { label: "Sistema", severity: "info", group: "sistema" },
 };

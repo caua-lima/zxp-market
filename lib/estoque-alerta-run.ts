@@ -13,7 +13,8 @@ import { buildPayload, enviarEPersistirEntrega } from "@/lib/ml/notificar-venda"
 const ML_API = "https://api.mercadolibre.com";
 
 /**
- * Verifica o estoque de todos os anúncios e avisa o que chegou no mínimo.
+ * Verifica o estoque NO FULL de todos os anúncios e avisa o que chegou no
+ * mínimo — o gatilho pra agendar coleta.
  *
  * ─── POR QUE O ESTADO FICA NO FIRESTORE, E NÃO SÓ NO dedupeKey ──────────
  *
@@ -118,8 +119,11 @@ export async function verificarEstoqueBaixo(): Promise<ResultadoEstoqueAlerta> {
       return {
         id: doc.id,
         nome: String(d.name ?? d.nome ?? doc.id),
+        // Só o Full dispara o aviso — é ele que a coleta reabastece.
         full: c.full,
+        // Não entra no limite; diz se dá pra coletar hoje ou se falta comprar.
         casa: Math.max(Number(d.qtdLocal ?? 0), 0),
+        ehFull: c.ehFull,
         // Limite por produto, quando o operador tiver definido um.
         minimo: d.estoqueMinimo != null ? Number(d.estoqueMinimo) : null,
       };
@@ -138,7 +142,8 @@ export async function verificarEstoqueBaixo(): Promise<ResultadoEstoqueAlerta> {
         if (await notificarEstoque(aviso)) {
           await db.collection(ESTADO).doc(aviso.produtoId).set({
             produtoId: aviso.produtoId,
-            total: aviso.total,
+            full: aviso.full,
+            casa: aviso.casa,
             avisadoEm: Date.now(),
           });
           avisados.push(aviso.produtoId);
@@ -175,7 +180,8 @@ async function notificarEstoque(aviso: AvisoEstoque): Promise<boolean> {
     title: aviso.titulo,
     body: aviso.corpo,
     financialState: "confirmed",
-    deepLink: "/?tab=estoque",
+    // Aba Full: e la que a coleta e agendada, nao no Estoque geral.
+    deepLink: "/?tab=full",
   });
   if (!created) return false;
 

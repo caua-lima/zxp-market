@@ -20,7 +20,7 @@ const TOGGLE_LABEL: Record<NotificationTogglesKey, string> = {
   sales_summary: "Resumo de vendas agrupadas",
   sync_warning: "Alertas de sincronização",
   task_assigned: "Tarefa atribuída a mim",
-  stock_low: "Estoque no mínimo (repor)",
+  stock_low: "Full no mínimo (agendar coleta)",
 };
 
 const DIAS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
