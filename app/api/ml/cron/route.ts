@@ -5,6 +5,7 @@ import { currentMonthRangeBR, previousMonthRangeBR, syncOrdersRange, syncReturns
 import { enviarLembretesDeTarefa } from "@/lib/task-reminders-run";
 import { ehDomingoBR, fazerBackupSemanal } from "@/lib/backup-run";
 import { verificarMarcos } from "@/lib/marcos-run";
+import { verificarEstoqueBaixo } from "@/lib/estoque-alerta-run";
 
 export const maxDuration = 60;
 
@@ -109,9 +110,20 @@ export async function GET(req: Request) {
       }
     })();
 
+    /**
+     * Estoque no mínimo. Depois do sync de propósito: as vendas que acabaram
+     * de entrar já baixaram o estoque no ML, então a leitura aqui é a mais
+     * recente possível. Best-effort — nunca derruba o cron.
+     */
+    const estoqueBaixo = await verificarEstoqueBaixo().catch((err) => {
+      console.error("[cron] alerta de estoque falhou", err);
+      return null;
+    });
+
     return NextResponse.json({
       ok: true,
       marcos,
+      estoqueBaixo,
       atual: { orders: ordensAtual, returns: devAtual, claims: claimsAtual, range: atual },
       anterior: { orders: ordensAnterior, returns: devAnterior, claims: claimsAnterior, range: anterior },
       lembretesTarefa: lembretes,

@@ -13,7 +13,8 @@ export type NotificationTogglesKey =
   | "return_completed"
   | "sales_summary"
   | "sync_warning"
-  | "task_assigned";
+  | "task_assigned"
+  | "stock_low";
 
 export type NotificationPreferences = {
   toggles: Record<NotificationTogglesKey, boolean>;
@@ -41,6 +42,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
     sales_summary: true,
     sync_warning: true,
     task_assigned: true,
+    stock_low: true,
   },
   quietHoursStart: "22:30",
   quietHoursEnd: "07:30",
@@ -74,6 +76,7 @@ const TYPE_TO_TOGGLE: Record<NotificationEventType, NotificationTogglesKey | nul
   return_completed: "return_completed",
   sync_warning: "sync_warning",
   task_assigned: "task_assigned",
+  stock_low: "stock_low",
   system: null, // sistema não é opcional — sempre entra na Central; não é um push de venda
 };
 
