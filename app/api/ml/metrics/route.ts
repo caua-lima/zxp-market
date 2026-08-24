@@ -75,6 +75,9 @@ type Aggregates = {
   /** Pedidos cancelados só para virar outros do mesmo pacote (separação de envio). */
   substituidasCount: number;
   substituidasValor: number;
+  /** Unidades dos pedidos substituídos — sem isto, a linha de unidades da
+   *  Conferência não tinha como bater com o painel, que conta o original. */
+  substituidasUnidades: number;
   reconc: { count: number; nosso: number; real: number };
 };
 
@@ -202,6 +205,7 @@ function computeAggregates(
   );
   let substituidasCount = 0;
   let substituidasValor = 0;
+  let substituidasUnidades = 0;
 
   /**
    * FRETE POR ENVIO, não por pedido.
@@ -257,6 +261,7 @@ function computeAggregates(
     if (classe.classe === "substituida") {
       substituidasCount++;
       substituidasValor += totalAmt;
+      substituidasUnidades += ((o.items as OrderItem[]) ?? []).reduce((s2, it) => s2 + Number(it.quantity ?? 1), 0);
       continue;
     }
 
@@ -427,6 +432,7 @@ function computeAggregates(
     resgatadosDoCache,
     substituidasCount,
     substituidasValor,
+    substituidasUnidades,
     reconc: { count: reconcCount, nosso: reconcNosso, real: reconcReal },
   };
 }
@@ -842,6 +848,7 @@ export async function GET(req: Request) {
          */
         substituidasQuantidade: agg.substituidasCount,
         substituidasValor: agg.substituidasValor,
+        substituidasUnidades: agg.substituidasUnidades,
       },
       serieDiaria,
       adsDiag,

@@ -116,6 +116,7 @@ type Conciliacao = {
   resgatadosDoCache?:    number;
   substituidasQuantidade?: number;
   substituidasValor?:    number;
+  substituidasUnidades?: number;
   canceladasDetalhe?:    { orderId: string; valor: number; dia: string; status: string; origem: string; packId: string }[];
   pedidosSemFrete?:      number;
   valorSemFrete?:        number;
@@ -749,6 +750,26 @@ function ConferenciaML({ c, periodo }: { c: Conciliacao; periodo: string }) {
                 {fmtBRL(c.vendasBrutas)} (aqui) + {fmtBRL(substituidasValor)} de {c.substituidasQuantidade} pedido(s)
                 separados no envio = <b style={{ color: "var(--text)" }}>{fmtBRL(comparavelAoML)}</b> — este é o número
                 comparável ao painel.
+                {/* A quantidade e as unidades sofrem o MESMO desconto que o valor.
+                    Sem estas duas linhas, elas apareciam menores que o painel sem
+                    nenhuma explicação, e davam a impressão de que faltava venda. */}
+                <div style={{ marginTop: 6 }}>
+                  Pelo mesmo motivo, comparáveis ao painel:{" "}
+                  <b style={{ color: "var(--text)" }}>
+                    {c.quantidadeVendas + (c.substituidasQuantidade ?? 0)}
+                  </b>{" "}
+                  vendas
+                  {(c.substituidasUnidades ?? 0) > 0 && (
+                    <>
+                      {" "}e{" "}
+                      <b style={{ color: "var(--text)" }}>
+                        {c.unidadesVendidas + (c.substituidasUnidades ?? 0)}
+                      </b>{" "}
+                      unidades
+                    </>
+                  )}
+                  .
+                </div>
                 <br />
                 Quando você separa o envio, o ML cancela o pedido e cria outros no lugar. Ele conta o
                 original <i>e</i> os substitutos; nós contamos só os substitutos, senão a mesma mercadoria
