@@ -52,7 +52,14 @@ export type TopicoAds = {
   termos: string[];
   /** Frase com os números reais do operador. null = não se aplica agora. */
   contextualizar?: (c: ContextoAds) => string | null;
+  /** Conceitos que costumam vir na sequência — ver relacionadosDe. */
+  relacionados?: string[];
 };
+
+import { melhores, normalizar as normalizarTexto } from "./busca-texto";
+
+/** Reexporta pra quem já importava daqui — a implementação mora no motor. */
+export const normalizar = normalizarTexto;
 
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const x = (v: number) => `${v.toFixed(2).replace(".", ",")}x`;
@@ -61,6 +68,7 @@ const pct = (v: number) => `${v.toFixed(1).replace(".", ",")}%`;
 export const TOPICOS_ADS: TopicoAds[] = [
   {
     id: "roas",
+    relacionados: ["break-even", "roas-ideal"],
     pergunta: "O que é ROAS?",
     termos: ["roas", "retorno", "significa", "conceito"],
     resposta:
@@ -76,6 +84,7 @@ export const TOPICOS_ADS: TopicoAds[] = [
   },
   {
     id: "break-even",
+    relacionados: ["roas-ideal", "roas-alto-prejuizo"],
     pergunta: "O que é ROAS de equilíbrio (break-even)?",
     termos: ["break", "even", "equilibrio", "empatar", "minimo", "nao perder", "prejuizo"],
     resposta:
@@ -93,6 +102,7 @@ export const TOPICOS_ADS: TopicoAds[] = [
   },
   {
     id: "roas-ideal",
+    relacionados: ["break-even", "orcamento"],
     pergunta: "O que é ROAS ideal e como escolher o meu?",
     termos: ["roas ideal", "roas alvo", "ideal", "alvo", "meta", "target", "escolher", "definir"],
     resposta:
@@ -115,6 +125,7 @@ export const TOPICOS_ADS: TopicoAds[] = [
   },
   {
     id: "acos-tacos",
+    relacionados: ["roas", "dependencia"],
     pergunta: "Qual a diferença entre ACOS e TACOS?",
     termos: ["acos", "tacos", "diferenca", "percentual", "custo publicidade"],
     resposta:
@@ -127,6 +138,7 @@ export const TOPICOS_ADS: TopicoAds[] = [
   },
   {
     id: "direta-assistida",
+    relacionados: ["roas-diferente-ml"],
     pergunta: "Qual a diferença entre venda direta e atribuída?",
     termos: ["direta", "assistida", "atribuida", "atribuicao", "diferenca", "clique"],
     resposta:
@@ -141,6 +153,7 @@ export const TOPICOS_ADS: TopicoAds[] = [
   },
   {
     id: "roas-alto-prejuizo",
+    relacionados: ["break-even", "dependencia"],
     pergunta: "Meu ROAS está ótimo mas dá prejuízo. Por quê?",
     termos: ["alto", "otimo", "bom", "mesmo assim", "prejuizo", "porque", "estranho", "nao faz sentido"],
     resposta:
@@ -157,6 +170,7 @@ export const TOPICOS_ADS: TopicoAds[] = [
   },
   {
     id: "dependencia",
+    relacionados: ["roas-alto-prejuizo", "quando-escalar"],
     pergunta: "Devo desligar um anúncio que está no vermelho?",
     termos: ["desligar", "pausar", "cortar", "vermelho", "devo", "dependencia"],
     resposta:
@@ -171,6 +185,7 @@ export const TOPICOS_ADS: TopicoAds[] = [
   },
   {
     id: "orcamento",
+    relacionados: ["quando-escalar", "roas-ideal"],
     pergunta: "Quanto devo colocar de orçamento diário?",
     termos: ["orcamento", "budget", "diario", "quanto", "investir", "colocar", "aumentar", "escalar"],
     resposta:
@@ -185,6 +200,7 @@ export const TOPICOS_ADS: TopicoAds[] = [
   },
   {
     id: "quando-escalar",
+    relacionados: ["orcamento", "roas-ideal"],
     pergunta: "Quando vale a pena escalar um anúncio?",
     termos: ["escalar", "aumentar", "crescer", "vale a pena", "quando", "investir mais"],
     resposta:
@@ -197,6 +213,7 @@ export const TOPICOS_ADS: TopicoAds[] = [
   },
   {
     id: "ctr-cpc",
+    relacionados: ["dependencia"],
     pergunta: "O que são CTR, CPC e conversão?",
     termos: ["ctr", "cpc", "conversao", "clique", "impressao", "metricas", "funil"],
     resposta:
@@ -238,61 +255,26 @@ export const TOPICOS_ADS: TopicoAds[] = [
   },
 ];
 
-/** Sem acento, minúsculo — pra "ROAS" casar com "roas". */
-export function normalizar(s: string): string {
-  return s
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-const VAZIAS = new Set([
-  "o", "a", "os", "as", "de", "do", "da", "e", "em", "no", "na", "um", "uma",
-  "que", "qual", "como", "onde", "quando", "por", "para", "pra", "com", "eu",
-  "meu", "minha", "me", "se", "faco", "fazer", "posso", "quero", "tem", "ter",
-  "isso", "esse", "essa", "sao", "esta", "estao", "ads", "anuncio", "anuncios",
-]);
-
 /**
- * Acha os conceitos que respondem a pergunta, do mais relevante pro menos.
+ * Acha os conceitos que respondem a pergunta.
  *
- * Casamento de termo inteiro vale mais que prefixo: "roas" na pergunta aponta
- * pro tópico de ROAS com força total, enquanto "ro" não deveria apontar pra
- * lugar nenhum.
+ * A pontuação, os pesos e a tolerância a erro de digitação vivem em
+ * busca-texto.ts, compartilhadas com o chat de dúvidas. Antes eram duas
+ * cópias quase iguais — e a correção de peso pra termo composto foi feita só
+ * aqui, deixando o outro chat errando o mesmo caso.
  */
 export function buscarConceitos(texto: string): TopicoAds[] {
-  const t = normalizar(texto);
-  if (!t) return [];
-
-  const palavras = t.split(" ").filter((p) => p.length >= 3 && !VAZIAS.has(p));
-  if (palavras.length === 0) return [];
-
-  const pontuados = TOPICOS_ADS.map((topico) => {
-    let pontos = 0;
-    for (const termo of topico.termos) {
-      if (t.includes(termo)) {
-        /**
-         * Termo de duas palavras vale mais que de uma: "roas ideal" é sinal
-         * muito mais específico que "roas" solto. Sem esse peso, "qual o roas
-         * ideal?" empatava e caía no tópico genérico de ROAS, respondendo a
-         * pergunta errada com confiança.
-         */
-        pontos += termo.includes(" ") ? 4 : 2;
-      } else if (palavras.some((p) => termo.startsWith(p) && p.length >= 4)) {
-        pontos += 1;
-      }
-    }
-    return { topico, pontos };
-  }).filter((x) => x.pontos > 0);
-
-  pontuados.sort((a, b) => b.pontos - a.pontos);
-  return pontuados.slice(0, 2).map((x) => x.topico);
+  return melhores(texto, TOPICOS_ADS, 2);
 }
 
 /** As perguntas mais úteis pra quem abre o consultor sem saber o que perguntar. */
+/** Os conceitos ligados a este, pra oferecer o próximo passo. */
+export function relacionadosDe(topico: TopicoAds): TopicoAds[] {
+  return (topico.relacionados ?? [])
+    .map((id) => TOPICOS_ADS.find((t) => t.id === id))
+    .filter((t): t is TopicoAds => !!t);
+}
+
 export function conceitosSugeridos(): TopicoAds[] {
   const ids = ["break-even", "roas-ideal", "dependencia"];
   return ids

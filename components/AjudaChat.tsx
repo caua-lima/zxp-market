@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { buscarTopicos, sugestoesPara, type Topico } from "@/lib/domain/ajuda";
+import { buscarTopicos, relacionadosDe, sugestoesPara, type Topico } from "@/lib/domain/ajuda";
 import ChatFlutuante from "@/components/ChatFlutuante";
 
 /**
@@ -110,6 +110,23 @@ export default function AjudaChat({ abaAtual }: { abaAtual?: string }) {
                 <div style={{ fontSize: ".8rem", lineHeight: 1.6, color: "var(--muted)", whiteSpace: "pre-line" }}>
                   {t.resposta}
                 </div>
+
+                {/* O próximo passo. Quem pergunta como informar o custo da
+                    coleta quase sempre pergunta depois por que o resultado
+                    está otimista — é a mesma dúvida em dois momentos. */}
+                {relacionadosDe(t).length > 0 && (
+                  <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    {relacionadosDe(t).map((r) => (
+                      <button
+                        key={r.id} type="button" className="btn btn-ghost btn-xs"
+                        style={{ fontSize: ".68rem", whiteSpace: "normal", textAlign: "left", lineHeight: 1.35 }}
+                        onClick={() => perguntar(r.pergunta)}
+                      >
+                        {r.pergunta}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>

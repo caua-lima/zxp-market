@@ -4,7 +4,9 @@ import { useMemo, useRef, useState } from "react";
 import { fmtBRL } from "@/lib/domain/calc";
 import { interpretarPergunta, type Intencao } from "@/lib/domain/ads-chat";
 import { analisarAnuncio, ordenarPorUrgencia, type VeredictoAds } from "@/lib/domain/ads-consultor";
-import { buscarConceitos, conceitosSugeridos, type ContextoAds } from "@/lib/domain/ads-conhecimento";
+import {
+  buscarConceitos, conceitosSugeridos, relacionadosDe, type ContextoAds,
+} from "@/lib/domain/ads-conhecimento";
 import {
   calcularReferencia, diagnosticarFunil, priorizarPorImpacto, type DadosFunil,
 } from "@/lib/domain/ads-diagnostico";
@@ -33,6 +35,8 @@ type BlocoResposta = {
   metricas: { rotulo: string; valor: string; destaque?: boolean }[];
   /** Frase com os números reais do operador, quando o tópico tem uma. */
   contexto?: string | null;
+  /** Perguntas que costumam vir depois desta — viram botão. */
+  seguintes?: string[];
 };
 
 const TOM_COR: Record<VeredictoAds["tone"], string> = {
@@ -215,6 +219,7 @@ export default function AdsChat({ linhas, metaMargem }: { linhas: LinhaAds[]; me
             motivo: c.resposta,
             metricas: [],
             contexto: c.contextualizar?.(ctx) ?? null,
+            seguintes: relacionadosDe(c).map((r) => r.pergunta),
           })),
         };
       }
@@ -422,6 +427,19 @@ export default function AdsChat({ linhas, metaMargem }: { linhas: LinhaAds[]; me
                       marginBottom: b.metricas.length ? 10 : 0,
                     }}>
                       {b.contexto}
+                    </div>
+                  )}
+                  {b.seguintes && b.seguintes.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: b.metricas.length ? 10 : 0 }}>
+                      {b.seguintes.map((q) => (
+                        <button
+                          key={q} type="button" className="btn btn-ghost btn-xs"
+                          style={{ fontSize: ".68rem", whiteSpace: "normal", textAlign: "left", lineHeight: 1.35 }}
+                          onClick={() => enviar(q)}
+                        >
+                          {q}
+                        </button>
+                      ))}
                     </div>
                   )}
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
