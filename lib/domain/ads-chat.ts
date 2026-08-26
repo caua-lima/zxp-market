@@ -26,12 +26,15 @@
  * com a menta?".
  */
 
+import { buscarConceitos } from "./ads-conhecimento";
+
 export type Intencao =
   | "analisar"        // "o que faço com o menta stronger?"
   | "info"            // "me traga os dados do menta stronger"
   | "listar-ruins"    // "o que está dando prejuízo?"
   | "listar-bons"     // "o que está indo bem?"
   | "resumo"          // "como está o ads no geral?"
+  | "conceito"        // "o que é ROAS ideal?" — pergunta de conhecimento
   | "ajuda"           // não entendi / primeira vez
   | "nao-encontrado"; // entendi a intenção, mas não achei o produto
 
@@ -70,6 +73,13 @@ const VAZIAS = new Set([
   "como", "esta", "estao", "ta", "tao", "e", "sao", "no", "em", "dar", "da",
   "quanto", "quantos", "tudo", "todos", "todas", "geral", "vendas", "venda",
 ]);
+
+/**
+ * Marcas de pergunta CONCEITUAL — quem quer entender uma régua, não ver uma
+ * lista. "mas" entra porque contrasta ("ótimo MAS dá prejuízo"), que é a cara
+ * de quem está confuso com o próprio número.
+ */
+const RE_CONCEITUAL = /(por que|porque|pq |o que e |o que sao |o que significa|significa|diferenca entre|qual a diferenca|quando vale|quando devo|vale a pena|quanto devo|quanto colocar|como funciona|como escolher|como definir|\bmas\b|^devo )/;
 
 const RE_RUINS = /(prejuiz|perdend|ruim|ruins|pior|piores|negativ|vermelh|queimand|desligar|pausar|cortar)/;
 const RE_BONS = /(bom|bons|melhor(?!\s+a\s+se)|melhores|lucrand|lucrativ|positiv|escalar|indo bem|vale a pena)/;
@@ -118,8 +128,24 @@ export function interpretarPergunta(texto: string, titulos: string[]): Leitura {
   const t = normalizar(texto);
   if (!t) return { intencao: "ajuda", alvos: [], termo: "" };
 
-  // Coletivas primeiro: "o que está dando prejuízo" tem "o que", mas não é
-  // sobre um anúncio específico — é uma varredura.
+  /**
+   * PERGUNTA DE ENTENDIMENTO vem antes da varredura.
+   *
+   * "o que está dando prejuízo?" é varredura. "meu ROAS está ótimo mas dá
+   * prejuízo, por quê?" é conceito — e as duas contêm a palavra "prejuízo".
+   * Sem esta checagem, a segunda recebia uma LISTA de anúncios ruins quando o
+   * que se pediu foi uma explicação.
+   *
+   * O que separa é a marca de entendimento ("por quê", "o que é", "quando
+   * vale", "quanto devo"). Só desvia quando existe conceito que responda —
+   * senão a varredura continua sendo a melhor resposta.
+   */
+  if (RE_CONCEITUAL.test(t) && buscarConceitos(texto).length > 0) {
+    return { intencao: "conceito", alvos: [], termo: "" };
+  }
+
+  // Coletivas: "o que está dando prejuízo" tem "o que", mas não é sobre um
+  // anúncio específico — é uma varredura.
   if (RE_RUINS.test(t)) return { intencao: "listar-ruins", alvos: [], termo: "" };
   if (RE_BONS.test(t)) return { intencao: "listar-bons", alvos: [], termo: "" };
   if (RE_RESUMO.test(t)) return { intencao: "resumo", alvos: [], termo: "" };
@@ -131,6 +157,17 @@ export function interpretarPergunta(texto: string, titulos: string[]): Leitura {
     .join(" ");
 
   if (alvos.length === 0) {
+    /**
+     * Nenhum anúncio casou. Antes de desistir, tenta responder como CONCEITO
+     * ("o que é ROAS ideal?") — ver ads-conhecimento.ts.
+     *
+     * Vem depois do casamento por produto de propósito: "o que faço com o
+     * Menta Stronger" tem a palavra "faço", que também aparece em perguntas
+     * conceituais. Produto é mais específico, então ganha.
+     */
+    if (buscarConceitos(texto).length > 0) {
+      return { intencao: "conceito", alvos: [], termo };
+    }
     // Sabemos que ele quer algo de um produto, mas não achamos qual.
     if (RE_ANALISE.test(t) || RE_INFO.test(t)) {
       return { intencao: "nao-encontrado", alvos: [], termo };

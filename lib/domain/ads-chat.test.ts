@@ -98,3 +98,46 @@ describe("interpretarPergunta — intenção", () => {
     expect(interpretarPergunta("o que eu devo desligar?", TITULOS).intencao).toBe("listar-ruins");
   });
 });
+
+describe("interpretarPergunta — entender x varrer", () => {
+  it("'o que está dando prejuízo' VARRE; 'meu roas é ótimo mas dá prejuízo' EXPLICA", () => {
+    // As duas contêm "prejuízo". O que separa é a marca de entendimento.
+    expect(interpretarPergunta("o que está dando prejuízo?", TITULOS).intencao).toBe("listar-ruins");
+    expect(interpretarPergunta("meu roas está ótimo mas dá prejuízo, por quê?", TITULOS).intencao).toBe("conceito");
+  });
+
+  it("'o que devo desligar' VARRE; 'devo desligar no vermelho?' EXPLICA a regra", () => {
+    // "o que devo" pergunta QUAIS; "devo" no início pergunta a regra.
+    expect(interpretarPergunta("o que eu devo desligar?", TITULOS).intencao).toBe("listar-ruins");
+    expect(interpretarPergunta("devo desligar anúncio no vermelho?", TITULOS).intencao).toBe("conceito");
+  });
+
+  it("'quais estão lucrando' VARRE; 'quando vale a pena escalar' EXPLICA", () => {
+    expect(interpretarPergunta("quais estão lucrando?", TITULOS).intencao).toBe("listar-bons");
+    expect(interpretarPergunta("quando vale a pena escalar?", TITULOS).intencao).toBe("conceito");
+  });
+
+  it("conceito NÃO rouba pergunta sobre produto específico", () => {
+    // "o que fazer com o Menta" tem "o que"; produto é mais específico e ganha.
+    const r = interpretarPergunta("o que fazer com o menta stronger?", TITULOS);
+    expect(r.intencao).toBe("analisar");
+    expect(r.alvos).toEqual([0]);
+  });
+
+  it("marca de entendimento sem conceito que responda NÃO vira conceito", () => {
+    // Só desvia quando há resposta; senão a varredura continua melhor.
+    expect(interpretarPergunta("por que a capital da França?", TITULOS).intencao).not.toBe("conceito");
+  });
+
+  it("perguntas de conceito puras", () => {
+    for (const [q, esperado] of [
+      ["o que é ROAS?", "conceito"],
+      ["qual o ROAS ideal?", "conceito"],
+      ["quanto devo colocar de orçamento?", "conceito"],
+      ["qual a diferença entre ACOS e TACOS?", "conceito"],
+      ["o que são CTR e CPC?", "conceito"],
+    ] as const) {
+      expect(interpretarPergunta(q, TITULOS).intencao).toBe(esperado);
+    }
+  });
+});

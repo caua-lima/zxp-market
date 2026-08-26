@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { fmtBRL } from "@/lib/domain/calc";
 import { interpretarPergunta, type Intencao } from "@/lib/domain/ads-chat";
 import { analisarAnuncio, ordenarPorUrgencia, type VeredictoAds } from "@/lib/domain/ads-consultor";
+import { buscarConceitos, conceitosSugeridos, type ContextoAds } from "@/lib/domain/ads-conhecimento";
 import { num, type LinhaAds } from "./ads-types";
 import ChatFlutuante from "@/components/ChatFlutuante";
 
@@ -27,6 +28,8 @@ type BlocoResposta = {
   tone: VeredictoAds["tone"];
   motivo: string;
   metricas: { rotulo: string; valor: string; destaque?: boolean }[];
+  /** Frase com os números reais do operador, quando o tópico tem uma. */
+  contexto?: string | null;
 };
 
 const TOM_COR: Record<VeredictoAds["tone"], string> = {
@@ -174,6 +177,42 @@ export default function AdsChat({ linhas, metaMargem }: { linhas: LinhaAds[]; me
         };
       }
 
+      case "conceito": {
+        /**
+         * Pergunta de CONHECIMENTO ("o que é ROAS ideal?"). O texto do
+         * conceito é fixo e escrito à mão; os números que acompanham vêm de
+         * `contextualizar`, alimentado pelos agregados reais do período —
+         * nunca de texto pronto, que envelheceria e viraria mentira.
+         */
+        const ctx: ContextoAds = {
+          comInvestimento: linhas.filter((l) => l.i.cost > 0).length,
+          investidoTotal: linhas.reduce((s, l) => s + l.i.cost, 0),
+          vendaDiretaTotal: linhas.reduce((s, l) => s + l.i.directSales, 0),
+          vendaTotal: linhas.reduce((s, l) => s + l.i.totalSales, 0),
+          metaMargem,
+          abaixoDoBreakEven: linhas.filter((l) => l.abaixoDoBreakEven).length,
+          abaixoDoIdeal: linhas.filter((l) => l.abaixoDoIdeal).length,
+          negativosAntesDoAds: linhas.filter((l) => l.v > 0 && l.i.lucroAntesAds <= 0).length,
+          roasIdealMedio: (() => {
+            const ideais = linhas.map((l) => l.roasIdeal).filter((v): v is number => v != null);
+            return ideais.length ? ideais.reduce((a, b) => a + b, 0) / ideais.length : null;
+          })(),
+          semVinculo: linhas.filter((l) => l.lucroAtual == null).length,
+        };
+        const conceitos = buscarConceitos(pergunta);
+        return {
+          de: "consultor",
+          texto: "",
+          blocos: conceitos.map((c) => ({
+            titulo: c.pergunta,
+            tone: "info" as const,
+            motivo: c.resposta,
+            metricas: [],
+            contexto: c.contextualizar?.(ctx) ?? null,
+          })),
+        };
+      }
+
       case "nao-encontrado":
         return semDado(
           `Não achei nenhum anúncio com "${termo}" no período selecionado. `
@@ -182,8 +221,9 @@ export default function AdsChat({ linhas, metaMargem }: { linhas: LinhaAds[]; me
 
       default:
         return semDado(
-          "Posso responder sobre os anúncios do período selecionado. Tente algo como "
-          + EXEMPLOS.map((e) => `“${e}”`).join(", ") + ".",
+          "Posso responder sobre os SEUS anúncios (“o que fazer com o Menta Stronger?”, "
+          + "“o que está dando prejuízo?”) e também sobre conceitos de publicidade "
+          + conceitosSugeridos().map((c) => `“${c.pergunta}”`).join(", ") + ".",
         );
     }
   }
@@ -248,9 +288,19 @@ export default function AdsChat({ linhas, metaMargem }: { linhas: LinhaAds[]; me
                   <div style={{ fontWeight: 700, fontSize: ".85rem", color: TOM_COR[b.tone], marginBottom: 6 }}>
                     {b.titulo}
                   </div>
-                  <div style={{ fontSize: ".82rem", lineHeight: 1.6, color: "var(--text)", marginBottom: 10 }}>
+                  {/* pre-line preserva os passos e parágrafos das explicações. */}
+                  <div style={{ fontSize: ".82rem", lineHeight: 1.6, color: "var(--text)", marginBottom: b.contexto || b.metricas.length ? 10 : 0, whiteSpace: "pre-line" }}>
                     {b.motivo}
                   </div>
+                  {b.contexto && (
+                    <div style={{
+                      fontSize: ".8rem", lineHeight: 1.55, color: "var(--text)", fontWeight: 600,
+                      background: "var(--warning-soft)", borderRadius: 8, padding: "8px 10px",
+                      marginBottom: b.metricas.length ? 10 : 0,
+                    }}>
+                      {b.contexto}
+                    </div>
+                  )}
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                     {b.metricas.map((met) => (
                       <div key={met.rotulo} style={{ minWidth: 92 }}>
