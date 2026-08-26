@@ -514,9 +514,37 @@ function VendasDoDiaHero({ hoje }: { hoje?: HojeBreakdown }) {
   const tacos = h.faturamentoBruto > 0 ? (h.totalAds / h.faturamentoBruto) * 100 : null;
   const vendaDiretaAds = h.vendaDiretaAds ?? 0;
 
-  const stats: { label: string; icon: string; value: number; color: string }[] = [
+  /**
+   * ── Os dois ROAS ──
+   *
+   * DIRETO   = venda por clique no anúncio ÷ investido. Responde "cada real
+   *            de anúncio trouxe quantos de venda ATRIBUÍDA?". É a medida da
+   *            campanha em si.
+   * GERAL    = faturamento do dia ÷ investido. Responde "cada real de anúncio
+   *            acompanhou quantos de venda TOTAL?" — inclui a venda orgânica,
+   *            que o Ads não trouxe. Sempre maior que o direto, e não é mérito
+   *            da campanha; serve pra dimensionar o peso do Ads na operação.
+   *
+   * Mesma distinção que a aba Ads faz entre os modos "publicidade" e "geral".
+   * Sem investimento no dia, os dois ficam nulos em vez de virar divisão por
+   * zero (ou pior, um "0,00x" que pareceria péssimo desempenho).
+   */
+  const roasDireto = h.totalAds > 0 ? vendaDiretaAds / h.totalAds : null;
+  const roasGeral = h.totalAds > 0 ? h.faturamentoBruto / h.totalAds : null;
+
+  const roasFmt = (v: number) => `${v.toFixed(2).replace(".", ",")}x`;
+
+  const stats: { label: string; icon: string; value: number | null; color: string; fmt?: (v: number) => string; hint?: string }[] = [
     { label: "Faturamento bruto", icon: "", value: h.faturamentoBruto, color: "var(--green)" },
     { label: "Vendas por ADS",    icon: "", value: vendaDiretaAds,     color: "var(--green)" },
+    {
+      label: "ROAS direto", icon: "", value: roasDireto, color: "var(--text)", fmt: roasFmt,
+      hint: "Venda por clique no anúncio ÷ investido em ADS. Mede a campanha. Não confunda com lucro: cobrir o investimento não cobre o custo do produto.",
+    },
+    {
+      label: "ROAS geral", icon: "", value: roasGeral, color: "var(--text)", fmt: roasFmt,
+      hint: "Faturamento do dia inteiro ÷ investido em ADS. Inclui a venda orgânica, que o ADS não trouxe — serve pra dimensionar o peso do ADS, não pra avaliar a campanha.",
+    },
     { label: "CMV (produto)",     icon: "", value: h.totalCMV,         color: "var(--red)" },
     { label: "Frete/Full",        icon: "", value: h.totalEnvio,       color: "var(--red)" },
     { label: "Taxas ML",          icon: "", value: h.totalTaxasML,     color: "var(--red)" },
@@ -549,9 +577,13 @@ function VendasDoDiaHero({ hoje }: { hoje?: HojeBreakdown }) {
       </div>
       <div className="hero-grid">
         {stats.map((s) => (
-          <div key={s.label} className="hero-stat">
+          <div key={s.label} className="hero-stat" title={s.hint}>
             <div className="lbl">{s.icon} {s.label}</div>
-            <div className="val" style={{ color: s.color }}>{fmtBRL(s.value)}</div>
+            {/* null = sem base pra calcular (ex.: nenhum investimento no dia).
+                Mostra "—", nunca 0 — zero aqui pareceria desempenho péssimo. */}
+            <div className="val" style={{ color: s.value == null ? "var(--muted)" : s.color }}>
+              {s.value == null ? "—" : (s.fmt ?? fmtBRL)(s.value)}
+            </div>
           </div>
         ))}
       </div>
@@ -559,6 +591,10 @@ function VendasDoDiaHero({ hoje }: { hoje?: HojeBreakdown }) {
         Lucro líquido = retorno − CMV − ADS − Full − taxas ML − imposto ·{" "}
         <span title="Receita das vendas em que o comprador clicou no anúncio pago. Não inclui venda assistida (viu o anúncio e comprou depois por outro caminho), que o painel do ML soma em 'vendas atribuídas'.">
           “Vendas por ADS” conta só o clique direto
+        </span>{" "}
+        ·{" "}
+        <span title="ROAS direto usa só a venda atribuída ao anúncio; o geral usa o faturamento inteiro do dia, que inclui venda orgânica.">
+          ROAS direto mede a campanha, o geral mede o peso do ADS
         </span>
       </div>
     </section>
