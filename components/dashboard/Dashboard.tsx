@@ -19,6 +19,10 @@ import {
   prevPeriod,
 } from "@/lib/domain/calc";
 import { calcularMetaDiaria, idealAteHoje } from "@/lib/domain/meta-diaria";
+import {
+  custoPorPedido, margemReal, margemSemAds, roasBreakEven, roasDireto, roasGeral,
+  ticketMedio, unidadesPorPedido, variacao, type EntradaDia,
+} from "@/lib/domain/resumo-dia";
 import type { UserData } from "@/components/useUserData";
 import { useAccess } from "@/components/tabs/AccessGuard";
 import ExpensesDoughnut from "./ExpensesDoughnut";
@@ -69,6 +73,9 @@ type HojeBreakdown = {
   pedidos:          number;
   /** Receita das vendas por CLIQUE no anúncio pago (sem assistida). */
   vendaDiretaAds?:  number;
+  unidadesVendidas?: number;
+  /** O anúncio que mais faturou no dia. null = nenhuma venda apurada. */
+  produtoTop?: { titulo: string; receita: number; unidades: number } | null;
 };
 
 type MlMetrics = {
@@ -495,98 +502,168 @@ function HojeVsOntem({ hoje, ontem }: { hoje?: HojeBreakdown; ontem: MlMetrics |
 }
 
 // ── Vendas do Dia (hero) ───────────────────────────────────────
-function VendasDoDiaHero({ hoje }: { hoje?: HojeBreakdown }) {
-  const h: HojeBreakdown = hoje ?? {
+function VendasDoDiaHero({ hoje, ontem }: { hoje?: HojeBreakdown; ontem?: HojeBreakdown | null }) {
+  const vazio: HojeBreakdown = {
     faturamentoBruto: 0, faturamentoLiquido: 0, vendasCanceladas: 0, vendasDevolvidas: 0,
     totalCMV: 0, totalAds: 0, totalEnvio: 0,
     totalTaxasML: 0, totalImposto: 0, lucroLiquido: 0, pedidos: 0,
   };
-  const margem = h.faturamentoBruto > 0 ? (h.lucroLiquido / h.faturamentoBruto) * 100 : 0;
+  const h: HojeBreakdown = hoje ?? vazio;
+
+  const paraDominio = (b: HojeBreakdown): EntradaDia => ({
+    faturamentoBruto: b.faturamentoBruto, totalCMV: b.totalCMV, totalEnvio: b.totalEnvio,
+    totalTaxasML: b.totalTaxasML, totalImposto: b.totalImposto, totalAds: b.totalAds,
+    lucroLiquido: b.lucroLiquido, pedidos: b.pedidos,
+    unidades: b.unidadesVendidas ?? 0, vendaDiretaAds: b.vendaDiretaAds ?? 0,
+  });
+  const d = paraDominio(h);
+  const dOntem = ontem ? paraDominio(ontem) : null;
+
+  const margem = margemReal(d) ?? 0;
+  const semAds = margemSemAds(d);
+  const bkEven = roasBreakEven(d);
+  const rDireto = roasDireto(d);
+  const rGeral = roasGeral(d);
 
   /**
    * TACOS — quanto do faturamento do dia foi embora em publicidade.
-   *
-   * Divide pelo faturamento TOTAL, não pelo que o Ads vendeu: é a pergunta
-   * "quanto da minha receita eu paguei de anúncio hoje", e é ela que se
-   * compara com a margem. Dividir pela venda de Ads daria ACOS, que responde
-   * outra coisa (eficiência da campanha) e já vive na aba Ads.
+   * Divide pelo faturamento TOTAL: é a pergunta "quanto da minha receita eu
+   * paguei de anúncio", e é ela que se compara com a margem.
    */
   const tacos = h.faturamentoBruto > 0 ? (h.totalAds / h.faturamentoBruto) * 100 : null;
-  const vendaDiretaAds = h.vendaDiretaAds ?? 0;
-
-  /**
-   * ── Os dois ROAS ──
-   *
-   * DIRETO   = venda por clique no anúncio ÷ investido. Responde "cada real
-   *            de anúncio trouxe quantos de venda ATRIBUÍDA?". É a medida da
-   *            campanha em si.
-   * GERAL    = faturamento do dia ÷ investido. Responde "cada real de anúncio
-   *            acompanhou quantos de venda TOTAL?" — inclui a venda orgânica,
-   *            que o Ads não trouxe. Sempre maior que o direto, e não é mérito
-   *            da campanha; serve pra dimensionar o peso do Ads na operação.
-   *
-   * Mesma distinção que a aba Ads faz entre os modos "publicidade" e "geral".
-   * Sem investimento no dia, os dois ficam nulos em vez de virar divisão por
-   * zero (ou pior, um "0,00x" que pareceria péssimo desempenho).
-   */
-  const roasDireto = h.totalAds > 0 ? vendaDiretaAds / h.totalAds : null;
-  const roasGeral = h.totalAds > 0 ? h.faturamentoBruto / h.totalAds : null;
 
   const roasFmt = (v: number) => `${v.toFixed(2).replace(".", ",")}x`;
+  const pctFmt = (v: number) => `${v.toFixed(1).replace(".", ",")}%`;
+  const unFmt = (v: number) => `${v.toFixed(0)} un`;
+  const unPedFmt = (v: number) => `${v.toFixed(2).replace(".", ",")} un/ped`;
 
-  const stats: { label: string; icon: string; value: number | null; color: string; fmt?: (v: number) => string; hint?: string }[] = [
-    { label: "Faturamento bruto", icon: "", value: h.faturamentoBruto, color: "var(--green)" },
-    { label: "Vendas por ADS",    icon: "", value: vendaDiretaAds,     color: "var(--green)" },
+  /**
+   * Cor do ROAS medida contra o break-even REAL do dia, não contra 1x.
+   * 1x significa "o anúncio devolveu o que custou", que ainda é prejuízo:
+   * falta cobrir CMV, frete, taxa e imposto. Sem break-even apurado a cor
+   * fica neutra em vez de chutar um limiar.
+   */
+  const corRoas = (v: number | null) =>
+    v == null || bkEven == null ? "var(--text)" : v >= bkEven ? "var(--green)" : "var(--red)";
+
+  type Stat = {
+    label: string; value: number | null; color: string;
+    fmt?: (v: number) => string; hint?: string;
+    /** Mesmo campo de ontem, pra seta de comparação. */
+    anterior?: number | null;
+  };
+
+  const stats: Stat[] = [
     {
-      label: "ROAS direto", icon: "", value: roasDireto, color: "var(--text)", fmt: roasFmt,
-      hint: "Venda por clique no anúncio ÷ investido em ADS. Mede a campanha. Não confunda com lucro: cobrir o investimento não cobre o custo do produto.",
+      label: "Faturamento bruto", value: h.faturamentoBruto, color: "var(--green)",
+      anterior: dOntem?.faturamentoBruto,
     },
     {
-      label: "ROAS geral", icon: "", value: roasGeral, color: "var(--text)", fmt: roasFmt,
-      hint: "Faturamento do dia inteiro ÷ investido em ADS. Inclui a venda orgânica, que o ADS não trouxe — serve pra dimensionar o peso do ADS, não pra avaliar a campanha.",
+      label: "Ticket médio", value: ticketMedio(d), color: "var(--text)",
+      anterior: dOntem ? ticketMedio(dOntem) : undefined,
+      hint: "Faturamento ÷ pedidos. Cair com o mesmo número de pedidos quer dizer que mudou O QUE está vendendo, não quanto.",
     },
-    { label: "CMV (produto)",     icon: "", value: h.totalCMV,         color: "var(--red)" },
-    { label: "Frete/Full",        icon: "", value: h.totalEnvio,       color: "var(--red)" },
-    { label: "Taxas ML",          icon: "", value: h.totalTaxasML,     color: "var(--red)" },
-    { label: "Imposto",           icon: "", value: h.totalImposto,     color: "var(--red)" },
-    { label: "Gasto com ADS",     icon: "", value: h.totalAds,         color: "var(--red)" },
-    { label: "Lucro líquido",     icon: "", value: h.lucroLiquido,     color: h.lucroLiquido >= 0 ? "var(--green)" : "var(--red)" },
+    {
+      label: "Unidades", value: h.unidadesVendidas ?? null, color: "var(--text)", fmt: unFmt,
+      anterior: dOntem?.unidades,
+      hint: "Unidades vendidas no dia. Vinte pedidos podem ser vinte ou sessenta unidades — muda a leitura do estoque.",
+    },
+    {
+      label: "Un. por pedido", value: unidadesPorPedido(d), color: "var(--text)", fmt: unPedFmt,
+      anterior: dOntem ? unidadesPorPedido(dOntem) : undefined,
+      hint: "Quantos itens o comprador leva junto, em média.",
+    },
+    {
+      label: "Vendas por ADS", value: h.vendaDiretaAds ?? 0, color: "var(--green)",
+      anterior: dOntem?.vendaDiretaAds,
+      hint: "Receita das vendas em que o comprador clicou no anúncio pago. Não inclui venda assistida.",
+    },
+    {
+      label: "ROAS direto", value: rDireto, color: corRoas(rDireto), fmt: roasFmt,
+      hint: bkEven != null
+        ? `Venda por clique ÷ investido. Verde acima do break-even do dia (${roasFmt(bkEven)}), que é onde o ADS começa a dar lucro de verdade.`
+        : "Venda por clique no anúncio ÷ investido em ADS. Mede a campanha.",
+    },
+    {
+      label: "ROAS geral", value: rGeral, color: corRoas(rGeral), fmt: roasFmt,
+      hint: "Faturamento do dia inteiro ÷ investido em ADS. Inclui a venda orgânica, que o ADS não trouxe — dimensiona o peso do ADS, não o mérito da campanha.",
+    },
+    {
+      label: "ROAS de equilíbrio", value: bkEven, color: "var(--warning)", fmt: roasFmt,
+      hint: "O ROAS mínimo pra o ADS não dar prejuízo hoje, com os custos reais do dia (receita ÷ lucro antes do ADS). Abaixo disso, cada real investido tira do lucro.",
+    },
+    { label: "CMV (produto)", value: h.totalCMV, color: "var(--red)", anterior: dOntem?.totalCMV },
+    {
+      label: "Custo por pedido", value: custoPorPedido(d), color: "var(--red)",
+      anterior: dOntem ? custoPorPedido(dOntem) : undefined,
+      hint: "CMV + frete + taxas + imposto, dividido pelos pedidos. Não inclui ADS. É o piso pra pensar preço.",
+    },
+    { label: "Frete/Full", value: h.totalEnvio, color: "var(--red)", anterior: dOntem?.totalEnvio },
+    { label: "Taxas ML", value: h.totalTaxasML, color: "var(--red)", anterior: dOntem?.totalTaxasML },
+    { label: "Imposto", value: h.totalImposto, color: "var(--red)", anterior: dOntem?.totalImposto },
+    { label: "Gasto com ADS", value: h.totalAds, color: "var(--red)", anterior: dOntem?.totalAds },
+    {
+      label: "Margem sem ADS", value: semAds, color: "var(--text)", fmt: pctFmt,
+      hint: "A margem que o dia teria sem nenhum investimento em publicidade. A diferença pra margem real é o custo do ADS em pontos de margem — que é como se decide verba.",
+    },
+    {
+      label: "Lucro líquido", value: h.lucroLiquido, color: h.lucroLiquido >= 0 ? "var(--green)" : "var(--red)",
+      anterior: dOntem?.lucroLiquido,
+    },
   ];
+
+  const top = h.produtoTop;
 
   return (
     <section className="hero">
       <div className="hero-head">
         <span className="hero-title">Vendas do Dia</span>
         <span className="hero-badge">
-          {h.pedidos} pedido(s) · margem <b style={{ color: margem >= 0 ? "var(--green)" : "var(--red)" }}>{margem.toFixed(1)}%</b>
+          {h.pedidos} pedido(s) · margem <b style={{ color: margem >= 0 ? "var(--green)" : "var(--red)" }}>{pctFmt(margem)}</b>
           {tacos != null && (
             <>
               {" · "}ADS{" "}
-              {/* Vermelho quando o anúncio come mais que a margem que sobrou:
-                  aí cada real de venda a mais está estreitando o resultado. */}
+              {/* Vermelho quando o anúncio come mais que a margem que sobrou. */}
               <b
                 style={{ color: tacos > Math.max(margem, 0) ? "var(--red)" : "var(--text)" }}
                 title="Quanto do faturamento do dia foi gasto em publicidade (TACOS). Fica vermelho quando passa da margem."
               >
-                {tacos.toFixed(1)}%
+                {pctFmt(tacos)}
               </b>
               {" do faturamento"}
             </>
           )}
         </span>
       </div>
+
       <div className="hero-grid">
-        {stats.map((s) => (
-          <div key={s.label} className="hero-stat" title={s.hint}>
-            <div className="lbl">{s.icon} {s.label}</div>
-            {/* null = sem base pra calcular (ex.: nenhum investimento no dia).
-                Mostra "—", nunca 0 — zero aqui pareceria desempenho péssimo. */}
-            <div className="val" style={{ color: s.value == null ? "var(--muted)" : s.color }}>
-              {s.value == null ? "—" : (s.fmt ?? fmtBRL)(s.value)}
+        {stats.map((s) => {
+          const v = s.anterior != null && s.value != null ? variacao(s.value, s.anterior) : null;
+          return (
+            <div key={s.label} className="hero-stat" title={s.hint}>
+              <div className="lbl">{s.label}</div>
+              {/* null = sem base pra calcular. Mostra "—", nunca 0 — zero aqui
+                  seria lido como resultado real. */}
+              <div className="val" style={{ color: s.value == null ? "var(--muted)" : s.color }}>
+                {s.value == null ? "—" : (s.fmt ?? fmtBRL)(s.value)}
+              </div>
+              {v && (v.pct != null || v.vindoDoZero) && (
+                <div style={{ fontSize: ".65rem", fontWeight: 700, color: v.subiu ? "var(--green)" : "var(--red)" }}>
+                  {v.vindoDoZero ? "novo vs ontem" : `${v.subiu ? "↑" : "↓"} ${Math.abs(v.pct!).toFixed(0)}% vs ontem`}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
+      {top && (
+        <div style={{ marginTop: 10, fontSize: ".78rem", color: "var(--muted)" }}>
+          Mais faturou hoje: <b style={{ color: "var(--text)" }}>{top.titulo}</b>{" "}
+          — {fmtBRL(top.receita)} em {top.unidades} un
+        </div>
+      )}
+
       <div className="hero-foot">
         Lucro líquido = retorno − CMV − ADS − Full − taxas ML − imposto ·{" "}
         <span title="Receita das vendas em que o comprador clicou no anúncio pago. Não inclui venda assistida (viu o anúncio e comprou depois por outro caminho), que o painel do ML soma em 'vendas atribuídas'.">
@@ -1837,7 +1914,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
           {selectedDay && <DayDetailModal date={selectedDay} onClose={() => setSelectedDay(null)} />}
 
           {/* Vendas do dia */}
-          <VendasDoDiaHero hoje={mlMetrics?.hoje} />
+          <VendasDoDiaHero hoje={mlMetrics?.hoje} ontem={ontemMetrics?.hoje} />
 
           {/* Resultado do período */}
           <section>

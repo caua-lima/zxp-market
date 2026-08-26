@@ -801,6 +801,18 @@ export async function GET(req: Request) {
          * publicidade trouxe (ver getAdsGastoEDireto).
          */
         vendaDiretaAds: adsHojeResumo.vendaDiretaTotal,
+        unidadesVendidas: aggHoje.unidadesVendidas,
+        /**
+         * O anúncio que mais FATUROU hoje. Só o topo — o card mostra um, e
+         * mandar a lista inteira de anúncios num payload que já é grande não
+         * pagaria o custo.
+         */
+        produtoTop: (() => {
+          const comReceita = aggHoje.anuncios.filter((a) => a.retorno > 0);
+          if (comReceita.length === 0) return null;
+          const top = comReceita.reduce((m, a) => (a.retorno > m.retorno ? a : m));
+          return { titulo: top.title, receita: top.retorno, unidades: top.qty };
+        })(),
       },
       /**
        * ── Conciliação com o Seller Center ──

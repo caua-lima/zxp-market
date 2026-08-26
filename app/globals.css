@@ -488,7 +488,11 @@ canvas.chart-canvas{width:100%!important;height:100%!important}
 }
 
 @media(max-width:440px){
-  .hero-grid{grid-template-columns:1fr}
+  /* O card do dia tem 16 métricas: em coluna única dava 1833px de altura no
+     iPhone (medido), quase cinco telas de rolagem só nele. Em duas colunas cai
+     pra 777px e nenhum valor é cortado — o .val usa container query e encolhe
+     dentro do cartão. O kpi-grid segue em coluna única: são poucos cartões,
+     com números maiores. */
   .kpi-grid{grid-template-columns:1fr}
   .acct-chip{font-size:.74rem;padding:7px 10px}
   .seg-btn{padding:7px 10px;font-size:.76rem}
