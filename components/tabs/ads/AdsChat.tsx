@@ -5,6 +5,7 @@ import { fmtBRL } from "@/lib/domain/calc";
 import { interpretarPergunta, type Intencao } from "@/lib/domain/ads-chat";
 import { analisarAnuncio, ordenarPorUrgencia, type VeredictoAds } from "@/lib/domain/ads-consultor";
 import { num, type LinhaAds } from "./ads-types";
+import ChatFlutuante from "@/components/ChatFlutuante";
 
 /**
  * Consultor de Ads em forma de conversa.
@@ -198,18 +199,23 @@ export default function AdsChat({ linhas, metaMargem }: { linhas: LinhaAds[]; me
   }
 
   return (
-    <section className="panel">
-      <div className="panel-head" style={{ marginBottom: 10 }}>
-        <span className="panel-title">Consultor de Ads</span>
-        <span className="panel-sub">
-          pergunte em português — responde com os números desta aba, sem enviar nada pra fora
-        </span>
-      </div>
-
+    <ChatFlutuante
+      titulo="Consultor de Ads"
+      subtitulo="responde com os números desta aba"
+      rotuloBotao="Abrir consultor de Ads"
+      icone="✦"
+      corpo={<>
       {msgs.length === 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: ".82rem", color: "var(--text)", lineHeight: 1.5, marginBottom: 2 }}>
+            Pergunte em português sobre os anúncios do período. Por exemplo:
+          </div>
           {EXEMPLOS.map((e) => (
-            <button key={e} type="button" className="btn btn-ghost btn-xs" onClick={() => enviar(e)}>
+            <button
+              key={e} type="button" className="btn btn-ghost btn-xs"
+              style={{ textAlign: "left", justifyContent: "flex-start", whiteSpace: "normal", lineHeight: 1.4 }}
+              onClick={() => enviar(e)}
+            >
               {e}
             </button>
           ))}
@@ -217,7 +223,7 @@ export default function AdsChat({ linhas, metaMargem }: { linhas: LinhaAds[]; me
       )}
 
       {msgs.length > 0 && (
-        <div style={{ maxHeight: 460, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, marginBottom: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {msgs.map((m, idx) => (
             <div key={idx} style={{ alignSelf: m.de === "voce" ? "flex-end" : "flex-start", maxWidth: m.de === "voce" ? "80%" : "100%", width: m.de === "voce" ? undefined : "100%" }}>
               <div
@@ -264,22 +270,26 @@ export default function AdsChat({ linhas, metaMargem }: { linhas: LinhaAds[]; me
           <div ref={fimRef} />
         </div>
       )}
-
-      <form
-        onSubmit={(e) => { e.preventDefault(); enviar(texto); }}
-        style={{ display: "flex", gap: 8 }}
-      >
-        <input
-          className="inp"
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          placeholder="Ex: o que fazer com o Menta Stronger?"
-          aria-label="Pergunta sobre os anúncios"
-        />
-        <button type="submit" className="btn btn-primary" disabled={!texto.trim()}>
-          Perguntar
-        </button>
-      </form>
-    </section>
+      </>}
+      rodape={
+        <form
+          onSubmit={(e) => { e.preventDefault(); enviar(texto); }}
+          style={{ display: "flex", gap: 6 }}
+        >
+          <input
+            className="inp"
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder="Ex: o que fazer com o Menta Stronger?"
+            aria-label="Pergunta sobre os anúncios"
+            // 16px evita o zoom automatico do iOS ao focar o campo.
+            style={{ fontSize: 16 }}
+          />
+          <button type="submit" className="btn btn-primary btn-sm" disabled={!texto.trim()}>
+            Perguntar
+          </button>
+        </form>
+      }
+    />
   );
 }

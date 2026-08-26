@@ -419,9 +419,11 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
 
                   <AdsDecisionPanel linhas={linhas} changelog={changelog} onAbrirAnuncio={abrirAnuncio} />
 
-                  {/* Logo abaixo do painel de decisão: ele mostra os grupos
-                      prontos, o chat responde o "e este aqui especificamente?".
-                      Usa as MESMAS `linhas`, então os números nunca divergem. */}
+                  {/* Flutuante (position:fixed), então a posição no JSX não
+                      afeta o layout — fica aqui só pra receber as MESMAS
+                      `linhas` do painel acima e nunca divergir nos números.
+                      Na aba Ads este é o ÚNICO chat: o de dúvidas se esconde
+                      aqui (ver app/page.tsx) pra não haver dois no canto. */}
                   <AdsChat linhas={linhas} metaMargem={metaMargem} />
 
                   <AdsDataQuality

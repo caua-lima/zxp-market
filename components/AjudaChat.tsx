@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { buscarTopicos, sugestoesPara, type Topico } from "@/lib/domain/ajuda";
+import ChatFlutuante from "@/components/ChatFlutuante";
 
 /**
  * Chat de dúvidas sobre o sistema — flutuante, disponível em toda tela.
@@ -30,14 +31,6 @@ export default function AjudaChat({ abaAtual }: { abaAtual?: string }) {
   const [texto, setTexto] = useState("");
   const fimRef = useRef<HTMLDivElement>(null);
 
-  // Esc fecha — é o que se espera de qualquer sobreposição.
-  useEffect(() => {
-    if (!aberto) return;
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") setAberto(false); }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [aberto]);
-
   function perguntar(pergunta: string) {
     const q = pergunta.trim();
     if (!q) return;
@@ -62,59 +55,15 @@ export default function AjudaChat({ abaAtual }: { abaAtual?: string }) {
 
   const sugestoes = sugestoesPara(abaAtual);
 
-  if (!aberto) {
-    return (
-      <button
-        type="button"
-        onClick={() => setAberto(true)}
-        aria-label="Abrir ajuda"
-        title="Dúvidas sobre o sistema"
-        style={{
-          position: "fixed", right: 18, bottom: 18, zIndex: 60,
-          width: 48, height: 48, borderRadius: "50%",
-          background: "var(--brand)", color: "#10100E",
-          border: "none", cursor: "pointer", fontSize: "1.2rem", fontWeight: 700,
-          boxShadow: "0 4px 14px rgba(0,0,0,.35)",
-          // Respeita o notch/barra inferior do iPhone.
-          marginBottom: "env(safe-area-inset-bottom, 0px)",
-        }}
-      >
-        ?
-      </button>
-    );
-  }
-
   return (
-    <div
-      role="dialog"
-      aria-label="Ajuda"
-      style={{
-        position: "fixed", right: 18, bottom: 18, zIndex: 60,
-        width: "min(380px, calc(100vw - 36px))",
-        maxHeight: "min(560px, calc(100vh - 36px))",
-        display: "flex", flexDirection: "column",
-        background: "var(--surface)", border: "1px solid var(--border)",
-        borderRadius: 14, boxShadow: "0 10px 34px rgba(0,0,0,.45)",
-        marginBottom: "env(safe-area-inset-bottom, 0px)",
-      }}
-    >
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "11px 14px", borderBottom: "1px solid var(--border)",
-      }}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: ".88rem", color: "var(--text)" }}>Dúvidas</div>
-          <div style={{ fontSize: ".7rem", color: "var(--muted)" }}>como usar o sistema</div>
-        </div>
-        <button
-          type="button" onClick={() => setAberto(false)} aria-label="Fechar ajuda"
-          style={{ background: "none", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: "1.1rem", lineHeight: 1 }}
-        >
-          ✕
-        </button>
-      </div>
-
-      <div style={{ flex: 1, overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+    <ChatFlutuante
+      titulo="Dúvidas"
+      subtitulo="como usar o sistema"
+      rotuloBotao="Abrir ajuda"
+      icone="?"
+      aberto={aberto}
+      onAberto={setAberto}
+      corpo={<>
         {msgs.length === 0 && (
           <>
             <div style={{ fontSize: ".82rem", color: "var(--text)", lineHeight: 1.5 }}>
@@ -166,24 +115,25 @@ export default function AjudaChat({ abaAtual }: { abaAtual?: string }) {
           </div>
         ))}
         <div ref={fimRef} />
-      </div>
-
-      <form
-        onSubmit={(e) => { e.preventDefault(); perguntar(texto); }}
-        style={{ display: "flex", gap: 6, padding: 12, borderTop: "1px solid var(--border)" }}
-      >
-        <input
-          className="inp"
-          value={texto}
-          onChange={(e) => setTexto(e.target.value)}
-          placeholder="Ex: como altero o custo de entrada?"
-          aria-label="Sua dúvida"
-          style={{ fontSize: 16 }}
-        />
-        <button type="submit" className="btn btn-primary btn-sm" disabled={!texto.trim()}>
-          Enviar
-        </button>
-      </form>
-    </div>
+      </>}
+      rodape={
+        <form
+          onSubmit={(e) => { e.preventDefault(); perguntar(texto); }}
+          style={{ display: "flex", gap: 6 }}
+        >
+          <input
+            className="inp"
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder="Ex: como altero o custo de entrada?"
+            aria-label="Sua dúvida"
+            style={{ fontSize: 16 }}
+          />
+          <button type="submit" className="btn btn-primary btn-sm" disabled={!texto.trim()}>
+            Enviar
+          </button>
+        </form>
+      }
+    />
   );
 }
