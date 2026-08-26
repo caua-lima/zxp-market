@@ -5,6 +5,9 @@ import { fmtBRL } from "@/lib/domain/calc";
 import { interpretarPergunta, type Intencao } from "@/lib/domain/ads-chat";
 import { analisarAnuncio, ordenarPorUrgencia, type VeredictoAds } from "@/lib/domain/ads-consultor";
 import { buscarConceitos, conceitosSugeridos, type ContextoAds } from "@/lib/domain/ads-conhecimento";
+import {
+  calcularReferencia, diagnosticarFunil, priorizarPorImpacto, type DadosFunil,
+} from "@/lib/domain/ads-diagnostico";
 import { num, type LinhaAds } from "./ads-types";
 import ChatFlutuante from "@/components/ChatFlutuante";
 
@@ -40,10 +43,11 @@ const TOM_COR: Record<VeredictoAds["tone"], string> = {
 };
 
 const EXEMPLOS = [
-  "O que fazer com o Menta Stronger?",
+  "O que arrumo primeiro?",
+  "Por que o Menta Stronger não vende?",
   "O que está dando prejuízo?",
-  "Me traga os dados do Eucalipto",
-  "Como está o Ads no geral?",
+  "Qual o ROAS ideal?",
+  "Quanto gastei em Ads?",
 ];
 
 /** As métricas que o operador pediu, na ordem em que ele decide. */
@@ -79,12 +83,14 @@ function blocoDe(l: LinhaAds, metaMargem: number): BlocoResposta {
 export default function AdsChat({ linhas, metaMargem }: { linhas: LinhaAds[]; metaMargem: number }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [texto, setTexto] = useState("");
+  // Última intenção, pra pergunta curta ("e o Eucalipto?") herdar o assunto.
+  const [ultimaIntencao, setUltimaIntencao] = useState<Intencao | undefined>(undefined);
   const fimRef = useRef<HTMLDivElement>(null);
 
   const titulos = useMemo(() => linhas.map((l) => l.i.title), [linhas]);
 
   function responder(pergunta: string): Msg {
-    const { intencao, alvos, termo } = interpretarPergunta(pergunta, titulos);
+    const { intencao, alvos, termo } = interpretarPergunta(pergunta, titulos, ultimaIntencao);
 
     const semDado = (t: string): Msg => ({ de: "consultor", texto: t });
 
@@ -213,6 +219,120 @@ export default function AdsChat({ linhas, metaMargem }: { linhas: LinhaAds[]; me
         };
       }
 
+      case "diagnosticar": {
+        /**
+         * Onde o funil fura. A régua é a MEDIANA DA PRÓPRIA CONTA — ver
+         * ads-diagnostico.ts pra por que não usamos benchmark de mercado.
+         */
+        const universo: DadosFunil[] = linhas.map((l) => ({
+          titulo: l.i.title, impressoes: l.i.prints, cliques: l.i.clicks,
+          vendas: l.i.directUnits, custo: l.i.cost, receita: l.v,
+        }));
+        const ref = calcularReferencia(universo);
+        return {
+          de: "consultor",
+          texto: alvos.length === 1 ? "" : `Diagnóstico de ${alvos.length} anúncios:`,
+          blocos: alvos.slice(0, 3).map((i) => {
+            const l = linhas[i];
+            const d = diagnosticarFunil(universo[i], ref);
+            return {
+              titulo: `${l.i.title} — ${d.titulo}`,
+              tone: d.tone,
+              motivo: d.detalhe,
+              metricas: [
+                { rotulo: "Impressões", valor: l.i.prints.toLocaleString("pt-BR") },
+                { rotulo: "Cliques", valor: String(l.i.clicks) },
+                { rotulo: "CTR", valor: `${num(l.ctr, 2)}%` },
+                { rotulo: "CPC", valor: fmtBRL(l.cpc) },
+                { rotulo: "Vendas", valor: String(l.i.directUnits), destaque: true },
+                { rotulo: "Investido", valor: fmtBRL(l.i.cost) },
+              ],
+            };
+          }),
+        };
+      }
+
+      case "prioridade": {
+        /**
+         * Ordem de ataque medida em DINHEIRO, não em percentual: R$ 12
+         * perdendo 40% importa menos que R$ 800 perdendo 3%.
+         */
+        const acoes = priorizarPorImpacto(linhas.map((l) => ({
+          titulo: l.i.title,
+          lucroAtual: l.lucroAtual,
+          lucroNoIdeal: l.lucroNoIdeal,
+          investido: l.i.cost,
+        })));
+        if (acoes.length === 0) {
+          return semDado("Não há ganho relevante a capturar no período — nenhum anúncio com prejuízo ou abaixo do ROAS ideal.");
+        }
+        const total = acoes.reduce((s2, a) => s2 + a.ganhoPotencial, 0);
+        return {
+          de: "consultor",
+          texto: `Nesta ordem — soma ${fmtBRL(total)} de ganho potencial no período:`,
+          blocos: acoes.slice(0, 5).map((a, idx) => ({
+            titulo: `${idx + 1}. ${a.titulo}`,
+            tone: (idx === 0 ? "critical" : "warn") as VeredictoAds["tone"],
+            motivo: `Ganho potencial de ${fmtBRL(a.ganhoPotencial)} — ${a.acao}.`,
+            metricas: [],
+          })),
+        };
+      }
+
+      case "comparar": {
+        const [a, b] = alvos.slice(0, 2).map((i) => linhas[i]);
+        const linha = (l: typeof a) => [
+          { rotulo: "Investido", valor: fmtBRL(l.i.cost) },
+          { rotulo: "ROAS", valor: l.i.cost > 0 ? `${num(l.r, 2)}x` : "—" },
+          { rotulo: "Lucro", valor: l.lucroAtual != null ? fmtBRL(l.lucroAtual) : "sem dado", destaque: true },
+          { rotulo: "Margem", valor: l.margemAtual != null ? `${num(l.margemAtual, 1)}%` : "sem dado" },
+          { rotulo: "% via Ads", valor: l.i.totalSales > 0 ? `${num(l.pctAds, 1)}%` : "sem venda" },
+        ];
+        // Só declara vencedor quando os DOIS têm lucro apurado — comparar
+        // número com "sem dado" daria um veredicto falso.
+        const comparavel = a.lucroAtual != null && b.lucroAtual != null;
+        const melhor = comparavel ? (a.lucroAtual! >= b.lucroAtual! ? a : b) : null;
+        return {
+          de: "consultor",
+          texto: melhor
+            ? `${melhor.i.title} está melhor: mais lucro no período.`
+            : "Comparação (um dos dois está sem margem apurada, então não declaro vencedor):",
+          blocos: [a, b].map((l) => ({
+            titulo: l.i.title,
+            tone: (melhor && l === melhor ? "pos" : "info") as VeredictoAds["tone"],
+            motivo: blocoDe(l, metaMargem).motivo,
+            metricas: linha(l),
+          })),
+        };
+      }
+
+      case "metrica": {
+        const investido = linhas.reduce((s2, l) => s2 + l.i.cost, 0);
+        const direta = linhas.reduce((s2, l) => s2 + l.i.directSales, 0);
+        const total = linhas.reduce((s2, l) => s2 + l.i.totalSales, 0);
+        const comLucro = linhas.filter((l) => l.lucroAtual != null);
+        const lucro = comLucro.reduce((s2, l) => s2 + (l.lucroAtual ?? 0), 0);
+        return {
+          de: "consultor",
+          texto: "No período selecionado:",
+          blocos: [{
+            titulo: "Números do Ads",
+            tone: (lucro >= 0 ? "pos" : "critical") as VeredictoAds["tone"],
+            motivo: investido > 0
+              ? `Cada R$ 1 investido trouxe ${fmtBRL(direta / investido)} de venda direta.`
+              : "Nenhum investimento em publicidade no período.",
+            metricas: [
+              { rotulo: "Investido", valor: fmtBRL(investido), destaque: true },
+              { rotulo: "Venda direta", valor: fmtBRL(direta) },
+              { rotulo: "Venda total", valor: fmtBRL(total) },
+              { rotulo: "ROAS direto", valor: investido > 0 ? `${num(direta / investido, 2)}x` : "—" },
+              { rotulo: "Lucro", valor: fmtBRL(lucro), destaque: true },
+              { rotulo: "Anúncios", valor: String(linhas.length) },
+            ],
+          }],
+        };
+      }
+
       case "nao-encontrado":
         return semDado(
           `Não achei nenhum anúncio com "${termo}" no período selecionado. `
@@ -231,6 +351,9 @@ export default function AdsChat({ linhas, metaMargem }: { linhas: LinhaAds[]; me
   function enviar(pergunta: string) {
     const q = pergunta.trim();
     if (!q) return;
+    // Guarda a intenção ANTES de responder: é ela que faz "e o Eucalipto?"
+    // continuar o mesmo assunto na pergunta seguinte.
+    setUltimaIntencao(interpretarPergunta(q, titulos, ultimaIntencao).intencao);
     const resposta = responder(q);
     setMsgs((m) => [...m, { de: "voce", texto: q }, resposta]);
     setTexto("");

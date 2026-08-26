@@ -35,6 +35,10 @@ export type Intencao =
   | "listar-bons"     // "o que está indo bem?"
   | "resumo"          // "como está o ads no geral?"
   | "conceito"        // "o que é ROAS ideal?" — pergunta de conhecimento
+  | "diagnosticar"    // "por que o menta não vende?" — onde o funil fura
+  | "prioridade"      // "o que arrumo primeiro?" — ordenado por dinheiro
+  | "comparar"        // "compare o menta com o eucalipto"
+  | "metrica"         // "quanto gastei em ads?" — número direto
   | "ajuda"           // não entendi / primeira vez
   | "nao-encontrado"; // entendi a intenção, mas não achei o produto
 
@@ -81,6 +85,25 @@ const VAZIAS = new Set([
  */
 const RE_CONCEITUAL = /(por que|porque|pq |o que e |o que sao |o que significa|significa|diferenca entre|qual a diferenca|quando vale|quando devo|vale a pena|quanto devo|quanto colocar|como funciona|como escolher|como definir|\bmas\b|^devo )/;
 
+/** "por que não vende", "o que está errado com" — pede o gargalo do funil. */
+const RE_DIAGNOSTICO = /(nao vende|nao converte|nao vendeu|nao clica|nao aparece|esta errado|o que ha de errado|problema (com|do|no)|diagnostic|analisa o funil|funil)/;
+
+/** "o que arrumo primeiro", "por onde começo" — pede ordem de ataque. */
+const RE_PRIORIDADE = /(primeiro|prioridade|priorizar|por onde|comeco|comecar|mais urgente|o que mexer|onde focar|maior impacto)/;
+
+/** "compare X com Y", "qual e melhor" — pede confronto entre anuncios. */
+const RE_COMPARAR = /(compar|versus| vs |melhor entre|qual e melhor|qual dos)/;
+
+/**
+ * Qualificadores que transformam pergunta de NÚMERO em pergunta de CONCEITO.
+ * "qual o meu ROAS?" quer o número; "qual o ROAS IDEAL?" quer a régua.
+ * Sem esta lista a segunda recebia o ROAS atual, respondendo outra coisa.
+ */
+const RE_QUALIFICADOR_CONCEITO = /(ideal|alvo|equilibrio|break|minimo|significa|serve|funciona)/;
+
+/** "quanto gastei", "qual meu roas" — pede UM numero, nao uma analise. */
+const RE_METRICA = /(quanto (gastei|investi|lucrei|vendi|faturei)|qual (?:o |a |meu |minha |e o |sao os )*(roas|acos|tacos|lucro|gasto|investimento|faturamento|margem)|total (gasto|investido|de vendas))/;
+
 const RE_RUINS = /(prejuiz|perdend|ruim|ruins|pior|piores|negativ|vermelh|queimand|desligar|pausar|cortar)/;
 const RE_BONS = /(bom|bons|melhor(?!\s+a\s+se)|melhores|lucrand|lucrativ|positiv|escalar|indo bem|vale a pena)/;
 const RE_RESUMO = /(resumo|geral|panorama|visao geral|como esta o ads|situacao|balanco|total)/;
@@ -124,9 +147,58 @@ export function casarAnuncios(texto: string, titulos: string[]): number[] {
   return alvos;
 }
 
-export function interpretarPergunta(texto: string, titulos: string[]): Leitura {
+/**
+ * Pergunta curta que continua a anterior: "e o Eucalipto?", "e esse?".
+ *
+ * Sem isto, "e o Eucalipto?" (3 palavras, sem verbo) caía em análise genérica
+ * — o que por acaso funciona, mas perde a intenção original: quem tinha
+ * acabado de perguntar "POR QUE o Menta não vende" quer o mesmo diagnóstico
+ * do Eucalipto, não uma análise diferente.
+ */
+const RE_CONTINUACAO = /^(e|e o|e a|e os|e as|e no|e sobre)\s+/;
+
+/**
+ * Divide a pergunta nos conectores de comparação e casa cada lado sozinho.
+ *
+ * `casarAnuncios` exige que TODAS as palavras estejam no mesmo título — o que
+ * é certo pra identificar um produto, e errado aqui: "compare o Menta
+ * Stronger com o Eucalipto" não tem título nenhum que contenha as duas
+ * coisas. Sem isto, a comparação nunca achava dois alvos e caía em análise
+ * simples do primeiro.
+ */
+export function casarParaComparacao(texto: string, titulos: string[]): number[] {
+  const partes = normalizar(texto)
+    .split(/\bcom\b|\bversus\b|\bvs\b|\be\b|\bou\b|,/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const achados: number[] = [];
+  for (const parte of partes) {
+    for (const i of casarAnuncios(parte, titulos)) {
+      if (!achados.includes(i)) achados.push(i);
+    }
+  }
+  return achados;
+}
+
+export function interpretarPergunta(
+  texto: string,
+  titulos: string[],
+  /** Intenção da pergunta anterior — permite "e o Eucalipto?" continuar o assunto. */
+  anterior?: Intencao,
+): Leitura {
   const t = normalizar(texto);
   if (!t) return { intencao: "ajuda", alvos: [], termo: "" };
+
+  /**
+   * PRIORIDADE e MÉTRICA são globais e vêm antes de tudo: "o que arrumo
+   * primeiro?" e "quanto gastei?" não são sobre um anúncio nem sobre um
+   * conceito, e as duas contêm palavras que outras regras capturariam.
+   */
+  if (RE_PRIORIDADE.test(t)) return { intencao: "prioridade", alvos: [], termo: "" };
+  if (RE_METRICA.test(t) && !RE_QUALIFICADOR_CONCEITO.test(t)) {
+    return { intencao: "metrica", alvos: [], termo: "" };
+  }
 
   /**
    * PERGUNTA DE ENTENDIMENTO vem antes da varredura.
@@ -173,6 +245,30 @@ export function interpretarPergunta(texto: string, titulos: string[]): Leitura {
       return { intencao: "nao-encontrado", alvos: [], termo };
     }
     return { intencao: "ajuda", alvos: [], termo };
+  }
+
+  /**
+   * Com produto identificado, a pergunta pode ser mais específica que
+   * "o que faço": "por que o Menta não vende?" quer o GARGALO, e
+   * "compare o Menta com o Eucalipto" quer o CONFRONTO. As duas vêm antes
+   * da análise genérica, que é o padrão.
+   */
+  /**
+   * "e o Eucalipto?" — pergunta curta que só nomeia outro produto. Herda a
+   * intenção da anterior, que é o que a pessoa quis dizer.
+   */
+  if (
+    anterior && RE_CONTINUACAO.test(t)
+    && (anterior === "diagnosticar" || anterior === "info" || anterior === "analisar")
+  ) {
+    return { intencao: anterior, alvos, termo };
+  }
+
+  if (RE_DIAGNOSTICO.test(t)) return { intencao: "diagnosticar", alvos, termo };
+  if (RE_COMPARAR.test(t)) {
+    // Casamento próprio: cada lado do "com"/"vs" é um produto diferente.
+    const dois = casarParaComparacao(texto, titulos);
+    if (dois.length >= 2) return { intencao: "comparar", alvos: dois, termo };
   }
 
   // "me traga os dados" pede números; "o que eu faço" pede recomendação.

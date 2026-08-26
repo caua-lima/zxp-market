@@ -141,3 +141,53 @@ describe("interpretarPergunta — entender x varrer", () => {
     }
   });
 });
+
+describe("interpretarPergunta — as intenções novas", () => {
+  it("'por que o menta não vende' pede DIAGNÓSTICO, não análise genérica", () => {
+    const r = interpretarPergunta("por que o menta stronger não vende?", TITULOS);
+    expect(r.intencao).toBe("diagnosticar");
+    expect(r.alvos).toEqual([0]);
+  });
+
+  it("'o que arrumo primeiro' pede PRIORIDADE — é global, sem produto", () => {
+    expect(interpretarPergunta("o que eu arrumo primeiro?", TITULOS).intencao).toBe("prioridade");
+    expect(interpretarPergunta("por onde eu começo?", TITULOS).intencao).toBe("prioridade");
+  });
+
+  it("'quanto gastei em ads' pede um NÚMERO, não uma análise", () => {
+    expect(interpretarPergunta("quanto gastei em ads?", TITULOS).intencao).toBe("metrica");
+    expect(interpretarPergunta("qual o meu roas?", TITULOS).intencao).toBe("metrica");
+  });
+
+  it("'qual o ROAS ideal' continua CONCEITO — 'ideal' muda a pergunta", () => {
+    // Sem o qualificador, cairia em métrica e devolveria o ROAS atual.
+    expect(interpretarPergunta("qual o roas ideal?", TITULOS).intencao).toBe("conceito");
+    expect(interpretarPergunta("qual o roas de equilibrio?", TITULOS).intencao).toBe("conceito");
+  });
+
+  it("'compare X com Y' compara — mas só com DOIS produtos identificados", () => {
+    const r = interpretarPergunta("compare o menta stronger com o eucalipto", TITULOS);
+    expect(r.intencao).toBe("comparar");
+    expect(r.alvos).toHaveLength(2);
+  });
+
+  it("'compare' com um produto só não vira comparação", () => {
+    expect(interpretarPergunta("compare o menta stronger", TITULOS).intencao).not.toBe("comparar");
+  });
+
+  it("'e o Eucalipto?' herda a intenção anterior", () => {
+    // Quem perguntou "por que o Menta não vende" quer o mesmo do Eucalipto.
+    const r = interpretarPergunta("e o eucalipto?", TITULOS, "diagnosticar");
+    expect(r.intencao).toBe("diagnosticar");
+    expect(r.alvos).toEqual([3]);
+  });
+
+  it("sem pergunta anterior, a continuação vira análise normal", () => {
+    expect(interpretarPergunta("e o eucalipto?", TITULOS).intencao).toBe("analisar");
+  });
+
+  it("continuação NÃO herda intenção que não faz sentido pra um produto", () => {
+    // "prioridade" é global; herdá-la pra um produto não responderia nada.
+    expect(interpretarPergunta("e o eucalipto?", TITULOS, "prioridade").intencao).toBe("analisar");
+  });
+});
