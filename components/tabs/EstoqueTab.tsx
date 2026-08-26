@@ -8,6 +8,7 @@ import { fmtBRL } from "@/lib/domain/calc";
 import { getCoverageStatus, COVERAGE_STATUS_LABEL, consolidarEstoqueAnuncios, ehFullLogistic, estoqueForaDoFull, type CoverageStatus } from "@/lib/domain/estoque";
 import { calcularLucroEstoque, medirTaxas, type FinanceiroProduto, type LucroEstoque } from "@/lib/domain/estoque-lucro";
 import Modal from "@/components/Modal";
+import EditarMovimentoModal from "@/components/tabs/estoque/EditarMovimentoModal";
 import type { UserData } from "@/components/useUserData";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import { useAccess } from "@/components/tabs/AccessGuard";
@@ -720,8 +721,19 @@ function AgenciasModal({ product, estoqueML, onClose }: { product: Product; esto
 
 function MovimentosHistorico({ product, movs, onMov }: { product: Product; movs: EstoqueMovimento[]; onMov: (tipo: MovimentoTipo) => void }) {
   const ordenados = [...movs].sort((a, b) => (b.data ?? "").localeCompare(a.data ?? "") || (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  // Movimentação sendo corrigida. Excluir e relançar perdia o histórico de
+  // quem lançou — ver EditarMovimentoModal.
+  const [editando, setEditando] = useState<EstoqueMovimento | null>(null);
   return (
     <div>
+      {editando && (
+        <EditarMovimentoModal
+          product={product}
+          mov={editando}
+          onClose={() => setEditando(null)}
+          onSaved={() => setEditando(null)}
+        />
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontSize: ".74rem", fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".05em" }}>Movimentações</span>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -749,7 +761,14 @@ function MovimentosHistorico({ product, movs, onMov }: { product: Product; movs:
                     <td data-label="Qtd" style={{ color: cor, fontWeight: 700 }}>{sign}{Math.abs(m.quantidade)}</td>
                     <td data-label="Custo un.">{(m.tipo === "entrada" || m.tipo === "saldo_inicial") && m.custoUnit != null ? fmtBRL(m.custoUnit) : "—"}</td>
                     <td data-label="Obs" style={{ textAlign: "left", color: "var(--muted)", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.obs || "—"}</td>
-                    <td data-cell="acoes">
+                    <td data-cell="acoes" style={{ whiteSpace: "nowrap" }}>
+                      <button
+                        type="button" className="btn btn-ghost btn-xs" style={{ marginRight: 6 }}
+                        title="Corrigir esta movimentação (mantém quem lançou e quando)"
+                        onClick={() => setEditando(m)}
+                      >
+                        Editar
+                      </button>
                       <button type="button" className="btn btn-danger btn-xs" title="Excluir movimentação" onClick={() => {
                         if (!confirm("Excluir esta movimentação? O custo médio será recalculado.")) return;
                         deleteMovimento(m.id, product.id).catch(() => {});

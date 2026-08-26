@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/firebase/auth-context";
 import { initForegroundPush } from "@/lib/firebase/push";
 import { PushNotificationToggle } from "@/components/PushNotificationToggle";
 import { NotificationCenter } from "@/components/NotificationCenter";
+import AjudaChat from "@/components/AjudaChat";
 import { useUserData } from "@/components/useUserData";
 import { AccessGuard, useAccess } from "@/components/tabs/AccessGuard";
 import LoginCard from "@/components/LoginCard";
@@ -529,6 +530,11 @@ function AppShell() {
           onSelect={(id) => setTab(id as Tab)}
         />
       )}
+
+      {/* Ajuda sobre o SISTEMA. Fica fora da aba Ads de proposito: la ja existe
+          o Consultor, que responde sobre os NUMEROS — dois chats na mesma tela
+          so fariam o usuario escolher errado. */}
+      {activeTab !== "ads" && <AjudaChat abaAtual={activeTab} />}
 
       <SaleNotificationProvider onNavigate={abrirDeepLink} />
     </>

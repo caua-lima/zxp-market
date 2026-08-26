@@ -400,7 +400,17 @@ export async function addMovimento(
 export async function updateMovimento(
   id: string,
   productId: string,
-  patch: { data?: string; quantidade?: number; obs?: string },
+  /**
+   * `custoUnit` entra aqui porque é o campo que mais se digita errado, e o que
+   * mais estraga: ele alimenta o custo médio, que vira CMV em todo pedido
+   * daquele produto. Sem poder corrigir, a única saída era excluir e relançar
+   * — perdendo o histórico de quem lançou e quando.
+   *
+   * Não precisa recalcular o custo médio à mão: recomputeProduto varre TODAS
+   * as movimentações do produto de novo, então corrigir uma entrada antiga
+   * conserta a média sozinho.
+   */
+  patch: { data?: string; quantidade?: number; obs?: string; custoUnit?: number },
 ): Promise<void> {
   const email = getCurrentUserEmail();
   const snap = await getDoc(sDoc(MOV_COL, id));
