@@ -473,7 +473,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
       <div className="kpi-grid">
         <div className="kpi k-acc"><div className="k-lbl">Pedidos</div><div className="k-val">{filtrados.length}</div></div>
         <div className="kpi k-acc"><div className="k-lbl">Faturamento</div><div className="k-val">{fmtBRL(totalValor)}</div><div className="k-sub">bruto</div></div>
-        <div className="kpi k-pos"><div className="k-lbl">Retorno</div><div className="k-val" style={{ color: "var(--green)" }}>{fmtBRL(totalRetorno)}</div><div className="k-sub">líquido que volta</div></div>
+        <div className="kpi k-pos"><div className="k-lbl">Retorno</div><div className="k-val" style={{ color: "var(--green)" }}>{fmtBRL(totalRetorno)}</div><div className="k-sub">líquido — já sem taxa e frete</div></div>
         <div className={`kpi ${totalLucro >= 0 ? "k-pos" : "k-neg"}`}><div className="k-lbl">Lucro líquido</div><div className="k-val" style={{ color: totalLucro >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(totalLucro)}</div><div className="k-sub">retorno − custos</div></div>
         <div className="kpi k-warn"><div className="k-lbl">Margem média</div><div className="k-val" style={{ color: "var(--yellow)" }}>{margemMedia.toFixed(1)}%</div></div>
         <div className="kpi k-acc"><div className="k-lbl">Ticket médio</div><div className="k-val">{fmtBRL(filtrados.length ? totalValor / filtrados.length : 0)}</div><div className="k-sub">por pedido</div></div>
@@ -629,7 +629,15 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
         <div style={{ fontSize: ".76rem", color: "var(--muted)", marginBottom: 12 }}>
           {modo === "produto"
             ? <><b>Vendas</b> = nº de pedidos · <b>Un</b> = unidades vendidas · um pedido com 3 unidades conta como 1 venda e 3 unidades</>
-            : <><b>Retorno</b> = Valor − Taxa ML − Frete · <b>Custos</b> = CMV + Frete + Taxa + Imposto · <b>Lucro</b> = Valor − Custos · <b style={{ color: "var(--text)" }}>clique num pedido</b> para ver a conta completa</>}
+            : <>
+                <b>Retorno</b> = Valor − Taxa ML − Frete · <b>Custos</b> = CMV + Frete + Taxa + Imposto ·{" "}
+                <b>Lucro</b> = Valor − Custos · <b>Margem</b> = Lucro ÷ Valor ·{" "}
+                {/* Sem este aviso, a soma das margens daqui nunca fecha com a do
+                    Dashboard, e parece erro de cálculo quando é diferença de
+                    escopo: publicidade é do dia, não do pedido. */}
+                <b style={{ color: "var(--warning)" }}>não inclui ADS</b> (é gasto do dia, não do pedido) ·{" "}
+                <b style={{ color: "var(--text)" }}>clique num pedido</b> para ver a conta completa
+              </>}
         </div>
         {loading ? (
           <div style={{ padding: 40, textAlign: "center", color: "var(--muted)" }}>Carregando pedidos…</div>

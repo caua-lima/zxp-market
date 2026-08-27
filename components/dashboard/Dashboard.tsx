@@ -572,7 +572,7 @@ function VendasDoDiaHero({ hoje, ontem }: { hoje?: HojeBreakdown; ontem?: HojeBr
     {
       label: "Base da margem", value: d.retorno, color: "var(--text)",
       anterior: dOntem?.retorno,
-      hint: "A receita cujos custos o app conhece: sem cancelado e só com itens vinculados a um produto. É sobre ela que a margem e o ROAS de equilíbrio são calculados.",
+      hint: "Receita BRUTA dos itens com custo apurado — sem cancelado e só com produto vinculado. Taxa e frete são descontados depois, como custo. Não confunda com o \u201cRetorno\u201d da aba Pedidos, que já vem líquido.",
     },
     {
       label: "Ticket médio", value: ticketMedio(d), color: "var(--text)",

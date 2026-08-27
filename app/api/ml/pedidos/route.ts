@@ -205,8 +205,18 @@ export async function GET(req: Request) {
         });
       }
 
-      // Retorno = o que volta pra você = valor − taxa ML − frete (igual ao ML e ao Dashboard).
-      // Lucro = retorno − CMV − imposto. Mesma conta do Dashboard.
+      /**
+       * ATENÇÃO À PALAVRA "RETORNO": aqui ela é LÍQUIDA (valor − taxa − frete),
+       * e no Dashboard é BRUTA (preço × quantidade, com taxa e frete
+       * descontados depois, separadamente).
+       *
+       * O LUCRO das duas telas é o mesmo — só a ordem das subtrações muda —
+       * mas o número rotulado "retorno" não é, e comparar os dois lado a lado
+       * dá a impressão de que uma das telas está errada. Um comentário antigo
+       * aqui afirmava que eram iguais; não são.
+       *
+       * A margem também é a mesma nos dois lugares: lucro ÷ VALOR BRUTO.
+       */
       const retorno = bruto - taxaML - envio;
       const lucro = retorno - cmv - imposto;
       const margem = bruto > 0 ? (lucro / bruto) * 100 : 0;
