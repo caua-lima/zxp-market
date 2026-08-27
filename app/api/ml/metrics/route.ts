@@ -794,6 +794,14 @@ export async function GET(req: Request) {
         totalTaxasML: aggHoje.totalTaxasML,
         totalImposto: aggHoje.totalImposto,
         lucroLiquido: lucroLiquidoHoje,
+        /**
+         * A receita cujos CUSTOS o app conhece — só itens vinculados a um
+         * produto, e sem cancelados. É a única base honesta pra margem:
+         * `faturamentoBruto` inclui cancelado e pedido sem vínculo, que
+         * entram na receita mas não geram custo nenhum, e dividir o lucro por
+         * ele fazia a margem parecer menor do que é.
+         */
+        totalRetorno: aggHoje.totalRetorno,
         pedidos: aggHoje.ordersCount,
         /**
          * Receita das vendas em que o comprador CLICOU no anúncio pago.

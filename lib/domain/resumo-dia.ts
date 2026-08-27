@@ -20,8 +20,31 @@ import { calculateBreakEvenRoas } from "./ads";
  * mentir. Quem não tem base devolve null, e a tela mostra "—".
  */
 
+/**
+ * ─── AS TRÊS RECEITAS, E POR QUE ELAS NÃO SÃO A MESMA ───────────────────
+ *
+ * Confundi-las foi um erro real, medido: a margem do dia aparecia como 3,6%
+ * quando era 4,0%, e a "margem sem ADS" como 14,2% quando era 6,0% — o card
+ * se contradizia, porque tirar 1,8% de publicidade de 14,2% não dá 3,6%.
+ *
+ *   · faturamentoBruto  — TUDO que passou, inclusive cancelado. Serve pra
+ *     mostrar volume, nunca pra dividir lucro.
+ *   · faturamentoLiquido — sem cancelado e sem devolvido. É a venda de
+ *     verdade, e a base certa pra ticket médio e peso do ADS.
+ *   · retorno            — a receita cujos CUSTOS o app conhece: só itens
+ *     vinculados a um produto. É a ÚNICA base honesta pra margem.
+ *
+ * A regra: o denominador da margem tem que ser a mesma receita de onde os
+ * custos saíram. Dividir lucro de itens vinculados pela receita total (que
+ * inclui cancelado e item sem custo cadastrado) mistura dois universos e
+ * sempre subestima a margem.
+ */
 export type EntradaDia = {
   faturamentoBruto: number;
+  /** Bruto menos cancelado e devolvido. */
+  faturamentoLiquido: number;
+  /** Receita com custo apurado — base da margem. */
+  retorno: number;
   totalCMV: number;
   totalEnvio: number;
   totalTaxasML: number;
@@ -39,9 +62,12 @@ export function custosSemAds(d: EntradaDia): number {
   return d.totalCMV + d.totalEnvio + d.totalTaxasML + d.totalImposto;
 }
 
-/** Lucro antes de descontar o Ads. É o que sobra pra "pagar" a campanha. */
+/**
+ * Lucro antes de descontar o Ads. É o que sobra pra "pagar" a campanha.
+ * Sai do RETORNO, não do bruto: os custos abaixo pertencem a essa receita.
+ */
 export function lucroAntesAds(d: EntradaDia): number {
-  return d.faturamentoBruto - custosSemAds(d);
+  return d.retorno - custosSemAds(d);
 }
 
 /**
@@ -51,7 +77,9 @@ export function lucroAntesAds(d: EntradaDia): number {
  */
 export function ticketMedio(d: EntradaDia): number | null {
   if (d.pedidos <= 0) return null;
-  return d.faturamentoBruto / d.pedidos;
+  // Líquido, não bruto: `pedidos` já exclui os cancelados, então incluí-los
+  // na receita inflaria o ticket com venda que não aconteceu.
+  return d.faturamentoLiquido / d.pedidos;
 }
 
 /** Custo médio por pedido, sem contar Ads — o piso pra pensar preço. */
@@ -72,7 +100,8 @@ export function roasDireto(d: EntradaDia): number | null {
  */
 export function roasGeral(d: EntradaDia): number | null {
   if (!(d.totalAds > 0)) return null;
-  return d.faturamentoBruto / d.totalAds;
+  // Venda cancelada não é receita que o ADS trouxe.
+  return d.faturamentoLiquido / d.totalAds;
 }
 
 /**
@@ -87,7 +116,7 @@ export function roasGeral(d: EntradaDia): number | null {
  * resolve, e mostrar um número faria a tela sugerir uma meta impossível.
  */
 export function roasBreakEven(d: EntradaDia): number | null {
-  return calculateBreakEvenRoas(d.faturamentoBruto, lucroAntesAds(d));
+  return calculateBreakEvenRoas(d.retorno, lucroAntesAds(d));
 }
 
 /**
@@ -97,13 +126,25 @@ export function roasBreakEven(d: EntradaDia): number | null {
  * margem — que é como se decide verba, não em reais soltos.
  */
 export function margemSemAds(d: EntradaDia): number | null {
-  if (!(d.faturamentoBruto > 0)) return null;
-  return (lucroAntesAds(d) / d.faturamentoBruto) * 100;
+  if (!(d.retorno > 0)) return null;
+  return (lucroAntesAds(d) / d.retorno) * 100;
 }
 
 export function margemReal(d: EntradaDia): number | null {
-  if (!(d.faturamentoBruto > 0)) return null;
-  return (d.lucroLiquido / d.faturamentoBruto) * 100;
+  if (!(d.retorno > 0)) return null;
+  return (d.lucroLiquido / d.retorno) * 100;
+}
+
+/**
+ * Quanto da venda ficou FORA do cálculo de lucro — cancelado, devolvido ou
+ * item sem produto vinculado.
+ *
+ * A tela precisa mostrar isto: sem o aviso, uma margem apurada sobre metade
+ * da receita parece a margem do dia inteiro, e a diferença entre as duas é
+ * invisível justamente quando é grande.
+ */
+export function receitaForaDoCalculo(d: EntradaDia): number {
+  return Math.max(d.faturamentoBruto - d.retorno, 0);
 }
 
 /** Unidades por pedido — quantos itens o comprador leva junto. */

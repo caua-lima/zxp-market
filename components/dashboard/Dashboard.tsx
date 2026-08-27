@@ -21,7 +21,7 @@ import {
 import { calcularMetaDiaria, idealAteHoje } from "@/lib/domain/meta-diaria";
 import {
   custoPorPedido, margemReal, margemSemAds, roasBreakEven, roasDireto, roasGeral,
-  ticketMedio, unidadesPorPedido, variacao, type EntradaDia,
+  receitaForaDoCalculo, ticketMedio, unidadesPorPedido, variacao, type EntradaDia,
 } from "@/lib/domain/resumo-dia";
 import type { UserData } from "@/components/useUserData";
 import { useAccess } from "@/components/tabs/AccessGuard";
@@ -74,6 +74,8 @@ type HojeBreakdown = {
   /** Receita das vendas por CLIQUE no anúncio pago (sem assistida). */
   vendaDiretaAds?:  number;
   unidadesVendidas?: number;
+  /** Receita com custo apurado — a base honesta da margem. */
+  totalRetorno?:    number;
   /** O anúncio que mais faturou no dia. null = nenhuma venda apurada. */
   produtoTop?: { titulo: string; receita: number; unidades: number } | null;
 };
@@ -511,7 +513,15 @@ function VendasDoDiaHero({ hoje, ontem }: { hoje?: HojeBreakdown; ontem?: HojeBr
   const h: HojeBreakdown = hoje ?? vazio;
 
   const paraDominio = (b: HojeBreakdown): EntradaDia => ({
-    faturamentoBruto: b.faturamentoBruto, totalCMV: b.totalCMV, totalEnvio: b.totalEnvio,
+    faturamentoBruto: b.faturamentoBruto,
+    faturamentoLiquido: b.faturamentoLiquido,
+    /**
+     * Sem `totalRetorno` (payload antigo em cache), cai no líquido em vez do
+     * bruto: errar pra perto da verdade é melhor que errar pro lado que
+     * inclui cancelado.
+     */
+    retorno: b.totalRetorno ?? b.faturamentoLiquido,
+    totalCMV: b.totalCMV, totalEnvio: b.totalEnvio,
     totalTaxasML: b.totalTaxasML, totalImposto: b.totalImposto, totalAds: b.totalAds,
     lucroLiquido: b.lucroLiquido, pedidos: b.pedidos,
     unidades: b.unidadesVendidas ?? 0, vendaDiretaAds: b.vendaDiretaAds ?? 0,
@@ -530,7 +540,7 @@ function VendasDoDiaHero({ hoje, ontem }: { hoje?: HojeBreakdown; ontem?: HojeBr
    * Divide pelo faturamento TOTAL: é a pergunta "quanto da minha receita eu
    * paguei de anúncio", e é ela que se compara com a margem.
    */
-  const tacos = h.faturamentoBruto > 0 ? (h.totalAds / h.faturamentoBruto) * 100 : null;
+  const tacos = h.faturamentoLiquido > 0 ? (h.totalAds / h.faturamentoLiquido) * 100 : null;
 
   const roasFmt = (v: number) => `${v.toFixed(2).replace(".", ",")}x`;
   const pctFmt = (v: number) => `${v.toFixed(1).replace(".", ",")}%`;
@@ -557,6 +567,12 @@ function VendasDoDiaHero({ hoje, ontem }: { hoje?: HojeBreakdown; ontem?: HojeBr
     {
       label: "Faturamento bruto", value: h.faturamentoBruto, color: "var(--green)",
       anterior: dOntem?.faturamentoBruto,
+      hint: "Tudo que passou no dia, inclusive cancelado. Serve pra ver volume — a margem NÃO é calculada sobre ele.",
+    },
+    {
+      label: "Base da margem", value: d.retorno, color: "var(--text)",
+      anterior: dOntem?.retorno,
+      hint: "A receita cujos custos o app conhece: sem cancelado e só com itens vinculados a um produto. É sobre ela que a margem e o ROAS de equilíbrio são calculados.",
     },
     {
       label: "Ticket médio", value: ticketMedio(d), color: "var(--text)",
@@ -612,6 +628,7 @@ function VendasDoDiaHero({ hoje, ontem }: { hoje?: HojeBreakdown; ontem?: HojeBr
     },
   ];
 
+  const foraDaConta = receitaForaDoCalculo(d);
   const top = h.produtoTop;
 
   return (
@@ -656,6 +673,14 @@ function VendasDoDiaHero({ hoje, ontem }: { hoje?: HojeBreakdown; ontem?: HojeBr
           );
         })}
       </div>
+
+      {foraDaConta > 5 && (
+        <div style={{ marginTop: 10, fontSize: ".76rem", color: "var(--warning)", lineHeight: 1.55 }}>
+          {fmtBRL(foraDaConta)} do faturamento ficou fora do cálculo de margem — venda
+          cancelada ou item sem produto vinculado no Estoque. A margem acima é a dos{" "}
+          {fmtBRL(d.retorno)} que têm custo apurado.
+        </div>
+      )}
 
       {top && (
         <div style={{ marginTop: 10, fontSize: ".78rem", color: "var(--muted)" }}>

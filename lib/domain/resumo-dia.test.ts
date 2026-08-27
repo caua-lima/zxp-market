@@ -5,44 +5,51 @@ import {
   unidadesPorPedido, variacao, type EntradaDia,
 } from "./resumo-dia";
 
-/** O dia real do painel, pra os testes falarem de números que existiram. */
+/**
+ * O dia real do painel de 27/08, com as TRÊS receitas separadas — é o caso
+ * que expôs o erro de base: bruto R$ 2.108,10 incluía R$ 166,64 de cancelado
+ * e R$ 18,10 sem vínculo, e a margem dividia o lucro por ele.
+ */
 function dia(over: Partial<EntradaDia> = {}): EntradaDia {
   return {
-    faturamentoBruto: 644.86,
-    totalCMV: 383.97,
-    totalEnvio: 47.80,
-    totalTaxasML: 66.87,
-    totalImposto: 25.79,
-    totalAds: 34.50,
-    lucroLiquido: 85.93,
-    pedidos: 20,
-    unidades: 31,
-    vendaDiretaAds: 533.39,
+    faturamentoBruto: 2108.10,
+    faturamentoLiquido: 1941.46,
+    retorno: 1923.36,
+    totalCMV: 1286.61,
+    totalEnvio: 198.60,
+    totalTaxasML: 246.40,
+    totalImposto: 76.93,
+    totalAds: 38.75,
+    lucroLiquido: 76.07,
+    pedidos: 22,
+    unidades: 89,
+    vendaDiretaAds: 886.90,
     ...over,
   };
 }
 const vazio = dia({
-  faturamentoBruto: 0, totalCMV: 0, totalEnvio: 0, totalTaxasML: 0,
-  totalImposto: 0, totalAds: 0, lucroLiquido: 0, pedidos: 0, unidades: 0, vendaDiretaAds: 0,
+  faturamentoBruto: 0, faturamentoLiquido: 0, retorno: 0, totalCMV: 0,
+  totalEnvio: 0, totalTaxasML: 0, totalImposto: 0, totalAds: 0,
+  lucroLiquido: 0, pedidos: 0, unidades: 0, vendaDiretaAds: 0,
 });
 
 describe("custos e lucro antes do ads", () => {
   it("soma os custos que não são publicidade", () => {
-    expect(custosSemAds(dia())).toBeCloseTo(524.43, 2);
+    expect(custosSemAds(dia())).toBeCloseTo(1808.54, 2);
   });
 
   it("lucro antes do ads é o que sobra pra pagar a campanha", () => {
-    expect(lucroAntesAds(dia())).toBeCloseTo(120.43, 2);
+    expect(lucroAntesAds(dia())).toBeCloseTo(114.82, 2);
   });
 });
 
 describe("ticket médio e custo por pedido", () => {
   it("ticket do dia real", () => {
-    expect(ticketMedio(dia())).toBeCloseTo(32.24, 2);
+    expect(ticketMedio(dia())).toBeCloseTo(88.25, 2);
   });
 
   it("custo por pedido do dia real", () => {
-    expect(custoPorPedido(dia())).toBeCloseTo(26.22, 2);
+    expect(custoPorPedido(dia())).toBeCloseTo(82.21, 2);
   });
 
   it("dia sem pedido não divide por zero — devolve null, não 0", () => {
@@ -53,16 +60,16 @@ describe("ticket médio e custo por pedido", () => {
 
 describe("os três ROAS", () => {
   it("direto = venda atribuída ÷ investido", () => {
-    expect(roasDireto(dia())).toBeCloseTo(15.46, 2);
+    expect(roasDireto(dia())).toBeCloseTo(22.89, 2);
   });
 
   it("geral = faturamento do dia ÷ investido, sempre >= o direto", () => {
-    expect(roasGeral(dia())).toBeCloseTo(18.69, 2);
+    expect(roasGeral(dia())).toBeCloseTo(50.10, 2);
     expect(roasGeral(dia())!).toBeGreaterThan(roasDireto(dia())!);
   });
 
   it("break-even com os custos REAIS do dia", () => {
-    expect(roasBreakEven(dia())).toBeCloseTo(5.35, 2);
+    expect(roasBreakEven(dia())).toBeCloseTo(16.75, 2);
   });
 
   it("o dia real está acima do break-even — por isso deu lucro", () => {
@@ -77,7 +84,7 @@ describe("os três ROAS", () => {
 
   it("dia sem lucro nem sem ads não tem break-even possível", () => {
     // Nenhum ROAS resolve; mostrar número sugeriria meta impossível.
-    expect(roasBreakEven(dia({ totalCMV: 700 }))).toBeNull();
+    expect(roasBreakEven(dia({ totalCMV: 2500 }))).toBeNull();
   });
 
   it("break-even não depende do quanto foi gasto em ads", () => {
@@ -88,14 +95,14 @@ describe("os três ROAS", () => {
 
 describe("margem com e sem ads", () => {
   it("margem real do dia", () => {
-    expect(margemReal(dia())).toBeCloseTo(13.32, 1);
+    expect(margemReal(dia())).toBeCloseTo(3.96, 1);
   });
 
   it("sem ads a margem é maior — a diferença é o custo da publicidade", () => {
     const sem = margemSemAds(dia())!;
     const real = margemReal(dia())!;
     expect(sem).toBeGreaterThan(real);
-    expect(sem - real).toBeCloseTo((34.50 / 644.86) * 100, 1);
+    expect(sem - real).toBeCloseTo((38.75 / 1923.36) * 100, 1);
   });
 
   it("dia sem faturamento não calcula margem", () => {
@@ -106,7 +113,7 @@ describe("margem com e sem ads", () => {
 
 describe("unidades por pedido", () => {
   it("calcula a média", () => {
-    expect(unidadesPorPedido(dia())).toBeCloseTo(1.55, 2);
+    expect(unidadesPorPedido(dia())).toBeCloseTo(4.05, 2);
   });
 
   it("sem pedido, null", () => {
