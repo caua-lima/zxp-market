@@ -140,11 +140,14 @@ export const TOPICOS_ADS: TopicoAds[] = [
     id: "direta-assistida",
     relacionados: ["roas-diferente-ml"],
     pergunta: "Qual a diferença entre venda direta e atribuída?",
-    termos: ["direta", "assistida", "atribuida", "atribuicao", "diferenca", "clique"],
+    termos: [
+      "venda assistida", "venda indireta", "direta", "assistida", "indireta",
+      "atribuida", "atribuicao", "clique",
+    ],
     resposta:
-      "DIRETA: o comprador clicou no anúncio pago e comprou. Rastro claro.\n\n"
-      + "ASSISTIDA: ele viu o anúncio, não clicou (ou clicou e comprou depois por outro caminho) e a "
-      + "compra aconteceu dentro da janela de atribuição do ML.\n\n"
+      "DIRETA: o comprador clicou no anúncio pago e comprou AQUELE produto. Rastro claro.\n\n"
+      + "ASSISTIDA (o ML chama de indireta): ele clicou no seu anúncio, não comprou aquele item, mas "
+      + "dentro da janela de 14 dias comprou OUTRO produto seu. O ML credita essa venda à publicidade.\n\n"
       + "O painel do Mercado Ads soma as duas em \"vendas atribuídas\", o que deixa o ROAS mais bonito. "
       + "Este app mostra as duas separadas e usa a DIRETA como padrão, porque é a conservadora: se você "
       + "for errar, é melhor errar achando que ganhou menos.\n\n"
@@ -241,7 +244,13 @@ export const TOPICOS_ADS: TopicoAds[] = [
   {
     id: "sem-vinculo",
     pergunta: "Por que alguns anúncios aparecem sem margem?",
-    termos: ["sem margem", "sem dado", "vinculado", "vinculo", "nao aparece", "faltando"],
+    // "nao aparece" saiu daqui: era ambíguo com o tópico do anúncio que não
+    // recebe impressão, e os dois empatavam — o desempate virava a ordem do
+    // array. Aqui o que não aparece é a MARGEM, e os termos dizem isso.
+    termos: [
+      "sem margem", "margem nao aparece", "sem dado", "vinculado", "vinculo",
+      "faltando custo", "nao calcula",
+    ],
     resposta:
       "Porque o anúncio não está ligado a um produto do seu Estoque. Sem essa ligação não há custo pra "
       + "descontar, e sem custo não existe margem — só faturamento.\n\n"
@@ -252,6 +261,142 @@ export const TOPICOS_ADS: TopicoAds[] = [
       c.semVinculo > 0
         ? `Agora: ${c.semVinculo} anúncio(s) sem produto vinculado — eles ficam de fora do cálculo de lucro.`
         : null,
+  },
+  {
+    id: "roas-objetivo",
+    relacionados: ["aprendizado", "estrategias-campanha", "break-even"],
+    pergunta: "Como funciona o ROAS objetivo da campanha?",
+    termos: [
+      "roas objetivo", "roas alvo", "objetivo", "configurar roas", "mudar roas",
+      "subir roas", "baixar roas", "leilao", "algoritmo",
+    ],
+    resposta:
+      "O ROAS objetivo substituiu o ACOS objetivo em outubro de 2025. É o retorno que você diz esperar "
+      + "de cada real investido, e o algoritmo do ML usa isso como acelerador no leilão.\n\n"
+      + "ROAS objetivo BAIXO = agressivo. O ML dá mais lances, você aparece mais e gasta mais. "
+      + "Se o anúncio não converte bem, isso vira clique caro sem venda.\n\n"
+      + "ROAS objetivo ALTO = conservador. O ML só disputa as buscas em que acredita converter, "
+      + "você aparece menos e cada venda sai mais lucrativa.\n\n"
+      + "Faixas de referência do mercado: abaixo de 5x prioriza volume; 5x a 10x equilibra; "
+      + "acima de 10x prioriza rentabilidade. Mas o número que importa é o SEU break-even — "
+      + "qualquer alvo abaixo dele só acelera prejuízo, por mais 'agressivo' que pareça certo.",
+    contextualizar: (c) =>
+      c.roasIdealMedio != null
+        ? `Pelos seus custos, o alvo que entrega a margem de ${pct(c.metaMargem)} é ${x(c.roasIdealMedio)} em média.`
+        : null,
+  },
+  {
+    id: "aprendizado",
+    relacionados: ["roas-objetivo", "orcamento"],
+    pergunta: "Mexi na campanha e piorou. É normal?",
+    termos: [
+      "aprendizado", "piorou", "mexi", "alterei", "mudei", "reiniciar", "instavel",
+      "oscilou", "caiu depois", "quanto tempo", "esperar",
+    ],
+    resposta:
+      "Sim, e é esperado. Toda alteração de ROAS objetivo ou orçamento REINICIA a otimização, e o "
+      + "algoritmo leva de 3 a 5 dias reaprendendo. Nesse período os números oscilam e não valem "
+      + "como avaliação.\n\n"
+      + "O erro mais caro em Ads é mexer de novo no meio do aprendizado: você nunca chega a ver o "
+      + "resultado de mudança nenhuma, e cada ajuste zera o anterior. Vira um ciclo em que a campanha "
+      + "está sempre reaprendendo e nunca performando.\n\n"
+      + "Regra prática: mudou, espera 5 dias completos antes de julgar. Se precisar mexer antes, é "
+      + "porque o gasto está fora de controle — aí reduza orçamento, que é reversível, em vez de "
+      + "mexer no alvo.",
+  },
+  {
+    id: "estrategias-campanha",
+    relacionados: ["roas-objetivo", "quando-escalar"],
+    pergunta: "Qual estratégia de campanha devo usar?",
+    termos: [
+      "estrategia", "tipo de campanha", "visibilidade", "crescimento", "rentabilidade",
+      "qual campanha", "criar campanha",
+    ],
+    resposta:
+      "O Product Ads tem três estratégias, e cada uma serve a um momento do produto:\n\n"
+      + "· VISIBILIDADE — produto novo ou categoria muito disputada, quando o problema é ninguém "
+      + "te ver. ROAS objetivo mais baixo (referência 4x a 6,7x). Aceita margem menor pra ganhar posição.\n\n"
+      + "· CRESCIMENTO — produto de rotação média que já vende, mas pode vender mais. É o meio-termo.\n\n"
+      + "· RENTABILIDADE — produto que JÁ vende bem e já aparece nas primeiras posições orgânicas. "
+      + "ROAS objetivo alto (referência 10x a 20x), porque aqui o anúncio não precisa criar a venda, "
+      + "só defender a posição.\n\n"
+      + "O erro comum é usar Visibilidade em produto que já vende: você paga caro por clique que "
+      + "viria de graça no orgânico.",
+  },
+  {
+    id: "janela-atribuicao",
+    relacionados: ["direta-assistida", "roas-diferente-ml"],
+    pergunta: "Vendi hoje mas o Ads não mostrou. Por quê?",
+    // "nao aparece" saiu: colidia com o tópico do anúncio sem impressão, e os
+    // dois empatavam em 4 pontos — o desempate virava a ordem do array. Aqui o
+    // que demora a aparecer é a VENDA no relatório, não o anúncio na busca.
+    termos: [
+      "janela", "atribuicao", "14 dias", "nao mostrou", "nao contou",
+      "demora aparecer", "atrasado", "conta depois", "mudou depois",
+    ],
+    resposta:
+      "O Mercado Ads atribui a venda ao DIA DO CLIQUE, não ao dia da compra, e a janela de atribuição "
+      + "é de 14 dias.\n\n"
+      + "Consequência prática: uma venda de hoje pode ser creditada a um clique de cinco dias atrás, e "
+      + "o número de ontem pode mudar depois que você já olhou. Isso não é erro do painel nem deste "
+      + "app — é como a atribuição funciona.\n\n"
+      + "Por isso período curto engana: um único dia tem clique cuja venda ainda não aconteceu e venda "
+      + "cujo clique foi antes da janela. Avalie campanha em 14 dias ou mais, nunca em 24 horas.",
+  },
+  {
+    id: "aparece-pouco",
+    relacionados: ["roas-objetivo", "orcamento", "ctr-cpc"],
+    pergunta: "Meu anúncio quase não aparece. O que fazer?",
+    termos: [
+      "nao aparece", "anuncio nao aparece", "pouca impressao", "poucas impressoes",
+      "sem impressao", "invisivel", "nao roda", "nao gasta", "sobra orcamento",
+    ],
+    resposta:
+      "Impressão baixa quase sempre é uma destas quatro, nesta ordem de frequência:\n\n"
+      + "1. ROAS objetivo alto demais — você pediu retorno que o ML não acha viável, então ele para "
+      + "de disputar. É a causa mais comum e a menos óbvia.\n"
+      + "2. Orçamento diário baixo — acaba cedo e o anúncio some no resto do dia.\n"
+      + "3. Anúncio perdendo o leilão — preço, reputação ou prazo pior que o do concorrente.\n"
+      + "4. Campanha pausada ou anúncio sem estoque.\n\n"
+      + "Sinal claro de que é a nº 1: orçamento sobrando no fim do dia. Se você reservou verba e ela "
+      + "não foi gasta, o problema não é dinheiro — é o alvo.",
+  },
+  {
+    id: "produto-barato",
+    relacionados: ["break-even", "roas-alto-prejuizo"],
+    pergunta: "Por que produto barato quase não deixa margem?",
+    termos: [
+      "produto barato", "ticket baixo", "margem fina", "pouco lucro", "19 reais",
+      "produto de baixo valor", "nao compensa", "custo fixo",
+    ],
+    resposta:
+      "Porque no Mercado Livre boa parte do custo NÃO é proporcional ao preço.\n\n"
+      + "A comissão é percentual (10–14% no Clássico, 15–19% no Premium), mas o frete e o custo "
+      + "operacional são quase fixos por unidade. Num produto de R$ 19, dois reais de frete já são "
+      + "10% do preço; no mesmo produto vendido a R$ 79, seriam 2,5%.\n\n"
+      + "Some a isso o frete grátis, que desde junho de 2025 vale a partir de R$ 19 — a faixa em que "
+      + "muito produto barato está — e o subsídio do ML depende da sua reputação.\n\n"
+      + "É por isso que aumentar o preço costuma render mais que cortar custo em item barato: o ganho "
+      + "de preço é inteiro seu, enquanto o corte de custo esbarra em taxa que não desce. E é por isso "
+      + "que vender em KIT muda o jogo — dilui o custo fixo por unidade.",
+  },
+  {
+    id: "canibalizar-organico",
+    relacionados: ["dependencia", "acos-tacos"],
+    pergunta: "O Ads está roubando venda que eu teria de graça?",
+    termos: [
+      "canibaliz", "organico", "roubando", "teria vendido", "de graca", "sem anuncio",
+      "vale a pena anunciar", "ja vendo bem",
+    ],
+    resposta:
+      "É o risco real de anunciar produto que já está bem posicionado no orgânico: parte do clique "
+      + "pago viria de graça, e você passa a pagar por venda que já era sua.\n\n"
+      + "O sintoma é TACOS subindo com ACOS estável. A campanha continua parecendo boa (ACOS bom), "
+      + "mas o peso do anúncio na receita total cresce — sinal de que o pago está substituindo o "
+      + "orgânico em vez de somar.\n\n"
+      + "O teste honesto: pause o anúncio por 7 a 14 dias e olhe a venda TOTAL do produto, não a "
+      + "atribuída. Se cair pouco, o Ads estava canibalizando. Se cair muito, ele estava sustentando "
+      + "mesmo. É o único jeito de saber, porque nenhum relatório separa isso pra você.",
   },
 ];
 

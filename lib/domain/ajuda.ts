@@ -319,6 +319,120 @@ export const TOPICOS: Topico[] = [
       + "No iPhone isso não é opcional se você quer notificação: o iOS só manda push pra site instalado na tela de início.",
     relacionados: ["notificacoes"],
   },
+  {
+    id: "taxas-ml",
+    pergunta: "Como funcionam as taxas do Mercado Livre?",
+    aba: "preco",
+    relacionados: ["preco", "margem-nao-bate"],
+    // "taxas do mercado livre" precisa estar aqui como expressão: sem ela, a
+    // pergunta caía no tópico de faturamento, que tem "mercado livre" e vence
+    // por peso de termo composto.
+    termos: [
+      "taxas do mercado livre", "taxa do ml", "taxa", "taxas", "comissao",
+      "tarifa", "quanto o ml cobra", "classico", "premium", "custo fixo",
+    ],
+    resposta:
+      "São três cobranças diferentes, e confundi-las é o que faz a conta não fechar:\n\n"
+      + "1. COMISSÃO — percentual sobre o valor, varia por categoria e tipo de anúncio. "
+      + "Clássico fica na faixa de 10% a 14%; Premium, 15% a 19%, e em troca oferece parcelamento "
+      + "sem juros e mais exposição.\n\n"
+      + "2. CUSTO OPERACIONAL — cobrado em produto abaixo de R$ 79. Desde março de 2026 deixou de ser "
+      + "valor fixo e passou a variar por peso, dimensão e preço. Acima de R$ 79 não existe.\n\n"
+      + "3. FRETE — desde junho de 2025 o frete grátis vale a partir de R$ 19. Acima de R$ 79 ele "
+      + "deixa de ser opcional. O ML subsidia parte conforme sua reputação: verde escuro paga bem "
+      + "menos que amarelo.\n\n"
+      + "O app usa a taxa REAL que veio no pedido, não uma tabela — então o que aparece aqui já é o "
+      + "que o ML cobrou de fato naquela venda.",
+  },
+  {
+    id: "margem-fina-produto-barato",
+    pergunta: "Por que meus produtos baratos deixam tão pouco?",
+    aba: "preco",
+    relacionados: ["taxas-ml", "preco", "margem-nao-bate"],
+    termos: [
+      "produto barato", "ticket baixo", "margem fina", "pouco lucro", "nao compensa",
+      "quase nao sobra", "margem baixa", "kit",
+    ],
+    resposta:
+      "Porque boa parte do custo do ML não acompanha o preço.\n\n"
+      + "A comissão é percentual, mas frete e custo operacional são quase fixos por unidade. "
+      + "R$ 2 de frete num produto de R$ 19 é 10% do preço; no mesmo produto a R$ 79, seria 2,5%. "
+      + "O produto barato paga proporcionalmente muito mais.\n\n"
+      + "Três saídas, em ordem de eficácia:\n"
+      + "· VENDER EM KIT — dilui frete e custo operacional por unidade. É a que mais muda o resultado.\n"
+      + "· SUBIR O PREÇO — o ganho é inteiro seu, enquanto cortar custo esbarra em taxa que não desce.\n"
+      + "· REVISAR O CUSTO na origem — só compensa quando há volume pra negociar.\n\n"
+      + "Use a aba Preço pra simular antes de mexer no anúncio.",
+  },
+  {
+    id: "custo-medio",
+    pergunta: "Como o custo médio é calculado?",
+    aba: "estoque",
+    relacionados: ["editar-entrada", "lancar-compra", "margem-nao-bate"],
+    termos: [
+      "custo medio", "media", "como calcula", "por que mudou", "custo do produto",
+      "cmv", "ponderado",
+    ],
+    resposta:
+      "É média ponderada de todas as entradas: cada compra entra pela quantidade e pelo preço que "
+      + "você pagou, e o custo médio é o total gasto dividido pelo total de unidades.\n\n"
+      + "Consequência importante: uma compra nova com preço diferente MUDA o custo médio de todo o "
+      + "estoque, não só das unidades novas. Se você comprou mais caro, a margem dos produtos que já "
+      + "estavam lá também cai — e isso é o certo, porque repor vai custar o preço novo.\n\n"
+      + "O custo usado em cada pedido é o que valia NA DATA da venda. Corrigir uma entrada antiga "
+      + "recalcula tudo dali pra frente sozinho.",
+  },
+  {
+    id: "cancelado-vs-devolvido",
+    pergunta: "Qual a diferença entre cancelado e devolvido?",
+    aba: "pedidos",
+    relacionados: ["devolucao", "faturamento-nao-bate"],
+    termos: [
+      "cancelado", "devolvido", "diferenca", "cancelamento", "estorno",
+      "nao contou", "sumiu do lucro",
+    ],
+    resposta:
+      "CANCELADO: a venda não chegou a acontecer — o estoque nem saiu. Não gera custo nem lucro.\n\n"
+      + "DEVOLVIDO: a venda aconteceu e foi revertida. O produto volta pro estoque, e o resultado é "
+      + "zero a zero: nem receita nem custo ficam.\n\n"
+      + "Os dois aparecem no Faturamento bruto de propósito, pra você ver o tamanho da perda, mas "
+      + "saem do faturamento líquido e do cálculo de margem. Por isso o bruto nunca serve de base "
+      + "pra margem — ele inclui venda que não existiu.",
+  },
+  {
+    id: "separacao-envio",
+    pergunta: "Por que um pedido virou vários?",
+    aba: "pedidos",
+    relacionados: ["faturamento-nao-bate", "cancelado-vs-devolvido"],
+    termos: [
+      "virou varios", "dividiu", "separacao", "separou", "pacote", "pack",
+      "mesmo pedido", "duplicado", "repetido",
+    ],
+    resposta:
+      "Quando o Mercado Livre separa o envio na agência, ele CANCELA o pedido original e cria "
+      + "pedidos novos no lugar. É uma venda só que vira várias linhas.\n\n"
+      + "O app detecta isso e não conta o original como venda perdida — senão o cancelamento e o "
+      + "faturamento apareceriam inflados ao mesmo tempo.\n\n"
+      + "Também é por isso que o frete é rateado por ENVIO e não por pedido: vários pedidos podem "
+      + "compartilhar um envio só, e somar o frete de cada um contaria o mesmo custo várias vezes.",
+  },
+  {
+    id: "imposto",
+    pergunta: "Como configuro o imposto dos produtos?",
+    aba: "estoque",
+    relacionados: ["custo-medio", "preco"],
+    termos: [
+      "imposto", "aliquota", "tributo", "simples", "porcentagem imposto",
+      "configurar imposto", "nota fiscal",
+    ],
+    resposta:
+      "O imposto é por produto, em percentual sobre o valor da venda, e fica no cadastro do produto "
+      + "na aba Estoque.\n\n"
+      + "Ele entra no cálculo de lucro de cada pedido usando a alíquota que valia NA DATA da venda. "
+      + "Mudar a alíquota hoje não reescreve o lucro de meses fechados — o que já passou fica com a "
+      + "alíquota da época, que é o comportamento contábil correto.\n\n"
+      + "Se você não sabe qual usar, confirme com seu contador: varia por regime e por produto.",
+  },
 ];
 
 /**
