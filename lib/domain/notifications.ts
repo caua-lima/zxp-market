@@ -19,6 +19,8 @@ export type NotificationEventType =
   | "sync_warning"
   | "task_assigned"
   | "stock_low"
+  /** Conquista: meta de faturamento batida, subida de nível no ML. */
+  | "milestone"
   | "system";
 
 export type NotificationEventSeverity = "success" | "info" | "warning" | "danger";
@@ -261,5 +263,12 @@ export const NOTIFICATION_TYPE_META: Record<
   sync_warning: { label: "Aviso de sincronização", severity: "warning", group: "sistema" },
   task_assigned: { label: "Tarefa atribuída", severity: "info", group: "alertas" },
   stock_low: { label: "Full no mínimo (agendar coleta)", severity: "warning", group: "alertas" },
+  /**
+   * Conquista tem tipo próprio, e não "system", porque as duas coisas pedem
+   * tratamento oposto: aviso de sistema é ruído técnico que o usuário
+   * eventualmente silencia, e comemoração é a única notificação boa que ele
+   * recebe. Enviadas no mesmo balde, desligar o ruído desligava a festa.
+   */
+  milestone: { label: "Conquista", severity: "success", group: "vendas" },
   system: { label: "Sistema", severity: "info", group: "sistema" },
 };

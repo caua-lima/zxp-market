@@ -54,13 +54,23 @@ export type ResultadoMarcos = {
   nivelAtual: string | null;
 };
 
-export async function verificarMarcos(faturamentoMes: number, mes: string): Promise<ResultadoMarcos> {
+/**
+ * @param faturamentoMes  null = não deu pra apurar o faturamento agora. A
+ *   REPUTAÇÃO é verificada mesmo assim, de propósito: as duas conquistas são
+ *   independentes, e amarrá-las foi exatamente o bug que segurou o aviso de
+ *   MercadoLíder — a busca do faturamento falhava, quem chamava desistia, e a
+ *   reputação nunca chegava a ser olhada.
+ */
+export async function verificarMarcos(
+  faturamentoMes: number | null,
+  mes: string,
+): Promise<ResultadoMarcos> {
   const avisadosFaturamento: string[] = [];
   let avisadoReputacao: string | null = null;
   let nivelAtual: string | null = null;
 
   // ── Faturamento do mês ──
-  for (const m of marcosDeFaturamento(faturamentoMes, mes)) {
+  for (const m of marcosDeFaturamento(faturamentoMes ?? 0, mes)) {
     try {
       if (await notificarMarco(m)) avisadosFaturamento.push(m.chave);
     } catch (err) {

@@ -77,6 +77,9 @@ const TYPE_TO_TOGGLE: Record<NotificationEventType, NotificationTogglesKey | nul
   sync_warning: "sync_warning",
   task_assigned: "task_assigned",
   stock_low: "stock_low",
+  // Conquista sempre entra: é a única notificação boa do app, e ninguém
+  // desliga de propósito o aviso de que bateu meta.
+  milestone: null,
   system: null, // sistema não é opcional — sempre entra na Central; não é um push de venda
 };
 

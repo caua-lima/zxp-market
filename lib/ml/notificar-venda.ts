@@ -251,7 +251,7 @@ export async function notificarVendaConfirmada(
  */
 export async function notificarMarco(marco: { chave: string; titulo: string; corpo: string }): Promise<boolean> {
   const { created, eventId } = await createNotificationEventIdempotent({
-    type: "system",
+    type: "milestone",
     severity: "success",
     entityType: "system",
     entityId: marco.chave,
@@ -259,14 +259,16 @@ export async function notificarMarco(marco: { chave: string; titulo: string; cor
     title: marco.titulo,
     body: marco.corpo,
     financialState: "confirmed",
-    deepLink: "/",
+    // Desempenho, não a raiz: é onde estão reputação e metas, que é o que a
+    // pessoa quer ver depois de saber que bateu.
+    deepLink: "/?tab=desempenho",
   });
   if (!created) return false;
 
   await enviarEPersistirEntrega(
     eventId,
-    "system",
-    buildPayload(eventId, "system", marco.titulo, marco.corpo, {
+    "milestone",
+    buildPayload(eventId, "milestone", marco.titulo, marco.corpo, {
       orderId: "",
       tag: marco.chave,
     }),

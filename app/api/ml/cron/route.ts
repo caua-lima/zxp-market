@@ -5,6 +5,7 @@ import { currentMonthRangeBR, previousMonthRangeBR, syncOrdersRange, syncReturns
 import { enviarLembretesDeTarefa } from "@/lib/task-reminders-run";
 import { ehDomingoBR, fazerBackupSemanal } from "@/lib/backup-run";
 import { verificarMarcos } from "@/lib/marcos-run";
+import { verificarDevolucoes } from "@/lib/devolucoes-run";
 import { verificarEstoqueBaixo } from "@/lib/estoque-alerta-run";
 
 export const maxDuration = 60;
@@ -97,13 +98,28 @@ export async function GET(req: Request) {
         const mesAtual = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 7);
         const origem = new URL(req.url).origin;
         const auth = req.headers.get("authorization");
-        const rm = await fetch(`${origem}/api/ml/metrics?month=${mesAtual}`, {
-          headers: auth ? { Authorization: auth } : {},
-          cache: "no-store",
-        });
-        if (!rm.ok) return null;
-        const j = (await rm.json()) as { faturamentoLiquido?: number };
-        return await verificarMarcos(Number(j.faturamentoLiquido ?? 0), mesAtual);
+        /**
+         * Faturamento é best-effort. Falhar aqui NÃO pode cancelar a checagem
+         * de reputação: eram duas conquistas independentes amarradas numa
+         * chamada só, e quando esta falhava (401 do cron, que era o caso) as
+         * duas morriam caladas.
+         */
+        let faturamento: number | null = null;
+        try {
+          const rm = await fetch(`${origem}/api/ml/metrics?month=${mesAtual}`, {
+            headers: auth ? { Authorization: auth } : {},
+            cache: "no-store",
+          });
+          if (rm.ok) {
+            const j = (await rm.json()) as { faturamentoLiquido?: number };
+            faturamento = Number(j.faturamentoLiquido ?? 0);
+          } else {
+            console.error("[cron] faturamento do mes indisponivel:", rm.status);
+          }
+        } catch (err) {
+          console.error("[cron] faturamento do mes falhou", err);
+        }
+        return await verificarMarcos(faturamento, mesAtual);
       } catch (err) {
         console.error("[cron] marcos falharam", err);
         return null;
@@ -120,9 +136,20 @@ export async function GET(req: Request) {
       return null;
     });
 
+    /**
+     * Devoluções e reclamações. Os tipos existiam no app desde sempre, mas
+     * ninguém os emitia — a rota chamada "returns" busca cancelamento, que é
+     * outra coisa e já vem pelo webhook.
+     */
+    const devolucoes = await verificarDevolucoes().catch((err) => {
+      console.error("[cron] aviso de devolucao falhou", err);
+      return null;
+    });
+
     return NextResponse.json({
       ok: true,
       marcos,
+      devolucoes,
       estoqueBaixo,
       atual: { orders: ordensAtual, returns: devAtual, claims: claimsAtual, range: atual },
       anterior: { orders: ordensAnterior, returns: devAnterior, claims: claimsAnterior, range: anterior },

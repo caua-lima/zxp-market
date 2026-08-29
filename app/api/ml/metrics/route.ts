@@ -438,7 +438,15 @@ function computeAggregates(
 }
 
 export async function GET(req: Request) {
-  const gate = await requireAccess(req);
+  /**
+   * `allowCron` estava faltando, e era a causa de os marcos comemorativos
+   * nunca terem disparado: o cron busca o faturamento do mês AQUI antes de
+   * verificar as conquistas, levava 401, desistia — e a checagem inteira
+   * (faturamento E reputação) nunca chegava a rodar.
+   *
+   * Dez outras rotas do cron já tinham isto. Esta era a única sem.
+   */
+  const gate = await requireAccess(req, { allowCron: true });
   if (gate instanceof NextResponse) return gate;
 
   try {
