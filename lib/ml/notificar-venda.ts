@@ -1,6 +1,8 @@
 import "server-only";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { estimateOrderFinance, type ProdutoCusto } from "@/lib/ml/order-finance";
+import { fetchShippingCost } from "@/lib/ml/orders";
+import { getMlAccessToken } from "@/app/api/ml/token";
 import { sendSalePushToAll } from "@/lib/push-send";
 import { createNotificationEventIdempotent, markPushAttempted, markPushDelivered, markPushError } from "@/lib/notification-events";
 import { registrarVendaNaJanela } from "@/lib/notification-groups";
@@ -153,8 +155,45 @@ export type PedidoParaNotificar = {
   status: string;
   dateCreated: string;
   items: ItemPedido[];
-  shippingCost: number | null;
+  /**
+   * Envio do pedido, pra apurar o frete que o VENDEDOR paga.
+   *
+   * Antes chegava aqui `order.shipping_cost`, que é o que o COMPRADOR pagou
+   * — zero em toda venda com frete grátis, e por isso a margem do aviso saía
+   * sempre inflada. O custo real só existe em /shipments/{id}/costs, então o
+   * que o pedido precisa entregar é o ID do envio, não um valor.
+   */
+  shippingId: string | null;
+  /**
+   * Frete do vendedor já apurado, quando quem chama tiver. Evita uma ida ao
+   * ML por venda; `null` manda buscar.
+   */
+  shippingCost?: number | null;
 };
+
+/**
+ * Frete do vendedor pra este pedido: usa o que veio pronto, senão busca.
+ *
+ * Devolve `null` quando não deu pra apurar — e `null` aqui significa
+ * "não sei", nunca "de graça". É essa diferença que `estimateOrderFinance`
+ * usa pra não anunciar margem inventada.
+ */
+async function apurarFrete(pedido: PedidoParaNotificar): Promise<number | null> {
+  if (typeof pedido.shippingCost === "number" && pedido.shippingCost > 0) return pedido.shippingCost;
+  if (!pedido.shippingId) {
+    // Sem envio (retirada, digital) não há frete a pagar: zero de verdade.
+    return 0;
+  }
+  try {
+    const token = await getMlAccessToken();
+    if (!token) return null;
+    return await fetchShippingCost(token, pedido.shippingId);
+  } catch {
+    // Aviso é best-effort: falha de rede vira "não sei", e o aviso sai sem
+    // margem em vez de sair com uma margem errada.
+    return null;
+  }
+}
 
 /**
  * Cria o evento de "venda confirmada" e dispara o push, se ainda não existir.
@@ -176,12 +215,12 @@ export async function notificarVendaConfirmada(
   const metaMargem = ctx ? ctx.metaMargem : await metaMargemAtual(db);
 
   const finance = estimateOrderFinance(
-    pedido.items, porMlb, porSku, pedido.shippingCost,
+    pedido.items, porMlb, porSku, await apurarFrete(pedido),
     pedido.dateCreated || new Date().toISOString(),
     metaMargem,
   );
   const { type } = classifySale(finance);
-  const content = buildSaleContent({ ...finance, type, itemCount: finance.itemCount, semCadastro: finance.semCadastro });
+  const content = buildSaleContent({ ...finance, type, itemCount: finance.itemCount, semCadastro: finance.semCadastro, freteDesconhecido: finance.freteDesconhecido });
   const financialState: "estimated" | "unavailable" = finance.estimatedProfit == null ? "unavailable" : "estimated";
 
   /**

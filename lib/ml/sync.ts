@@ -401,7 +401,7 @@ async function notificarVendasPendentes(orders: unknown[]): Promise<void> {
         status: "paid",
         dateCreated: String(o.date_created ?? ""),
         items: mapOrderItems(o),
-        shippingCost: typeof o.shipping_cost === "number" ? (o.shipping_cost as number) : null,
+        shippingId: String((o.shipping as Record<string, unknown>)?.id ?? "").trim() || null,
       }, { porMlb, porSku, metaMargem });
     } catch {
       // Best-effort por pedido: uma venda que falhe no aviso não pode

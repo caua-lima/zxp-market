@@ -138,7 +138,9 @@ export async function POST(req: Request) {
       status,
       dateCreated: dataCriacao,
       items,
-      shippingCost: typeof order.shipping_cost === "number" ? (order.shipping_cost as number) : null,
+      // O ID do envio, não o valor: `order.shipping_cost` é o que o comprador
+      // pagou (zero em frete grátis), e usá-lo inflava a margem do aviso.
+      shippingId: String((order.shipping as Record<string, unknown>)?.id ?? "").trim() || null,
     });
 
     /**

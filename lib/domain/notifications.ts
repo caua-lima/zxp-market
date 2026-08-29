@@ -141,6 +141,8 @@ export type SaleContentInput = SaleFinanceInput & {
   type: NotificationEventType;
   /** Item do pedido sem produto cadastrado — o CMV entra como zero. */
   semCadastro?: boolean;
+  /** Frete do vendedor ainda não publicado pelo ML — a margem sairia inflada. */
+  freteDesconhecido?: boolean;
   /** Nome do primeiro/principal produto do pedido. */
   productName: string;
   /** Quantos itens DISTINTOS tem o pedido — 1 = só o produto principal; 2+ nomeia os produtos (ver buildSaleContent). */
@@ -205,6 +207,19 @@ export function buildSaleContent(input: SaleContentInput): SaleContent {
           return {
             title: "Venda de produto sem cadastro",
             body: `${produto} · ${valor} — sem custo cadastrado, o lucro está inflado`,
+          };
+        }
+        /**
+         * Frete pendente tem cara de "em atualização", mas dizer QUAL dado
+         * falta muda o que o usuário faz: sem cadastro ele age agora, sem
+         * frete ele só espera. Antes os dois casos saíam com o mesmo texto —
+         * e o de frete nem chegava aqui, porque frete ausente virava zero e a
+         * margem era anunciada inflada.
+         */
+        if (input.freteDesconhecido) {
+          return {
+            title: "Nova venda confirmada",
+            body: `${produto} · ${valor} — margem sai quando o ML publicar o frete`,
           };
         }
         return { title: "Nova venda confirmada", body: `${produto} · cálculo financeiro em atualização` };
