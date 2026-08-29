@@ -47,6 +47,26 @@ export async function GET(req: Request) {
   const ultimas24h = chamadas.filter((c) => Number(c.ts ?? 0) >= h24);
   const comErro = ultimas24h.filter((c) => c.ok === false);
 
+  /**
+   * Tópicos que o webhook descarta (shipments, items, payments…) não entram
+   * mais em `webhook_log` um-a-um — viraram contador diário, porque eram 73%
+   * do volume. Mas a contagem precisa aparecer AQUI, senão o diagnóstico
+   * responderia "o ML não está chamando" justamente no caso que ele existe
+   * pra distinguir: ML configurado, só que no tópico errado.
+   */
+  let topicosIgnorados: Record<string, unknown> = {};
+  try {
+    const dias = [0, 1].map((d) => new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date(agora - d * 86400000)));
+    const docs = await db.getAll(...dias.map((dia) => db.collection("webhook_topicos").doc(dia)));
+    for (const doc of docs) {
+      if (doc.exists) topicosIgnorados[doc.id] = doc.data()?.topicos ?? {};
+    }
+  } catch {
+    topicosIgnorados = {};
+  }
+
   // ── 3. Existe aparelho registrado? ──
   const tokensSnap = await db.collection("pushTokens").get();
   const porEmail = new Map<string, number>();
@@ -129,6 +149,8 @@ export async function GET(req: Request) {
       comErro: comErro.length,
       ultimaChamadaEm: chamadas[0]?.at ?? null,
       ultimasChamadas: chamadas.slice(0, 10),
+      // Só tópicos de pedido entram no log acima; estes são os demais.
+      topicosIgnorados,
     },
     dispositivos: {
       total: tokensSnap.size,

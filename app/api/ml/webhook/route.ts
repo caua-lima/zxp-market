@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { getValidMlAccessToken } from "@/lib/ml/getToken";
 import { mapOrderItems } from "@/lib/ml/sync";
@@ -23,6 +24,32 @@ const ML_API = "https://api.mercadolibre.com";
  * resumido. Nunca token, nunca corpo completo. Consultável em
  * /api/ml/diagnostico-push.
  */
+/**
+ * Tópico que o app não trata: conta, em vez de gravar um doc por chamada.
+ *
+ * ─── POR QUE DEIXOU DE SER UM DOC POR CHAMADA ───────────────────────────
+ *
+ * Medido na conta: 1.104 chamadas por dia, das quais 73% são tópicos que
+ * esta rota descarta na linha seguinte — `shipments`, `items`,
+ * `payments`, `invoices`, `stock-locations`, `price_suggestion`. Cada uma
+ * gravava um documento, e `webhook_log` virou a maior coleção da base
+ * (9.911 docs, contra 1.100 de `ml_orders`), acumulados em menos de 30 dias.
+ *
+ * O valor diagnóstico continua o mesmo: o que importa é saber que o ML chega
+ * aqui e em qual tópico — "não configurado" x "configurado no tópico errado".
+ * Isso é uma CONTAGEM, não um histórico: um contador por tópico por dia
+ * responde igual e troca ~800 documentos diários por ~7.
+ */
+async function contarTopicoIgnorado(topic: string, dia: string) {
+  try {
+    await getAdminDb().collection("webhook_topicos").doc(dia).set({
+      dia,
+      [`topicos.${(topic || "sem_topico").replace(/[.$/[]#]/g, "_")}`]: FieldValue.increment(1),
+      atualizadoEm: Date.now(),
+    }, { merge: true });
+  } catch { /* contagem nunca pode derrubar o webhook */ }
+}
+
 async function registrarChamada(dados: Record<string, unknown>) {
   try {
     await getAdminDb().collection("webhook_log").add({
@@ -68,7 +95,9 @@ export async function POST(req: Request) {
     // queremos que o ML pare de mandar os outros por causa disso. Registra
     // mesmo assim: saber que o ML chega aqui, ainda que com outro tópico, já
     // separa "não configurado" de "configurado no tópico errado".
-    await registrarChamada({ topic: body?.topic ?? "", resource: resource.slice(0, 80), ok: true, resultado: "ignorado_outro_topico" });
+    await contarTopicoIgnorado(String(body?.topic ?? ""), new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date()));
     return NextResponse.json({ ok: true, ignored: true });
   }
   const orderId = match[1];

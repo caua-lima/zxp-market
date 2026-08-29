@@ -191,10 +191,22 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Legacy: Allow authorized users read old data, writes only own uid
+    /**
+     * Cada um só alcança o PRÓPRIO subdocumento.
+     *
+     * Esta regra era `read: if isAuthorized()`, herdada de quando havia dados
+     * antigos aqui. Como as regras do Firestore são avaliadas em OR, ela
+     * vencia a regra estrita de `usuarios/{uid}/preferences` logo acima e
+     * qualquer usuário autorizado lia as preferências de notificação de
+     * qualquer outro — o oposto do que o código afirma em lib/firebase/data.ts
+     * ("cada um só lê/escreve a própria").
+     *
+     * Hoje o app só grava `usuarios/{uid}/preferences/notifications`, e o
+     * único chamador passa `user.uid` (components/NotificationSettings.tsx),
+     * então fechar não tira acesso de ninguém.
+     */
     match /usuarios/{uid}/{document=**} {
-      allow read: if isAuthorized();
-      allow write: if request.auth != null && request.auth.uid == uid;
+      allow read, write: if request.auth != null && request.auth.uid == uid;
     }
   }
 }

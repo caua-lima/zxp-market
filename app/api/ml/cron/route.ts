@@ -7,6 +7,7 @@ import { ehDomingoBR, fazerBackupSemanal } from "@/lib/backup-run";
 import { verificarMarcos } from "@/lib/marcos-run";
 import { verificarDevolucoes } from "@/lib/devolucoes-run";
 import { verificarEstoqueBaixo } from "@/lib/estoque-alerta-run";
+import { podarWebhookLog } from "@/lib/webhook-log-prune";
 
 export const maxDuration = 60;
 
@@ -51,7 +52,25 @@ export async function GET(req: Request) {
     const atual = currentMonthRangeBR();
     const anterior = previousMonthRangeBR();
 
-    const resultados = await Promise.all([
+    /**
+     * ─── POR QUE allSettled, E NÃO all ──────────────────────────────────
+     *
+     * Com `Promise.all`, uma única falha de sync rejeitava tudo e o cron
+     * abortava ali — levando junto o backup semanal, os marcos, o alerta de
+     * estoque e o aviso de devolução, TODOS em silêncio. E o sync é a parte
+     * menos confiável daqui: são dezenas de chamadas ao ML, qualquer uma
+     * pode cair.
+     *
+     * Nenhum desses passos depende do sync ter dado certo: marcos leem o
+     * faturamento por HTTP, estoque e devoluções leem ao vivo do ML,
+     * lembrete e backup leem o Firestore. Eram independentes no efeito e
+     * acoplados só pelo `await` — o pior tipo de acoplamento, porque não
+     * aparece até o dia em que falha.
+     *
+     * Evidência de que isto mordia: `backups_semanais` está vazio, e o
+     * backup roda ANTES dos marcos na sequência abaixo.
+     */
+    const resultados = await Promise.allSettled([
       syncOrdersRange(accessToken, atual),
       syncReturnsRange(accessToken, atual),
       // Reclamacoes/devolucoes ja rodavam no sync-all (botao manual) mas NAO
@@ -62,7 +81,21 @@ export async function GET(req: Request) {
       syncReturnsRange(accessToken, anterior),
       syncClaimsRange(accessToken, anterior).catch(() => 0),
     ]);
-    const [ordensAtual, devAtual, claimsAtual, ordensAnterior, devAnterior, claimsAnterior] = resultados;
+    /**
+     * Falha vira `null`, não zero: "não sincronizou" e "sincronizou nada" são
+     * coisas diferentes, e a resposta do cron é o único lugar onde dá pra
+     * enxergar isso depois. Os erros vão junto em `syncFalhas`.
+     */
+    const syncFalhas: string[] = [];
+    const nomes = ["orders/atual", "returns/atual", "claims/atual", "orders/anterior", "returns/anterior", "claims/anterior"];
+    const valores = resultados.map((r, i) => {
+      if (r.status === "fulfilled") return r.value;
+      const motivo = r.reason instanceof Error ? r.reason.message : String(r.reason);
+      console.error(`[cron] sync ${nomes[i]} falhou`, r.reason);
+      syncFalhas.push(`${nomes[i]}: ${motivo}`);
+      return null;
+    });
+    const [ordensAtual, devAtual, claimsAtual, ordensAnterior, devAnterior, claimsAnterior] = valores;
 
     // Lembrete de prazo das tarefas pega carona nesta execução diária em vez
     // de virar um cron próprio (ver o aviso do Hobby acima). Best-effort: um
@@ -146,11 +179,22 @@ export async function GET(req: Request) {
       return null;
     });
 
+    /**
+     * Poda da trilha do webhook. Por ultimo de proposito: e manutencao, e
+     * nao pode competir por tempo com nada que o usuario percebe.
+     */
+    const poda = await podarWebhookLog().catch((err) => {
+      console.error("[cron] poda do webhook_log falhou", err);
+      return null;
+    });
+
     return NextResponse.json({
       ok: true,
+      poda,
       marcos,
       devolucoes,
       estoqueBaixo,
+      syncFalhas: syncFalhas.length > 0 ? syncFalhas : undefined,
       atual: { orders: ordensAtual, returns: devAtual, claims: claimsAtual, range: atual },
       anterior: { orders: ordensAnterior, returns: devAnterior, claims: claimsAnterior, range: anterior },
       lembretesTarefa: lembretes,

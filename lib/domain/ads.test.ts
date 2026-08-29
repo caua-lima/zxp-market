@@ -247,7 +247,7 @@ describe("anúncio de produto sem custo cadastrado", () => {
 
   it("sem informar custoConhecido, o comportamento é o de antes", () => {
     // Compatibilidade: quem já chamava sem o campo não muda de resposta.
-    const { custoConhecido: _ignora, ...semOCampo } = semCusto;
+    const semOCampo = { ...semCusto, custoConhecido: undefined };
     expect(getAdRecommendation(semOCampo).acao).toBe("pausar");
   });
 
