@@ -42,9 +42,16 @@ const ML_API = "https://api.mercadolibre.com";
  */
 async function contarTopicoIgnorado(topic: string, dia: string) {
   try {
+    /**
+     * Mapa aninhado, NÃO chave com ponto: `set()` trata "topicos.x" como um
+     * nome de campo literal (é `update()` que interpreta ponto como caminho),
+     * e o contador ficaria ilegível pra quem lê `data().topicos`. Verificado
+     * contra o Firestore: com `merge`, o increment aninhado soma e preserva
+     * os outros tópicos do mesmo dia.
+     */
     await getAdminDb().collection("webhook_topicos").doc(dia).set({
       dia,
-      [`topicos.${(topic || "sem_topico").replace(/[.$/[]#]/g, "_")}`]: FieldValue.increment(1),
+      topicos: { [(topic || "sem_topico").replace(/[.$/[]#]/g, "_")]: FieldValue.increment(1) },
       atualizadoEm: Date.now(),
     }, { merge: true });
   } catch { /* contagem nunca pode derrubar o webhook */ }
