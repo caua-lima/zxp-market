@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
+import { lerUltimaExecucaoDoCron } from "@/lib/cron-heartbeat";
 import { requireAccess } from "@/lib/api-auth";
 
 export const maxDuration = 30;
@@ -66,6 +67,31 @@ export async function GET(req: Request) {
   } catch {
     topicosIgnorados = {};
   }
+
+  /**
+   * ── O cron diário está rodando? ──
+   *
+   * Cinco automações dependem dele (backup, marcos, alerta de estoque,
+   * lembrete de prazo e aviso de devolução). Quando ele não roda, nenhuma
+   * roda — e o sintoma é ausência, que não aparece em lugar nenhum. Sem esta
+   * checagem, "não chega notificação de tarefa" e "não chegou o marco" eram
+   * investigados um a um, quando a causa era a mesma e ficava a montante.
+   */
+  const ultimaExecucao = await lerUltimaExecucaoDoCron();
+  const cronHa = ultimaExecucao ? agora - ultimaExecucao.em : null;
+  const cron = {
+    jaRodou: ultimaExecucao != null,
+    ultimaEm: ultimaExecucao ? new Date(ultimaExecucao.em).toISOString() : null,
+    horasAtras: cronHa != null ? Math.round(cronHa / 3600000) : null,
+    // Roda 9h todo dia: passando de 36h, ou nunca tendo rodado, algo está errado.
+    saudavel: cronHa != null && cronHa < 36 * 3600 * 1000,
+    diagnostico: ultimaExecucao == null
+      ? "O cron NUNCA registrou execução. Causa mais provável: a variável CRON_SECRET não está configurada na Vercel — sem ela a Vercel não manda o header de autorização e o endpoint recusa a chamada com 401. Nesse estado, backup semanal, marcos, alerta de estoque, lembrete de tarefa e aviso de devolução não rodam."
+      : cronHa != null && cronHa >= 36 * 3600 * 1000
+        ? "O cron rodou, mas não nas últimas 36h — deveria rodar todo dia às 9h."
+        : null,
+    ultimoResumo: ultimaExecucao?.resumo ?? null,
+  };
 
   // ── 3. Existe aparelho registrado? ──
   const tokensSnap = await db.collection("pushTokens").get();
@@ -152,6 +178,7 @@ export async function GET(req: Request) {
       // Só tópicos de pedido entram no log acima; estes são os demais.
       topicosIgnorados,
     },
+    cron,
     dispositivos: {
       total: tokensSnap.size,
       porEmail: Object.fromEntries(porEmail),

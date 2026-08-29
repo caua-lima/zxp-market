@@ -20,10 +20,30 @@ function bearer(req: Request): string | null {
  * Retorna true quando o header casa com CRON_SECRET.
  */
 export function isCronRequest(req: Request): boolean {
+  return motivoRecusaDoCron(req) === null;
+}
+
+/**
+ * Por que a chamada do cron foi recusada — `null` quando foi aceita.
+ *
+ * ─── POR QUE ISTO PRECISOU EXISTIR ──────────────────────────────────────
+ *
+ * `isCronRequest` devolvia `false` tanto pra "CRON_SECRET não configurado"
+ * quanto pra "segredo errado", e o cron respondia um 401 mudo aos dois. São
+ * problemas com correções OPOSTAS — um é configurar a variável na Vercel, o
+ * outro é conferir o valor — e o 401 mudo não distinguia.
+ *
+ * O custo disso foi alto: sem a variável, a Vercel não injeta header nenhum,
+ * o cron era recusado na porta todo dia e TODA automação pendurada nele
+ * (backup semanal, marcos, alerta de estoque, lembrete de tarefa, aviso de
+ * devolução) simplesmente nunca rodou — sem erro, sem log, sem sintoma além
+ * da ausência.
+ */
+export function motivoRecusaDoCron(req: Request): "cron_secret_nao_configurado" | "segredo_invalido" | null {
   const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
+  if (!secret) return "cron_secret_nao_configurado";
   const token = bearer(req) || req.headers.get("x-cron-secret");
-  return token === secret;
+  return token === secret ? null : "segredo_invalido";
 }
 
 /**

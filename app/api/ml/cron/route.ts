@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getMlAccessToken } from "../token";
-import { isCronRequest } from "@/lib/api-auth";
+import { motivoRecusaDoCron } from "@/lib/api-auth";
 import { currentMonthRangeBR, previousMonthRangeBR, syncOrdersRange, syncReturnsRange, syncClaimsRange } from "@/lib/ml/sync";
 import { enviarLembretesDeTarefa } from "@/lib/task-reminders-run";
 import { ehDomingoBR, fazerBackupSemanal } from "@/lib/backup-run";
@@ -8,6 +8,7 @@ import { verificarMarcos } from "@/lib/marcos-run";
 import { verificarDevolucoes } from "@/lib/devolucoes-run";
 import { verificarEstoqueBaixo } from "@/lib/estoque-alerta-run";
 import { podarWebhookLog } from "@/lib/webhook-log-prune";
+import { registrarExecucaoDoCron } from "@/lib/cron-heartbeat";
 
 export const maxDuration = 60;
 
@@ -30,8 +31,15 @@ export const maxDuration = 60;
  * sempre atualizado sem depender do botão manual.
  */
 export async function GET(req: Request) {
-  if (!isCronRequest(req)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const recusa = motivoRecusaDoCron(req);
+  if (recusa) {
+    /**
+     * O MOTIVO vai no corpo porque as correções são opostas: variável ausente
+     * se resolve na Vercel, segredo errado se resolve conferindo o valor.
+     * Nada aqui vaza o segredo — só diz qual dos dois casos é.
+     */
+    console.error(`[cron] chamada recusada: ${recusa}`);
+    return NextResponse.json({ error: "unauthorized", motivo: recusa }, { status: 401 });
   }
 
   try {
@@ -186,6 +194,21 @@ export async function GET(req: Request) {
     const poda = await podarWebhookLog().catch((err) => {
       console.error("[cron] poda do webhook_log falhou", err);
       return null;
+    });
+
+    /**
+     * Carimbo da execucao. Sem ele, "o cron rodou?" so dava pra responder
+     * procurando efeitos colaterais — e quando NADA rodou, nao ha efeito
+     * nenhum pra procurar.
+     */
+    await registrarExecucaoDoCron({
+      syncFalhas: syncFalhas.length,
+      lembretes: lembretes?.enviados ?? null,
+      backup: backup?.feito ?? false,
+      marcos: marcos ? marcos.faturamento.length + (marcos.reputacao ? 1 : 0) : null,
+      estoqueBaixo: estoqueBaixo?.avisados?.length ?? null,
+      devolucoes: devolucoes?.avisados?.length ?? null,
+      poda: poda?.apagados ?? null,
     });
 
     return NextResponse.json({
