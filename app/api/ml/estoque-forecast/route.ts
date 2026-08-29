@@ -22,7 +22,9 @@ function normalizeSku(s: string): string {
 
 /** Vendas (unidades) por produto nos últimos N dias → média diária p/ previsão. */
 export async function GET(req: Request) {
-  const gate = await requireAccess(req);
+  // Somente leitura, e o resumo diário usa isto pra contar produtos em risco — sem
+  // `allowCron` a chamada interna leva 401 e o aviso morre calado.
+  const gate = await requireAccess(req, { allowCron: true });
   if (gate instanceof NextResponse) return gate;
 
   try {

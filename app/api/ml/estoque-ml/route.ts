@@ -13,7 +13,9 @@ function normId(s: string) {
 
 /** Retorna a quantidade disponível (estoque) por anúncio MLB, ao vivo do ML. */
 export async function GET(req: Request) {
-  const gate = await requireAccess(req);
+  // Somente leitura, e o snapshot diário lê o estoque do ML daqui — sem
+  // `allowCron` a chamada interna leva 401 e o aviso morre calado.
+  const gate = await requireAccess(req, { allowCron: true });
   if (gate instanceof NextResponse) return gate;
 
   try {

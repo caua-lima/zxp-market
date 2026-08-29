@@ -116,7 +116,9 @@ function vendasPorItem(
 }
 
 export async function GET(req: Request) {
-  const gate = await requireAccess(req);
+  // Somente leitura, e o resumo diário busca o gasto de publicidade daqui — sem
+  // `allowCron` a chamada interna leva 401 e o aviso morre calado.
+  const gate = await requireAccess(req, { allowCron: true });
   if (gate instanceof NextResponse) return gate;
 
   try {
