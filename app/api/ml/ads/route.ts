@@ -37,7 +37,23 @@ function todayISO(offsetDays = 0): string {
 const normSku = (s: string) => s.trim().toLowerCase();
 const normId = (s: string) => s.trim().toUpperCase().replace(/^MLB/, "");
 
-type VendaItem = { receita: number; unidades: number; cmv: number; imposto: number; taxaML: number; envio: number };
+type VendaItem = {
+  receita: number; unidades: number; cmv: number; imposto: number; taxaML: number; envio: number;
+  /**
+   * Alguma unidade vendida não tem produto vinculado no Estoque, então o CMV
+   * e o imposto dela são DESCONHECIDOS.
+   *
+   * Antes o custo ausente entrava como zero (`prod?.custo ?? 0`), e o anúncio
+   * aparecia com margem perto de 100% — o melhor investimento da tela, por
+   * falta de dado. Medido na conta: 5 anúncios sem vínculo, R$ 1.975,13 em 60
+   * dias, 5,3% do faturamento.
+   *
+   * O Dashboard (app/api/ml/metrics) e a aba de Pedidos já tratavam isso
+   * certo, com `if (produto)` — só esta rota divergia, e por isso o "lucro
+   * antes de ads" daqui não batia com o da tela principal.
+   */
+  semCusto: boolean;
+};
 
 /**
  * Vendas + lucro (antes de ads) por item MLB, a partir dos MESMOS pedidos que o
@@ -102,13 +118,19 @@ function vendasPorItem(
       const qty = Number(it.quantity ?? 1);
       const receita = Number(it.unit_price ?? 0) * qty;
       const prod = porMlb.get(normId(id)) ?? porSku.get(normSku(String(it.sku ?? "")));
-      const cur = map.get(id) ?? { receita: 0, unidades: 0, cmv: 0, imposto: 0, taxaML: 0, envio: 0 };
+      const cur = map.get(id) ?? { receita: 0, unidades: 0, cmv: 0, imposto: 0, taxaML: 0, envio: 0, semCusto: false };
       cur.receita += receita;
       cur.unidades += qty;
       cur.taxaML += Number(it.sale_fee ?? 0) * qty;
       cur.envio += envioPerUnit * qty;
-      cur.cmv += (prod?.custo ?? 0) * qty;
-      cur.imposto += receita * ((prod?.imposto ?? 0) / 100);
+      // Receita, taxa e frete são conhecidos mesmo sem vínculo — o que falta é
+      // o CUSTO. Somar zero no lugar dele não é estimar, é inventar pra cima.
+      if (prod) {
+        cur.cmv += prod.custo * qty;
+        cur.imposto += receita * (prod.imposto / 100);
+      } else {
+        cur.semCusto = true;
+      }
       map.set(id, cur);
     }
   }
@@ -228,7 +250,14 @@ export async function GET(req: Request) {
     for (const c of cfg.campanhasResumo) if (c.id) nomePorCampanha.set(String(c.id), c.name);
 
     const items = ads.map((a) => {
-      const v = vendas.get(a.itemId) ?? { receita: 0, unidades: 0, cmv: 0, imposto: 0, taxaML: 0, envio: 0 };
+      const v = vendas.get(a.itemId) ?? { receita: 0, unidades: 0, cmv: 0, imposto: 0, taxaML: 0, envio: 0, semCusto: false };
+      /**
+       * Sem custo cadastrado não há lucro a afirmar. Mesma regra do
+       * `diretoDisponivel` logo abaixo: marcar como indisponível em vez de
+       * inventar — só que aqui o erro era inventar LUCRO, que é pior, porque
+       * mandaria o vendedor colocar mais verba no anúncio.
+       */
+      const custoDisponivel = !v.semCusto;
       const lucroAntesAds = v.receita - v.cmv - v.imposto - v.taxaML - v.envio;
       const lucroLiquido = lucroAntesAds - a.cost; // GERAL: todas as vendas − ads
 
@@ -245,7 +274,7 @@ export async function GET(req: Request) {
        * ROAS bom. Isso não é um prejuízo real, é falta de dado — marcamos
        * como indisponível em vez de inventar perda.
        */
-      const diretoDisponivel = v.receita > 0;
+      const diretoDisponivel = v.receita > 0 && custoDisponivel;
       const margemItem = diretoDisponivel ? lucroAntesAds / v.receita : 0;
       const lucroDiretoAntesAds = a.directSales * margemItem;
       const lucroDiretoLiquido = diretoDisponivel ? lucroDiretoAntesAds - a.cost : 0;
@@ -285,7 +314,7 @@ export async function GET(req: Request) {
         adUnitsAtribuidas: a.directUnits + a.indirectUnits,
         indirectUnits: a.indirectUnits,
         totalSales: v.receita, totalUnits: v.unidades,
-        lucroAntesAds, lucroLiquido,
+        lucroAntesAds, lucroLiquido, custoDisponivel,
         lucroDiretoAntesAds, lucroDiretoLiquido, diretoDisponivel,
         // Configuração da campanha do anúncio (0/"" quando não achamos a campanha).
         dailyBudget: c?.dailyBudget ?? 0,
@@ -311,10 +340,17 @@ export async function GET(req: Request) {
      * consegue dizer quanto do faturamento esses anúncios representam em vez de
      * deixar o vendedor achar que um dos números está quebrado.
      */
-    let receitaConta = 0, unidadesConta = 0, lucroContaAntesAds = 0;
+    let receitaConta = 0, unidadesConta = 0, lucroContaAntesAds = 0, receitaSemCusto = 0;
     for (const v of vendas.values()) {
       receitaConta += v.receita;
       unidadesConta += v.unidades;
+      /**
+       * Receita sem custo cadastrado fica FORA do lucro, e é devolvida à parte
+       * pra tela poder dizer por que a soma não fecha. Somá-la com CMV zero
+       * inflava o lucro da conta aqui e fazia esta aba discordar do Dashboard,
+       * que sempre excluiu esses itens.
+       */
+      if (v.semCusto) { receitaSemCusto += v.receita; continue; }
       lucroContaAntesAds += v.receita - v.cmv - v.imposto - v.taxaML - v.envio;
     }
 
@@ -339,6 +375,7 @@ export async function GET(req: Request) {
       conta: {
         receita: receitaConta, unidades: unidadesConta,
         lucroAntesAds: lucroContaAntesAds, itens: vendas.size,
+        receitaSemCusto,
       },
     });
   } catch (err: unknown) {

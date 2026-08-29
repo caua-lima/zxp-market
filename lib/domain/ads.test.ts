@@ -206,3 +206,58 @@ describe("getAdRecommendation — nao chamar conclusao de 'sem dados'", () => {
     }
   });
 });
+
+/**
+ * Produto anunciado SEM custo cadastrado.
+ *
+ * Medido na conta: 5 anúncios sem vínculo no Estoque, R$ 1.975,13 em 60 dias
+ * (5,3% do faturamento). A rota de ads somava o custo desses como ZERO, então
+ * eles apareciam com margem perto de 100% — os melhores da tela, por falta de
+ * dado. Corrigido o zero, o lucro chega zerado até aqui, e sem esta distinção
+ * a tela passaria a mandar PAUSAR justamente esses anúncios.
+ *
+ * Os dois erros são simétricos e igualmente caros: um manda investir no que
+ * não se conhece, o outro manda desligar o que talvez fosse o melhor.
+ */
+describe("anúncio de produto sem custo cadastrado", () => {
+  const semCusto = {
+    clicks: 100, vendas: 5, cost: 100, lucro: null, roas: 3, roasTarget: 2,
+    breakEvenRoas: null, margem: null, metaMargem: 10,
+    lucroAntesAds: 0, custoConhecido: false,
+  };
+
+  it("NÃO manda pausar — falta de cadastro não é diagnóstico de campanha", () => {
+    const r = getAdRecommendation(semCusto);
+    expect(r.acao).not.toBe("pausar");
+    expect(r.acao).toBe("sem-dados");
+  });
+
+  it("diz o que fazer: cadastrar o custo, não mexer em preço", () => {
+    expect(getAdRecommendation(semCusto).label).toMatch(/custo/i);
+    expect(getAdRecommendation(semCusto).label).toMatch(/estoque/i);
+  });
+
+  it("com custo conhecido, lucro zero volta a significar 'no vermelho'", () => {
+    // A regra antiga continua valendo quando o dado EXISTE — é a conclusão
+    // certa ali, e o que mudou foi só deixar de confundi-la com ausência.
+    const r = getAdRecommendation({ ...semCusto, custoConhecido: true });
+    expect(r.acao).toBe("pausar");
+    expect(r.label).toMatch(/vermelho/i);
+  });
+
+  it("sem informar custoConhecido, o comportamento é o de antes", () => {
+    // Compatibilidade: quem já chamava sem o campo não muda de resposta.
+    const { custoConhecido: _ignora, ...semOCampo } = semCusto;
+    expect(getAdRecommendation(semOCampo).acao).toBe("pausar");
+  });
+
+  it("o motivo do ROAS ideal aponta o Estoque, não a campanha", () => {
+    const m = motivoSemRoasIdeal(500, 0, 10, false);
+    expect(m).toMatch(/Estoque/);
+    expect(m).not.toMatch(/campanha/i);
+  });
+
+  it("com custo conhecido, o motivo volta a ser o de produto que não fecha conta", () => {
+    expect(motivoSemRoasIdeal(500, 0, 10, true)).toMatch(/não cobre o próprio custo/);
+  });
+});

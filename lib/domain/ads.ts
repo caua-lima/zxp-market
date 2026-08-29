@@ -81,12 +81,22 @@ export function lucroNoRoas(
  * situações bem diferentes, e cada uma pede uma ação diferente de quem lê:
  * faltar venda é esperar/investir, o produto não fechar conta é mexer em
  * preço ou custo, e a meta ser inalcançável é rever a meta.
+ *
+ * A quarta é a mais traiçoeira: produto SEM custo cadastrado. Ela não podia
+ * nem chegar aqui, porque o custo ausente virava zero lá atrás e o anúncio
+ * aparecia com margem perto de 100% — o melhor da tela, por falta de dado.
+ * Agora chega, e a ação é cadastrar o custo, não mexer na campanha.
  */
 export function motivoSemRoasIdeal(
   vendas: number,
   lucroAntesAds: number,
   metaMargemPct: number,
+  custoConhecido: boolean = true,
 ): string | null {
+  if (!custoConhecido) {
+    return "Este anúncio não tem produto vinculado no Estoque, então o custo é desconhecido. "
+      + "Cadastre o custo pra este anúncio entrar nas contas de lucro e ROAS.";
+  }
   if (vendas > 0 && lucroAntesAds > 0) {
     const m = Math.max(metaMargemPct, 0) / 100;
     if (lucroAntesAds - m * vendas > 0) return null; // tem ROAS ideal
@@ -127,9 +137,16 @@ export function getAdRecommendation(input: {
    * falta de dado (ver abaixo).
    */
   lucroAntesAds?: number | null;
+  /**
+   * O produto anunciado tem custo cadastrado. Sem isso, `lucroAntesAds` chega
+   * zerado — e zero aqui significaria "no vermelho", que é uma CONCLUSÃO. São
+   * coisas opostas: uma manda mexer no preço, a outra manda cadastrar o custo.
+   */
+  custoConhecido?: boolean;
 }): AdRecommendation {
   const { clicks, vendas, cost, lucro, roas, roasTarget, breakEvenRoas, margem, metaMargem } = input;
   const lucroAntesAds = input.lucroAntesAds ?? null;
+  const custoConhecido = input.custoConhecido ?? true;
 
   /**
    * "Sem dados suficientes" só quando é VERDADE.
@@ -155,6 +172,20 @@ export function getAdRecommendation(input: {
    */
   if (clicks < CLIQUES_MIN && vendas === 0) {
     return { acao: "sem-dados", label: `Sem venda atribuída ainda (${clicks} clique(s), ${fmtReais(cost)})`, tone: "info" };
+  }
+
+  /**
+   * Custo desconhecido vem ANTES do "no vermelho": sem produto vinculado o
+   * lucro chega zerado, e a regra abaixo leria isso como prejuízo e mandaria
+   * pausar um anúncio que pode ser o melhor da conta. Falta de cadastro não é
+   * diagnóstico de campanha.
+   */
+  if (!custoConhecido) {
+    return {
+      acao: "sem-dados",
+      label: "Sem custo cadastrado pro produto — vincule no Estoque pra medir o lucro",
+      tone: "info",
+    };
   }
 
   /**

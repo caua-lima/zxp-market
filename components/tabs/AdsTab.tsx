@@ -37,6 +37,8 @@ type Totais = {
   cost: number; clicks: number; prints: number; direct: number; directUn: number;
   adSales: number; total: number; totalUn: number; lucroAntes: number; lucroLiq: number;
   lucroLiqDireto: number; semDadoDireto: number; lucroDiretoAntes: number;
+  /** Anúncios fora do lucro por falta de custo cadastrado. */
+  semCusto: number;
 };
 
 function agregar(items: AdItem[]): Totais {
@@ -44,11 +46,17 @@ function agregar(items: AdItem[]): Totais {
     a.cost += i.cost; a.clicks += i.clicks; a.prints += i.prints;
     a.direct += i.directSales; a.directUn += i.directUnits;
     a.adSales += i.adSales; a.total += i.totalSales; a.totalUn += i.totalUnits;
-    a.lucroAntes += i.lucroAntesAds; a.lucroLiq += i.lucroLiquido;
+    /**
+     * Sem custo cadastrado o anúncio fica FORA do lucro, não entra como se
+     * fosse lucro cheio. Antes somava com CMV zero e inflava o total da aba,
+     * que por isso discordava do Dashboard.
+     */
+    if (i.custoDisponivel) { a.lucroAntes += i.lucroAntesAds; a.lucroLiq += i.lucroLiquido; }
+    else a.semCusto += 1;
     if (i.diretoDisponivel) { a.lucroLiqDireto += i.lucroDiretoLiquido; a.lucroDiretoAntes += i.lucroDiretoAntesAds; }
     else a.semDadoDireto += 1;
     return a;
-  }, { cost: 0, clicks: 0, prints: 0, direct: 0, directUn: 0, adSales: 0, total: 0, totalUn: 0, lucroAntes: 0, lucroLiq: 0, lucroLiqDireto: 0, semDadoDireto: 0, lucroDiretoAntes: 0 });
+  }, { cost: 0, clicks: 0, prints: 0, direct: 0, directUn: 0, adSales: 0, total: 0, totalUn: 0, lucroAntes: 0, lucroLiq: 0, lucroLiqDireto: 0, semDadoDireto: 0, lucroDiretoAntes: 0, semCusto: 0 });
 }
 
 function paraOverview(t: Totais, pub: boolean): OverviewTotais {
@@ -205,7 +213,12 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
     const ctr = i.prints > 0 ? (i.clicks / i.prints) * 100 : 0;
     const cpc = i.clicks > 0 ? i.cost / i.clicks : 0;
     const pctAds = i.totalSales > 0 ? (i.adSales / i.totalSales) * 100 : 0;
-    const lucroAntes = pub ? i.lucroDiretoAntesAds : i.lucroAntesAds;
+    /**
+     * Zero quando o custo é desconhecido: assim break-even e ROAS ideal caem
+     * sozinhos no caminho de "indisponível" que já existe, em vez de saírem
+     * calculados sobre um lucro inventado.
+     */
+    const lucroAntes = i.custoDisponivel ? (pub ? i.lucroDiretoAntesAds : i.lucroAntesAds) : 0;
     const breakEven = calculateBreakEvenRoas(v, lucroAntes);
     const abaixoDoBreakEven = breakEven != null && i.cost > 0 && r < breakEven;
     // ROAS ideal = o que sobra a margem ALVO, não só o que empata.
@@ -213,8 +226,9 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
     const abaixoDoIdeal = roasIdeal != null && i.cost > 0 && r < roasIdeal;
     // O ROAS ideal em dinheiro: quanto sobraria mantendo a receita de hoje.
     const lucroNoIdeal = lucroNoRoas(v, lucroAntes, roasIdeal);
-    const motivoSemIdeal = roasIdeal == null ? motivoSemRoasIdeal(v, lucroAntes, metaMargem) : null;
-    const lucroAtual = pub ? (i.diretoDisponivel ? i.lucroDiretoLiquido : null) : i.lucroLiquido;
+    const motivoSemIdeal = roasIdeal == null ? motivoSemRoasIdeal(v, lucroAntes, metaMargem, i.custoDisponivel) : null;
+    const lucroAtual = !i.custoDisponivel ? null
+      : pub ? (i.diretoDisponivel ? i.lucroDiretoLiquido : null) : i.lucroLiquido;
     const margemAtual = v > 0 && lucroAtual != null ? (lucroAtual / v) * 100 : null;
     const reco = getAdRecommendation({
       clicks: i.clicks, vendas: v, cost: i.cost, lucro: lucroAtual, roas: r,
@@ -223,6 +237,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
       // Sem isto, "produto no vermelho antes do ads" era rotulado como falta
       // de dado — ver getAdRecommendation.
       lucroAntesAds: lucroAntes,
+      custoConhecido: i.custoDisponivel,
     });
     const ganhoNoIdeal = lucroNoIdeal != null && lucroAtual != null ? lucroNoIdeal - lucroAtual : null;
     // O mesmo ROAS que aparece no painel do Mercado Ads (receita atribuída total).

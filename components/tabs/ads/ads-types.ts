@@ -23,6 +23,8 @@ export type AdItem = {
   /** false = sem venda vinculada no período pra calcular a margem do "direto"
    *  — não é prejuízo real, é falta de dado (ver route.ts). */
   diretoDisponivel: boolean;
+  /** Todo item vendido tem custo cadastrado — sem isso não há lucro a afirmar. */
+  custoDisponivel: boolean;
   dailyBudget: number; roasTarget: number; acosTarget: number;
   /**
    * O investimento deste anúncio fatiado por campanha. Um anúncio pode rodar
