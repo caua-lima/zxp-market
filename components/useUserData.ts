@@ -57,6 +57,19 @@ export function useUserData(uid: string | undefined): UserData {
       if (loaded >= TOTAL) setReady(true);
     };
 
+    /**
+     * Rede de segurança: `ready` só virava true com as CINCO assinaturas
+     * respondendo, e nenhuma delas chama markReady quando falha. Bastava uma
+     * ser recusada pra tela ficar carregando pra sempre, sem erro visível.
+     *
+     * Isso deixou de ser hipotético: o papel `member` não enxerga `custos`
+     * nem `estoque` (ver firestore.rules), então duas assinaturas são
+     * negadas por definição. Vale também pra estouro de cota do Firestore, que
+     * esta base já viveu — em ambos os casos, mostrar o que carregou é melhor
+     * que uma espera infinita.
+     */
+    const destravar = setTimeout(() => setReady(true), 6000);
+
     let f1 = true, f3 = true, f4 = true, f5 = true, f6 = true;
 
     const u1 = watchDraft(uid, (d) => {
@@ -80,7 +93,7 @@ export function useUserData(uid: string | undefined): UserData {
       if (f6) { f6 = false; markReady(); }
     });
 
-    return () => { u1(); u3(); u4(); u5(); u6(); };
+    return () => { clearTimeout(destravar); u1(); u3(); u4(); u5(); u6(); };
   }, [uid]);
 
   return { draft, goals, goalEntries, costs, products, ready };

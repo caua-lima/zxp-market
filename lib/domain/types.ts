@@ -282,7 +282,7 @@ export type AccessEntry = {
   // "admin"/"user" são papéis legados (contas cadastradas antes desta versão)
   // — continuam existindo em documentos antigos do Firestore, então o tipo
   // aceita ler os dois, mas toda escrita nova usa só "owner"/"colaborador".
-  role: "owner" | "colaborador" | "admin" | "user";
+  role: "owner" | "partner" | "member" | "colaborador" | "admin" | "user";
   displayName?: string;
   photoURL?: string;
   addedAt?: number;
@@ -294,9 +294,65 @@ export type AccessEntry = {
   permissoesEdicao?: PermissionTab[];
 };
 
-/** Rótulo de exibição do papel — normaliza os valores legados ("admin"/"user") para "Colaborador". */
-export function roleLabel(role: AccessEntry["role"]): "Owner" | "Colaborador" {
-  return role === "owner" ? "Owner" : "Colaborador";
+/**
+ * Os três papéis que existem hoje, depois de normalizar o que está gravado.
+ *
+ * ─── DE ONDE VEIO ESTA DIVISÃO ──────────────────────────────────────────
+ *
+ * Antes havia só "owner" e "colaborador". "Colaborador" acumulava dois casos
+ * bem diferentes: quem participa da operação (e precisa ver custo, estoque,
+ * preço, DRE) e quem só acompanha o resultado. Dar a segunda pessoa acesso a
+ * custo e margem é vazar o núcleo do negócio sem necessidade.
+ *
+ *   owner   — dono. Vê e edita tudo, e só ele mexe em acessos.
+ *   partner — o que "colaborador" sempre foi: vê todas as abas, edita só as
+ *             liberadas em permissoesEdicao.
+ *   member  — Dashboard e notificações, nada mais. Sem custo, sem margem,
+ *             sem estoque, sem preço.
+ */
+export type Papel = "owner" | "partner" | "member";
+
+/**
+ * O papel efetivo de um registro.
+ *
+ * "colaborador", "admin" e "user" são valores gravados por versões
+ * anteriores. Todos viram `partner`, que é exatamente o que eles já podiam
+ * fazer — a migração não pode dar nem tirar acesso de ninguém por acidente,
+ * e "member" é MAIS restrito que o que essas contas tinham.
+ */
+export function papelDe(role: AccessEntry["role"] | undefined | null): Papel {
+  if (role === "owner") return "owner";
+  if (role === "member") return "member";
+  return "partner";
+}
+
+/** Rótulo de exibição do papel. */
+export function roleLabel(role: AccessEntry["role"]): "Owner" | "Partner" | "Member" {
+  const p = papelDe(role);
+  return p === "owner" ? "Owner" : p === "member" ? "Member" : "Partner";
+}
+
+/**
+ * As únicas abas que um `member` alcança.
+ *
+ * Dashboard é o resultado consolidado; as notificações não são aba, moram no
+ * sino. Tudo que revela custo, margem, preço ou estoque fica de fora — é o
+ * ponto inteiro do papel.
+ */
+export const ABAS_DO_MEMBER = ["dashboard"] as const;
+
+/**
+ * Este papel enxerga esta aba?
+ *
+ * Puro de propósito: é a mesma regra que decide a navegação, a proteção da
+ * aba ativa e o que as regras do Firestore precisam espelhar. Tendo três
+ * cópias da regra, elas divergem — e divergência aqui é vazamento.
+ */
+export function podeVerAba(papel: Papel, aba: string): boolean {
+  // Acesso é do owner e nunca foi delegável.
+  if (aba === "acesso") return papel === "owner";
+  if (papel === "member") return (ABAS_DO_MEMBER as readonly string[]).includes(aba);
+  return true;
 }
 
 // ── Tarefas (Kanban) ────────────────────────────────────────────

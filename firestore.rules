@@ -21,6 +21,28 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/controleAcesso/$(request.auth.token.email));
     }
 
+    /**
+     * "member" — o papel que só acompanha o resultado.
+     *
+     * Vê o Dashboard e recebe notificações, e NADA que revele o núcleo do
+     * negócio: custo do produto, margem, preço, estoque, DRE, tarefas.
+     * Esconder as abas no app não bastaria — sem barrar aqui, qualquer um
+     * leria as coleções direto pelo SDK do cliente.
+     *
+     * Papéis legados ("colaborador"/"admin"/"user") NÃO são member: eles já
+     * viam tudo, e a migração não pode tirar acesso de quem trabalha. Só o
+     * valor explícito "member" restringe (espelha papelDe em
+     * lib/domain/types.ts).
+     */
+    function isMember() {
+      return isAuthorized() && requesterDoc().data.get('role', '') == 'member';
+    }
+
+    /** Autorizado e NÃO member — quem pode ver os dados da operação. */
+    function veOperacao() {
+      return isAuthorized() && !isMember();
+    }
+
     // Owner edita tudo, sempre. Colaborador só edita a `tab` se o próprio
     // dono liberou em permissoesEdicao — sem o campo (ou vazio), continua
     // somente-leitura, igual ao comportamento de sempre. Espelha exatamente
@@ -28,7 +50,10 @@ service cloud.firestore {
     // realmente barra a escrita, lá é só a UX de esconder o botão.
     function podeEditar(tab) {
       return isOwner()
-        || (isAuthorized() && tab in requesterDoc().data.get('permissoesEdicao', []));
+        // veOperacao (e nao isAuthorized): uma conta rebaixada pra member pode
+        // ter permissoesEdicao sobrando de quando era colaborador, e sem isto
+        // ela continuaria ESCREVENDO na aba liberada. O papel manda sobre a lista.
+        || (veOperacao() && tab in requesterDoc().data.get('permissoesEdicao', []));
     }
 
     // Autorizado (owner OU colaborador) mexendo só no próprio `photoURL` — é
@@ -83,60 +108,61 @@ service cloud.firestore {
 
     // Coleções do time: leitura por autorizados, escrita só do owner.
     match /rascunho/{docId} {
-      allow read: if isAuthorized();
+      allow read: if veOperacao();
       allow write: if isOwner();
     }
 
     match /dias/{docId} {
-      allow read: if isAuthorized();
+      allow read: if veOperacao();
       allow write: if isOwner();
     }
 
     // Configurações internas: leitura por autorizados (o dashboard lê),
     // escrita somente por admin/owner.
     match /metas/{docId} {
-      allow read: if isAuthorized();
+      allow read: if veOperacao();
       allow write: if podeEditar('metas');
     }
 
     match /metasHistorico/{docId} {
-      allow read: if isAuthorized();
+      allow read: if veOperacao();
       allow write: if podeEditar('metas');
     }
 
     match /custos/{docId} {
-      allow read: if isAuthorized();
+      allow read: if veOperacao();
       allow write: if podeEditar('custos');
     }
 
     match /estoque/{docId} {
-      allow read: if isAuthorized();
+      allow read: if veOperacao();
       allow write: if podeEditar('estoque');
     }
 
     // Livro de movimentações do estoque (entradas/baixas/ajustes)
     match /estoque_movimentos/{docId} {
-      allow read: if isAuthorized();
+      allow read: if veOperacao();
       allow write: if podeEditar('estoque');
     }
 
     // Registro manual de alterações de campanha de Ads ("subi o ROAS pra
     // 20x") — não vem do ML, é o vendedor documentando a própria mudança.
     match /ads_alteracoes/{docId} {
-      allow read: if isAuthorized();
+      allow read: if veOperacao();
       allow write: if podeEditar('ads');
     }
 
     // Remessas do Full marcadas como resolvidas (sem gerar baixa)
     match /full_remessas/{docId} {
-      allow read: if isAuthorized();
+      allow read: if veOperacao();
       allow write: if isOwner();
     }
 
     // Tarefas (Kanban): owner e colaborador leem E escrevem igual — é o
     // ponto do quadro, um atribui tarefa pro outro e vice-versa.
     match /tarefas/{docId} {
-      allow read, write: if isAuthorized();
+      // Member não participa da operação — não lê nem escreve tarefa.
+      allow read, write: if veOperacao();
     }
 
     // Tokens de notificação push (um doc por dispositivo, id = o próprio

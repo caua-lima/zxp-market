@@ -8,7 +8,7 @@ import {
   checkAccess,
   getAccessBootstrap,
 } from "@/lib/firebase/data";
-import type { AccessEntry, PermissionTab } from "@/lib/domain/types";
+import { papelDe, podeVerAba, type AccessEntry, type Papel, type PermissionTab } from "@/lib/domain/types";
 
 type AccessInfo = {
   role: AccessEntry["role"];
@@ -24,11 +24,22 @@ type AccessInfo = {
   displayName: string;
   /** Edição de tudo-ou-nada (Acesso, Tarefas via regra própria, e qualquer tela ainda não migrada pro granular). */
   canEdit: boolean;
-  /** Edição granular por aba — sempre true pro owner; pro colaborador, depende de permissoesEdicao. */
+  /** Edição granular por aba — sempre true pro owner; pro partner, depende de permissoesEdicao. */
   canEditTab: (tab: PermissionTab) => boolean;
+  /** Papel efetivo, já normalizado (registros legados viram "partner"). */
+  papel: Papel;
+  /**
+   * Este papel alcança esta aba? `member` só vê o Dashboard — a regra mora em
+   * lib/domain/types (podeVerAba), pra navegação, proteção da aba ativa e as
+   * regras do Firestore não terem três cópias que divergem.
+   */
+  podeVer: (aba: string) => boolean;
 };
 const AccessCtx = createContext<AccessInfo>({
-  role: "colaborador", email: "", isOwner: false, displayName: "", canEdit: false, canEditTab: () => false,
+  // Default do contexto é o papel de MENOR poder: se algo renderizar fora do
+  // provider, não pode ser por engano que a tela abre.
+  role: "member", email: "", isOwner: false, displayName: "", canEdit: false,
+  canEditTab: () => false, papel: "member", podeVer: () => false,
 });
 export function useAccess() {
   return useContext(AccessCtx);
@@ -218,12 +229,19 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
     return <DeniedScreen onLogout={signOut} userEmail={user.email ?? ""} />;
 
   const role = access.entry?.role ?? "colaborador";
-  const isOwner = role === "owner"; // só o owner edita tudo; colaborador é somente-leitura por padrão
+  const papel = papelDe(role);
+  const isOwner = papel === "owner"; // só o owner edita tudo; os demais são leitura por padrão
   const permissoes = access.entry?.permissoesEdicao ?? [];
-  const canEditTab = (tab: PermissionTab) => isOwner || permissoes.includes(tab);
+  /**
+   * Member nunca edita, mesmo que um `permissoesEdicao` tenha sobrado de
+   * quando a conta era colaborador. O papel manda sobre a lista.
+   */
+  const canEditTab = (tab: PermissionTab) =>
+    isOwner || (papel === "partner" && permissoes.includes(tab));
+  const podeVer = (aba: string) => podeVerAba(papel, aba);
   const displayName = access.entry?.displayName || user.displayName || currentEmail;
   return (
-    <AccessCtx.Provider value={{ role, email: currentEmail, isOwner, displayName, canEdit: isOwner, canEditTab }}>
+    <AccessCtx.Provider value={{ role, email: currentEmail, isOwner, displayName, canEdit: isOwner, canEditTab, papel, podeVer }}>
       {children}
     </AccessCtx.Provider>
   );

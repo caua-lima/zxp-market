@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { roleLabel, type AccessEntry, type AuditEvent, type PermissionTab } from "@/lib/domain/types";
+import { papelDe, roleLabel, type AccessEntry, type AuditEvent, type PermissionTab } from "@/lib/domain/types";
 import {
   addAccessEntry,
   logAudit,
@@ -36,10 +36,18 @@ export default function AccessControlTab({
   const [search, setSearch] = useState("");
   const [editingEmail, setEditingEmail] = useState<string | null>(null);
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<AccessEntry["role"]>("colaborador");
+  const [role, setRole] = useState<AccessEntry["role"]>("partner");
   const [displayName, setDisplayName] = useState("");
   const [photoURL, setPhotoURL] = useState("");
   const [password, setPassword] = useState("");
+  /**
+   * Revelar o que está sendo DIGITADO — não a senha de quem já existe.
+   *
+   * Senha cadastrada é impossível de mostrar: o Firebase Auth guarda hash, não
+   * a senha. O que dá (e é o que resolve o erro de digitação na hora de criar
+   * o acesso) é conferir o que acabou de ser digitado antes de salvar.
+   */
+  const [senhaVisivel, setSenhaVisivel] = useState(false);
   const [permissoesEdicao, setPermissoesEdicao] = useState<PermissionTab[]>([]);
 
   useEffect(() => {
@@ -96,7 +104,8 @@ export default function AccessControlTab({
   function startEdit(entry: AccessEntry) {
     setEditingEmail(entry.email);
     setEmail(entry.email);
-    setRole(entry.role);
+    // Normaliza ao abrir pra edição — ver o comentário no <select>.
+    setRole(papelDe(entry.role));
     setDisplayName(entry.displayName ?? "");
     setPhotoURL(entry.photoURL ?? "");
     setPassword("");
@@ -221,7 +230,8 @@ export default function AccessControlTab({
       <div className="kpi-grid">
         <div className="kpi k-acc"><div className="k-lbl">Acessos</div><div className="k-val">{entries.length}</div></div>
         <div className="kpi k-pos"><div className="k-lbl">Owners</div><div className="k-val" style={{ color: "var(--green)" }}>{owners}</div></div>
-        <div className="kpi k-warn"><div className="k-lbl">Colaboradores</div><div className="k-val" style={{ color: "var(--yellow)" }}>{entries.length - owners}</div></div>
+        <div className="kpi k-warn"><div className="k-lbl">Partners</div><div className="k-val" style={{ color: "var(--yellow)" }}>{entries.filter((e) => papelDe(e.role) === "partner").length}</div></div>
+        <div className="kpi"><div className="k-lbl">Members</div><div className="k-val">{entries.filter((e) => papelDe(e.role) === "member").length}</div></div>
       </div>
 
       <div style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 1fr)" }}>
@@ -260,15 +270,35 @@ export default function AccessControlTab({
 
             <div className="config-field" style={{ margin: 0 }}>
               <label>Senha de login (opcional)</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Deixe em branco para só Google · mín. 6 caracteres"
-                autoComplete="new-password"
-              />
+              <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                <input
+                  type={senhaVisivel ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Deixe em branco para só Google · mín. 6 caracteres"
+                  autoComplete="new-password"
+                  style={{ paddingRight: 78, width: "100%" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setSenhaVisivel((v) => !v)}
+                  disabled={!password}
+                  aria-pressed={senhaVisivel}
+                  title={password ? (senhaVisivel ? "Ocultar a senha digitada" : "Ver a senha digitada") : "Digite uma senha para poder vê-la"}
+                  style={{
+                    position: "absolute", right: 6, background: "none", border: "none",
+                    color: password ? "var(--accent, #6aa9ff)" : "var(--muted)",
+                    cursor: password ? "pointer" : "default", fontSize: ".72rem",
+                    fontWeight: 700, padding: "4px 6px", textTransform: "uppercase", letterSpacing: ".04em",
+                  }}
+                >
+                  {senhaVisivel ? "Ocultar" : "Ver"}
+                </button>
+              </div>
               <div className="hint">
                 Preenchendo, cria um login por e-mail/senha (além do Google). Reeditar troca a senha.
+                {" "}<b>Ver</b> mostra só o que você está digitando agora — senha já cadastrada não
+                dá pra exibir, o Firebase guarda um hash irreversível, não a senha.
               </div>
             </div>
 
@@ -276,13 +306,22 @@ export default function AccessControlTab({
               <div className="config-field" style={{ margin: 0 }}>
                 <label>Perfil</label>
                 <select
-                  value={editingEntry?.role === "owner" ? "owner" : role}
+                  /* papelDe normaliza o legado: "colaborador" gravado por versões
+                     anteriores não casa com nenhuma option e deixaria o campo em
+                     branco, fazendo o owner salvar sem perceber a troca. */
+                  value={editingEntry ? papelDe(editingEntry.role) : role}
                   onChange={(e) => setRole(e.target.value as AccessEntry["role"]) }
                   disabled={editingEntry?.role === "owner"}
                 >
                   <option value="owner">Owner (acesso total)</option>
-                  <option value="colaborador">Colaborador (vê tudo, exceto Acesso)</option>
+                  <option value="partner">Partner (vê tudo, exceto Acesso)</option>
+                  <option value="member">Member (só Dashboard e notificações)</option>
                 </select>
+                <div className="hint">
+                  <b>Partner</b> é o que antes se chamava Colaborador: vê todas as abas e edita
+                  as que você liberar abaixo. <b>Member</b> vê só o Dashboard e recebe
+                  notificações — sem custo, margem, preço, estoque ou DRE.
+                </div>
               </div>
 
               <div className="config-field" style={{ margin: 0 }}>

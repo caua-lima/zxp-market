@@ -173,7 +173,7 @@ function AppShell() {
   }, [sidebarOpen]);
 
   const data = useUserData(user?.uid);
-  const { isOwner, displayName } = useAccess();
+  const { isOwner, displayName, podeVer } = useAccess();
   const [profileOpen, setProfileOpen] = useState(false);
 
   // Sem isto, uma venda que chega com o app ABERTO não mostra notificação
@@ -183,11 +183,17 @@ function AppShell() {
     initForegroundPush();
   }, []);
 
-  // Acesso é só do owner — colaborador nem vê o item na navegação.
-  const navItems = isOwner ? NAV_ITEMS : NAV_ITEMS.filter((n) => n.id !== "acesso");
-  // Defesa extra: se por algum motivo o tab ativo for "acesso" sem ser owner
-  // (ex.: papel rebaixado com a aba já aberta), cai pro Dashboard.
-  const activeTab: Tab = tab === "acesso" && !isOwner ? "dashboard" : tab;
+  /**
+   * Navegação pelo PAPEL: owner vê tudo, partner vê tudo menos Acesso, member
+   * só o Dashboard. A regra vem de podeVerAba (lib/domain/types), a mesma que
+   * as regras do Firestore espelham.
+   */
+  const navItems = NAV_ITEMS.filter((n) => podeVer(n.id));
+  /**
+   * Defesa extra: aba ativa que o papel não alcança cai pro Dashboard. Vale
+   * pra papel rebaixado com a aba já aberta e pra link direto por ?tab=.
+   */
+  const activeTab: Tab = podeVer(tab) ? tab : "dashboard";
 
   if (!user) return null;
 
