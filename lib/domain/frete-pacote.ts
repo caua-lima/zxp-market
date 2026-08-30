@@ -109,3 +109,33 @@ export function ratearFretePorPedido(pedidos: PedidoComFrete[]): RateioFrete {
   const totalSemRateio = pedidos.reduce((s, p) => s + Math.max(Number(p.shippingCost) || 0, 0), 0);
   return { porPedido, total, totalSemRateio, enviosCompartilhados };
 }
+
+/** Item de um envio, como o ML devolve em /shipments/{id}/items. */
+export type ItemDoEnvio = { order_id?: string | number; quantity?: number };
+
+/**
+ * Que fração do frete de UM envio cabe a UM pedido, pelas unidades.
+ *
+ * Mesma regra do `ratearFretePorPedido` acima — o custo é do envio e se
+ * distribui entre as unidades da compra — só que aplicada quando se conhece
+ * um pedido de cada vez, que é a situação do aviso de venda: o webhook chega
+ * pedido a pedido e não enxerga o pacote inteiro.
+ *
+ * Devolve 1 (frete inteiro) quando o envio é só deste pedido, e também
+ * quando não dá pra saber. Nesse caso o erro é pra MENOS na margem, que é o
+ * lado seguro num aviso cuja função é alertar.
+ */
+export function fatiaDoPedidoNoEnvio(itens: ItemDoEnvio[], orderId: string): number {
+  if (!Array.isArray(itens) || itens.length === 0) return 1;
+
+  let total = 0;
+  let doPedido = 0;
+  for (const it of itens) {
+    const q = Math.max(Number(it?.quantity ?? 0) || 0, 0);
+    total += q;
+    if (String(it?.order_id ?? "") === String(orderId)) doPedido += q;
+  }
+
+  if (total <= 0 || doPedido <= 0 || doPedido === total) return 1;
+  return doPedido / total;
+}

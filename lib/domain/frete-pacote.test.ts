@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chaveDoEnvio, ratearFretePorPedido, type PedidoComFrete } from "./frete-pacote";
+import { chaveDoEnvio, ratearFretePorPedido, type PedidoComFrete, fatiaDoPedidoNoEnvio } from "./frete-pacote";
 
 const p = (o: Partial<PedidoComFrete> & { orderId: string }): PedidoComFrete => ({
   packId: null, shippingId: null, shippingCost: 0, unidades: 1, ...o,
@@ -119,5 +119,58 @@ describe("bordas", () => {
   it("frete zero em tudo continua zero — não inventa custo", () => {
     const r = ratearFretePorPedido([p({ orderId: "a", packId: "P" }), p({ orderId: "b", packId: "P" })]);
     expect(r.total).toBe(0);
+  });
+});
+
+/**
+ * Envio 47890970706 desta conta: R$ 3,60 de custo do vendedor, DOIS pedidos
+ * (2000018192248924 e ...926), uma unidade cada. O aviso de venda cobrava o
+ * frete inteiro em cada um — R$ 7,20 num frete de R$ 3,60 — e por isso a
+ * margem chegava diferente da que a aba Pedidos mostra.
+ */
+describe("fatiaDoPedidoNoEnvio", () => {
+  const PACOTE_REAL = [
+    { order_id: "2000018192248924", quantity: 1 },
+    { order_id: "2000018192248926", quantity: 1 },
+  ];
+
+  it("dois pedidos de uma unidade dividem o frete ao meio", () => {
+    expect(fatiaDoPedidoNoEnvio(PACOTE_REAL, "2000018192248924")).toBeCloseTo(0.5, 6);
+    expect(fatiaDoPedidoNoEnvio(PACOTE_REAL, "2000018192248926")).toBeCloseTo(0.5, 6);
+  });
+
+  it("as fatias SOMAM 1 — é isso que faz o total fechar com o envio", () => {
+    const soma = PACOTE_REAL.reduce((s, i) => s + fatiaDoPedidoNoEnvio(PACOTE_REAL, String(i.order_id)), 0);
+    expect(soma).toBeCloseTo(1, 6);
+  });
+
+  it("envio de um pedido só leva o frete inteiro", () => {
+    expect(fatiaDoPedidoNoEnvio([{ order_id: "a", quantity: 3 }], "a")).toBe(1);
+  });
+
+  it("rateia por UNIDADE, não por pedido", () => {
+    // 3 un + 1 un: quem levou 3 carrega 75% do frete.
+    const itens = [{ order_id: "a", quantity: 3 }, { order_id: "b", quantity: 1 }];
+    expect(fatiaDoPedidoNoEnvio(itens, "a")).toBeCloseTo(0.75, 6);
+    expect(fatiaDoPedidoNoEnvio(itens, "b")).toBeCloseTo(0.25, 6);
+  });
+
+  it("o mesmo pedido em várias linhas soma as unidades dele", () => {
+    const itens = [
+      { order_id: "a", quantity: 1 }, { order_id: "a", quantity: 1 }, { order_id: "b", quantity: 2 },
+    ];
+    expect(fatiaDoPedidoNoEnvio(itens, "a")).toBeCloseTo(0.5, 6);
+  });
+
+  it("id numérico e string são o mesmo pedido", () => {
+    // O ML devolve number em /packs e string em /shipments/items.
+    expect(fatiaDoPedidoNoEnvio([{ order_id: 123, quantity: 1 }, { order_id: 456, quantity: 1 }], "123"))
+      .toBeCloseTo(0.5, 6);
+  });
+
+  it("sem dado utilizável, cobra o frete INTEIRO — erra pra menos na margem", () => {
+    expect(fatiaDoPedidoNoEnvio([], "a")).toBe(1);
+    expect(fatiaDoPedidoNoEnvio([{ order_id: "x", quantity: 0 }], "a")).toBe(1);
+    expect(fatiaDoPedidoNoEnvio([{ order_id: "outro", quantity: 2 }], "a")).toBe(1);
   });
 });

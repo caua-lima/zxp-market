@@ -2,6 +2,9 @@ import "server-only";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { estimateOrderFinance, type ProdutoCusto } from "@/lib/ml/order-finance";
 import { fetchShippingCost } from "@/lib/ml/orders";
+import { fatiaDoPedidoNoEnvio, type ItemDoEnvio } from "@/lib/domain/frete-pacote";
+
+const ML_API = "https://api.mercadolibre.com";
 import { getMlAccessToken } from "@/app/api/ml/token";
 import { sendSalePushToAll } from "@/lib/push-send";
 import { createNotificationEventIdempotent, markPushAttempted, markPushDelivered, markPushError } from "@/lib/notification-events";
@@ -65,7 +68,14 @@ export async function carregarProdutos(db: FirebaseFirestore.Firestore) {
   const porSku = new Map<string, ProdutoCusto>();
   for (const doc of snap.docs) {
     const d = doc.data();
-    const entry: ProdutoCusto = { custo: Number(d.custoMedio ?? d.custo ?? 0), imposto: d.imposto, impostoFaixas: d.impostoFaixas };
+    const entry: ProdutoCusto = {
+      custo: Number(d.custoMedio ?? d.custo ?? 0),
+      imposto: d.imposto,
+      impostoFaixas: d.impostoFaixas,
+      // Ver ProdutoCusto: sem as faixas, o aviso e a aba Pedidos davam
+      // margens diferentes pro mesmo pedido.
+      custoMedioFaixas: d.custoMedioFaixas,
+    };
     const mlbs: string[] = Array.isArray(d.mlbs) && d.mlbs.length ? d.mlbs : d.mlb ? [String(d.mlb)] : [];
     for (const m of mlbs) { const n = normId(String(m)); if (n) porMlb.set(n, entry); }
     const sku = String(d.sku ?? "").trim();
@@ -172,11 +182,24 @@ export type PedidoParaNotificar = {
 };
 
 /**
- * Frete do vendedor pra este pedido: usa o que veio pronto, senão busca.
+ * Frete do vendedor que cabe A ESTE pedido.
  *
- * Devolve `null` quando não deu pra apurar — e `null` aqui significa
- * "não sei", nunca "de graça". É essa diferença que `estimateOrderFinance`
- * usa pra não anunciar margem inventada.
+ * ─── POR QUE NÃO É SÓ O CUSTO DO ENVIO ──────────────────────────────────
+ *
+ * O frete é do ENVIO, não do pedido. Uma compra com produtos diferentes vira
+ * um PACOTE: vários pedidos na API, um envio só. Cobrar o custo inteiro em
+ * cada pedido conta o mesmo frete duas, quatro, cinco vezes.
+ *
+ * Medido na conta: o envio 47890970706 custa R$ 3,60 e atende DOIS pedidos
+ * (2000018192248924 e ...926). O aviso cobrava R$ 3,60 em cada um — R$ 7,20
+ * num frete de R$ 3,60 — e a margem chegava diferente da que a aba Pedidos
+ * mostra, que rateia (ver lib/domain/frete-pacote.ts).
+ *
+ * É o MESMO erro que o Dashboard já tinha corrigido, e que ali chegou a
+ * fazer um dia fechar com margem negativa quando o real era positivo.
+ *
+ * A regra é a mesma de lá: o custo do envio é distribuído entre as UNIDADES
+ * da compra, e cada pedido leva a fatia dele.
  */
 async function apurarFrete(pedido: PedidoParaNotificar): Promise<number | null> {
   if (typeof pedido.shippingCost === "number" && pedido.shippingCost > 0) return pedido.shippingCost;
@@ -187,11 +210,36 @@ async function apurarFrete(pedido: PedidoParaNotificar): Promise<number | null> 
   try {
     const token = await getMlAccessToken();
     if (!token) return null;
-    return await fetchShippingCost(token, pedido.shippingId);
+    const custoDoEnvio = await fetchShippingCost(token, pedido.shippingId);
+    if (custoDoEnvio == null || custoDoEnvio <= 0) return custoDoEnvio;
+
+    const rateio = await fatiaDoEnvio(token, pedido.shippingId, pedido.orderId);
+    return custoDoEnvio * rateio;
   } catch {
     // Aviso é best-effort: falha de rede vira "não sei", e o aviso sai sem
     // margem em vez de sair com uma margem errada.
     return null;
+  }
+}
+
+/**
+ * Fração do envio que cabe a este pedido. A REGRA mora em
+ * lib/domain/frete-pacote (fatiaDoPedidoNoEnvio), a mesma que o Dashboard
+ * usa — aqui só a busca dos itens do envio.
+ *
+ * Falha de rede devolve 1: cobra o frete inteiro, que erra pra MENOS na
+ * margem. Num aviso que serve pra alertar, esse é o lado seguro.
+ */
+async function fatiaDoEnvio(token: string, shippingId: string, orderId: string): Promise<number> {
+  try {
+    const r = await fetch(`${ML_API}/shipments/${shippingId}/items`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!r.ok) return 1;
+    return fatiaDoPedidoNoEnvio((await r.json()) as ItemDoEnvio[], orderId);
+  } catch {
+    return 1;
   }
 }
 

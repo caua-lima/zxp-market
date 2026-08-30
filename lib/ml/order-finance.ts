@@ -1,5 +1,5 @@
 import "server-only";
-import { impostoNaData, type ImpostoFaixa } from "@/lib/domain/types";
+import { custoNaData, impostoNaData, type CustoFaixa, type ImpostoFaixa } from "@/lib/domain/types";
 import type { SaleFinanceInput } from "@/lib/domain/notifications";
 
 export type OrderFinanceItem = {
@@ -11,7 +11,18 @@ export type OrderFinanceItem = {
   title?: string;
 };
 
-export type ProdutoCusto = { custo: number; imposto?: string | number; impostoFaixas?: ImpostoFaixa[] };
+export type ProdutoCusto = {
+  custo: number;
+  imposto?: string | number;
+  impostoFaixas?: ImpostoFaixa[];
+  /**
+   * Faixas de vigencia do custo medio. Sem elas, o aviso usava o custo de
+   * HOJE e a aba Pedidos usava o da DATA DA VENDA (custoNaData) — duas
+   * margens diferentes pro mesmo pedido. A propria funcao ja respeitava a
+   * data no imposto e nao no custo, o que era incoerente por dentro.
+   */
+  custoMedioFaixas?: CustoFaixa[];
+};
 
 export type OrderFinanceEstimate = SaleFinanceInput & {
   productName: string;
@@ -97,7 +108,7 @@ export function estimateOrderFinance(
     const id = String(it.item_id ?? "").trim().toUpperCase();
     const prod = (id && porMlb.get(normId(id))) || porSku.get(normSku(String(it.sku ?? "")));
     if (!prod) { algumSemProduto = true; continue; }
-    cmv += prod.custo * qty;
+    cmv += custoNaData({ custoMedio: prod.custo, custoMedioFaixas: prod.custoMedioFaixas }, dataVendaISO.slice(0, 10)) * qty;
     imposto += receita * (impostoNaData(prod, dataVendaISO.slice(0, 10)) / 100);
   }
 
