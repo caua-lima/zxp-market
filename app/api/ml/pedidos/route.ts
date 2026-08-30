@@ -256,6 +256,10 @@ export async function GET(req: Request) {
         // Repasse do Mercado Pago: net_received > 0 = valor CONFIRMADO pelo MP;
         // sem isso, "retorno" acima é a nossa ESTIMATIVA (mesma que o resto do app usa).
         netReceived: Number(o.net_received ?? 0) || null,
+        // Frete pago pelo COMPRADOR. Não entra em nenhuma conta — serve pra
+        // tela explicar a linha "Envios" do painel do ML, que mostra esse
+        // valor e não o custo do vendedor.
+        freteComprador: Number(o.shipping_cost_comprador ?? 0) || null,
         moneyReleaseDate: String(o.money_release_date ?? "") || null,
         linkAnuncio,
       };

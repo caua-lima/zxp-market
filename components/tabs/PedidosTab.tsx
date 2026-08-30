@@ -47,6 +47,13 @@ type Pedido = {
   tracking?: string;
   estimatedDelivery?: string;
   dateDelivered?: string;
+  /**
+   * Frete que o COMPRADOR pagou. Não entra em nenhuma conta — existe pra
+   * tela conseguir explicar a linha "Envios" do painel do ML, que mostra
+   * este valor e não o custo do vendedor. Sem isso as duas telas pareciam
+   * discordar do frete quando na verdade mediam coisas diferentes.
+   */
+  freteComprador?: number | null;
   /** Repasse REAL do Mercado Pago quando existe — sem isso, `retorno` acima é a nossa estimativa. */
   netReceived?: number | null;
   moneyReleaseDate?: string | null;
@@ -159,8 +166,27 @@ function DetalhePedido({ pedido: p }: { pedido: Pedido }) {
           Da venda até o seu bolso
         </div>
         {linha("Valor da venda", p.valor)}
-        {linha("Taxa do Mercado Livre", p.taxaML, { sinal: "menos" })}
-        {linha("Frete", p.envio, { sinal: "menos", nota: "custo de envio do pedido" })}
+        {/**
+          * As duas notas abaixo existem pra conferência contra o painel do ML,
+          * onde os mesmos dois números aparecem DIFERENTES — e conferido item
+          * a item no pedido 2000018191968692, os dois lados estão certos:
+          *
+          *   tarifa · o ML exibe a BRUTA (R$ 2,58) e o estorno (R$ 0,75) em
+          *            linhas separadas; a API devolve só a líquida (R$ 1,83),
+          *            que é o que de fato sai do bolso. 2,58 − 0,75 = 1,83.
+          *   frete  · o ML exibe em "Envios" o que o COMPRADOR pagou
+          *            (R$ 17,99); o custo do vendedor é outro (R$ 2,20).
+          *
+          * Sem dizer isso na tela, a conferência dá a impressão de erro no
+          * app — e foi exatamente essa a dúvida que originou estas linhas.
+          */}
+        {linha("Taxa do Mercado Livre", p.taxaML, { sinal: "menos", nota: "líquida — no ML aparece a bruta, com o estorno à parte" })}
+        {linha("Frete", p.envio, {
+          sinal: "menos",
+          nota: p.freteComprador
+            ? `sua parte · no ML, "Envios" mostra ${fmtBRL(p.freteComprador)}`
+            : "custo de envio do pedido — sua parte",
+        })}
         {linha("Retorno", p.retorno, { forte: true, nota: "o que o ML te repassa" })}
         {linha("Custo do produto", p.cmv, { sinal: "menos", nota: "custo médio × unidades" })}
         {linha("Imposto", p.imposto, { sinal: "menos" })}

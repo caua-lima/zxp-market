@@ -94,6 +94,8 @@ async function mapPool<T>(items: T[], limit: number, fn: (item: T) => Promise<vo
 
 type ShipmentInfo = {
   cost: number | null;
+  /** Frete que o COMPRADOR pagou — informativo, nunca entra no lucro. */
+  buyerPaidShipping: number | null;
   status: string;
   substatus: string;
   logistic: string;
@@ -150,18 +152,32 @@ async function fetchShipment(accessToken: string, shipmentId: string): Promise<S
     // (sem x-format-new para não alterar a estrutura de custo já validada)
     const costHeaders = { Authorization: `Bearer ${accessToken}`, Accept: "application/json" };
     let cost: number | null = null;
+    let buyerPaidShipping: number | null = null;
     try {
       const rc = await fetch(`${ML_API}/shipments/${shipmentId}/costs`, { headers: costHeaders, cache: "no-store" });
       if (rc.ok) {
-        const jc = (await rc.json()) as { senders?: { cost?: number }[] };
+        const jc = (await rc.json()) as {
+          senders?: { cost?: number }[];
+          receiver?: { cost?: number };
+        };
         const senders = Array.isArray(jc?.senders) ? jc.senders : [];
         const sum = senders.reduce((s, x) => s + Number(x?.cost ?? 0), 0);
         if (sum > 0) cost = sum;
+        /**
+         * `receiver.cost` é o frete que o COMPRADOR pagou — a resposta já vinha
+         * e era descartada. Ele não entra em nenhuma conta de lucro (o custo do
+         * vendedor é `senders`), mas é o que o painel do ML exibe na linha
+         * "Envios", e sem ele a tela do app e a do ML pareciam discordar.
+         */
+        // Grava mesmo quando ZERO: frete grátis é zero de verdade, não
+        // ausência de dado, e a tela usa essa diferença pra decidir se há o
+        // que reconciliar com a linha "Envios" do ML.
+        buyerPaidShipping = Number(jc?.receiver?.cost ?? 0);
       }
     } catch { /* segue */ }
     if (cost == null) cost = buyerCost === 0 ? (listCost > 0 ? listCost : baseCost > 0 ? baseCost : 0) : 0;
 
-    return { cost, status, substatus, logistic, tracking, estimated, dateDelivered };
+    return { cost, buyerPaidShipping, status, substatus, logistic, tracking, estimated, dateDelivered };
   } catch {
     return null;
   }
@@ -343,6 +359,7 @@ export async function syncOrdersRange(accessToken: string, range: SyncRange): Pr
       const info = infoByOrder.get(orderId);
       if (info) {
         if (typeof info.cost === "number") doc.shipping_cost = info.cost;
+        if (typeof info.buyerPaidShipping === "number") doc.shipping_cost_comprador = info.buyerPaidShipping;
         doc.shipping_status = info.status;
         doc.shipping_substatus = info.substatus;
         doc.logistic_type = info.logistic;
