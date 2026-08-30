@@ -245,10 +245,10 @@ export const TOPICOS: Topico[] = [
     id: "colaborador",
     pergunta: "Como dou acesso pra outra pessoa?",
     aba: "acesso",
-    termos: ["colaborador", "acesso", "convidar", "equipe", "time", "outra pessoa", "permissao", "socio"],
+    termos: ["colaborador", "partner", "member", "acesso", "convidar", "equipe", "time", "outra pessoa", "permissao", "socio"],
     resposta:
       "Aba Acesso › adicione o e-mail da pessoa e escolha o papel.\n\n"
-      + "Colaborador é somente-leitura por padrão. Você libera edição por aba — dá pra deixar alguém mexer só em Estoque, por exemplo, sem acesso a Custos.\n\n"
+      + "São três papéis. OWNER tem acesso total, inclusive a esta aba. PARTNER vê todas as abas e é somente-leitura por padrão — você libera edição por aba, dá pra deixar alguém mexer só em Estoque sem acesso a Custos. MEMBER vê só o Dashboard e recebe notificações, sem custo, margem, preço nem estoque.\n\nQuem já era Colaborador virou Partner, com o mesmo acesso de antes.\n\n"
       + "Toda alteração fica registrada com quem fez e quando, na trilha de auditoria.",
     relacionados: [],
   },
@@ -259,7 +259,7 @@ export const TOPICOS: Topico[] = [
     termos: ["tarefa", "kanban", "lembrete", "pendencia", "to do", "organizar"],
     resposta:
       "É um quadro simples pra o que precisa ser feito na operação — repor estoque, responder pergunta, revisar anúncio.\n\n"
-      + "Owner e colaborador escrevem igual: um atribui tarefa pro outro. Tarefa com prazo vencido vira aviso no Dashboard.",
+      + "Owner e Partner escrevem igual: um atribui tarefa pro outro. Tarefa com prazo vencido vira aviso no Dashboard. Member não participa do quadro.",
     relacionados: [],
   },
   {

@@ -69,7 +69,7 @@ export default function NotificationSettings({ open, onClose }: { open: boolean;
   return (
     <Modal open={open} onClose={onClose} wide>
       <div className="modal-title">Configurações de notificação</div>
-      <div className="modal-sub">Só valem pra você — owner e colaborador podem configurar diferente.</div>
+      <div className="modal-sub">Só valem pra você — cada pessoa configura as suas.</div>
 
       {!loaded ? (
         <div style={{ padding: 20, textAlign: "center", color: "var(--muted)" }}>Carregando…</div>

@@ -93,7 +93,7 @@ export default function AccessControlTab({
   function resetForm() {
     setEditingEmail(null);
     setEmail("");
-    setRole("colaborador");
+    setRole("partner");
     setDisplayName("");
     setPhotoURL("");
     setPassword("");
@@ -139,9 +139,12 @@ export default function AccessControlTab({
         role: effectiveRole,
         displayName: displayName.trim() || undefined,
         photoURL: photoURL.trim() || undefined,
-        permissoesEdicao: effectiveRole === "colaborador" ? permissoesEdicao : undefined,
+        // papelDe, e nao a string crua: com o papel novo chamando-se
+        // "partner", comparar com "colaborador" fazia as permissoes NUNCA
+        // serem gravadas. Member nao tem permissao de edicao por definicao.
+        permissoesEdicao: papelDe(effectiveRole) === "partner" ? permissoesEdicao : undefined,
       };
-      const detalhePermissoes = effectiveRole === "colaborador"
+      const detalhePermissoes = papelDe(effectiveRole) === "partner"
         ? ` · edita: ${permissoesEdicao.length ? permissoesEdicao.map((t) => PERMISSION_TAB_LABEL[t]).join(", ") : "nenhuma aba"}`
         : "";
 
@@ -214,11 +217,53 @@ export default function AccessControlTab({
   const AUDIT_TONE: Record<AuditEvent["acao"], string> = {
     criar: "var(--green)", editar: "var(--brand)", arquivar: "var(--yellow)", reativar: "var(--green)", excluir: "var(--red)",
   };
+  /**
+   * Cada papel com a sua cor. Antes owner e colaborador saíam quase no mesmo
+   * amarelo (#F4B942 x #E9A92D), então o badge existia sem distinguir nada —
+   * justamente a informação mais importante da linha. Agora usa o sistema de
+   * chips da casa, e o Member fica em cinza de propósito: é o papel de menor
+   * alcance e não deve competir por atenção com o dono da conta.
+   */
   const roleBadge = (r: AccessEntry["role"]) => {
-    const isOwnerRole = r === "owner";
-    const cor = isOwnerRole ? "#F4B942" : "#E9A92D";
-    const txt = roleLabel(r);
-    return <span style={{ fontSize: ".7rem", fontWeight: 700, color: cor, background: `${cor}1f`, border: `1px solid ${cor}`, borderRadius: 6, padding: "1px 8px" }}>{txt}</span>;
+    const p = papelDe(r);
+    const classe = p === "owner" ? "chip chip-green" : p === "partner" ? "chip chip-accent" : "chip chip-muted";
+    return <span className={classe}>{roleLabel(r)}</span>;
+  };
+
+  /** O que o papel alcança, em uma linha — some a dúvida sem abrir documentação. */
+  const alcanceDoPapel = (r: AccessEntry["role"]): string => {
+    const p = papelDe(r);
+    if (p === "owner") return "acesso total, incluindo esta aba";
+    if (p === "member") return "só Dashboard e notificações";
+    return "vê todas as abas, exceto Acesso";
+  };
+
+  /**
+   * Avatar: foto quando existe, senão a inicial. A lista era só e-mail em
+   * negrito repetido linha após linha, sem nenhuma âncora visual pra achar
+   * uma pessoa específica de relance.
+   */
+  const avatar = (entry: AccessEntry) => {
+    const nome = entry.displayName || entry.email;
+    const inicial = nome.trim().charAt(0).toUpperCase() || "?";
+    const p = papelDe(entry.role);
+    const cor = p === "owner" ? "var(--green)" : p === "partner" ? "var(--accent)" : "var(--muted)";
+    return (
+      <div
+        aria-hidden
+        style={{
+          width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontWeight: 800, fontSize: ".95rem", color: cor,
+          background: "var(--surface2)", border: `1.5px solid ${cor}`,
+          backgroundImage: entry.photoURL ? `url(${entry.photoURL})` : undefined,
+          backgroundSize: "cover", backgroundPosition: "center",
+          overflow: "hidden",
+        }}
+      >
+        {entry.photoURL ? "" : inicial}
+      </div>
+    );
   };
 
   return (
@@ -231,7 +276,7 @@ export default function AccessControlTab({
         <div className="kpi k-acc"><div className="k-lbl">Acessos</div><div className="k-val">{entries.length}</div></div>
         <div className="kpi k-pos"><div className="k-lbl">Owners</div><div className="k-val" style={{ color: "var(--green)" }}>{owners}</div></div>
         <div className="kpi k-warn"><div className="k-lbl">Partners</div><div className="k-val" style={{ color: "var(--yellow)" }}>{entries.filter((e) => papelDe(e.role) === "partner").length}</div></div>
-        <div className="kpi"><div className="k-lbl">Members</div><div className="k-val">{entries.filter((e) => papelDe(e.role) === "member").length}</div></div>
+        <div className="kpi"><div className="k-lbl">Members</div><div className="k-val" style={{ color: "var(--muted)" }}>{entries.filter((e) => papelDe(e.role) === "member").length}</div></div>
       </div>
 
       <div style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 1fr)" }}>
@@ -335,7 +380,9 @@ export default function AccessControlTab({
               </div>
             </div>
 
-            {(editingEntry?.role === "owner" ? "owner" : role) === "colaborador" && (
+            {/* Só Partner tem edição granular: owner edita tudo e member não
+                edita nada, então a seção não faz sentido pros dois. */}
+            {papelDe(editingEntry ? editingEntry.role : role) === "partner" && (
               <div className="config-field" style={{ margin: 0 }}>
                 <label>Pode editar (além de só ver)</label>
                 <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
@@ -347,7 +394,7 @@ export default function AccessControlTab({
                   ))}
                 </div>
                 <div className="hint">
-                  Fora daqui, colaborador vê tudo mas só edita Tarefas (que já é compartilhado com o owner por padrão). Marque as abas onde ele também pode editar.
+                  Fora daqui, o Partner vê tudo mas só edita Tarefas (que já é compartilhado com o owner por padrão). Marque as abas onde ele também pode editar.
                 </div>
               </div>
             )}
@@ -383,17 +430,23 @@ export default function AccessControlTab({
             ) : filteredEntries.length ? (
               filteredEntries.map((entry) => (
                 <div key={entry.email} className="list-row list-row-split">
-                  <div className="list-row-main">
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontWeight: 700, overflowWrap: "anywhere" }}>{entry.email}</span>
-                      {roleBadge(entry.role)}
-                    </div>
-                    <div style={{ marginTop: 4, fontSize: ".8rem", color: "var(--muted)" }}>
-                      {entry.displayName || "Sem nome"}
-                      {entry.addedAt ? ` · desde ${new Date(entry.addedAt).toLocaleDateString("pt-BR")}` : ""}
-                      {entry.role !== "owner" && entry.permissoesEdicao?.length
-                        ? ` · edita: ${entry.permissoesEdicao.map((t) => PERMISSION_TAB_LABEL[t]).join(", ")}`
-                        : ""}
+                  <div className="list-row-main" style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                    {avatar(entry)}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontWeight: 700 }}>{entry.displayName || "Sem nome"}</span>
+                        {roleBadge(entry.role)}
+                      </div>
+                      <div style={{ fontSize: ".82rem", color: "var(--text)", overflowWrap: "anywhere", marginTop: 2 }}>
+                        {entry.email}
+                      </div>
+                      <div style={{ marginTop: 3, fontSize: ".76rem", color: "var(--muted)" }}>
+                        {alcanceDoPapel(entry.role)}
+                        {papelDe(entry.role) === "partner" && entry.permissoesEdicao?.length
+                          ? ` · edita ${entry.permissoesEdicao.map((t) => PERMISSION_TAB_LABEL[t]).join(", ")}`
+                          : papelDe(entry.role) === "partner" ? " · só leitura" : ""}
+                        {entry.addedAt ? ` · desde ${new Date(entry.addedAt).toLocaleDateString("pt-BR")}` : ""}
+                      </div>
                     </div>
                   </div>
                   {canEdit && (
@@ -419,7 +472,7 @@ export default function AccessControlTab({
         <div className="panel">
           <div className="panel-head" style={{ marginBottom: 4 }}>
             <span className="panel-title">Trilha de auditoria</span>
-            <span className="panel-sub">últimas {auditLog.length} ações · owner e colaborador</span>
+            <span className="panel-sub">últimas {auditLog.length} ações</span>
           </div>
           <div style={{ fontSize: ".78rem", color: "var(--muted)", marginBottom: 14 }}>
             Registro imutável de quem criou, editou, arquivou ou excluiu custos, metas e acessos. Não cobre edição campo a campo (ex.: digitar num valor de custo) — só ações discretas, pra não virar ruído.
