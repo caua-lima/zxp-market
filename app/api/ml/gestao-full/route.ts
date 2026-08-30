@@ -237,6 +237,13 @@ export async function GET(req: Request) {
     const TIPOS = ["INBOUND_RECEPTION", "QUARANTINE_RESTOCK", "ADJUSTMENT", "TRANSFER_DELIVERY"];
     // O tipo vem em MAIÚSCULA — a doc diz minúsculo e o ML recusa.
     const LIMITE = 100;
+    /**
+     * Voltas de scroll por tipo/chunk. 100 × 40 = 4.000 operações, folga
+     * grande pro volume real (144 no período de 25 dias). O teto existe só
+     * pra um scroll que não termine não virar laço infinito — e quando é
+     * atingido, `truncado` avisa a tela.
+     */
+    const VOLTAS_MAX = 40;
 
     /**
      * Deduplicação por OPERAÇÃO — a correção da triplicação reportada em
@@ -264,16 +271,48 @@ export async function GET(req: Request) {
     for (const tipoBusca of TIPOS)
     for (let i = 0; i < invArr.length; i += 20) {
       const chunk = invArr.slice(i, i + 20);
-      // Teto baixo de propósito: 3000 estourou a cota do ML (HTTP 429).
-      for (let offset = 0; offset < 500; offset += LIMITE) {
-        if (offset + LIMITE >= 500) truncado = true;
-        if (offset > 0) await new Promise((r) => setTimeout(r, 200));
+      /**
+       * ─── PAGINAÇÃO POR SCROLL, NÃO POR OFFSET ────────────────────────
+       *
+       * Este recurso IGNORA `offset`. Medido contra a API: com 144 operações
+       * no período, `offset=0`, `offset=50` e `offset=100` devolvem as
+       * MESMAS 100 linhas — mesmo primeiro id, mesmo último id. A resposta
+       * traz `paging.scroll` e `paging.limit: null`, que é a assinatura de
+       * paginação por token.
+       *
+       * O efeito era silencioso e caro: o app lia as primeiras 100 operações
+       * e as voltas seguintes traziam as mesmas, que a deduplicação
+       * descartava corretamente. As outras 44 NUNCA eram buscadas — 30% das
+       * unidades sumiam da remessa, e nada na tela dizia que faltava algo.
+       * Era isto que fazia as quantidades do Full fecharem abaixo do
+       * Seller Center.
+       *
+       * Cada operação vale POUCAS unidades (o ML emite uma linha por evento
+       * de recebimento, normalmente 1 un), então uma remessa de 500 unidades
+       * gera centenas de linhas — o teto de 100 era atingido sempre nas
+       * remessas grandes, justamente as que mais importam.
+       *
+       * Com scroll, 3 voltas alcançaram as 144 de 144.
+       */
+      let scroll: string | null = null;
+      for (let volta = 0; volta < VOLTAS_MAX; volta++) {
+        if (volta + 1 >= VOLTAS_MAX) truncado = true;
+        if (volta > 0) await new Promise((r) => setTimeout(r, 200));
         let lote = 0;
+        /**
+         * Operações INÉDITAS nesta volta. É este o critério de parada, e não
+         * só o token: o recurso já provou repetir a mesma página quando o
+         * parâmetro de paginação não é o que ele espera (foi o que o `offset`
+         * fazia). Se uma volta não trouxe nada novo, insistir só queima cota
+         * do ML — e cota estourada aqui vira 429, que derruba a tela inteira.
+         */
+        let novasNaVolta = 0;
         try {
           const path =
             `/stock/fulfillment/operations/search?seller_id=${SELLER_ID}` +
             `&inventory_id=${chunk.join(",")}&type=${tipoBusca}` +
-            `&date_from=${from}&date_to=${to}&limit=${LIMITE}&offset=${offset}`;
+            `&date_from=${from}&date_to=${to}&limit=${LIMITE}` +
+            (scroll ? `&scroll=${encodeURIComponent(scroll)}` : "");
           const res = await fetch(`${ML_API}${path}`, { headers, cache: "no-store" });
           opStatus = res.status;
           if (!res.ok) {
@@ -284,9 +323,15 @@ export async function GET(req: Request) {
             // Insistir depois de estourar a cota só piora — para tudo.
             break;
           }
-          const j = (await res.json()) as { results?: Record<string, unknown>[]; data?: Record<string, unknown>[] };
+          const j = (await res.json()) as {
+            results?: Record<string, unknown>[];
+            data?: Record<string, unknown>[];
+            paging?: { scroll?: string | null };
+          };
           const linhas = j.results ?? j.data ?? [];
           lote = linhas.length;
+          // Token da PRÓXIMA volta. Sem ele não há mais o que buscar.
+          scroll = j.paging?.scroll ?? null;
           for (const r of linhas) {
             const tipo = String(r.type ?? r.operation_type ?? "");
             tiposVistos.add(tipo);
@@ -295,6 +340,7 @@ export async function GET(req: Request) {
             const chaveOp = `${String(r.id ?? "")}|${String(r.inventory_id ?? "")}|${String(r.date_created ?? "")}|${tipo}`;
             if (opsVistas.has(chaveOp)) { duplicadasIgnoradas++; continue; }
             opsVistas.add(chaveOp);
+            novasNaVolta++;
             // 60 recebidas contra 80 na tela do ML: faltam 20 e não dá pra
             // saber onde sem ver as linhas. São poucas — mostramos todas.
             if (!amostra) amostra = JSON.stringify(r).slice(0, 900);
@@ -358,7 +404,9 @@ export async function GET(req: Request) {
             recebimentos.push({ data, quantidade: entrou, inventory_id: inventory, tipo });
           }
         } catch { break; }
-        if (lote < LIMITE) break;
+        // Acabou de três formas: lote incompleto, sem token pra pedir mais,
+        // ou a volta não trouxe nenhuma operação nova (página repetida).
+        if (lote < LIMITE || !scroll || novasNaVolta === 0) break;
       }
     }
     recebimentos.sort((a, b) => b.data.localeCompare(a.data));
