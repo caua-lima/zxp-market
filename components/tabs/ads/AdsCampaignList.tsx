@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Modal from "@/components/Modal";
 import { fmtBRL } from "@/lib/domain/calc";
-import { agregarPorCampanha, type CampanhaAgregada, type ItemParaCampanha } from "@/lib/domain/ads-campaigns";
+import { agregarPorCampanha, type CampanhaAgregada, type ItemParaCampanha, type MetricasReais } from "@/lib/domain/ads-campaigns";
 import { corMargem, corRoas, num, type Modo } from "./ads-types";
 import AdsFunnel from "./AdsFunnel";
 
@@ -13,10 +13,23 @@ import AdsFunnel from "./AdsFunnel";
  * campanha tem seu próprio "Ver performance", que abre o mesmo funil aplicado
  * só a ela — mesmas fórmulas, mesmo componente, só o recorte muda.
  */
-export default function AdsCampaignList({ itens, modo }: { itens: ItemParaCampanha[]; modo: Modo }) {
+export default function AdsCampaignList({ itens, modo, metricasReais }: {
+  itens: ItemParaCampanha[];
+  modo: Modo;
+  /**
+   * Métricas que o ML devolve pra própria campanha. Mandam sobre a soma dos
+   * anúncios — ver agregarPorCampanha. Sem elas a tela continua funcionando,
+   * só volta a derivar (e a divergir do painel quando um anúncio roda em
+   * mais de uma campanha).
+   */
+  metricasReais?: Map<string, MetricasReais>;
+}) {
   // "log" (logística) não tem recorte próprio de campanha — cai no geral.
   const modoAgg: "pub" | "geral" = modo === "pub" ? "pub" : "geral";
-  const campanhas = useMemo(() => agregarPorCampanha(itens, modoAgg), [itens, modoAgg]);
+  const campanhas = useMemo(
+    () => agregarPorCampanha(itens, modoAgg, metricasReais),
+    [itens, modoAgg, metricasReais],
+  );
   const [aberta, setAberta] = useState<CampanhaAgregada | null>(null);
 
   if (campanhas.length === 0) return null;
@@ -52,6 +65,14 @@ export default function AdsCampaignList({ itens, modo }: { itens: ItemParaCampan
                   {c.campaignName}
                   <span style={{ display: "block", fontSize: ".68rem", color: "var(--muted)", fontWeight: 400 }}>
                     {c.anuncios} anúncio(s) · {num(c.clicks)} cliques
+                    {c.atribuicaoIncerta && (
+                      <span title={
+                        "Algum anúncio desta campanha roda também em outra, e o Mercado Livre entrega as métricas dele já somadas, "
+                        + "sem dizer quanto foi de cada campanha. Investimento, cliques e impressões acima são os da CAMPANHA "
+                        + "(batem com o painel do ML). O lucro fica indisponível porque dependeria de repartir as suas vendas "
+                        + "entre as campanhas, e esse dado o ML não fornece."
+                      } style={{ marginLeft: 6, cursor: "help" }}>⚠</span>
+                    )}
                   </span>
                 </td>
                 <td data-label="Orçamento" style={{ whiteSpace: "nowrap", color: c.dailyBudget > 0 ? "var(--text)" : "var(--muted)" }}>

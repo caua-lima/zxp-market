@@ -188,3 +188,70 @@ describe("orcamento e ROAS objetivo da campanha", () => {
     expect(r[0].roasTarget).toBe(0);
   });
 });
+
+/**
+ * Anúncio que roda em DUAS campanhas — medido na conta em 30/08/2026.
+ *
+ * `/ads/search` devolve UMA linha para o MLB4662183905, com as métricas
+ * somadas das duas campanhas (360 cliques, R$ 95,22) e carimbada só com o
+ * campaign_id da "Menta Stronger - 1k". As campanhas de verdade, pelo próprio
+ * recurso de campanha do ML:
+ *
+ *   Menta Stronger - 1k .... 260 cliques · R$ 65,46   (painel ML: 259 · 65,26)
+ *   Menta Stronger ......... 102 cliques · R$ 30,68
+ *
+ * 260 + 102 = 362 e 65,46 + 30,68 = 96,14 — a soma exata da linha do anúncio.
+ * O app exibia 361 cliques e R$ 95,94 na "- 1k", e era isso que não batia com
+ * o painel do Mercado Livre.
+ */
+describe("anúncio em duas campanhas: o ML manda, não a soma dos anúncios", () => {
+  const item: ItemParaCampanha = {
+    campaignId: "358764369", campaignName: "Campanha Menta Stronger - 1k",
+    clicks: 360, prints: 71296, cost: 95.22,
+    directSales: 1105.26, directUnits: 30, totalSales: 1128.26, totalUnits: 31,
+    lucroLiquido: 200, lucroDiretoLiquido: 180, diretoDisponivel: true,
+    dailyBudget: 1000, roasTarget: 35,
+  };
+  const reais = new Map([
+    ["358764369", { clicks: 260, prints: 62027, cost: 65.46, receitaAtribuida: 1606.40 }],
+  ]);
+
+  it("sem as métricas reais, a campanha herda o total do anúncio — o bug", () => {
+    const [c] = agregarPorCampanha([item], "geral");
+    expect(c.clicks).toBe(360);
+    expect(c.cost).toBeCloseTo(95.22, 2);
+    expect(c.metricasDoMlAds).toBe(false);
+  });
+
+  it("com as métricas reais, bate com o painel do ML", () => {
+    const [c] = agregarPorCampanha([item], "geral", reais);
+    expect(c.clicks).toBe(260);
+    expect(c.prints).toBe(62027);
+    expect(c.cost).toBeCloseTo(65.46, 2);
+    expect(c.metricasDoMlAds).toBe(true);
+  });
+
+  it("marca a atribuição como incerta — o custo somado dos anúncios não fecha", () => {
+    expect(agregarPorCampanha([item], "geral", reais)[0].atribuicaoIncerta).toBe(true);
+  });
+
+  it("e por isso NÃO afirma lucro: seria o custo do anúncio inteiro ao lado de um custo menor", () => {
+    expect(agregarPorCampanha([item], "geral", reais)[0].lucroAposAds).toBeNull();
+    expect(agregarPorCampanha([item], "geral", reais)[0].margem).toBeNull();
+  });
+
+  it("o ROAS do ML é recalculado sobre o custo certo", () => {
+    const [c] = agregarPorCampanha([item], "geral", reais);
+    // 1606,40 ÷ 65,46 = 24,54x — o painel do ML mostrava 24,62x no mesmo dia.
+    expect(c.roasMlAds).toBeCloseTo(24.54, 1);
+  });
+
+  it("anúncio numa campanha só continua com lucro — o custo fecha", () => {
+    const soUma = new Map([
+      ["358764369", { clicks: 360, prints: 71296, cost: 95.22, receitaAtribuida: 1853.60 }],
+    ]);
+    const [c] = agregarPorCampanha([item], "geral", soUma);
+    expect(c.atribuicaoIncerta).toBe(false);
+    expect(c.lucroAposAds).not.toBeNull();
+  });
+});

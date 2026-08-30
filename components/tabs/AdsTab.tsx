@@ -112,13 +112,27 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
   const [campanhasEncontradas, setCampanhasEncontradas] = useState(0);
   const [semGastoNoPeriodo, setSemGastoNoPeriodo] = useState(0);
   const [campanhasTotal, setCampanhasTotal] = useState(0);
-  const [campanhasResumo, setCampanhasResumo] = useState<{ id: string; name: string; status: string; gasto: number; totalAds: number }[]>([]);
+  const [campanhasResumo, setCampanhasResumo] = useState<{
+    id: string; name: string; status: string; gasto: number; totalAds: number;
+    real?: { clicks: number; prints: number; cost: number; receitaAtribuida: number } | null;
+  }[]>([]);
   const [anunciosTotal, setAnunciosTotal] = useState(0);
   const [anunciosNoPeriodo, setAnunciosNoPeriodo] = useState(0);
   const [anunciosContagemFalhou, setAnunciosContagemFalhou] = useState(false);
   const [gastoOrfao, setGastoOrfao] = useState(0);
   const [gastoSemVinculo, setGastoSemVinculo] = useState(0);
   const [campanhasOrfas, setCampanhasOrfas] = useState<string[]>([]);
+  /**
+   * Métricas que o ML devolve pra cada campanha no período. São ELAS que
+   * batem com o painel do Mercado Ads — a soma dos anúncios não bate quando
+   * um anúncio roda em mais de uma campanha (ver agregarPorCampanha).
+   */
+  const metricasReaisPorCampanha = useMemo(() => {
+    const m = new Map<string, { clicks: number; prints: number; cost: number; receitaAtribuida: number }>();
+    for (const c of campanhasResumo) if (c.id && c.real) m.set(String(c.id), c.real);
+    return m;
+  }, [campanhasResumo]);
+
   const [conta, setConta] = useState<{ receita: number; unidades: number; lucroAntesAds: number; itens: number } | null>(null);
 
   const [drawerItemId, setDrawerItemId] = useState<string | null>(null);
@@ -430,7 +444,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
 
                   {/* Mesmo funil, recortado por campanha — o de cima soma
                       tudo e esconde a campanha que está sangrando. */}
-                  <AdsCampaignList itens={items} modo={modo} />
+                  <AdsCampaignList itens={items} modo={modo} metricasReais={metricasReaisPorCampanha} />
 
                   <AdsDecisionPanel linhas={linhas} changelog={changelog} onAbrirAnuncio={abrirAnuncio} />
 

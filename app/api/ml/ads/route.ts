@@ -229,7 +229,7 @@ export async function GET(req: Request) {
       if (a.campaignId) campaignIdByItem[id] = a.campaignId;
       costByItem[id] = a.cost;
     }
-    const cfg = await getAdsSettingsByItem(mlbsAds, campaignIdByItem, costByItem).catch(
+    const cfg = await getAdsSettingsByItem(mlbsAds, campaignIdByItem, costByItem, { from, to }).catch(
       () => ({
         porItem: {} as Record<string, AdSettings>, amostraCampanha: null,
         tentativas: [] as { url: string; status: number }[], campanhasEncontradas: 0,

@@ -600,13 +600,27 @@ export async function getAdsSettingsByItem(
   mlbs: string[],
   campaignIdByItem: Record<string, string> = {},
   costByItem: Record<string, number> = {},
+  /**
+   * Período da consulta. Sem ele, `/campaigns/search` era chamado só pra
+   * listar nome e status, e o gasto de cada campanha saía SOMANDO os anúncios
+   * — o que estava errado sempre que um anúncio roda em duas campanhas.
+   */
+  periodo?: { from: string; to: string },
 ): Promise<{
   porItem: Record<string, AdSettings>;
   amostraCampanha: unknown;
   tentativas: { url: string; status: number }[];
   campanhasEncontradas: number;
   campanhasTotal: number;
-  campanhasResumo: { id: string; name: string; status: string; gasto: number; totalAds: number }[];
+  campanhasResumo: {
+    id: string; name: string; status: string; gasto: number; totalAds: number;
+    /**
+     * Métricas vindas do PRÓPRIO recurso de campanha, no período consultado —
+     * são estas que batem com o painel do Mercado Ads. `null` quando o ML não
+     * respondeu com métricas, e aí a tela cai no que dá pra derivar do anúncio.
+     */
+    real: { clicks: number; prints: number; cost: number; receitaAtribuida: number } | null;
+  }[];
   anunciosTotal: number;
   anunciosNoPeriodo: number;
   anunciosContagemFalhou: boolean;
@@ -654,15 +668,52 @@ export async function getAdsSettingsByItem(
   // Guarda de qual anunciante veio cada campanha — a busca dos anúncios dela
   // precisa ser feita na URL do anunciante certo.
   const advDaCampanha = new Map<string, Adv>();
+  /** campaignId → métricas do PRÓPRIO recurso de campanha (as que batem com o painel do ML). */
+  const metricasReaisPorCampanha = new Map<string, { clicks: number; prints: number; cost: number; receitaAtribuida: number }>();
   const camposCrus: Record<string, unknown>[] = [];
   for (const a of todosAdvs) {
+    /**
+     * COM date_from/date_to/metrics quando o período é conhecido.
+     *
+     * ─── POR QUE ISTO FALTAVA ─────────────────────────────────────────
+     *
+     * Este recurso era chamado só pra listar nome e status. O gasto e os
+     * cliques de cada campanha eram então DERIVADOS dos anúncios — e
+     * `/ads/search` devolve UMA linha por anúncio, com as métricas somadas
+     * de todas as campanhas dele, carimbada num campaign_id só.
+     *
+     * Medido na conta: o anúncio MLB4662183905 roda em duas campanhas e
+     * vinha como 360 cliques / R$ 95,22, tudo atribuído à "Menta Stronger
+     * - 1k". As campanhas de verdade são 260 cliques / R$ 65,46 e 102
+     * cliques / R$ 30,68 — 260+102=362 e 65,46+30,68=96,14, exatamente a
+     * soma. O painel do ML mostrava 259 e R$ 65,26; o app, 361 e R$ 95,94.
+     *
+     * Pedindo as métricas aqui, a campanha passa a trazer o próprio número.
+     */
+    const filtroPeriodo = periodo
+      ? `&date_from=${periodo.from}&date_to=${periodo.to}&metrics=clicks,prints,cost,direct_amount,indirect_amount`
+      : "";
     const linhas = await buscar(
-      (o) => [`${base(a)}/campaigns/search?limit=50&offset=${o}`, `${legado(a)}/campaigns?limit=50&offset=${o}`],
+      (o) => [
+        `${base(a)}/campaigns/search?limit=50&offset=${o}${filtroPeriodo}`,
+        `${legado(a)}/campaigns?limit=50&offset=${o}${filtroPeriodo}`,
+      ],
       token,
     ).catch(() => []);
     for (const c of linhas) {
       const id = texto(primeiro(c, ["id", "campaign_id"]));
-      if (id) advDaCampanha.set(id, a);
+      if (!id) continue;
+      advDaCampanha.set(id, a);
+      // Só existe quando o período foi informado (ver filtroPeriodo acima).
+      if (periodo) {
+        const cost = metrica(c, "cost");
+        const clicks = metrica(c, "clicks");
+        const prints = metrica(c, "prints");
+        const atribuida = metrica(c, "direct_amount") + metrica(c, "indirect_amount");
+        // Guarda mesmo zerado: campanha que não gastou no período é um fato,
+        // e distinguir "não gastou" de "não perguntei" é o ponto todo.
+        metricasReaisPorCampanha.set(id, { clicks, prints, cost, receitaAtribuida: atribuida });
+      }
     }
     camposCrus.push(...linhas);
   }
@@ -873,8 +924,17 @@ export async function getAdsSettingsByItem(
   const campanhasResumo = Array.from(campanhas.values())
     .map((c) => ({
       id: c.campaignId, name: c.campaignName || c.campaignId,
-      status: c.status, gasto: gastoPorCampanha.get(c.campaignId) ?? 0,
+      status: c.status,
+      /**
+       * Gasto REAL da campanha quando o ML respondeu com métricas. O valor
+       * derivado dos anúncios fica só como fallback — ele soma o anúncio
+       * inteiro na campanha carimbada, e infla quando o anúncio roda em mais
+       * de uma (ver o comentário em /campaigns/search acima).
+       */
+      gasto: metricasReaisPorCampanha.get(c.campaignId)?.cost
+        ?? gastoPorCampanha.get(c.campaignId) ?? 0,
       totalAds: adsPorCampanha.get(c.campaignId) ?? 0,
+      real: metricasReaisPorCampanha.get(c.campaignId) ?? null,
     }))
     .sort((a, b) => b.gasto - a.gasto || a.name.localeCompare(b.name));
 

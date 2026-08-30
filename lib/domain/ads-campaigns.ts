@@ -90,6 +90,19 @@ export type CampanhaAgregada = {
   /** Receita atribuída total pelo ML nesta campanha (base do roasMlAds). */
   receitaAtribuida: number;
   /**
+   * As métricas vieram do PRÓPRIO recurso de campanha do ML (batem com o
+   * painel), e não da soma dos anúncios.
+   */
+  metricasDoMlAds: boolean;
+  /**
+   * O custo somado dos anúncios NÃO bate com o da campanha — sinal de que
+   * algum anúncio roda em mais de uma campanha e o ML entrega as métricas
+   * dele já somadas, sem dizer quanto foi de cada. Quando isso acontece não
+   * dá pra dividir a NOSSA receita (que vem dos pedidos, não do ML) entre as
+   * campanhas, e o lucro da campanha sai como indisponível em vez de errado.
+   */
+  atribuicaoIncerta: boolean;
+  /**
    * Orcamento diario e ROAS objetivo configurados na campanha. Vem do anuncio
    * (a config e da campanha, entao todos os anuncios dela trazem o mesmo
    * valor); 0 = o ML nao devolveu a configuracao.
@@ -110,9 +123,29 @@ export type CampanhaAgregada = {
 /** Anúncio sem campanha identificada — agrupado à parte pra não sumir da soma. */
 export const CAMPANHA_SEM_ID = "__sem_campanha__";
 
+/** Métricas que o ML devolve para a própria campanha — a fonte autoritativa. */
+export type MetricasReais = { clicks: number; prints: number; cost: number; receitaAtribuida: number };
+
+/**
+ * Quanto o custo derivado pode divergir do real antes de a atribuição virar
+ * suspeita. Dois centavos ou 2% cobrem arredondamento e o atraso normal entre
+ * as duas consultas; acima disso é anúncio rodando em mais de uma campanha.
+ */
+function custoBate(derivado: number, real: number): boolean {
+  return Math.abs(derivado - real) <= Math.max(0.02 * real, 0.02);
+}
+
 export function agregarPorCampanha(
   itens: ItemParaCampanha[],
   modo: "pub" | "geral",
+  /**
+   * campaignId → métricas do recurso de campanha. Quando presentes MANDAM
+   * sobre a soma dos anúncios: `/ads/search` devolve uma linha por anúncio
+   * com as métricas somadas de TODAS as campanhas dele, carimbada num
+   * campaign_id só — medido, isso fazia uma campanha aparecer com 361 cliques
+   * e R$ 95,94 quando o ML mostrava 259 e R$ 65,26.
+   */
+  metricasReais?: Map<string, MetricasReais>,
 ): CampanhaAgregada[] {
   const mapa = new Map<string, CampanhaAgregada & { temDireto: boolean }>();
 
@@ -128,6 +161,8 @@ export function agregarPorCampanha(
         campaignName: f.campaignName || (id === CAMPANHA_SEM_ID ? "Sem campanha identificada" : id),
         anuncios: 0, prints: 0, clicks: 0, cost: 0, receita: 0, unidades: 0,
         lucroAposAds: 0, roas: null, acos: null, roasMlAds: null, receitaAtribuida: 0,
+        // Preenchidos no fecho, a partir das metricas reais quando existirem.
+        metricasDoMlAds: false, atribuicaoIncerta: false,
         dailyBudget: 0, roasTarget: 0, margem: null,
         temDireto: false,
       };
@@ -179,25 +214,44 @@ export function agregarPorCampanha(
 
   return Array.from(mapa.values())
     .map((c) => {
-      const lucroAposAds = c.temDireto ? c.lucroAposAds : null;
+      const real = metricasReais?.get(c.campaignId) ?? null;
+      /**
+       * Com o custo real em mãos, dá pra saber se a derivação era confiável:
+       * se os anúncios somam o mesmo, cada um roda numa campanha só e a
+       * repartição da nossa receita é fiel. Se não somam, não é.
+       */
+      const atribuicaoIncerta = real != null && !custoBate(c.cost, real.cost);
+      const prints = real?.prints ?? c.prints;
+      const clicks = real?.clicks ?? c.clicks;
+      const cost = real?.cost ?? c.cost;
+      const receitaAtribuida = real?.receitaAtribuida ?? c.receitaAtribuida;
+      /**
+       * Lucro sai como indisponível quando a atribuição é incerta: ele
+       * desconta o custo do anúncio INTEIRO, e mostrá-lo ao lado de um custo
+       * de campanha menor seria uma incoerência silenciosa na tela.
+       */
+      const lucroAposAds = atribuicaoIncerta ? null : (c.temDireto ? c.lucroAposAds : null);
+      const receita = atribuicaoIncerta ? c.receita : c.receita;
       return {
         campaignId: c.campaignId,
         campaignName: c.campaignName,
         anuncios: c.anuncios,
-        prints: c.prints,
-        clicks: c.clicks,
-        cost: c.cost,
-        receita: c.receita,
+        prints,
+        clicks,
+        cost,
+        metricasDoMlAds: real != null,
+        atribuicaoIncerta,
+        receita,
         unidades: c.unidades,
         lucroAposAds,
-        roas: c.cost > 0 ? c.receita / c.cost : null,
+        roas: cost > 0 ? receita / cost : null,
         // ACOS = investido ÷ receita. Sem receita não é "infinito", é indefinido.
-        acos: c.receita > 0 ? (c.cost / c.receita) * 100 : null,
-        roasMlAds: c.cost > 0 ? c.receitaAtribuida / c.cost : null,
-        receitaAtribuida: c.receitaAtribuida,
+        acos: receita > 0 ? (cost / receita) * 100 : null,
+        roasMlAds: cost > 0 ? receitaAtribuida / cost : null,
+        receitaAtribuida,
         dailyBudget: c.dailyBudget,
         roasTarget: c.roasTarget,
-        margem: lucroAposAds != null && c.receita > 0 ? (lucroAposAds / c.receita) * 100 : null,
+        margem: lucroAposAds != null && receita > 0 ? (lucroAposAds / receita) * 100 : null,
       };
     })
     // Maior investimento primeiro: é onde uma decisão errada custa mais caro.
