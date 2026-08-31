@@ -176,3 +176,52 @@ describe("produtoDoDia", () => {
     expect(produtoDoDia([])).toBeNull();
   });
 });
+
+/**
+ * A comparação "vs ontem" dos cards de Vendas do Dia.
+ *
+ * Todos os dezesseis cards mostravam exatamente "↑ 0% vs ontem", em verde. A
+ * causa estava fora daqui — o Dashboard pedia as métricas de ontem mas lia o
+ * campo `hoje` da resposta, que sempre foi o dia CORRENTE — então a
+ * comparação recebia hoje contra hoje. Estes testes fixam o que `variacao`
+ * garante, que é a outra metade do problema: 0 não pode passar por alta.
+ */
+describe("variacao — a base da seta de comparação", () => {
+  it("alta e queda saem com o sinal certo", () => {
+    expect(variacao(150, 100).pct).toBeCloseTo(50, 6);
+    expect(variacao(150, 100).subiu).toBe(true);
+    expect(variacao(50, 100).pct).toBeCloseTo(-50, 6);
+    expect(variacao(50, 100).subiu).toBe(false);
+  });
+
+  it("valores IGUAIS dão 0% — e é por isso que a tela precisa tratar o zero", () => {
+    // `subiu` é `pct >= 0`, então 0 vem como "subiu". Quem renderiza tem que
+    // separar "não mudou" de "subiu", senão o card anuncia alta que não houve.
+    const v = variacao(100, 100);
+    expect(v.pct).toBe(0);
+    expect(v.subiu).toBe(true);
+  });
+
+  it("sem base anterior não inventa comparação", () => {
+    expect(variacao(100, null).pct).toBeNull();
+    expect(variacao(100, undefined).pct).toBeNull();
+    expect(variacao(100, NaN).pct).toBeNull();
+  });
+
+  it("saindo do zero é 'novo', não uma porcentagem infinita", () => {
+    const v = variacao(80, 0);
+    expect(v.pct).toBeNull();
+    expect(v.vindoDoZero).toBe(true);
+    expect(v.subiu).toBe(true);
+  });
+
+  it("zero contra zero não é novidade nenhuma", () => {
+    expect(variacao(0, 0).vindoDoZero).toBe(false);
+  });
+
+  it("base negativa usa o módulo — prejuízo que encolhe é alta", () => {
+    // De −100 pra −50: melhorou 50%. Sem o Math.abs o sinal sairia invertido.
+    expect(variacao(-50, -100).pct).toBeCloseTo(50, 6);
+    expect(variacao(-50, -100).subiu).toBe(true);
+  });
+});

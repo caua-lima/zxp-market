@@ -561,6 +561,16 @@ function VendasDoDiaHero({ hoje, ontem }: { hoje?: HojeBreakdown; ontem?: HojeBr
     fmt?: (v: number) => string; hint?: string;
     /** Mesmo campo de ontem, pra seta de comparação. */
     anterior?: number | null;
+    /**
+     * Subir é MÁ notícia — vale pros custos (CMV, frete, taxas, imposto, ADS)
+     * e pro custo por pedido.
+     *
+     * Sem isto a seta era colorida por `subiu ? verde : vermelho` em todo
+     * card, então CMV, Taxas e Imposto subindo apareciam em VERDE, como se
+     * gastar mais fosse conquista. A seta continua apontando pra direção do
+     * número; o que muda é a cor, que passa a dizer se aquilo é bom.
+     */
+    subirEhRuim?: boolean;
   };
 
   const stats: Stat[] = [
@@ -608,16 +618,17 @@ function VendasDoDiaHero({ hoje, ontem }: { hoje?: HojeBreakdown; ontem?: HojeBr
       label: "ROAS de equilíbrio", value: bkEven, color: "var(--warning)", fmt: roasFmt,
       hint: "O ROAS mínimo pra o ADS não dar prejuízo hoje, com os custos reais do dia (receita ÷ lucro antes do ADS). Abaixo disso, cada real investido tira do lucro.",
     },
-    { label: "CMV (produto)", value: h.totalCMV, color: "var(--red)", anterior: dOntem?.totalCMV },
+    { label: "CMV (produto)", value: h.totalCMV, color: "var(--red)", anterior: dOntem?.totalCMV, subirEhRuim: true },
     {
       label: "Custo por pedido", value: custoPorPedido(d), color: "var(--red)",
       anterior: dOntem ? custoPorPedido(dOntem) : undefined,
+      subirEhRuim: true,
       hint: "CMV + frete + taxas + imposto, dividido pelos pedidos. Não inclui ADS. É o piso pra pensar preço.",
     },
-    { label: "Frete/Full", value: h.totalEnvio, color: "var(--red)", anterior: dOntem?.totalEnvio },
-    { label: "Taxas ML", value: h.totalTaxasML, color: "var(--red)", anterior: dOntem?.totalTaxasML },
-    { label: "Imposto", value: h.totalImposto, color: "var(--red)", anterior: dOntem?.totalImposto },
-    { label: "Gasto com ADS", value: h.totalAds, color: "var(--red)", anterior: dOntem?.totalAds },
+    { label: "Frete/Full", value: h.totalEnvio, color: "var(--red)", anterior: dOntem?.totalEnvio, subirEhRuim: true },
+    { label: "Taxas ML", value: h.totalTaxasML, color: "var(--red)", anterior: dOntem?.totalTaxasML, subirEhRuim: true },
+    { label: "Imposto", value: h.totalImposto, color: "var(--red)", anterior: dOntem?.totalImposto, subirEhRuim: true },
+    { label: "Gasto com ADS", value: h.totalAds, color: "var(--red)", anterior: dOntem?.totalAds, subirEhRuim: true },
     {
       label: "Margem sem ADS", value: semAds, color: "var(--text)", fmt: pctFmt,
       hint: "A margem que o dia teria sem nenhum investimento em publicidade. A diferença pra margem real é o custo do ADS em pontos de margem — que é como se decide verba.",
@@ -664,11 +675,29 @@ function VendasDoDiaHero({ hoje, ontem }: { hoje?: HojeBreakdown; ontem?: HojeBr
               <div className="val" style={{ color: s.value == null ? "var(--muted)" : s.color }}>
                 {s.value == null ? "—" : (s.fmt ?? fmtBRL)(s.value)}
               </div>
-              {v && (v.pct != null || v.vindoDoZero) && (
-                <div style={{ fontSize: ".65rem", fontWeight: 700, color: v.subiu ? "var(--green)" : "var(--red)" }}>
-                  {v.vindoDoZero ? "novo vs ontem" : `${v.subiu ? "↑" : "↓"} ${Math.abs(v.pct!).toFixed(0)}% vs ontem`}
-                </div>
-              )}
+              {v && (v.pct != null || v.vindoDoZero) && (() => {
+                /**
+                 * A SETA aponta a direção do número; a COR diz se aquilo é
+                 * bom. Não são a mesma coisa: CMV subindo é ↑ e é ruim.
+                 *
+                 * Variação que arredonda pra 0% sai neutra, sem seta — antes
+                 * virava "↑ 0%" em verde, porque `subiu` é `pct >= 0`, e o
+                 * card anunciava alta onde não houve mudança nenhuma.
+                 */
+                const arredondado = v.pct != null ? Math.round(v.pct) : null;
+                const semMudanca = !v.vindoDoZero && arredondado === 0;
+                const bom = v.subiu !== Boolean(s.subirEhRuim);
+                const cor = semMudanca ? "var(--muted)" : bom ? "var(--green)" : "var(--red)";
+                return (
+                  <div style={{ fontSize: ".65rem", fontWeight: 700, color: cor }}>
+                    {v.vindoDoZero
+                      ? "novo vs ontem"
+                      : semMudanca
+                        ? "= igual a ontem"
+                        : `${v.subiu ? "↑" : "↓"} ${Math.abs(arredondado!)}% vs ontem`}
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
@@ -1542,10 +1571,15 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
   const [mlLoading, setMlLoading] = useState(false);
   const [mlMetrics, setMlMetrics] = useState<MlMetrics | null>(null);
   const [prevMetrics, setPrevMetrics] = useState<MlMetrics | null>(null);
-  // "Ontem" fixo (independe do período selecionado no DateRangePicker) —
-  // alimenta só o bloco "Hoje vs Ontem". Reaproveita a mesma rota de
-  // métricas com from=to=ontem, igual ao "hoje" que a rota já calcula
-  // sempre — nenhuma mudança na rota, nenhum cálculo novo.
+  /**
+   * "Ontem" fixo (independe do período do DateRangePicker) — alimenta o
+   * bloco "Hoje vs Ontem" e a comparação de cada card de "Vendas do Dia".
+   *
+   * Precisa de `dia=` além de `from`/`to`: o campo `hoje` da resposta era
+   * SEMPRE o dia corrente, independente do período pedido. Sem esse
+   * parâmetro a comparação recebia hoje contra hoje, e os dezesseis cards
+   * mostravam "↑ 0% vs ontem" — a seta pra cima porque 0 >= 0.
+   */
   const [ontemMetrics, setOntemMetrics] = useState<MlMetrics | null>(null);
   // Últimos 30 dias corridos fixos (independe do período selecionado no
   // topo) — alimenta só "Melhores dias da semana". Com o range padrão (mês
@@ -1643,7 +1677,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
 
   useEffect(() => {
     const ontemISO = yesterdayStr();
-    authedFetch(`/api/ml/metrics?from=${ontemISO}&to=${ontemISO}`, { cache: "no-store" })
+    authedFetch(`/api/ml/metrics?from=${ontemISO}&to=${ontemISO}&dia=${ontemISO}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => { if (mountedRef.current) setOntemMetrics(j); })
       .catch(() => {});

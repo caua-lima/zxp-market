@@ -492,9 +492,29 @@ export async function GET(req: Request) {
       if (entry.sku) porSku.set(normalizeSku(entry.sku), entry);
     }
 
-    // ── 2. Data de hoje (BR) para o breakdown do dia ──────────
+    // ── 2. Dia do breakdown "Vendas do Dia" ───────────────────
     const brNow = new Date(Date.now() - 3 * 3600 * 1000);
-    const hj = `${brNow.getUTCFullYear()}-${String(brNow.getUTCMonth() + 1).padStart(2, "0")}-${String(brNow.getUTCDate()).padStart(2, "0")}`;
+    const hoje = `${brNow.getUTCFullYear()}-${String(brNow.getUTCMonth() + 1).padStart(2, "0")}-${String(brNow.getUTCDate()).padStart(2, "0")}`;
+    /**
+     * `dia` permite pedir o breakdown de OUTRO dia que não hoje.
+     *
+     * ─── POR QUE PRECISOU ────────────────────────────────────────────────
+     *
+     * O bloco "Vendas do Dia" compara cada número com o de ontem. Pra buscar
+     * ontem, o Dashboard chamava esta rota com `from=to=ontem` e lia o campo
+     * `hoje` da resposta — supondo que ele seguisse o período pedido.
+     *
+     * Não seguia: `hoje` sempre foi o dia CORRENTE, calculado do relógio e
+     * independente de `from`/`to`. Então a comparação recebia os dados de
+     * hoje contra os dados de hoje, e TODOS os dezesseis cards mostravam
+     * exatamente "↑ 0% vs ontem" — a seta pra cima porque 0 >= 0.
+     *
+     * O padrão continua sendo hoje; só quem pedir um dia explícito recebe
+     * outro. Formato yyyy-mm-dd, validado — data solta viraria intervalo
+     * inválido no ML e derrubaria a rota inteira por causa de um card.
+     */
+    const diaPedido = new URL(req.url).searchParams.get("dia");
+    const hj = diaPedido && /^\d{4}-\d{2}-\d{2}$/.test(diaPedido) ? diaPedido : hoje;
 
     // ── 3. ADS por item_id (período + hoje) ───────────────────
     // A API de ADS rejeita datas futuras → limita o fim ao dia de hoje.
