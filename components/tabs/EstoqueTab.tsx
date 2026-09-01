@@ -7,6 +7,7 @@ import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas
 import { fmtBRL } from "@/lib/domain/calc";
 import { getCoverageStatus, COVERAGE_STATUS_LABEL, consolidarEstoqueAnuncios, ehFullLogistic, estoqueForaDoFull, type CoverageStatus } from "@/lib/domain/estoque";
 import { calcularEntradaMassa, custoMedioAposEntrada, type LinhaEntrada, type ProdutoParaEntrada } from "@/lib/domain/entrada-massa";
+import { montarPlanoReposicao, type ProdutoReposicao } from "@/lib/domain/reposicao";
 import { calcularLucroEstoque, medirTaxas, type FinanceiroProduto, type LucroEstoque } from "@/lib/domain/estoque-lucro";
 import Modal from "@/components/Modal";
 import EditarMovimentoModal from "@/components/tabs/estoque/EditarMovimentoModal";
@@ -367,6 +368,10 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
           </div>
         </div>
       </div>
+
+      {/* Antes da lista de produtos: e decisao de COMPRA, e vem antes de
+          qualquer ajuste fino de cadastro. */}
+      <ReposicaoPanel produtos={data.products} estoqueML={estoqueML} forecast={forecast} />
 
       {/* Produto cadastrado sem nenhum anúncio ligado nunca recebe venda no
           cálculo de lucro — o pedido chega, não acha o produto e o CMV entra
@@ -1509,6 +1514,197 @@ function VincularSkuModal({ uid, produtos, onClose }: { uid: string; produtos: P
  * poder de ZERAR estoque em massa — exatamente o erro caro de se cometer
  * rápido.
  */
+/**
+ * Plano de reposição: quanto pedir de cada produto.
+ *
+ * ─── POR QUE OS DOIS CAMPOS, E NÃO SÓ "30 DIAS" ─────────────────────────
+ *
+ * Comprar pra cobrir 30 dias sem contar o tempo que o fornecedor demora
+ * cobre menos que isso: o estoque é consumido ENQUANTO a mercadoria não
+ * chega. A janela real é a soma dos dois, e é isso que o painel calcula
+ * (ver lib/domain/reposicao.ts).
+ *
+ * O cabeçalho mostra a conta em texto justamente pra o número não precisar
+ * de fé — dá pra conferir de cabeça se está batendo.
+ */
+function ReposicaoPanel({ produtos, estoqueML, forecast }: {
+  produtos: Product[];
+  estoqueML: EstoqueML;
+  forecast: Forecast;
+}) {
+  const [prazo, setPrazo] = useState("15");
+  const [cobertura, setCobertura] = useState("30");
+  const [aberto, setAberto] = useState(false);
+
+  const prazoN = Math.max(0, Math.round(parseNum(prazo) || 0));
+  const coberturaN = Math.max(0, Math.round(parseNum(cobertura) || 0));
+
+  const paraDominio: ProdutoReposicao[] = useMemo(() => produtos.map((p) => {
+    const f = previsaoDe(p, estoqueML, forecast);
+    return {
+      id: p.id,
+      nome: p.name || p.id,
+      estoqueTotal: f.total,
+      emCasa: f.casa,
+      mediaDiaria: f.mediaDiaria,
+      custoUnitario: custoMedioDe(p),
+      ativo: Boolean(p.ativo),
+    };
+  }), [produtos, estoqueML, forecast]);
+
+  const plano = useMemo(
+    () => montarPlanoReposicao(paraDominio, prazoN, coberturaN),
+    [paraDominio, prazoN, coberturaN],
+  );
+
+  const csv = () => {
+    const linhas = [
+      ["Produto", "Vendas/dia", "Estoque hoje", "Dura (dias)", "Necessario", "COMPRAR", "Investimento", "Urgente"],
+      ...plano.itens.map((i) => [
+        i.nome,
+        i.mediaDiaria.toFixed(2).replace(".", ","),
+        String(i.estoqueTotal),
+        i.duraDias == null ? "" : String(i.duraDias),
+        String(i.necessario),
+        String(i.comprar),
+        i.investimento.toFixed(2).replace(".", ","),
+        i.rompeAntesDoPrazo ? "SIM" : "",
+      ]),
+    ];
+    const txt = linhas.map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\n");
+    const url = URL.createObjectURL(new Blob([`﻿${txt}`], { type: "text/csv;charset=utf-8;" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `reposicao-${prazoN}d-espera-${coberturaN}d-cobertura.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const visiveis = aberto ? plano.itens : plano.itens.slice(0, 8);
+
+  return (
+    <div className="panel" style={{ marginBottom: 16 }}>
+      <div className="panel-head">
+        <span className="panel-title">
+          Reposição
+          <span className="panel-sub"> · quanto pedir pra atravessar a espera do fornecedor</span>
+        </span>
+        {plano.itens.length > 0 && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={csv}>Baixar CSV</button>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 12 }}>
+        <div className="config-field" style={{ margin: 0, maxWidth: 190 }}>
+          <label>Fornecedor demora (dias)</label>
+          <input inputMode="numeric" value={prazo} onChange={(e) => setPrazo(e.target.value)} />
+          <div className="hint">Tempo até a mercadoria chegar. Você vende sem repor nesse período.</div>
+        </div>
+        <div className="config-field" style={{ margin: 0, maxWidth: 190 }}>
+          <label>Cobrir depois (dias)</label>
+          <input inputMode="numeric" value={cobertura} onChange={(e) => setCobertura(e.target.value)} />
+          <div className="hint">Quanto o estoque deve durar depois de chegar.</div>
+        </div>
+        <div style={{ fontSize: ".8rem", color: "var(--muted)", paddingBottom: 18 }}>
+          Comprando para <b style={{ color: "var(--text)" }}>{plano.diasACobrir} dias</b>
+          {" "}({prazoN} de espera + {coberturaN} de cobertura)
+        </div>
+      </div>
+
+      {plano.urgentes.length > 0 && (
+        <div className="note note-danger" style={{ marginBottom: 12 }}>
+          <b>{plano.urgentes.length} produto(s) acabam antes de o fornecedor voltar.</b>{" "}
+          Comprar no ciclo normal não resolve: quando a mercadoria chegar, o anúncio já terá
+          ficado sem estoque. Estão no topo da lista, marcados em vermelho — dá pra buscar
+          outro fornecedor, comprar uma parte mais cara, ou subir o preço pra segurar a saída.
+        </div>
+      )}
+
+      <div className="kpi-grid" style={{ marginBottom: 12 }}>
+        <div className="kpi"><div className="k-lbl">Produtos a comprar</div><div className="k-val">{plano.itens.length}</div></div>
+        <div className="kpi"><div className="k-lbl">Unidades</div><div className="k-val">{plano.totalUnidades}</div></div>
+        <div className="kpi"><div className="k-lbl">Investimento</div><div className="k-val">{fmtBRL(plano.totalInvestimento)}</div></div>
+        <div className="kpi k-warn">
+          <div className="k-lbl">Acabam antes</div>
+          <div className="k-val" style={{ color: plano.urgentes.length ? "var(--red)" : "var(--green)" }}>{plano.urgentes.length}</div>
+        </div>
+      </div>
+
+      {plano.itens.length === 0 ? (
+        <div className="empty-state">
+          <span className="empty-ico">✅</span>
+          Nenhum produto precisa de compra pra cobrir {plano.diasACobrir} dias.
+        </div>
+      ) : (
+        <>
+          <div style={{ overflowX: "auto" }}>
+            <table className="table" style={{ margin: 0 }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left" }}>Produto</th>
+                  <th style={{ textAlign: "right" }}>Vendas/dia</th>
+                  <th style={{ textAlign: "right" }}>Estoque hoje</th>
+                  <th style={{ textAlign: "right" }}>Dura</th>
+                  <th style={{ textAlign: "right" }}>Precisa ter</th>
+                  <th style={{ textAlign: "right" }}>COMPRAR</th>
+                  <th style={{ textAlign: "right" }}>Investimento</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visiveis.map((i) => (
+                  <tr key={i.produtoId}>
+                    <td style={{ textAlign: "left" }}>
+                      {i.rompeAntesDoPrazo && (
+                        <span
+                          className="chip chip-red"
+                          style={{ marginRight: 6 }}
+                          title={`Dura ${i.duraDias} dia(s) e o fornecedor só volta em ${prazoN}. Comprar depois não resolve.`}
+                        >
+                          acaba antes
+                        </span>
+                      )}
+                      {i.nome}
+                      {i.emCasa > 0 && (
+                        <span style={{ color: "var(--muted)", fontSize: ".72rem" }}>
+                          {" "}· {i.emCasa} un já em casa
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: "right" }}>{i.mediaDiaria.toFixed(1)}</td>
+                    <td style={{ textAlign: "right" }}>{i.estoqueTotal}</td>
+                    <td style={{ textAlign: "right", color: i.rompeAntesDoPrazo ? "var(--red)" : "var(--muted)" }}>
+                      {i.duraDias == null ? "—" : `${i.duraDias}d`}
+                    </td>
+                    <td style={{ textAlign: "right", color: "var(--muted)" }}>{i.necessario}</td>
+                    <td style={{ textAlign: "right", fontWeight: 800 }}>{i.comprar} un</td>
+                    <td style={{ textAlign: "right" }}>{fmtBRL(i.investimento)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {plano.itens.length > 8 && (
+            <button
+              type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 8 }}
+              onClick={() => setAberto((v) => !v)}
+            >
+              {aberto ? "Mostrar menos" : `Ver todos os ${plano.itens.length}`}
+            </button>
+          )}
+        </>
+      )}
+
+      <div className="hint" style={{ marginTop: 10 }}>
+        Média diária vem das vendas dos últimos {forecast.dias} dias. Estoque é Full + o que
+        está fora do Full.
+        {plano.suficientes > 0 && ` ${plano.suficientes} produto(s) já têm estoque para o período.`}
+        {plano.semHistorico > 0 && ` ${plano.semHistorico} sem venda no período ficaram de fora — sem ritmo, a projeção seria chute.`}
+      </div>
+    </div>
+  );
+}
+
 function EntradaMassaModal({ produtos, estoqueML, onClose, onSaved }: {
   produtos: Product[];
   estoqueML: EstoqueML;
