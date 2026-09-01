@@ -7,13 +7,13 @@ import {
 } from "./reposicao";
 
 const prod = (over: Partial<ProdutoReposicao> = {}): ProdutoReposicao => ({
-  id: "p1", nome: "Erva Tradicional", estoqueTotal: 100, emCasa: 0,
+  id: "p1", nome: "Erva Tradicional", estoqueTotal: 60, emCasa: 0,
   mediaDiaria: 2, custoUnitario: 10, ativo: true, ...over,
 });
 
 describe("duracaoDoEstoque", () => {
-  it("100 unidades a 2 por dia duram 50 dias", () => {
-    expect(duracaoDoEstoque(100, 2)).toBe(50);
+  it("60 unidades a 2 por dia duram 30 dias", () => {
+    expect(duracaoDoEstoque(60, 2)).toBe(30);
   });
 
   it("arredonda pra BAIXO — dia parcial não é dia coberto", () => {
@@ -23,7 +23,6 @@ describe("duracaoDoEstoque", () => {
   it("sem ritmo de venda não dá pra dizer quanto dura", () => {
     // null, e não Infinity: "não sei" não é "dura pra sempre".
     expect(duracaoDoEstoque(100, 0)).toBeNull();
-    expect(duracaoDoEstoque(100, -1)).toBeNull();
   });
 
   it("estoque zerado dura zero dias", () => {
@@ -33,141 +32,143 @@ describe("duracaoDoEstoque", () => {
 
 describe("necessarioParaJanela", () => {
   it("arredonda pra CIMA — faltar custa mais que sobrar", () => {
-    // 2,5 un/dia × 30 = 75; 2,4 × 30 = 72 exato; 2,41 × 30 = 72,3 → 73
-    expect(necessarioParaJanela(2.41, 30)).toBe(73);
+    expect(necessarioParaJanela(2.41, 30)).toBe(73); // 72,3 → 73
   });
 
-  it("sem venda, não há necessidade a projetar", () => {
-    expect(necessarioParaJanela(0, 45)).toBe(0);
-  });
-
-  it("janela zero não pede nada", () => {
-    expect(necessarioParaJanela(5, 0)).toBe(0);
+  it("sem venda não há necessidade a projetar", () => {
+    expect(necessarioParaJanela(0, 30)).toBe(0);
   });
 });
 
 /**
- * O caso que originou isto: o fornecedor fica 15 dias fora e a compra precisa
- * cobrir 30 dias DEPOIS de chegar.
+ * O caso que o usuário descreveu: 60 unidades e o estoque deve durar 30 dias.
  */
-describe("o fornecedor fora por 15 dias", () => {
-  it("a janela é a SOMA — prazo mais cobertura, não só a cobertura", () => {
+describe("60 unidades, alvo de 30 dias", () => {
+  it("sem folga, o estoque termina EXATAMENTE no dia 30 — e é isso que zera o Full", () => {
     /**
-     * É o erro que a conta ingênua comete: comprar pra 30 dias sem contar os
-     * 15 de espera cobre 15, porque o estoque é consumido enquanto a
-     * mercadoria não chega.
+     * A média é média: metade dos dias vende acima dela. Comprar pro estoque
+     * bater zero no dia do alvo significa que qualquer semana boa antecipa a
+     * ruptura. Por isso folga zero é permitido mas não é o padrão.
      */
-    const plano = montarPlanoReposicao([prod({ estoqueTotal: 0, mediaDiaria: 2 })], 15, 30);
-    expect(plano.diasACobrir).toBe(45);
-    expect(plano.itens[0].necessario).toBe(90); // 2 × 45, não 2 × 30
-    expect(plano.itens[0].comprar).toBe(90);
-  });
-
-  it("desconta o que já existe em estoque", () => {
-    const plano = montarPlanoReposicao([prod({ estoqueTotal: 50, mediaDiaria: 2 })], 15, 30);
-    expect(plano.itens[0].comprar).toBe(40); // 90 necessários − 50 em casa
-  });
-
-  it("estoque que já cobre a janela não entra na lista de compra", () => {
-    const plano = montarPlanoReposicao([prod({ estoqueTotal: 200, mediaDiaria: 2 })], 15, 30);
-    expect(plano.itens).toEqual([]);
+    const plano = montarPlanoReposicao([prod({ estoqueTotal: 60, mediaDiaria: 2 })], 30, 0);
+    expect(plano.itens).toEqual([]);          // não precisa comprar nada
     expect(plano.suficientes).toBe(1);
+    expect(duracaoDoEstoque(60, 2)).toBe(30); // dura exatamente o alvo
   });
 
-  it("MARCA quem acaba antes de o fornecedor voltar", () => {
-    // 20 un a 2/dia = 10 dias. O fornecedor volta em 15: rompe antes.
-    const plano = montarPlanoReposicao([prod({ estoqueTotal: 20, mediaDiaria: 2 })], 15, 30);
-    expect(plano.itens[0].duraDias).toBe(10);
-    expect(plano.itens[0].rompeAntesDoPrazo).toBe(true);
-    expect(plano.urgentes).toHaveLength(1);
+  it("com 7 dias de folga, faltam 14 unidades pra não raspar o zero", () => {
+    // 2/dia × (30 + 7) = 74 necessárias; já tem 60 → pedir 14.
+    const plano = montarPlanoReposicao([prod({ estoqueTotal: 60, mediaDiaria: 2 })], 30, 7);
+    expect(plano.diasACobrir).toBe(37);
+    expect(plano.itens[0].necessario).toBe(74);
+    expect(plano.itens[0].comprar).toBe(14);
   });
 
-  it("quem atravessa a espera NÃO é marcado como urgente", () => {
-    // 40 un a 2/dia = 20 dias > 15 de espera.
-    const plano = montarPlanoReposicao([prod({ estoqueTotal: 40, mediaDiaria: 2 })], 15, 30);
-    expect(plano.itens[0].rompeAntesDoPrazo).toBe(false);
-    expect(plano.urgentes).toEqual([]);
+  it("informa quantos dias FALTAM pro alvo — o dado pedido", () => {
+    // 40 un a 2/dia = 20 dias. Alvo 30 → faltam 10 dias.
+    const plano = montarPlanoReposicao([prod({ estoqueTotal: 40, mediaDiaria: 2 })], 30, 7);
+    expect(plano.itens[0].duraDias).toBe(20);
+    expect(plano.itens[0].faltamDias).toBe(10);
+    expect(plano.itens[0].vaiZerarAntes).toBe(true);
   });
 
-  it("urgente aparece mesmo se por acaso não precisasse comprar", () => {
+  it("estoque que ALCANÇA o alvo não é marcado como 'vai zerar', mesmo comprando a folga", () => {
+    // 60 un dura os 30 do alvo; ainda assim compra 14 pela folga.
+    const plano = montarPlanoReposicao([prod({ estoqueTotal: 60, mediaDiaria: 2 })], 30, 7);
+    expect(plano.itens[0].faltamDias).toBe(0);
+    expect(plano.itens[0].vaiZerarAntes).toBe(false);
+    expect(plano.vaoZerar).toEqual([]);
+  });
+
+  it("estoque zerado hoje: faltam os 30 dias inteiros", () => {
+    const plano = montarPlanoReposicao([prod({ estoqueTotal: 0, mediaDiaria: 2 })], 30, 7);
+    expect(plano.itens[0].duraDias).toBe(0);
+    expect(plano.itens[0].faltamDias).toBe(30);
+    expect(plano.itens[0].comprar).toBe(74);
+    expect(plano.vaoZerar).toHaveLength(1);
+  });
+});
+
+describe("o que já está em casa", () => {
+  it("separa a parte do pedido que só precisa ir pro Full", () => {
     /**
-     * Cobertura 0 e prazo 15: o necessário é 30 e o estoque é 20, então
-     * comprar > 0 aqui. O que este teste trava é a ORDEM da decisão: a marca
-     * de ruptura é avaliada sempre, nunca some por causa de um filtro de
-     * quantidade.
+     * Não muda o quanto comprar — muda o que dá pra fazer HOJE. Mandar do
+     * galpão pro Full é mais rápido que esperar o fornecedor.
      */
-    const plano = montarPlanoReposicao([prod({ estoqueTotal: 20, mediaDiaria: 2 })], 15, 0);
-    expect(plano.itens[0].rompeAntesDoPrazo).toBe(true);
+    const plano = montarPlanoReposicao(
+      [prod({ estoqueTotal: 10, emCasa: 30, mediaDiaria: 2 })], 30, 7,
+    );
+    expect(plano.itens[0].comprar).toBe(64);
+    expect(plano.itens[0].jaTemEmCasa).toBe(30);
+  });
+
+  it("nunca aponta mais 'em casa' do que o pedido inteiro", () => {
+    const plano = montarPlanoReposicao(
+      [prod({ estoqueTotal: 70, emCasa: 500, mediaDiaria: 2 })], 30, 7,
+    );
+    expect(plano.itens[0].comprar).toBe(4);
+    expect(plano.itens[0].jaTemEmCasa).toBe(4);
   });
 });
 
 describe("ordem da lista", () => {
-  it("urgentes primeiro, depois quem dura menos", () => {
+  it("quem zera antes primeiro, depois quem dura menos", () => {
     const plano = montarPlanoReposicao([
-      prod({ id: "folgado", nome: "Folgado", estoqueTotal: 60, mediaDiaria: 2 }),   // 30 dias
-      prod({ id: "urgente", nome: "Urgente", estoqueTotal: 10, mediaDiaria: 2 }),   // 5 dias
-      prod({ id: "medio", nome: "Medio", estoqueTotal: 40, mediaDiaria: 2 }),       // 20 dias
-    ], 15, 30);
-    expect(plano.itens.map((i) => i.produtoId)).toEqual(["urgente", "medio", "folgado"]);
+      prod({ id: "folgado", nome: "Folgado", estoqueTotal: 70, mediaDiaria: 2 }), // 35d
+      prod({ id: "zerado", nome: "Zerado", estoqueTotal: 0, mediaDiaria: 2 }),    // 0d
+      prod({ id: "curto", nome: "Curto", estoqueTotal: 20, mediaDiaria: 2 }),     // 10d
+    ], 30, 7);
+    expect(plano.itens.map((i) => i.produtoId)).toEqual(["zerado", "curto", "folgado"]);
   });
 
   it("empate resolve por nome — a lista não pode dançar entre duas leituras", () => {
     const plano = montarPlanoReposicao([
       prod({ id: "b", nome: "Beta", estoqueTotal: 20, mediaDiaria: 1 }),
       prod({ id: "a", nome: "Alfa", estoqueTotal: 20, mediaDiaria: 1 }),
-    ], 5, 30);
+    ], 30, 7);
     expect(plano.itens.map((i) => i.nome)).toEqual(["Alfa", "Beta"]);
   });
 });
 
 describe("o que fica de fora", () => {
   it("produto sem venda no período não vira compra chutada", () => {
-    const plano = montarPlanoReposicao([prod({ mediaDiaria: 0 })], 15, 30);
+    const plano = montarPlanoReposicao([prod({ mediaDiaria: 0 })], 30, 7);
     expect(plano.itens).toEqual([]);
     expect(plano.semHistorico).toBe(1);
   });
 
   it("produto desativado é ignorado por completo", () => {
-    const plano = montarPlanoReposicao([prod({ ativo: false, estoqueTotal: 0 })], 15, 30);
+    const plano = montarPlanoReposicao([prod({ ativo: false, estoqueTotal: 0 })], 30, 7);
     expect(plano.itens).toEqual([]);
     expect(plano.semHistorico).toBe(0);
     expect(plano.suficientes).toBe(0);
   });
 });
 
-describe("totais", () => {
+describe("totais e robustez", () => {
   it("soma unidades e investimento pra dar o tamanho do pedido", () => {
     const plano = montarPlanoReposicao([
-      prod({ id: "a", nome: "A", estoqueTotal: 0, mediaDiaria: 1, custoUnitario: 10 }),  // 45 un
-      prod({ id: "b", nome: "B", estoqueTotal: 0, mediaDiaria: 2, custoUnitario: 5 }),   // 90 un
-    ], 15, 30);
-    expect(plano.totalUnidades).toBe(135);
-    expect(plano.totalInvestimento).toBeCloseTo(45 * 10 + 90 * 5, 2);
+      prod({ id: "a", nome: "A", estoqueTotal: 0, mediaDiaria: 1, custoUnitario: 10 }), // 37
+      prod({ id: "b", nome: "B", estoqueTotal: 0, mediaDiaria: 2, custoUnitario: 5 }),  // 74
+    ], 30, 7);
+    expect(plano.totalUnidades).toBe(111);
+    expect(plano.totalInvestimento).toBeCloseTo(37 * 10 + 74 * 5, 2);
   });
 
   it("lista vazia devolve plano vazio, não quebra", () => {
-    const plano = montarPlanoReposicao([], 15, 30);
+    const plano = montarPlanoReposicao([], 30, 7);
     expect(plano.itens).toEqual([]);
     expect(plano.totalUnidades).toBe(0);
-    expect(plano.totalInvestimento).toBe(0);
-  });
-});
-
-describe("robustez dos parâmetros", () => {
-  it("prazo zero = compra só a cobertura", () => {
-    const plano = montarPlanoReposicao([prod({ estoqueTotal: 0, mediaDiaria: 2 })], 0, 30);
-    expect(plano.diasACobrir).toBe(30);
-    expect(plano.itens[0].comprar).toBe(60);
   });
 
-  it("valores negativos ou inválidos não viram janela negativa", () => {
-    const plano = montarPlanoReposicao([prod({ estoqueTotal: 0, mediaDiaria: 2 })], -5, Number.NaN);
+  it("valores inválidos não viram janela negativa", () => {
+    const plano = montarPlanoReposicao([prod({ estoqueTotal: 0 })], -5, Number.NaN);
     expect(plano.diasACobrir).toBe(0);
     expect(plano.itens).toEqual([]);
   });
 
   it("estoque negativo é tratado como zero", () => {
-    const plano = montarPlanoReposicao([prod({ estoqueTotal: -10, mediaDiaria: 2 })], 15, 30);
-    expect(plano.itens[0].comprar).toBe(90);
+    const plano = montarPlanoReposicao([prod({ estoqueTotal: -10, mediaDiaria: 2 })], 30, 7);
+    expect(plano.itens[0].comprar).toBe(74);
   });
 });

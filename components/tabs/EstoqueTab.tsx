@@ -1514,30 +1514,31 @@ function VincularSkuModal({ uid, produtos, onClose }: { uid: string; produtos: P
  * poder de ZERAR estoque em massa — exatamente o erro caro de se cometer
  * rápido.
  */
+
 /**
- * Plano de reposição: quanto pedir de cada produto.
+ * Plano de reposição: quanto pedir pro estoque durar X dias.
  *
- * ─── POR QUE OS DOIS CAMPOS, E NÃO SÓ "30 DIAS" ─────────────────────────
+ * ─── A FOLGA NÃO É ENFEITE ──────────────────────────────────────────────
  *
- * Comprar pra cobrir 30 dias sem contar o tempo que o fornecedor demora
- * cobre menos que isso: o estoque é consumido ENQUANTO a mercadoria não
- * chega. A janela real é a soma dos dois, e é isso que o painel calcula
- * (ver lib/domain/reposicao.ts).
+ * Comprar `média × dias` faz o estoque bater ZERO exatamente no dia do
+ * alvo. E média é média: metade dos dias vende acima dela, então uma semana
+ * boa antecipa a ruptura. No Full isso não custa só a venda do dia — o
+ * anúncio perde posição e demora pra voltar.
  *
- * O cabeçalho mostra a conta em texto justamente pra o número não precisar
- * de fé — dá pra conferir de cabeça se está batendo.
+ * Por isso a folga vem preenchida. Dá pra zerar o campo, e a tela avisa o
+ * que isso significa em vez de deixar acontecer calado.
  */
 function ReposicaoPanel({ produtos, estoqueML, forecast }: {
   produtos: Product[];
   estoqueML: EstoqueML;
   forecast: Forecast;
 }) {
-  const [prazo, setPrazo] = useState("15");
-  const [cobertura, setCobertura] = useState("30");
+  const [dias, setDias] = useState("30");
+  const [folga, setFolga] = useState("7");
   const [aberto, setAberto] = useState(false);
 
-  const prazoN = Math.max(0, Math.round(parseNum(prazo) || 0));
-  const coberturaN = Math.max(0, Math.round(parseNum(cobertura) || 0));
+  const diasN = Math.max(0, Math.round(parseNum(dias) || 0));
+  const folgaN = Math.max(0, Math.round(parseNum(folga) || 0));
 
   const paraDominio: ProdutoReposicao[] = useMemo(() => produtos.map((p) => {
     const f = previsaoDe(p, estoqueML, forecast);
@@ -1553,87 +1554,99 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
   }), [produtos, estoqueML, forecast]);
 
   const plano = useMemo(
-    () => montarPlanoReposicao(paraDominio, prazoN, coberturaN),
-    [paraDominio, prazoN, coberturaN],
+    () => montarPlanoReposicao(paraDominio, diasN, folgaN),
+    [paraDominio, diasN, folgaN],
   );
 
   const csv = () => {
     const linhas = [
-      ["Produto", "Vendas/dia", "Estoque hoje", "Dura (dias)", "Necessario", "COMPRAR", "Investimento", "Urgente"],
+      ["Produto", "Vendas/dia", "Estoque hoje", "Dura (dias)", "Faltam (dias)", "Precisa ter", "PEDIR", "Ja em casa", "Investimento"],
       ...plano.itens.map((i) => [
         i.nome,
         i.mediaDiaria.toFixed(2).replace(".", ","),
         String(i.estoqueTotal),
-        i.duraDias == null ? "" : String(i.duraDias),
+        String(i.duraDias),
+        String(i.faltamDias),
         String(i.necessario),
         String(i.comprar),
+        String(i.jaTemEmCasa),
         i.investimento.toFixed(2).replace(".", ","),
-        i.rompeAntesDoPrazo ? "SIM" : "",
       ]),
     ];
     const txt = linhas.map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\n");
     const url = URL.createObjectURL(new Blob([`﻿${txt}`], { type: "text/csv;charset=utf-8;" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = `reposicao-${prazoN}d-espera-${coberturaN}d-cobertura.csv`;
+    a.download = `pedido-${diasN}dias.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const visiveis = aberto ? plano.itens : plano.itens.slice(0, 8);
+  const visiveis = aberto ? plano.itens : plano.itens.slice(0, 10);
 
   return (
     <div className="panel" style={{ marginBottom: 16 }}>
       <div className="panel-head">
         <span className="panel-title">
           Reposição
-          <span className="panel-sub"> · quanto pedir pra atravessar a espera do fornecedor</span>
+          <span className="panel-sub"> · o que pedir ao fornecedor hoje</span>
         </span>
         {plano.itens.length > 0 && (
           <button type="button" className="btn btn-ghost btn-sm" onClick={csv}>Baixar CSV</button>
         )}
       </div>
 
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 12 }}>
-        <div className="config-field" style={{ margin: 0, maxWidth: 190 }}>
-          <label>Fornecedor demora (dias)</label>
-          <input inputMode="numeric" value={prazo} onChange={(e) => setPrazo(e.target.value)} />
-          <div className="hint">Tempo até a mercadoria chegar. Você vende sem repor nesse período.</div>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 12 }}>
+        <div className="config-field" style={{ margin: 0, maxWidth: 200 }}>
+          <label>Estoque deve durar</label>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input inputMode="numeric" value={dias} onChange={(e) => setDias(e.target.value)} style={{ width: 90 }} />
+            <span style={{ color: "var(--muted)", fontSize: ".85rem" }}>dias</span>
+          </div>
         </div>
-        <div className="config-field" style={{ margin: 0, maxWidth: 190 }}>
-          <label>Cobrir depois (dias)</label>
-          <input inputMode="numeric" value={cobertura} onChange={(e) => setCobertura(e.target.value)} />
-          <div className="hint">Quanto o estoque deve durar depois de chegar.</div>
+        <div className="config-field" style={{ margin: 0, maxWidth: 230 }}>
+          <label>Folga de segurança</label>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input inputMode="numeric" value={folga} onChange={(e) => setFolga(e.target.value)} style={{ width: 90 }} />
+            <span style={{ color: "var(--muted)", fontSize: ".85rem" }}>dias a mais</span>
+          </div>
+          <div className="hint">Pra não raspar o zero num dia de venda forte.</div>
         </div>
-        <div style={{ fontSize: ".8rem", color: "var(--muted)", paddingBottom: 18 }}>
-          Comprando para <b style={{ color: "var(--text)" }}>{plano.diasACobrir} dias</b>
-          {" "}({prazoN} de espera + {coberturaN} de cobertura)
+        <div style={{ fontSize: ".82rem", color: "var(--muted)", paddingTop: 26 }}>
+          Pedindo para <b style={{ color: "var(--text)" }}>{plano.diasACobrir} dias</b>
+          {folgaN > 0 ? ` (${diasN} + ${folgaN} de folga)` : ""}
         </div>
       </div>
 
-      {plano.urgentes.length > 0 && (
+      {folgaN === 0 && diasN > 0 && (
+        <div className="note note-warn" style={{ marginBottom: 12 }}>
+          <b>Sem folga, o estoque chega a zero exatamente no dia {diasN}.</b> Como metade dos
+          dias vende acima da média, uma semana boa antecipa a ruptura — e no Full ficar sem
+          estoque derruba a posição do anúncio.
+        </div>
+      )}
+
+      {plano.vaoZerar.length > 0 && (
         <div className="note note-danger" style={{ marginBottom: 12 }}>
-          <b>{plano.urgentes.length} produto(s) acabam antes de o fornecedor voltar.</b>{" "}
-          Comprar no ciclo normal não resolve: quando a mercadoria chegar, o anúncio já terá
-          ficado sem estoque. Estão no topo da lista, marcados em vermelho — dá pra buscar
-          outro fornecedor, comprar uma parte mais cara, ou subir o preço pra segurar a saída.
+          <b>{plano.vaoZerar.length} produto(s) zeram antes dos {diasN} dias</b> com o estoque
+          de hoje. Estão no topo da lista, com quantos dias faltam em cada um.
         </div>
       )}
 
       <div className="kpi-grid" style={{ marginBottom: 12 }}>
-        <div className="kpi"><div className="k-lbl">Produtos a comprar</div><div className="k-val">{plano.itens.length}</div></div>
+        <div className="kpi"><div className="k-lbl">Produtos a pedir</div><div className="k-val">{plano.itens.length}</div></div>
         <div className="kpi"><div className="k-lbl">Unidades</div><div className="k-val">{plano.totalUnidades}</div></div>
         <div className="kpi"><div className="k-lbl">Investimento</div><div className="k-val">{fmtBRL(plano.totalInvestimento)}</div></div>
-        <div className="kpi k-warn">
-          <div className="k-lbl">Acabam antes</div>
-          <div className="k-val" style={{ color: plano.urgentes.length ? "var(--red)" : "var(--green)" }}>{plano.urgentes.length}</div>
+        <div className={plano.vaoZerar.length ? "kpi k-neg" : "kpi k-pos"}>
+          <div className="k-lbl">Zeram antes</div>
+          <div className="k-val" style={{ color: plano.vaoZerar.length ? "var(--red)" : "var(--green)" }}>{plano.vaoZerar.length}</div>
         </div>
       </div>
 
       {plano.itens.length === 0 ? (
         <div className="empty-state">
           <span className="empty-ico">✅</span>
-          Nenhum produto precisa de compra pra cobrir {plano.diasACobrir} dias.
+          Nenhum produto precisa de pedido para cobrir {plano.diasACobrir} dias.
         </div>
       ) : (
         <>
@@ -1643,10 +1656,11 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
                 <tr>
                   <th style={{ textAlign: "left" }}>Produto</th>
                   <th style={{ textAlign: "right" }}>Vendas/dia</th>
-                  <th style={{ textAlign: "right" }}>Estoque hoje</th>
+                  <th style={{ textAlign: "right" }}>Tenho</th>
                   <th style={{ textAlign: "right" }}>Dura</th>
-                  <th style={{ textAlign: "right" }}>Precisa ter</th>
-                  <th style={{ textAlign: "right" }}>COMPRAR</th>
+                  <th style={{ textAlign: "right" }}>Faltam</th>
+                  <th style={{ textAlign: "right" }}>Preciso ter</th>
+                  <th style={{ textAlign: "right" }}>PEDIR</th>
                   <th style={{ textAlign: "right" }}>Investimento</th>
                 </tr>
               </thead>
@@ -1654,26 +1668,32 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
                 {visiveis.map((i) => (
                   <tr key={i.produtoId}>
                     <td style={{ textAlign: "left" }}>
-                      {i.rompeAntesDoPrazo && (
+                      {i.vaiZerarAntes && (
                         <span
                           className="chip chip-red"
                           style={{ marginRight: 6 }}
-                          title={`Dura ${i.duraDias} dia(s) e o fornecedor só volta em ${prazoN}. Comprar depois não resolve.`}
+                          title={`Dura ${i.duraDias} dia(s) e o alvo é ${diasN}. Zera antes.`}
                         >
-                          acaba antes
+                          zera antes
                         </span>
                       )}
                       {i.nome}
-                      {i.emCasa > 0 && (
-                        <span style={{ color: "var(--muted)", fontSize: ".72rem" }}>
-                          {" "}· {i.emCasa} un já em casa
+                      {i.jaTemEmCasa > 0 && (
+                        <span
+                          style={{ color: "var(--muted)", fontSize: ".72rem" }}
+                          title="Já está no galpão: mandar pro Full resolve essa parte sem esperar o fornecedor."
+                        >
+                          {" "}· {i.jaTemEmCasa} un já em casa
                         </span>
                       )}
                     </td>
                     <td style={{ textAlign: "right" }}>{i.mediaDiaria.toFixed(1)}</td>
-                    <td style={{ textAlign: "right" }}>{i.estoqueTotal}</td>
-                    <td style={{ textAlign: "right", color: i.rompeAntesDoPrazo ? "var(--red)" : "var(--muted)" }}>
-                      {i.duraDias == null ? "—" : `${i.duraDias}d`}
+                    <td style={{ textAlign: "right" }}>{i.estoqueTotal} un</td>
+                    <td style={{ textAlign: "right", color: i.vaiZerarAntes ? "var(--red)" : "var(--muted)" }}>
+                      {i.duraDias}d
+                    </td>
+                    <td style={{ textAlign: "right", fontWeight: i.faltamDias > 0 ? 700 : 400, color: i.faltamDias > 0 ? "var(--red)" : "var(--muted)" }}>
+                      {i.faltamDias > 0 ? `${i.faltamDias}d` : "—"}
                     </td>
                     <td style={{ textAlign: "right", color: "var(--muted)" }}>{i.necessario}</td>
                     <td style={{ textAlign: "right", fontWeight: 800 }}>{i.comprar} un</td>
@@ -1684,7 +1704,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
             </table>
           </div>
 
-          {plano.itens.length > 8 && (
+          {plano.itens.length > 10 && (
             <button
               type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 8 }}
               onClick={() => setAberto((v) => !v)}
@@ -1696,9 +1716,8 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
       )}
 
       <div className="hint" style={{ marginTop: 10 }}>
-        Média diária vem das vendas dos últimos {forecast.dias} dias. Estoque é Full + o que
-        está fora do Full.
-        {plano.suficientes > 0 && ` ${plano.suficientes} produto(s) já têm estoque para o período.`}
+        Vendas/dia vem dos últimos {forecast.dias} dias. &quot;Tenho&quot; é Full + o que está fora do Full.
+        {plano.suficientes > 0 && ` ${plano.suficientes} produto(s) já cobrem o período.`}
         {plano.semHistorico > 0 && ` ${plano.semHistorico} sem venda no período ficaram de fora — sem ritmo, a projeção seria chute.`}
       </div>
     </div>
