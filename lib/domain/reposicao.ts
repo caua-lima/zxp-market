@@ -195,3 +195,86 @@ export function montarPlanoReposicao(
     diasACobrir,
   };
 }
+
+/**
+ * Média diária considerando só os dias em que o produto esteve à venda.
+ *
+ * ─── POR QUE NÃO DIVIDIR PELA JANELA INTEIRA ────────────────────────────
+ *
+ * Anúncio que ficou ativo 10 dos 30 dias e vendeu 20 unidades vende 2 por
+ * dia — não 0,67. Dividir pela janela cheia trata pausa como fraqueza de
+ * venda, e quem compra por essa média garante a ruptura assim que o anúncio
+ * volta ao ar.
+ *
+ * Vale pro caso quebrado também: ativo nos 10 primeiros dias, pausado na
+ * segunda dezena, ativo do 20 ao 30 são 20 dias de base, não 30.
+ *
+ * `diasAtivos` ausente ou zero cai na janela — é o comportamento de quem não
+ * tem o dado, e não uma divisão por zero disfarçada.
+ */
+export function mediaDiariaAjustada(
+  unidadesVendidas: number,
+  diasDaJanela: number,
+  diasAtivos?: number | null,
+): number {
+  const vendidas = Math.max(Number(unidadesVendidas) || 0, 0);
+  if (vendidas <= 0) return 0;
+
+  const janela = Math.max(Number(diasDaJanela) || 0, 0);
+  const ativos = Math.max(Number(diasAtivos) || 0, 0);
+
+  /**
+   * Nunca usa mais dias do que a janela tem: `diasAtivos` maior seria dado
+   * inconsistente, e aceitar diluiria a média em dias que não existiram.
+   */
+  const base = ativos > 0 ? Math.min(ativos, janela || ativos) : janela;
+  if (base <= 0) return 0;
+  return vendidas / base;
+}
+
+/** Quanto o estoque dura, sem plano de compra — pra listar TODOS os produtos. */
+export type SituacaoProduto = {
+  produtoId: string;
+  nome: string;
+  estoqueTotal: number;
+  emCasa: number;
+  mediaDiaria: number;
+  /** Dias usados como base da média (ativos, ou a janela quando não se sabe). */
+  diasBase: number;
+  /** `null` quando não houve venda: sem ritmo, não dá pra projetar. */
+  duraDias: number | null;
+  ativo: boolean;
+};
+
+/**
+ * Situação de TODOS os produtos, incluindo os sem venda no período.
+ *
+ * Separado de `montarPlanoReposicao` de propósito: aquele responde "o que
+ * pedir", este responde "como está cada um". Misturar faria a lista de
+ * compra carregar produto que não precisa de compra nenhuma.
+ */
+export function situacaoDoEstoque(
+  produtos: (ProdutoReposicao & { diasBase: number })[],
+): SituacaoProduto[] {
+  return produtos
+    .map((p) => ({
+      produtoId: p.id,
+      nome: p.nome || p.id,
+      estoqueTotal: Math.max(Number(p.estoqueTotal) || 0, 0),
+      emCasa: Math.max(Number(p.emCasa) || 0, 0),
+      mediaDiaria: Math.max(Number(p.mediaDiaria) || 0, 0),
+      diasBase: Math.max(Number(p.diasBase) || 0, 0),
+      duraDias: duracaoDoEstoque(Math.max(Number(p.estoqueTotal) || 0, 0), p.mediaDiaria),
+      ativo: Boolean(p.ativo),
+    }))
+    /**
+     * Quem dura menos primeiro; sem ritmo conhecido vai pro fim — é
+     * informação, não urgência. Empate pelo nome, pra a lista não dançar.
+     */
+    .sort((a, b) => {
+      const da = a.duraDias ?? Number.POSITIVE_INFINITY;
+      const db = b.duraDias ?? Number.POSITIVE_INFINITY;
+      if (da !== db) return da - db;
+      return a.nome.localeCompare(b.nome);
+    });
+}

@@ -148,7 +148,63 @@ export async function GET(req: Request) {
       for (const [pid, qty] of porProduto) acumular(pid, "frete", porUnidade * qty);
     }
 
-    const body = { vendas, financeiro, dias, from: fromISO.slice(0, 10), to: toISO.slice(0, 10) };
+    /**
+     * ─── DIAS EM QUE O PRODUTO ESTEVE À VENDA ───────────────────────────
+     *
+     * Dividir as vendas pela janela inteira subestima quem ficou pausado.
+     * Um anúncio ativo só 10 dos 30 dias e que vendeu 20 unidades vende 2
+     * por dia, não 0,67 — e comprar pela média errada garante ruptura.
+     *
+     * O sinal vem de /items/{id}/visits/time_window. Medido na conta: a API
+     * NÃO devolve dias com zero, ela os omite. Anúncio ativo apareceu com
+     * 24 a 30 dias na janela; pausado, com 8 a 22. Ou seja, dia ausente é
+     * dia em que o anúncio não foi visto.
+     *
+     * União entre os anúncios do produto, não soma: se QUALQUER anúncio dele
+     * estava vivo naquele dia, o produto era vendável naquele dia. Somar
+     * contaria o mesmo dia várias vezes e inflaria a base.
+     *
+     * ─── LIMITE CONHECIDO, E POR QUE ELE É ACEITÁVEL ────────────────────
+     *
+     * Anúncio ATIVO que não recebeu nenhuma visita num dia também some da
+     * lista, e vira "dia inativo" aqui. Isso encurta a base e AUMENTA a
+     * média diária — ou seja, erra pedindo estoque a mais. Num cálculo cujo
+     * objetivo é não deixar o Full zerar, esse é o lado seguro do erro.
+     *
+     * A tela mostra a base usada em cada linha, pra a conta não depender de
+     * fé.
+     */
+    const diasAtivos: Record<string, number> = {};
+    try {
+      const diasPorProduto = new Map<string, Set<string>>();
+      const mlbsUnicos = [...porMlb.keys()];
+      for (const mlbNum of mlbsUnicos) {
+        const pid = porMlb.get(mlbNum);
+        if (!pid) continue;
+        try {
+          const r = await fetch(
+            `${ML_API}/items/MLB${mlbNum}/visits/time_window?last=${dias}&unit=day`,
+            { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" },
+          );
+          if (!r.ok) continue;
+          const j = (await r.json()) as { results?: { date?: string; total?: number }[] };
+          const set = diasPorProduto.get(pid) ?? new Set<string>();
+          for (const p of j.results ?? []) {
+            if (Number(p?.total ?? 0) > 0 && p?.date) set.add(String(p.date).slice(0, 10));
+          }
+          diasPorProduto.set(pid, set);
+        } catch {
+          // Um anúncio que falhe não pode derrubar o forecast inteiro: o
+          // produto cai no fallback da janela cheia, que é o comportamento
+          // de antes desta feature.
+        }
+      }
+      for (const [pid, set] of diasPorProduto) if (set.size > 0) diasAtivos[pid] = set.size;
+    } catch {
+      // Sem visitas, `diasAtivos` fica vazio e quem consome usa a janela.
+    }
+
+    const body = { vendas, financeiro, diasAtivos, dias, from: fromISO.slice(0, 10), to: toISO.slice(0, 10) };
     cache = { at: Date.now(), dias, body };
     return NextResponse.json(body);
   } catch (err: unknown) {

@@ -7,7 +7,7 @@ import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas
 import { fmtBRL } from "@/lib/domain/calc";
 import { getCoverageStatus, COVERAGE_STATUS_LABEL, consolidarEstoqueAnuncios, ehFullLogistic, estoqueForaDoFull, type CoverageStatus } from "@/lib/domain/estoque";
 import { calcularEntradaMassa, custoMedioAposEntrada, type LinhaEntrada, type ProdutoParaEntrada } from "@/lib/domain/entrada-massa";
-import { montarPlanoReposicao, type ProdutoReposicao } from "@/lib/domain/reposicao";
+import { mediaDiariaAjustada, montarPlanoReposicao, situacaoDoEstoque } from "@/lib/domain/reposicao";
 import { calcularLucroEstoque, medirTaxas, type FinanceiroProduto, type LucroEstoque } from "@/lib/domain/estoque-lucro";
 import Modal from "@/components/Modal";
 import EditarMovimentoModal from "@/components/tabs/estoque/EditarMovimentoModal";
@@ -23,6 +23,12 @@ type Forecast = {
   dias: number;
   /** Realizado por produto — base das taxas medidas (ver lib/domain/estoque-lucro.ts). */
   financeiro?: Record<string, FinanceiroProduto>;
+  /**
+   * Dias, dentro da janela, em que o produto esteve à venda. Base da média
+   * diária — anúncio pausado metade do período vende o dobro por dia ativo
+   * do que a divisão pela janela sugere (ver mediaDiariaAjustada).
+   */
+  diasAtivos?: Record<string, number>;
 };
 
 // dias-alvo de cobertura pra sugestão de reposição
@@ -1540,22 +1546,40 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
   const diasN = Math.max(0, Math.round(parseNum(dias) || 0));
   const folgaN = Math.max(0, Math.round(parseNum(folga) || 0));
 
-  const paraDominio: ProdutoReposicao[] = useMemo(() => produtos.map((p) => {
+  const [aba, setAba] = useState<"pedir" | "todos">("pedir");
+
+  /**
+   * Base de cada produto: o estoque de hoje e a média diária ajustada pelos
+   * dias em que ele esteve à venda (ver mediaDiariaAjustada). Sem o ajuste,
+   * anúncio pausado metade do período parece vender metade do que vende.
+   */
+  const paraDominio = useMemo(() => produtos.map((p) => {
     const f = previsaoDe(p, estoqueML, forecast);
+    const diasAtivos = forecast.diasAtivos?.[p.id];
+    const diasBase = diasAtivos && diasAtivos > 0 ? Math.min(diasAtivos, forecast.dias) : forecast.dias;
     return {
       id: p.id,
       nome: p.name || p.id,
       estoqueTotal: f.total,
       emCasa: f.casa,
-      mediaDiaria: f.mediaDiaria,
+      mediaDiaria: mediaDiariaAjustada(forecast.vendas[p.id] ?? 0, forecast.dias, diasAtivos),
       custoUnitario: custoMedioDe(p),
       ativo: Boolean(p.ativo),
+      diasBase,
+      /** Esteve à venda menos que a janela inteira — a tela explica a base. */
+      parcial: diasBase < forecast.dias,
     };
   }), [produtos, estoqueML, forecast]);
 
   const plano = useMemo(
     () => montarPlanoReposicao(paraDominio, diasN, folgaN),
     [paraDominio, diasN, folgaN],
+  );
+
+  const todos = useMemo(() => situacaoDoEstoque(paraDominio), [paraDominio]);
+  const baseDe = useMemo(
+    () => new Map(paraDominio.map((p) => [p.id, { diasBase: p.diasBase, parcial: p.parcial }])),
+    [paraDominio],
   );
 
   const csv = () => {
@@ -1643,7 +1667,81 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
         </div>
       </div>
 
-      {plano.itens.length === 0 ? (
+      {/* Duas leituras do mesmo dado: o pedido de compra e o panorama.
+          Separadas porque respondem perguntas diferentes — "o que comprar
+          hoje" e "como está cada produto". */}
+      <div className="seg" style={{ marginBottom: 12 }}>
+        <button
+          type="button" className={`seg-btn ${aba === "pedir" ? "active" : ""}`}
+          onClick={() => setAba("pedir")}
+        >
+          Precisam pedir ({plano.itens.length})
+        </button>
+        <button
+          type="button" className={`seg-btn ${aba === "todos" ? "active" : ""}`}
+          onClick={() => setAba("todos")}
+        >
+          Todos os produtos ({todos.length})
+        </button>
+      </div>
+
+      {aba === "todos" ? (
+        <>
+          <div style={{ overflowX: "auto" }}>
+            <table className="table" style={{ margin: 0 }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left" }}>Produto</th>
+                  <th style={{ textAlign: "right" }}>Vendas/dia</th>
+                  <th style={{ textAlign: "right" }}>Base</th>
+                  <th style={{ textAlign: "right" }}>Tenho</th>
+                  <th style={{ textAlign: "right" }}>Dura</th>
+                </tr>
+              </thead>
+              <tbody>
+                {todos.map((t) => {
+                  const b = baseDe.get(t.produtoId);
+                  const curto = t.duraDias != null && t.duraDias < diasN;
+                  return (
+                    <tr key={t.produtoId} style={{ opacity: t.ativo ? 1 : 0.55 }}>
+                      <td style={{ textAlign: "left" }}>
+                        {!t.ativo && <span className="chip chip-muted" style={{ marginRight: 6 }}>inativo</span>}
+                        {t.nome}
+                      </td>
+                      <td style={{ textAlign: "right", color: t.mediaDiaria > 0 ? "var(--text)" : "var(--muted)" }}>
+                        {t.mediaDiaria > 0 ? t.mediaDiaria.toFixed(1) : "—"}
+                      </td>
+                      {/* A base explica a média: 12 dias em vez de 30 significa
+                          anúncio pausado parte do período. */}
+                      <td
+                        style={{ textAlign: "right", color: b?.parcial ? "var(--warning)" : "var(--muted)", fontSize: ".78rem" }}
+                        title={b?.parcial
+                          ? `Esteve à venda ${b.diasBase} dos ${forecast.dias} dias. A média usa só esses dias — dividir pela janela inteira trataria a pausa como venda fraca.`
+                          : `À venda nos ${forecast.dias} dias do período.`}
+                      >
+                        {b ? `${b.diasBase}d` : "—"}
+                      </td>
+                      <td style={{ textAlign: "right" }}>{t.estoqueTotal} un</td>
+                      <td style={{
+                        textAlign: "right", fontWeight: curto ? 700 : 400,
+                        color: t.duraDias == null ? "var(--muted)" : curto ? "var(--red)" : "var(--green)",
+                      }}>
+                        {t.duraDias == null ? "sem venda" : `${t.duraDias}d`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="hint" style={{ marginTop: 10 }}>
+            &quot;Base&quot; são os dias em que o produto esteve à venda dentro dos {forecast.dias} dias —
+            é por eles que a média é dividida. Produto pausado parte do período aparece com base
+            menor, e a média reflete o ritmo real de quando ele estava no ar.
+            &quot;Sem venda&quot; significa que não houve saída no período: sem ritmo, não dá pra projetar duração.
+          </div>
+        </>
+      ) : plano.itens.length === 0 ? (
         <div className="empty-state">
           <span className="empty-ico">✅</span>
           Nenhum produto precisa de pedido para cobrir {plano.diasACobrir} dias.

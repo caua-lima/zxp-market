@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   duracaoDoEstoque,
   montarPlanoReposicao,
+  mediaDiariaAjustada,
   necessarioParaJanela,
+  situacaoDoEstoque,
   type ProdutoReposicao,
 } from "./reposicao";
 
@@ -170,5 +172,85 @@ describe("totais e robustez", () => {
   it("estoque negativo é tratado como zero", () => {
     const plano = montarPlanoReposicao([prod({ estoqueTotal: -10, mediaDiaria: 2 })], 30, 7);
     expect(plano.itens[0].comprar).toBe(74);
+  });
+});
+
+/**
+ * Anúncio pausado parte da janela. O caso do enunciado: ativo nos 10
+ * primeiros dias, pausado na segunda dezena, ativo do 20 ao 30 → base de 20
+ * dias, não 30.
+ */
+describe("mediaDiariaAjustada", () => {
+  it("usa os dias ATIVOS, não a janela inteira", () => {
+    // 20 unidades em 10 dias ativos = 2/dia. Pela janela daria 0,67.
+    expect(mediaDiariaAjustada(20, 30, 10)).toBeCloseTo(2, 6);
+  });
+
+  it("o caso quebrado: ativo 0-10 e 20-30 são 20 dias de base", () => {
+    expect(mediaDiariaAjustada(40, 30, 20)).toBeCloseTo(2, 6);
+  });
+
+  it("sem o dado de dias ativos, cai na janela — comportamento de antes", () => {
+    expect(mediaDiariaAjustada(30, 30, null)).toBeCloseTo(1, 6);
+    expect(mediaDiariaAjustada(30, 30, 0)).toBeCloseTo(1, 6);
+    expect(mediaDiariaAjustada(30, 30, undefined)).toBeCloseTo(1, 6);
+  });
+
+  it("dias ativos acima da janela é dado inconsistente — usa a janela", () => {
+    // Aceitar 60 diluiria a média em dias que não existiram no período.
+    expect(mediaDiariaAjustada(30, 30, 60)).toBeCloseTo(1, 6);
+  });
+
+  it("sem venda, a média é zero — não importa a base", () => {
+    expect(mediaDiariaAjustada(0, 30, 5)).toBe(0);
+  });
+
+  it("um único dia ativo é base válida", () => {
+    expect(mediaDiariaAjustada(5, 30, 1)).toBeCloseTo(5, 6);
+  });
+
+  it("ajustar a média muda o pedido — é o ponto de tudo isto", () => {
+    const semAjuste = montarPlanoReposicao(
+      [prod({ estoqueTotal: 0, mediaDiaria: mediaDiariaAjustada(20, 30, null) })], 30, 0,
+    );
+    const comAjuste = montarPlanoReposicao(
+      [prod({ estoqueTotal: 0, mediaDiaria: mediaDiariaAjustada(20, 30, 10) })], 30, 0,
+    );
+    expect(semAjuste.itens[0].comprar).toBe(20); // 0,67/dia × 30
+    expect(comAjuste.itens[0].comprar).toBe(60); // 2/dia × 30 — o certo
+  });
+});
+
+describe("situacaoDoEstoque — a aba com TODOS", () => {
+  const base = (over: Partial<ProdutoReposicao & { diasBase: number }> = {}) =>
+    ({ ...prod(), diasBase: 30, ...over });
+
+  it("lista quem tem e quem não tem dado, sem excluir ninguém", () => {
+    const r = situacaoDoEstoque([
+      base({ id: "a", nome: "Com venda", mediaDiaria: 2, estoqueTotal: 60 }),
+      base({ id: "b", nome: "Sem venda", mediaDiaria: 0, estoqueTotal: 40 }),
+    ]);
+    expect(r).toHaveLength(2);
+    expect(r.find((x) => x.produtoId === "a")!.duraDias).toBe(30);
+    expect(r.find((x) => x.produtoId === "b")!.duraDias).toBeNull();
+  });
+
+  it("quem dura menos vem primeiro; sem ritmo vai pro fim", () => {
+    const r = situacaoDoEstoque([
+      base({ id: "semdado", nome: "Sem dado", mediaDiaria: 0 }),
+      base({ id: "longo", nome: "Longo", mediaDiaria: 1, estoqueTotal: 100 }),
+      base({ id: "curto", nome: "Curto", mediaDiaria: 5, estoqueTotal: 10 }),
+    ]);
+    expect(r.map((x) => x.produtoId)).toEqual(["curto", "longo", "semdado"]);
+  });
+
+  it("guarda a base usada, pra tela poder mostrar de onde veio a média", () => {
+    expect(situacaoDoEstoque([base({ diasBase: 12 })])[0].diasBase).toBe(12);
+  });
+
+  it("inclui produto desativado, marcado — a aba é 'todos'", () => {
+    const r = situacaoDoEstoque([base({ ativo: false })]);
+    expect(r).toHaveLength(1);
+    expect(r[0].ativo).toBe(false);
   });
 });
