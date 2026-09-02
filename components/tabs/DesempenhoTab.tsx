@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import ReputacaoPanel from "./desempenho/ReputacaoPanel";
+import ProximaMedalhaPanel from "@/components/tabs/desempenho/ProximaMedalhaPanel";
 import RequisitosMercadoLiderPanel from "./desempenho/RequisitosMercadoLiderPanel";
 import CompradoresPanel from "./desempenho/CompradoresPanel";
 import HeatmapVendas from "./desempenho/HeatmapVendas";
@@ -141,6 +142,12 @@ export default function DesempenhoTab() {
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
             <ReputacaoPanel reputation={dados.reputacao} indisponivel={dados.reputacaoIndisponivel} />
+            {/* Quanto falta pra proxima medalha — qualidade medida pela API,
+                alvo de faturamento digitado (o ML nao expoe o limiar). */}
+            <ProximaMedalhaPanel
+              metrics={dados.reputacao?.metrics}
+              nivelAtual={dados.reputacao?.power_seller_status}
+            />
             <RequisitosMercadoLiderPanel
               requisitos={dados.requisitosMercadoLider}
               registrationDate={dados.registrationDate}
