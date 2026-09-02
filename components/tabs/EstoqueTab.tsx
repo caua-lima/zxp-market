@@ -7,7 +7,7 @@ import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas
 import { fmtBRL } from "@/lib/domain/calc";
 import { getCoverageStatus, COVERAGE_STATUS_LABEL, consolidarEstoqueAnuncios, ehFullLogistic, estoqueForaDoFull, type CoverageStatus } from "@/lib/domain/estoque";
 import { calcularEntradaMassa, custoMedioAposEntrada, type LinhaEntrada, type ProdutoParaEntrada } from "@/lib/domain/entrada-massa";
-import { mediaDiariaAjustada, montarPlanoReposicao, situacaoDoEstoque } from "@/lib/domain/reposicao";
+import { mediaDiariaAjustada, montarPlanoReposicao, planoEnvioParaFull, situacaoDoEstoque } from "@/lib/domain/reposicao";
 import { calcularLucroEstoque, medirTaxas, type FinanceiroProduto, type LucroEstoque } from "@/lib/domain/estoque-lucro";
 import Modal from "@/components/Modal";
 import EditarMovimentoModal from "@/components/tabs/estoque/EditarMovimentoModal";
@@ -1546,7 +1546,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
   const diasN = Math.max(0, Math.round(parseNum(dias) || 0));
   const folgaN = Math.max(0, Math.round(parseNum(folga) || 0));
 
-  const [aba, setAba] = useState<"pedir" | "todos">("pedir");
+  const [aba, setAba] = useState<"pedir" | "full" | "todos">("pedir");
 
   /**
    * Base de cada produto: o estoque de hoje e a média diária ajustada pelos
@@ -1562,6 +1562,9 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
       nome: p.name || p.id,
       estoqueTotal: f.total,
       emCasa: f.casa,
+      // Separados do total: a aba de envio precisa do Full sozinho.
+      noFull: f.full,
+      ehFull: f.ehFull,
       mediaDiaria: mediaDiariaAjustada(forecast.vendas[p.id] ?? 0, forecast.dias, diasAtivos),
       custoUnitario: custoMedioDe(p),
       ativo: Boolean(p.ativo),
@@ -1574,6 +1577,16 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
   const plano = useMemo(
     () => montarPlanoReposicao(paraDominio, diasN, folgaN),
     [paraDominio, diasN, folgaN],
+  );
+
+  /**
+   * Envio pro Full responde outra pergunta: o galpao NAO segura o Full, e
+   * se ele zera o anuncio para mesmo com estoque em casa. A acao ai e
+   * despachar, nao comprar.
+   */
+  const planoFull = useMemo(
+    () => planoEnvioParaFull(paraDominio.map((x) => ({ ...x, noFull: x.noFull, ehFull: x.ehFull })), diasN),
+    [paraDominio, diasN],
   );
 
   const todos = useMemo(() => situacaoDoEstoque(paraDominio), [paraDominio]);
@@ -1678,6 +1691,12 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
           Precisam pedir ({plano.itens.length})
         </button>
         <button
+          type="button" className={`seg-btn ${aba === "full" ? "active" : ""}`}
+          onClick={() => setAba("full")}
+        >
+          Enviar pro Full ({planoFull.itens.length})
+        </button>
+        <button
           type="button" className={`seg-btn ${aba === "todos" ? "active" : ""}`}
           onClick={() => setAba("todos")}
         >
@@ -1739,6 +1758,85 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
             é por eles que a média é dividida. Produto pausado parte do período aparece com base
             menor, e a média reflete o ritmo real de quando ele estava no ar.
             &quot;Sem venda&quot; significa que não houve saída no período: sem ritmo, não dá pra projetar duração.
+          </div>
+        </>
+      ) : aba === "full" ? (
+        <>
+          {planoFull.urgentes.length > 0 && (
+            <div className="note note-danger" style={{ marginBottom: 12 }}>
+              <b>{planoFull.urgentes.length} produto(s) com o Full acabando antes dos {diasN} dias.</b>{" "}
+              O estoque em casa NÃO segura o Full — se ele zera, o anúncio para mesmo com o
+              galpão cheio. Estes decidem a coleta de hoje.
+            </div>
+          )}
+
+          <div className="kpi-grid" style={{ marginBottom: 12 }}>
+            <div className="kpi"><div className="k-lbl">Produtos a enviar</div><div className="k-val">{planoFull.itens.length}</div></div>
+            <div className="kpi k-pos"><div className="k-lbl">Enviar do galpão</div><div className="k-val" style={{ color: "var(--green)" }}>{planoFull.totalAEnviar} un</div></div>
+            <div className="kpi"><div className="k-lbl">Falta comprar</div><div className="k-val" style={{ color: planoFull.totalAComprar > 0 ? "var(--warning)" : "var(--muted)" }}>{planoFull.totalAComprar} un</div></div>
+          </div>
+
+          {planoFull.itens.length === 0 ? (
+            <div className="empty-state">
+              <span className="empty-ico">📦</span>
+              Nenhum produto precisa de envio pro Full pra cobrir {diasN} dias.
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table className="table" style={{ margin: 0 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left" }}>Produto</th>
+                    <th style={{ textAlign: "right" }}>Vendas/dia</th>
+                    <th style={{ textAlign: "right" }}>No Full</th>
+                    <th style={{ textAlign: "right" }}>Full dura</th>
+                    <th style={{ textAlign: "right" }}>Em casa</th>
+                    <th style={{ textAlign: "right" }}>ENVIAR</th>
+                    <th style={{ textAlign: "right" }}>Falta comprar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {planoFull.itens.map((i) => (
+                    <tr key={i.produtoId}>
+                      <td style={{ textAlign: "left" }}>
+                        {i.vaiZerar && (
+                          <span
+                            className="chip chip-red" style={{ marginRight: 6 }}
+                            title={`O Full dura ${i.duraFull} dia(s), abaixo do alvo de ${diasN}.`}
+                          >
+                            Full acabando
+                          </span>
+                        )}
+                        {i.nome}
+                      </td>
+                      <td style={{ textAlign: "right" }}>{i.mediaDiaria.toFixed(1)}</td>
+                      <td style={{ textAlign: "right" }}>{i.noFull} un</td>
+                      {/* A pergunta central: quanto tempo o que está NO FULL aguenta.
+                          O galpão não entra nesta conta de propósito. */}
+                      <td style={{
+                        textAlign: "right", fontWeight: i.vaiZerar ? 700 : 400,
+                        color: i.duraFull == null ? "var(--muted)" : i.vaiZerar ? "var(--red)" : "var(--green)",
+                      }}>
+                        {i.duraFull == null ? "—" : `${i.duraFull}d`}
+                      </td>
+                      <td style={{ textAlign: "right", color: "var(--muted)" }}>{i.emCasa} un</td>
+                      <td style={{ textAlign: "right", fontWeight: 800, color: i.enviar > 0 ? "var(--green)" : "var(--muted)" }}>
+                        {i.enviar > 0 ? `${i.enviar} un` : "—"}
+                      </td>
+                      <td style={{ textAlign: "right", color: i.faltaComprar > 0 ? "var(--warning)" : "var(--muted)" }}>
+                        {i.faltaComprar > 0 ? `${i.faltaComprar} un` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div className="hint" style={{ marginTop: 10 }}>
+            &quot;Full dura&quot; considera SÓ o que está no centro de distribuição — o galpão não
+            segura o Full. &quot;Enviar&quot; é quanto mandar pra cobrir os {diasN} dias, limitado
+            ao que existe em casa; o que sobra vira compra e aparece na última coluna.
           </div>
         </>
       ) : plano.itens.length === 0 ? (

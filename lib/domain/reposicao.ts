@@ -278,3 +278,113 @@ export function situacaoDoEstoque(
       return a.nome.localeCompare(b.nome);
     });
 }
+
+/**
+ * Quanto tempo o que está NO FULL dura, e quanto mandar pra lá.
+ *
+ * ─── POR QUE ISTO É UMA PERGUNTA SEPARADA ───────────────────────────────
+ *
+ * O plano de compra soma Full + casa, porque pro fornecedor o que importa é
+ * quanto existe no total. Mas quem organiza envio precisa do contrário: o
+ * estoque em casa NÃO segura o Full. Se o Full zera e há 300 unidades no
+ * galpão, o anúncio para do mesmo jeito — e a ação não é comprar, é despachar.
+ *
+ * São decisões com prazos diferentes: comprar espera o fornecedor, enviar
+ * espera a coleta e o recebimento no centro de distribuição. Misturar as duas
+ * esconde a que dá pra resolver hoje.
+ *
+ * ─── O TETO É O QUE EXISTE EM CASA ──────────────────────────────────────
+ *
+ * Não adianta sugerir enviar 200 quando há 40 no galpão. O que falta além do
+ * que existe vira compra, e sai separado — assim a linha responde as duas
+ * coisas: o que mandar agora e o que ainda precisa chegar.
+ */
+export type ItemEnvioFull = {
+  produtoId: string;
+  nome: string;
+  mediaDiaria: number;
+  /** Unidades no Full hoje. */
+  noFull: number;
+  /** Unidades no galpão, prontas pra despachar. */
+  emCasa: number;
+  /** Dias que o FULL sozinho aguenta. `null` sem ritmo de venda. */
+  duraFull: number | null;
+  /** Unidades que o Full precisa ter pra cobrir o alvo. */
+  precisaNoFull: number;
+  /** Quanto mandar agora — limitado ao que existe em casa. */
+  enviar: number;
+  /** O que falta mesmo depois de esvaziar o galpão: isso é compra. */
+  faltaComprar: number;
+  /** O Full acaba antes do alvo. */
+  vaiZerar: boolean;
+};
+
+export type PlanoEnvioFull = {
+  itens: ItemEnvioFull[];
+  /** Os que zeram no Full antes do alvo — os que decidem a coleta de hoje. */
+  urgentes: ItemEnvioFull[];
+  totalAEnviar: number;
+  /** Soma do que nem enviando resolve. */
+  totalAComprar: number;
+  diasAlvo: number;
+};
+
+/**
+ * @param diasAlvo  quantos dias o FULL deve cobrir sozinho.
+ */
+export function planoEnvioParaFull(
+  produtos: (ProdutoReposicao & { noFull: number; ehFull: boolean })[],
+  diasAlvo: number,
+): PlanoEnvioFull {
+  const alvo = Math.max(0, Math.floor(diasAlvo) || 0);
+  const itens: ItemEnvioFull[] = [];
+
+  for (const p of produtos) {
+    // Produto sem anúncio Full não tem envio a organizar.
+    if (!p.ativo || !p.ehFull) continue;
+
+    const media = Number.isFinite(p.mediaDiaria) && p.mediaDiaria > 0 ? p.mediaDiaria : 0;
+    if (media <= 0) continue;
+
+    const noFull = Math.max(Number(p.noFull) || 0, 0);
+    const emCasa = Math.max(Number(p.emCasa) || 0, 0);
+    const precisaNoFull = necessarioParaJanela(media, alvo);
+    const falta = Math.max(0, precisaNoFull - noFull);
+    if (falta <= 0) continue;
+
+    const enviar = Math.min(falta, emCasa);
+    const duraFull = duracaoDoEstoque(noFull, media);
+
+    itens.push({
+      produtoId: p.id,
+      nome: p.nome || p.id,
+      mediaDiaria: media,
+      noFull,
+      emCasa,
+      duraFull,
+      precisaNoFull,
+      enviar,
+      faltaComprar: falta - enviar,
+      vaiZerar: duraFull != null && duraFull < alvo,
+    });
+  }
+
+  /**
+   * Quem tem menos dias de Full primeiro — é a ordem em que a coleta precisa
+   * sair. Empate pelo nome, pra a lista não dançar entre duas leituras.
+   */
+  itens.sort((a, b) => {
+    const da = a.duraFull ?? Number.POSITIVE_INFINITY;
+    const db = b.duraFull ?? Number.POSITIVE_INFINITY;
+    if (da !== db) return da - db;
+    return a.nome.localeCompare(b.nome);
+  });
+
+  return {
+    itens,
+    urgentes: itens.filter((i) => i.vaiZerar),
+    totalAEnviar: itens.reduce((s, i) => s + i.enviar, 0),
+    totalAComprar: itens.reduce((s, i) => s + i.faltaComprar, 0),
+    diasAlvo: alvo,
+  };
+}

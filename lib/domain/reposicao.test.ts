@@ -4,6 +4,7 @@ import {
   montarPlanoReposicao,
   mediaDiariaAjustada,
   necessarioParaJanela,
+  planoEnvioParaFull,
   situacaoDoEstoque,
   type ProdutoReposicao,
 } from "./reposicao";
@@ -252,5 +253,76 @@ describe("situacaoDoEstoque — a aba com TODOS", () => {
     const r = situacaoDoEstoque([base({ ativo: false })]);
     expect(r).toHaveLength(1);
     expect(r[0].ativo).toBe(false);
+  });
+});
+
+/**
+ * "Tem X em casa e X no Full — quanto tempo o Full dura?"
+ *
+ * O estoque em casa NÃO segura o Full: se o Full zera com 300 no galpão, o
+ * anúncio para do mesmo jeito. A ação aí não é comprar, é despachar.
+ */
+describe("planoEnvioParaFull", () => {
+  const full = (over: Partial<ProdutoReposicao & { noFull: number; ehFull: boolean }> = {}) =>
+    ({ ...prod(), noFull: 20, ehFull: true, ...over });
+
+  it("a duração é a do FULL sozinho, ignorando o galpão", () => {
+    // 20 no Full a 2/dia = 10 dias, mesmo com 300 em casa.
+    const r = planoEnvioParaFull([full({ noFull: 20, emCasa: 300, mediaDiaria: 2 })], 30);
+    expect(r.itens[0].duraFull).toBe(10);
+    expect(r.itens[0].vaiZerar).toBe(true);
+  });
+
+  it("sugere enviar o que falta, limitado ao que existe em casa", () => {
+    // Precisa 60 no Full, tem 20 → faltam 40, e há 300 em casa.
+    const r = planoEnvioParaFull([full({ noFull: 20, emCasa: 300, mediaDiaria: 2 })], 30);
+    expect(r.itens[0].precisaNoFull).toBe(60);
+    expect(r.itens[0].enviar).toBe(40);
+    expect(r.itens[0].faltaComprar).toBe(0);
+  });
+
+  it("o que nem esvaziando o galpão resolve vira COMPRA, separado", () => {
+    // Faltam 40 no Full e só há 15 em casa: envia 15, compra 25.
+    const r = planoEnvioParaFull([full({ noFull: 20, emCasa: 15, mediaDiaria: 2 })], 30);
+    expect(r.itens[0].enviar).toBe(15);
+    expect(r.itens[0].faltaComprar).toBe(25);
+  });
+
+  it("Full que já cobre o alvo sai da lista — não há envio a organizar", () => {
+    const r = planoEnvioParaFull([full({ noFull: 100, emCasa: 50, mediaDiaria: 2 })], 30);
+    expect(r.itens).toEqual([]);
+  });
+
+  it("sem nada em casa ainda aparece — a informação é que precisa comprar", () => {
+    const r = planoEnvioParaFull([full({ noFull: 10, emCasa: 0, mediaDiaria: 2 })], 30);
+    expect(r.itens[0].enviar).toBe(0);
+    expect(r.itens[0].faltaComprar).toBe(50);
+  });
+
+  it("produto sem anúncio Full não entra: não há envio a fazer", () => {
+    const r = planoEnvioParaFull([full({ ehFull: false, noFull: 0 })], 30);
+    expect(r.itens).toEqual([]);
+  });
+
+  it("produto sem venda no período fica de fora — sem ritmo não há prazo", () => {
+    expect(planoEnvioParaFull([full({ mediaDiaria: 0 })], 30).itens).toEqual([]);
+  });
+
+  it("ordena por quem tem menos dias de Full — é a ordem da coleta", () => {
+    const r = planoEnvioParaFull([
+      full({ id: "folga", nome: "Folga", noFull: 40, mediaDiaria: 2 }),   // 20d
+      full({ id: "zero", nome: "Zero", noFull: 0, mediaDiaria: 2 }),      // 0d
+      full({ id: "meio", nome: "Meio", noFull: 20, mediaDiaria: 2 }),     // 10d
+    ], 30);
+    expect(r.itens.map((i) => i.produtoId)).toEqual(["zero", "meio", "folga"]);
+  });
+
+  it("soma o que dá pra despachar hoje e o que ainda precisa chegar", () => {
+    const r = planoEnvioParaFull([
+      full({ id: "a", nome: "A", noFull: 0, emCasa: 30, mediaDiaria: 1 }),  // precisa 30, envia 30
+      full({ id: "b", nome: "B", noFull: 0, emCasa: 10, mediaDiaria: 2 }),  // precisa 60, envia 10, compra 50
+    ], 30);
+    expect(r.totalAEnviar).toBe(40);
+    expect(r.totalAComprar).toBe(50);
   });
 });
