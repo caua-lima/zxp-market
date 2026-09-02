@@ -252,6 +252,11 @@ export async function GET(req: Request) {
         logisticType: String(o.logistic_type ?? ""),
         tracking: String(o.tracking ?? ""),
         estimatedDelivery: String(o.estimated_delivery ?? ""),
+        // Substatus e limite alimentam a frase de entrega (ver
+        // lib/domain/entrega-status.ts): "ready_to_ship" significa coisas
+        // opostas no Full e fora dele, e a faixa vira "entre os dias 2 e 3".
+        shippingSubstatus: String(o.shipping_substatus ?? ""),
+        estimatedDeliveryLimit: String(o.estimated_delivery_limit ?? ""),
         dateDelivered: String(o.date_delivered ?? ""),
         // Repasse do Mercado Pago: net_received > 0 = valor CONFIRMADO pelo MP;
         // sem isso, "retorno" acima é a nossa ESTIMATIVA (mesma que o resto do app usa).

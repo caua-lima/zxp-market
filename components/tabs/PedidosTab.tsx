@@ -1,6 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { statusDeEntrega } from "@/lib/domain/entrega-status";
+
+/** Hoje no fuso de Brasilia — base do "chega hoje/amanha" (ver entrega-status). */
+function hojeBR(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+}
 import { fmtBRL, getMarginStatus } from "@/lib/domain/calc";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import DateRangePicker from "@/components/dashboard/DateRangePicker";
@@ -46,6 +54,10 @@ type Pedido = {
   logisticType?: string;
   tracking?: string;
   estimatedDelivery?: string;
+  /** Substatus do envio — separa "Full processando" de "etiqueta esperando voce". */
+  shippingSubstatus?: string;
+  /** Fim da faixa de entrega, quando o ML da uma em vez de um dia so. */
+  estimatedDeliveryLimit?: string;
   dateDelivered?: string;
   /**
    * Frete que o COMPRADOR pagou. Não entra em nenhuma conta — existe pra
@@ -245,6 +257,43 @@ function DetalhePedido({ pedido: p }: { pedido: Pedido }) {
         <div style={{ fontSize: ".72rem", textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted)", marginBottom: 4 }}>
           Logística e repasse
         </div>
+
+        {/* Status de entrega em português, como o painel do ML mostra. A
+            linha de cima responde "onde está" e a de baixo, "quando chega" —
+            que é o que se quer saber ao abrir o pedido. Regra e traducao em
+            lib/domain/entrega-status.ts. */}
+        {(() => {
+          const e = statusDeEntrega({
+            status: p.shippingStatus,
+            substatus: p.shippingSubstatus,
+            logistica: p.logisticType,
+            estimadaEm: p.estimatedDelivery,
+            estimadaAte: p.estimatedDeliveryLimit,
+            entregueEm: p.dateDelivered,
+          }, hojeBR());
+          const cor = e.tom === "ok" ? "var(--green)"
+            : e.tom === "problema" ? "var(--red)"
+            : e.tom === "acao" ? "var(--warning)"
+            : e.tom === "andamento" ? "var(--text)"
+            : "var(--muted)";
+          return (
+            <div style={{
+              padding: "8px 10px", borderRadius: 8, marginBottom: 10,
+              background: "var(--surface2)", borderLeft: `3px solid ${cor}`,
+            }}>
+              <div style={{ fontSize: ".84rem", fontWeight: 700, color: cor }}>
+                {e.titulo}
+                {e.pedeAcao && (
+                  <span className="chip chip-yellow" style={{ marginLeft: 8 }}>precisa de você</span>
+                )}
+              </div>
+              {e.prazo && (
+                <div style={{ fontSize: ".76rem", color: "var(--muted)", marginTop: 2 }}>{e.prazo}</div>
+              )}
+            </div>
+          );
+        })()}
+
         <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
           {marcos.map((m) => (
             <div key={m.label} style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: ".78rem" }}>

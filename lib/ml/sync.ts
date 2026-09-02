@@ -96,6 +96,8 @@ type ShipmentInfo = {
   cost: number | null;
   /** Frete que o COMPRADOR pagou — informativo, nunca entra no lucro. */
   buyerPaidShipping: number | null;
+  /** Fim da faixa de entrega, quando o ML da uma em vez de um dia so. */
+  estimadaAte: string;
   status: string;
   substatus: string;
   logistic: string;
@@ -144,6 +146,14 @@ async function fetchShipment(accessToken: string, shipmentId: string): Promise<S
         if (rl.ok) estimated = pickEstimate((await rl.json()) as LeadTime);
       } catch { /* segue */ }
     }
+    /**
+     * Limite da estimativa. O ML as vezes da uma FAIXA ("chega entre os dias
+     * 2 e 3") em vez de um dia so; sem este campo a tela so consegue mostrar
+     * o inicio da faixa como se fosse data exata.
+     */
+    const estimadaAte = String(
+      (j.shipping_option as Record<string, { date?: string }> | undefined)?.estimated_delivery_limit?.date ?? "",
+    );
     const buyerCost = Number(j.shipping_option?.cost ?? 0);
     const listCost = Number(j.shipping_option?.list_cost ?? 0);
     const baseCost = Number(j.base_cost ?? 0);
@@ -177,7 +187,7 @@ async function fetchShipment(accessToken: string, shipmentId: string): Promise<S
     } catch { /* segue */ }
     if (cost == null) cost = buyerCost === 0 ? (listCost > 0 ? listCost : baseCost > 0 ? baseCost : 0) : 0;
 
-    return { cost, buyerPaidShipping, status, substatus, logistic, tracking, estimated, dateDelivered };
+    return { cost, buyerPaidShipping, status, substatus, logistic, tracking, estimated, estimadaAte, dateDelivered };
   } catch {
     return null;
   }
@@ -365,6 +375,7 @@ export async function syncOrdersRange(accessToken: string, range: SyncRange): Pr
         doc.logistic_type = info.logistic;
         doc.tracking = info.tracking;
         doc.estimated_delivery = info.estimated;
+        if (info.estimadaAte) doc.estimated_delivery_limit = info.estimadaAte;
         if (info.dateDelivered) doc.date_delivered = info.dateDelivered;
       }
 
