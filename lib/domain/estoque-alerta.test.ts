@@ -137,3 +137,75 @@ describe("diasDeCobertura", () => {
     expect(diasDeCobertura(100, null)).toBeNull();
   });
 });
+
+/**
+ * O gatilho por DIAS, e não por unidades.
+ *
+ * Números reais desta conta: Menta Stronger vende 7,9/dia e Abacaxi &
+ * Hortelã vende 1,5/dia. Pelo limite de 25 unidades, as duas avisariam no
+ * mesmo momento — e uma estaria em emergência enquanto a outra tem duas
+ * semanas de folga.
+ */
+describe("cobertura em dias substitui o limite de unidades", () => {
+  it("produto de giro RÁPIDO avisa muito antes das 25 unidades", () => {
+    // 7,9/dia com 60 un = 7 dias. Pelo critério antigo, 60 > 25: nada.
+    const r = detectarEstoqueBaixo([prod({ full: 60, mediaDiaria: 7.9 })], nenhum);
+    expect(r.avisar).toHaveLength(1);
+    expect(r.avisar[0].diasRestantes).toBe(7);
+  });
+
+  it("produto de giro LENTO não avisa nas 25, porque tem folga", () => {
+    // 1,5/dia com 22 un = 14 dias. Pelo critério antigo avisaria — ruído.
+    const r = detectarEstoqueBaixo([prod({ full: 22, mediaDiaria: 1.5 })], nenhum);
+    expect(r.avisar).toEqual([]);
+  });
+
+  it("o mesmo giro lento avisa quando os dias caem", () => {
+    // 1,5/dia com 12 un = 8 dias, abaixo dos 10.
+    const r = detectarEstoqueBaixo([prod({ full: 12, mediaDiaria: 1.5 })], nenhum);
+    expect(r.avisar).toHaveLength(1);
+    expect(r.avisar[0].diasRestantes).toBe(8);
+  });
+
+  it("exatamente no limite de dias avisa", () => {
+    // 2/dia com 20 un = 10 dias.
+    expect(detectarEstoqueBaixo([prod({ full: 20, mediaDiaria: 2 })], nenhum).avisar).toHaveLength(1);
+  });
+
+  it("um dia acima do limite não avisa", () => {
+    // 2/dia com 22 un = 11 dias.
+    expect(detectarEstoqueBaixo([prod({ full: 22, mediaDiaria: 2 })], nenhum).avisar).toEqual([]);
+  });
+
+  it("SEM ritmo conhecido volta pro limite de unidades — é o único sinal que sobra", () => {
+    expect(detectarEstoqueBaixo([prod({ full: 25, mediaDiaria: null })], nenhum).avisar).toHaveLength(1);
+    expect(detectarEstoqueBaixo([prod({ full: 26, mediaDiaria: null })], nenhum).avisar).toEqual([]);
+  });
+
+  it("o limite de dias é configurável", () => {
+    const p = [prod({ full: 30, mediaDiaria: 2 })]; // 15 dias
+    expect(detectarEstoqueBaixo(p, nenhum, ESTOQUE_MINIMO_PADRAO, 10).avisar).toEqual([]);
+    expect(detectarEstoqueBaixo(p, nenhum, ESTOQUE_MINIMO_PADRAO, 20).avisar).toHaveLength(1);
+  });
+
+  it("o título leva os DIAS, que é o que diz se é urgente", () => {
+    const r = detectarEstoqueBaixo([prod({ full: 20, mediaDiaria: 2 })], nenhum);
+    expect(r.avisar[0].titulo).toMatch(/dura 10 dia/);
+  });
+
+  it("Full zerado continua com título próprio, mais forte que os dias", () => {
+    const r = detectarEstoqueBaixo([prod({ full: 0, mediaDiaria: 2 })], nenhum);
+    expect(r.avisar[0].titulo).toMatch(/ZEROU/);
+  });
+
+  it("o corpo diz o ritmo — sem isso o número de dias não se explica", () => {
+    const r = detectarEstoqueBaixo([prod({ full: 20, mediaDiaria: 2 })], nenhum);
+    expect(r.avisar[0].corpo).toMatch(/2\.0\/dia/);
+  });
+
+  it("rearma quando volta a ter cobertura, não quando passa das 25 un", () => {
+    // 7,9/dia com 100 un = 12 dias: acima do limite, então rearma.
+    const r = detectarEstoqueBaixo([prod({ full: 100, mediaDiaria: 7.9 })], new Set(["p1"]));
+    expect(r.rearmar).toEqual(["p1"]);
+  });
+});

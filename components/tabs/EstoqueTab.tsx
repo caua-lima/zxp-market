@@ -1547,6 +1547,29 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
   const folgaN = Math.max(0, Math.round(parseNum(folga) || 0));
 
   const [aba, setAba] = useState<"pedir" | "full" | "todos">("pedir");
+  const [busca, setBusca] = useState("");
+
+  /**
+   * Filtro unico pras tres abas: o produto que voce esta investigando e o
+   * mesmo em todas, e ter tres campos separados faria repetir a digitacao a
+   * cada troca de aba.
+   */
+  const filtrar = <T extends { nome: string }>(lista: T[]) => {
+    const termo = busca.trim().toLowerCase();
+    return termo ? lista.filter((x) => x.nome.toLowerCase().includes(termo)) : lista;
+  };
+
+  /**
+   * Cor pela COBERTURA, nao pela quantidade: 20 unidades e emergencia num
+   * produto que gira rapido e folga num que gira devagar. Mesma escala nas
+   * tres abas, pra a cor querer dizer sempre a mesma coisa.
+   */
+  const corDias = (d: number | null) =>
+    d == null ? "var(--muted)"
+      : d <= 3 ? "var(--red)"
+      : d <= 10 ? "var(--warning)"
+      : d <= 20 ? "var(--text)"
+      : "var(--green)";
 
   /**
    * Base de cada produto: o estoque de hoje e a média diária ajustada pelos
@@ -1704,6 +1727,24 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
         </button>
       </div>
 
+      {/* Legenda da cor: a coluna "dura" e a informacao central das tres
+          abas, e cor sem legenda vira adivinhacao. */}
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: ".7rem", color: "var(--muted)", marginBottom: 10 }}>
+        <span>Dias de cobertura:</span>
+        <span><b style={{ color: "var(--red)" }}>ate 3d</b> critico</span>
+        <span><b style={{ color: "var(--warning)" }}>4 a 10d</b> repor agora</span>
+        <span><b style={{ color: "var(--text)" }}>11 a 20d</b> atencao</span>
+        <span><b style={{ color: "var(--green)" }}>21d+</b> folga</span>
+      </div>
+
+      {/* Busca unica: o produto investigado e o mesmo nas tres abas. */}
+      <input
+        value={busca}
+        onChange={(e) => setBusca(e.target.value)}
+        placeholder="Filtrar produto pelo nome..."
+        style={{ width: "100%", marginBottom: 12 }}
+      />
+
       {aba === "todos" ? (
         <>
           <div style={{ overflowX: "auto" }}>
@@ -1718,7 +1759,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
                 </tr>
               </thead>
               <tbody>
-                {todos.map((t) => {
+                {filtrar(todos).map((t) => {
                   const b = baseDe.get(t.produtoId);
                   const curto = t.duraDias != null && t.duraDias < diasN;
                   return (
@@ -1741,10 +1782,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
                         {b ? `${b.diasBase}d` : "—"}
                       </td>
                       <td style={{ textAlign: "right" }}>{t.estoqueTotal} un</td>
-                      <td style={{
-                        textAlign: "right", fontWeight: curto ? 700 : 400,
-                        color: t.duraDias == null ? "var(--muted)" : curto ? "var(--red)" : "var(--green)",
-                      }}>
+                      <td style={{ textAlign: "right", fontWeight: curto ? 700 : 400, color: corDias(t.duraDias) }}>
                         {t.duraDias == null ? "sem venda" : `${t.duraDias}d`}
                       </td>
                     </tr>
@@ -1796,7 +1834,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
                   </tr>
                 </thead>
                 <tbody>
-                  {planoFull.itens.map((i) => (
+                  {filtrar(planoFull.itens).map((i) => (
                     <tr key={i.produtoId}>
                       <td style={{ textAlign: "left" }}>
                         {i.vaiZerar && (
@@ -1813,10 +1851,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
                       <td style={{ textAlign: "right" }}>{i.noFull} un</td>
                       {/* A pergunta central: quanto tempo o que está NO FULL aguenta.
                           O galpão não entra nesta conta de propósito. */}
-                      <td style={{
-                        textAlign: "right", fontWeight: i.vaiZerar ? 700 : 400,
-                        color: i.duraFull == null ? "var(--muted)" : i.vaiZerar ? "var(--red)" : "var(--green)",
-                      }}>
+                      <td style={{ textAlign: "right", fontWeight: i.vaiZerar ? 700 : 400, color: corDias(i.duraFull) }}>
                         {i.duraFull == null ? "—" : `${i.duraFull}d`}
                       </td>
                       <td style={{ textAlign: "right", color: "var(--muted)" }}>{i.emCasa} un</td>
@@ -1861,7 +1896,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
                 </tr>
               </thead>
               <tbody>
-                {visiveis.map((i) => (
+                {filtrar(visiveis).map((i) => (
                   <tr key={i.produtoId}>
                     <td style={{ textAlign: "left" }}>
                       {i.vaiZerarAntes && (
@@ -1885,7 +1920,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
                     </td>
                     <td style={{ textAlign: "right" }}>{i.mediaDiaria.toFixed(1)}</td>
                     <td style={{ textAlign: "right" }}>{i.estoqueTotal} un</td>
-                    <td style={{ textAlign: "right", color: i.vaiZerarAntes ? "var(--red)" : "var(--muted)" }}>
+                    <td style={{ textAlign: "right", fontWeight: i.vaiZerarAntes ? 700 : 400, color: corDias(i.duraDias) }}>
                       {i.duraDias}d
                     </td>
                     <td style={{ textAlign: "right", fontWeight: i.faltamDias > 0 ? 700 : 400, color: i.faltamDias > 0 ? "var(--red)" : "var(--muted)" }}>

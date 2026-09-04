@@ -35,6 +35,27 @@
  */
 export const ESTOQUE_MINIMO_PADRAO = 25;
 
+/**
+ * Dias de cobertura abaixo dos quais o Full pede reposição.
+ *
+ * ─── POR QUE DIAS, E NÃO UNIDADES ───────────────────────────────────────
+ *
+ * O aviso disparava por quantidade absoluta: Full <= 25 unidades. Isso erra
+ * nos DOIS sentidos, e foi medido nesta conta:
+ *
+ *   Menta Stronger .... 7,9/dia → 25 un são 3 DIAS. O aviso só chegaria
+ *                       quando já não desse tempo de coletar.
+ *   Abacaxi & Hortelã . 1,5/dia → 22 un são 14 dias. O aviso chega e não há
+ *                       nada a fazer — vira ruído, e ruído se ignora.
+ *
+ * O que decide a coleta é TEMPO, não quantidade: 25 unidades de um produto
+ * que gira rápido é emergência, e de um que gira devagar é folga.
+ *
+ * 10 dias cobre a coleta e o recebimento no centro de distribuição com
+ * margem pra você reagir.
+ */
+export const DIAS_COBERTURA_MINIMA = 10;
+
 export type ProdutoEstoque = {
   /** Id estável do produto — vira parte da chave de dedupe. */
   id: string;
@@ -92,6 +113,8 @@ export function detectarEstoqueBaixo(
   /** Ids que JÁ receberam aviso e ainda não foram reabastecidos. */
   jaAvisados: ReadonlySet<string>,
   minimoPadrao: number = ESTOQUE_MINIMO_PADRAO,
+  /** Dias de cobertura que disparam o aviso quando o ritmo é conhecido. */
+  diasMinimos: number = DIAS_COBERTURA_MINIMA,
 ): ResultadoDeteccao {
   const avisar: AvisoEstoque[] = [];
   const rearmar: string[] = [];
@@ -104,7 +127,17 @@ export function detectarEstoqueBaixo(
     const minimo = p.minimo ?? minimoPadrao;
     const full = Math.max(p.full, 0);
     const casa = Math.max(p.casa, 0);
-    const baixo = full <= minimo;
+    const dias = diasDeCobertura(full, p.mediaDiaria);
+    /**
+     * Com ritmo conhecido, quem manda é o TEMPO — e ele SUBSTITUI o limite de
+     * unidades, não soma. Manter os dois faria o produto de giro lento avisar
+     * aos 25 mesmo com 50 dias de cobertura, que é o ruído que este critério
+     * existe pra eliminar.
+     *
+     * Sem ritmo (produto novo, sem venda no período) não há tempo a calcular,
+     * e aí a quantidade absoluta é o único sinal disponível.
+     */
+    const baixo = dias != null ? dias <= diasMinimos : full <= minimo;
     const jaAvisou = jaAvisados.has(p.id);
 
     if (!baixo) {
@@ -114,7 +147,6 @@ export function detectarEstoqueBaixo(
     }
     if (jaAvisou) continue; // já avisado nesta travessia — não repete
 
-    const dias = diasDeCobertura(full, p.mediaDiaria);
     const nome = p.nome || p.id;
     const podeColetar = casa > 0;
 
@@ -124,10 +156,19 @@ export function detectarEstoqueBaixo(
       // avisar todo dia, que é exatamente o que se quer evitar.
       chave: `stock_low:${p.id}`,
       produtoId: p.id,
-      titulo: full === 0 ? `${nome} ZEROU no Full` : `${nome}: ${full} un no Full`,
+      /**
+       * O TÍTULO leva os dias, não as unidades: "18 un no Full" não diz se é
+       * urgente, "dura 2 dias" diz. Sem ritmo conhecido, cai nas unidades,
+       * que é o único dado que existe.
+       */
+      titulo: full === 0
+        ? `${nome} ZEROU no Full`
+        : dias != null
+          ? `${nome}: Full dura ${dias} dia(s)`
+          : `${nome}: ${full} un no Full`,
       corpo:
-        `Full em ${full} un (mínimo ${minimo})`
-        + (dias != null ? `, dura ~${dias} dia(s)` : "")
+        `${full} un no Full`
+        + (dias != null ? ` · no ritmo de ${p.mediaDiaria!.toFixed(1)}/dia acaba em ${dias} dia(s)` : ` (mínimo ${minimo})`)
         + ". "
         + (podeColetar
           ? `Você tem ${casa} un em casa — agende a coleta.`

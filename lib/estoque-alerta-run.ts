@@ -1,6 +1,7 @@
 import "server-only";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { getMlAccessToken } from "@/app/api/ml/token";
+import { SELLER_ID } from "@/lib/ml/orders";
 import { consolidarEstoqueAnuncios, type AnuncioEstoque } from "@/lib/domain/estoque";
 import {
   detectarEstoqueBaixo,
@@ -66,6 +67,54 @@ async function buscarEstoqueML(ids: string[], token: string): Promise<Map<string
   return mapa;
 }
 
+/**
+ * Unidades vendidas por produto nos últimos `dias`, direto do ML.
+ *
+ * ─── POR QUE O AVISO PRECISA DISTO ──────────────────────────────────────
+ *
+ * Sem o ritmo, o alerta só sabe comparar unidades — e 25 unidades significa
+ * coisas opostas conforme o giro: pra quem vende 7,9/dia são 3 dias, pra
+ * quem vende 1,5/dia são duas semanas. Medido nesta conta, os dois casos
+ * existem, e o aviso errava nos dois (ver DIAS_COBERTURA_MINIMA).
+ *
+ * Best-effort: falhar aqui devolve um mapa vazio, e o detector cai no limite
+ * de unidades — o comportamento de antes, nunca um erro.
+ */
+async function medirVendasPorProduto(
+  token: string,
+  porMlb: Map<string, string>,
+  dias: number,
+): Promise<Map<string, number>> {
+  const vendas = new Map<string, number>();
+  try {
+    const desde = new Date(Date.now() - dias * 86400000).toISOString();
+    const headers = { Authorization: `Bearer ${token}`, Accept: "application/json" };
+    for (let offset = 0; offset < 1000; offset += 50) {
+      const r = await fetch(
+        `${ML_API}/orders/search?seller=${SELLER_ID}&order.status=paid`
+        + `&order.date_created.from=${desde}&offset=${offset}&limit=50`,
+        { headers, cache: "no-store" },
+      );
+      if (!r.ok) break;
+      const j = (await r.json()) as { results?: Record<string, unknown>[] };
+      const lista = j.results ?? [];
+      for (const o of lista) {
+        for (const it of ((o.order_items ?? []) as Record<string, unknown>[])) {
+          const item = it.item as Record<string, unknown> | undefined;
+          const pid = porMlb.get(normId(String(item?.id ?? "")));
+          if (!pid) continue;
+          vendas.set(pid, (vendas.get(pid) ?? 0) + (Number(it.quantity ?? 1) || 0));
+        }
+      }
+      if (lista.length < 50) break;
+    }
+  } catch {
+    // Sem o ritmo o detector usa o limite de unidades. Perder precisão é
+    // melhor que perder o aviso inteiro.
+  }
+  return vendas;
+}
+
 async function lerJaAvisados(): Promise<Set<string>> {
   try {
     const snap = await getAdminDb().collection(ESTADO).get();
@@ -106,6 +155,19 @@ export async function verificarEstoqueBaixo(): Promise<ResultadoEstoqueAlerta> {
     }
     const estoqueML = await buscarEstoqueML([...todosIds], token);
 
+    /**
+     * MLB → produto, pra cruzar as vendas com o cadastro. Mesmo `normId` do
+     * resto do arquivo, senão o cruzamento perde produto pelo prefixo "MLB".
+     */
+    const porMlbProduto = new Map<string, string>();
+    for (const doc of prodSnap.docs) {
+      const d = doc.data();
+      const l: string[] = Array.isArray(d.mlbs) && d.mlbs.length ? d.mlbs : d.mlb ? [String(d.mlb)] : [];
+      for (const m of l) { const n = normId(String(m)); if (n) porMlbProduto.set(n, doc.id); }
+    }
+    const JANELA_DIAS = 30;
+    const vendas30d = await medirVendasPorProduto(token, porMlbProduto, JANELA_DIAS);
+
     const produtos: ProdutoEstoque[] = prodSnap.docs.map((doc) => {
       const d = doc.data();
       const list: string[] = Array.isArray(d.mlbs) && d.mlbs.length ? d.mlbs : d.mlb ? [String(d.mlb)] : [];
@@ -126,6 +188,15 @@ export async function verificarEstoqueBaixo(): Promise<ResultadoEstoqueAlerta> {
         ehFull: c.ehFull,
         // Limite por produto, quando o operador tiver definido um.
         minimo: d.estoqueMinimo != null ? Number(d.estoqueMinimo) : null,
+        /**
+         * Ritmo de venda: é ele que transforma "18 unidades" em "dura 2
+         * dias". Zero vira null de propósito — produto sem venda no período
+         * não tem ritmo, e o detector precisa distinguir "não vende" de
+         * "não sei".
+         */
+        mediaDiaria: (vendas30d.get(doc.id) ?? 0) > 0
+          ? (vendas30d.get(doc.id) ?? 0) / JANELA_DIAS
+          : null,
       };
     });
 
