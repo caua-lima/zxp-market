@@ -1,57 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { metricasDeQualidade, progressoDaMedalha } from "./proxima-medalha";
+import { metricasDeQualidade } from "./proxima-medalha";
 
-const HOJE = "2026-09-01";
-
-describe("progressoDaMedalha", () => {
-  it("mede o que falta e o ritmo, com os numeros reais da conta", () => {
-    // R$ 42.013 em 60 dias, alvo hipotetico de R$ 76.490.
-    const p = progressoDaMedalha(42013, 76490, 60, HOJE);
-    expect(p.falta).toBeCloseTo(34477, 0);
-    expect(p.pct).toBeCloseTo(54.9, 1);
-    expect(p.porDia).toBeCloseTo(700.2, 1);
-    expect(p.diasNoRitmo).toBe(50);
-  });
-
-  it("projeta a data somando os dias do ritmo a hoje", () => {
-    // 700,2/dia, faltam 34.477 → 50 dias → 21/10.
-    expect(progressoDaMedalha(42013, 76490, 60, HOJE).chegaEm).toBe("2026-10-21");
-  });
-
-  it("alvo alcancado nao pede mais nada", () => {
-    const p = progressoDaMedalha(80000, 76490, 60, HOJE);
-    expect(p.alcancado).toBe(true);
-    expect(p.falta).toBe(0);
-    expect(p.diasNoRitmo).toBe(0);
-  });
-
-  it("sem ritmo NAO projeta data — null e diferente de 'chega hoje'", () => {
-    // Dizer que chega hoje quando nao se vende nada e a pior forma de errar.
-    const p = progressoDaMedalha(0, 76490, 60, HOJE);
-    expect(p.porDia).toBe(0);
-    expect(p.diasNoRitmo).toBeNull();
-    expect(p.chegaEm).toBeNull();
-  });
-
-  it("sem alvo informado nao inventa percentual", () => {
-    const p = progressoDaMedalha(42013, 0, 60, HOJE);
-    expect(p.pct).toBe(0);
-    expect(p.alcancado).toBe(false);
-  });
-
-  it("valores invalidos nao viram numero negativo", () => {
-    const p = progressoDaMedalha(-5, -10, 0, HOJE);
-    expect(p.atual).toBe(0);
-    expect(p.alvo).toBe(0);
-    expect(p.falta).toBe(0);
-    expect(p.porDia).toBe(0);
-  });
-
-  it("a data projetada atravessa a virada do mes", () => {
-    // 100/dia, faltam 1000 → 10 dias a partir de 25/12 → 04/01/2027.
-    expect(progressoDaMedalha(3000, 4000, 30, "2026-12-25").chegaEm).toBe("2027-01-04");
-  });
-});
 
 /**
  * Numeros reais da conta em 01/09/2026: 937 vendas concluidas em 60 dias,

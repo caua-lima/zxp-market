@@ -3,30 +3,35 @@
 import { useEffect, useState } from "react";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import { fmtBRL } from "@/lib/domain/calc";
-import { metricasDeQualidade, progressoDaMedalha } from "@/lib/domain/proxima-medalha";
+import { metricasDeQualidade } from "@/lib/domain/proxima-medalha";
+import {
+  REQUISITOS_COMUNS,
+  janelaDaMedalha,
+  progressoMercadoLider,
+  type EixoMedalha,
+} from "@/lib/domain/mercadolider-metas";
 
 /**
  * "Quanto falta pra próxima medalha."
  *
- * ─── POR QUE O ALVO É DIGITADO ──────────────────────────────────────────
+ * ─── O ALVO DEIXOU DE SER DIGITADO ──────────────────────────────────────
  *
- * A API do ML devolve o nível atual e as métricas de qualidade, mas NÃO os
- * limiares de faturamento que separam Silver de Gold. A documentação oficial
- * bloqueia leitura automatizada e as fontes de terceiros divergem.
+ * Este painel pedia o limiar de faturamento na mão, porque a API não devolve
+ * e chutar seria pior que não ter. A tabela oficial foi localizada em
+ * 05/09/2026 na página "Tudo sobre ser MercadoLíder" e agora mora em
+ * lib/domain/mercadolider-metas.ts — 230/575/1.725 vendas e
+ * R$ 37.000/118.400/296.000.
  *
- * Tentou-se deduzir do próprio painel do ML, que exibe "R$ 76.490 faturado em
- * vendas concluídas" na tela do Gold. Medido contra a conta, esse valor é
- * praticamente o faturamento acumulado em ~120 dias (R$ 77.218 na medição) —
- * ou seja, é PROGRESSO, não meta.
+ * ─── DUAS JANELAS DIFERENTES, DE PROPÓSITO ──────────────────────────────
  *
- * Chutar o limiar seria pior que não ter: compra e verba de anúncio seriam
- * planejadas em cima de um número que ninguém conferiu. Então o alvo vem do
- * painel do ML, digitado uma vez, e o app faz o que sabe fazer com precisão:
- * medir o acumulado e projetar o ritmo.
+ * A qualidade é medida em 60 dias (janela da REPUTAÇÃO). A medalha é medida
+ * em "3 meses mais os dias do mês vigente" — 97 dias em 05/09. São critérios
+ * distintos do ML, e misturá-los subestimava o acumulado em ~40%: foi o que
+ * fez R$ 76.490 do painel parecer meta quando era progresso.
+ *
+ * Por isso duas buscas. A alternativa — uma janela só — daria um número
+ * errado nos dois lados.
  */
-
-const CHAVE = "zxp:meta-medalha";
-
 export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
   metrics: {
     claims?: { rate?: number | null; value?: number | null } | null;
@@ -35,71 +40,132 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
   } | null | undefined;
   nivelAtual: string | null | undefined;
 }) {
+  /** Janela da reputação — denominador das três métricas de qualidade. */
+  const [reputacao, setReputacao] = useState<{ concluidas: number; faturado: number } | null>(null);
+  /** Janela da medalha — 3 meses + mês vigente. */
+  const [medalha, setMedalha] = useState<{ concluidas: number; faturado: number } | null>(null);
   /**
-   * Inicializacao PREGUICOSA, sem efeito: ler o storage num useEffect e
-   * chamar setState dispara render em cascata (react-hooks/set-state-in-effect)
-   * e faz o campo piscar vazio antes de mostrar o valor salvo.
-   *
-   * O guarda de `window` existe porque este componente ainda renderiza no
-   * servidor pra hidratacao, e la localStorage nao existe.
+   * Comeca em true e so cai pra false quando as duas buscas voltam.
+   * Chamar setCarregando(true) DENTRO do efeito seria setState sincrono em
+   * efeito — render em cascata, e o lint pega (react-hooks/set-state-in-effect).
    */
-  const [alvo, setAlvo] = useState<string>(() => {
-    if (typeof window === "undefined") return "";
-    try { return window.localStorage.getItem(CHAVE) ?? ""; } catch { return ""; }
-  });
-  /**
-   * Mesmo endpoint que o ReputacaoPanel usa — e a janela de 60 dias que o ML
-   * julga, e ela precisa vir ao vivo (o banco so cobre mes atual e anterior,
-   * ver lib/domain/reputacao-vendas.ts).
-   */
-  const [bloco, setBloco] = useState<{ concluidas: number; faturado: number } | null>(null);
+  const [carregando, setCarregando] = useState(true);
 
-  useEffect(() => {
-    let vivo = true;
-    authedFetch("/api/ml/reputacao-vendas?dias=60", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("falhou"))))
-      .then((j) => { if (vivo) setBloco(j?.bloco ?? null); })
-      .catch(() => { if (vivo) setBloco(null); });
-    return () => { vivo = false; };
-  }, []);
-
-  const faturado60d = bloco?.faturado ?? 0;
-  const vendasConcluidas60d = bloco?.concluidas ?? 0;
-
-  /**
-   * O alvo fica no navegador: e preferencia de exibicao, nao dado de negocio,
-   * e nao vale abrir um caminho de escrita no banco pra ele.
-   */
-  const guardar = (v: string) => {
-    setAlvo(v);
-    try { window.localStorage.setItem(CHAVE, v); } catch { /* idem */ }
-  };
-
-  const alvoNum = Number(String(alvo).replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".")) || 0;
   const hoje = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
   }).format(new Date());
-  const p = progressoDaMedalha(faturado60d, alvoNum, 60, hoje);
-  const qualidade = metricasDeQualidade(metrics, vendasConcluidas60d);
+  const janela = janelaDaMedalha(hoje);
 
-  const proximo = String(nivelAtual ?? "").toLowerCase() === "silver" ? "MercadoLíder Gold"
-    : String(nivelAtual ?? "").toLowerCase() === "gold" ? "MercadoLíder Platinum"
-    : "o próximo nível";
+  useEffect(() => {
+    let vivo = true;
+    const pega = (qs: string) =>
+      authedFetch(`/api/ml/reputacao-vendas?${qs}`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error("falhou"))))
+        .then((j) => j?.bloco ?? null)
+        .catch(() => null);
+
+    Promise.all([
+      pega("dias=60"),
+      pega(`from=${janela.de}&to=${janela.ate}&dias=${janela.dias}`),
+    ]).then(([rep, med]) => {
+      if (!vivo) return;
+      setReputacao(rep);
+      setMedalha(med);
+      setCarregando(false);
+    });
+    return () => { vivo = false; };
+  }, [janela.de, janela.ate, janela.dias]);
+
+  const vendasReputacao = reputacao?.concluidas ?? 0;
+  const qualidade = metricasDeQualidade(metrics, vendasReputacao);
+
+  const p = progressoMercadoLider(
+    medalha?.concluidas ?? 0,
+    medalha?.faturado ?? 0,
+    nivelAtual,
+    hoje,
+  );
+
+  const dataBR = (iso: string) => iso.split("-").reverse().join("/");
 
   return (
     <div className="panel">
       <div className="panel-head">
         <span className="panel-title">
           Próxima medalha
-          <span className="panel-sub"> · {proximo}</span>
+          <span className="panel-sub"> · {p ? p.meta.label : "MercadoLíder Platinum — você está no topo"}</span>
         </span>
       </div>
 
-      {/* A qualidade é o que o app SABE medir com precisão: as três métricas
-          vêm da API e os limites são os publicados pelo ML. */}
-      <div style={{ marginBottom: 14 }}>
+      {/* ─── OS DOIS EIXOS DA MEDALHA ───────────────────────────────────
+          Vendas E faturamento, lado a lado. Acompanhar só o dinheiro esconde
+          metade do critério: dá pra estar com o faturamento fechado e a
+          medalha travada na contagem de vendas — e a ação nos dois casos é
+          oposta (girar volume × subir margem). */}
+      {p && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: ".72rem", color: "var(--muted)", marginBottom: 8 }}>
+            O Mercado Livre mede os 3 meses mais os dias do mês vigente —{" "}
+            <b>{dataBR(janela.de)} a {dataBR(janela.ate)}</b> ({janela.dias} dias).
+            {carregando && " Carregando…"}
+          </div>
+
+          <div style={{ display: "grid", gap: 10 }}>
+            <BarraEixo
+              titulo="Vendas concretizadas"
+              eixo={p.vendas}
+              formato={(n) => n.toLocaleString("pt-BR")}
+              gargalo={p.gargalo === "vendas"}
+            />
+            <BarraEixo
+              titulo="Faturamento"
+              eixo={p.faturamento}
+              formato={fmtBRL}
+              gargalo={p.gargalo === "faturamento"}
+            />
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: ".82rem" }}>
+            {p.ambosOk ? (
+              <span style={{ color: "var(--green)", fontWeight: 700 }}>
+                Vendas e faturamento fechados pro {p.meta.label}. O que decide agora são os
+                requisitos abaixo — o ML revisa e concede.
+              </span>
+            ) : (
+              <>
+                Falta{" "}
+                <b style={{ color: "var(--warning)" }}>
+                  {p.gargalo === "vendas"
+                    ? `${p.vendas.falta.toLocaleString("pt-BR")} venda(s)`
+                    : fmtBRL(p.faturamento.falta)}
+                </b>{" "}
+                no que está mais atrasado.
+                <div style={{ color: "var(--muted)", fontSize: ".76rem", marginTop: 2 }}>
+                  Ritmo de {p.vendasPorDia.toFixed(1)} venda(s)/dia e {fmtBRL(p.faturamentoPorDia)}/dia.
+                  {p.diasNoRitmo != null
+                    ? ` Nesse passo, ${p.diasNoRitmo} dia(s)${p.chegaEm ? ` — ${dataBR(p.chegaEm)}` : ""}.`
+                    : " Sem vendas no período, não dá pra projetar quando chega."}
+                </div>
+                {/* Os dois eixos avançam juntos, mas a projeção segue o pior:
+                    prometer a data do eixo adiantado erraria sempre pra menos. */}
+                {p.vendas.ok !== p.faturamento.ok && (
+                  <div style={{ color: "var(--muted)", fontSize: ".72rem", marginTop: 4 }}>
+                    {p.gargalo === "vendas"
+                      ? "O faturamento já fechou — o que trava é a contagem de vendas. Girar volume vale mais aqui que subir preço."
+                      : "As vendas já fecharam — o que trava é o faturamento. Aqui ticket e mix pesam mais que volume."}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* A qualidade tem janela própria (60 dias) — é o critério da REPUTAÇÃO,
+          não o da medalha, e os limites são os publicados pelo ML. */}
+      <div style={{ borderTop: p ? "1px solid var(--border)" : "none", paddingTop: p ? 12 : 0 }}>
         <div style={{ fontSize: ".72rem", color: "var(--muted)", marginBottom: 6 }}>
-          Qualidade — nos últimos 60 dias, sobre {vendasConcluidas60d} vendas concluídas
+          Qualidade — nos últimos 60 dias, sobre {vendasReputacao} vendas concluídas
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {qualidade.map((q) => (
@@ -129,51 +195,71 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
         </div>
       </div>
 
-      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-        <div className="config-field" style={{ margin: 0, maxWidth: 260 }}>
-          <label>Faturamento que o ML pede pro {proximo}</label>
-          <input
-            inputMode="decimal" value={alvo} onChange={(e) => guardar(e.target.value)}
-            placeholder="Ex.: 120000"
-          />
-          <div className="hint">
-            A API do Mercado Livre não devolve esse limiar, e chutar seria pior que não ter —
-            você planejaria compra em cima de um número que ninguém conferiu. Pegue no painel
-            de Reputação do ML e digite aqui; fica salvo neste navegador.
-          </div>
+      {/* ─── OS REQUISITOS QUE NÃO ESCALAM ──────────────────────────────
+          Valem igual pras três medalhas, e são a resposta pra "bati vendas e
+          faturamento, por que não subi?". Sem eles a tela responderia só
+          metade da pergunta. */}
+      <details style={{ marginTop: 12 }}>
+        <summary style={{ cursor: "pointer", fontSize: ".78rem", color: "var(--muted)" }}>
+          Requisitos que valem pra qualquer medalha ({REQUISITOS_COMUNS.length})
+        </summary>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
+          {REQUISITOS_COMUNS.map((r) => (
+            <div key={r.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: ".78rem" }}>
+              <span>{r.label}</span>
+              <span style={{ color: "var(--muted)", textAlign: "right", whiteSpace: "nowrap" }}>{r.exigencia}</span>
+            </div>
+          ))}
         </div>
+        <div style={{ fontSize: ".7rem", color: "var(--muted)", marginTop: 8 }}>
+          Fonte: página oficial &quot;Tudo sobre ser MercadoLíder&quot; do Mercado Livre, lida em 05/09/2026.
+          O faturamento do critério não conta vendas vindas de anúncios Grátis.
+        </div>
+      </details>
+    </div>
+  );
+}
 
-        <div style={{ marginTop: 12, fontSize: ".84rem" }}>
-          <div style={{ color: "var(--muted)", fontSize: ".72rem" }}>Faturamento em 60 dias (vendas concluídas)</div>
-          <div style={{ fontSize: "1.1rem", fontWeight: 800 }}>{fmtBRL(faturado60d)}</div>
-
-          {alvoNum > 0 && (
-            <>
-              <div style={{ height: 8, borderRadius: 999, background: "var(--surface2)", margin: "10px 0 6px", overflow: "hidden" }}>
-                <div style={{
-                  width: `${Math.min(100, Math.max(0, p.pct))}%`, height: "100%",
-                  background: p.alcancado ? "var(--green)" : "var(--accent)",
-                }} />
-              </div>
-              {p.alcancado ? (
-                <div style={{ color: "var(--green)", fontWeight: 700 }}>
-                  Alvo alcançado — {fmtBRL(p.atual)} de {fmtBRL(p.alvo)}.
-                </div>
-              ) : (
-                <div>
-                  <b>{p.pct.toFixed(0)}%</b> do alvo · faltam{" "}
-                  <b style={{ color: "var(--warning)" }}>{fmtBRL(p.falta)}</b>
-                  <div style={{ color: "var(--muted)", fontSize: ".76rem", marginTop: 2 }}>
-                    No ritmo atual de {fmtBRL(p.porDia)}/dia
-                    {p.diasNoRitmo != null
-                      ? `, chega em ${p.diasNoRitmo} dia(s)${p.chegaEm ? ` — ${p.chegaEm.split("-").reverse().join("/")}` : ""}.`
-                      : ". Sem vendas no período, não dá pra projetar quando chega."}
-                  </div>
-                </div>
-              )}
-            </>
+/**
+ * Uma barra por eixo, com o alvo escrito ao lado.
+ *
+ * O alvo aparece SEMPRE, mesmo com a barra cheia: "575" é o que transforma
+ * "520 vendas" em informação — sem ele o número é só um número.
+ */
+function BarraEixo({ titulo, eixo, formato, gargalo }: {
+  titulo: string;
+  eixo: EixoMedalha;
+  formato: (n: number) => string;
+  gargalo: boolean;
+}) {
+  const pct = Math.min(100, Math.max(0, eixo.pct));
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, fontSize: ".8rem" }}>
+        <span>
+          {titulo}
+          {gargalo && (
+            <span
+              className="chip chip-muted" style={{ marginLeft: 6, fontSize: ".62rem" }}
+              title="É o eixo mais atrasado — é ele que está segurando a medalha."
+            >
+              trava aqui
+            </span>
           )}
-        </div>
+        </span>
+        <span style={{ whiteSpace: "nowrap" }}>
+          <b style={{ color: eixo.ok ? "var(--green)" : "var(--text)" }}>{formato(eixo.atual)}</b>
+          <span style={{ color: "var(--muted)" }}> / {formato(eixo.alvo)}</span>
+        </span>
+      </div>
+      <div style={{ height: 8, borderRadius: 999, background: "var(--surface2)", margin: "4px 0 2px", overflow: "hidden" }}>
+        <div style={{
+          width: `${pct}%`, height: "100%",
+          background: eixo.ok ? "var(--green)" : gargalo ? "var(--warning)" : "var(--accent)",
+        }} />
+      </div>
+      <div style={{ fontSize: ".7rem", color: "var(--muted)" }}>
+        {eixo.ok ? "critério fechado" : `${eixo.pct.toFixed(0)}% · faltam ${formato(eixo.falta)}`}
       </div>
     </div>
   );

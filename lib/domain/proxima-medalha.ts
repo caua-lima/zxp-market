@@ -1,81 +1,24 @@
 /**
- * Quanto falta pra próxima medalha de MercadoLíder.
+ * As métricas de qualidade que o MercadoLíder exige, em unidades que dão pra
+ * agir.
  *
- * ─── POR QUE O ALVO É DIGITADO, E NÃO CHUTADO ───────────────────────────
+ * ─── O QUE SAIU DAQUI ───────────────────────────────────────────────────
  *
- * A API do ML (`seller_reputation`) devolve o nível atual e as métricas de
- * qualidade, mas NÃO devolve os limiares de faturamento e volume que
- * separam Silver de Gold. A documentação oficial bloqueia leitura
- * automatizada, e as fontes de terceiros divergem entre si.
+ * Este módulo também calculava o progresso de faturamento contra um alvo
+ * DIGITADO — porque, na época, a tabela oficial de limiares não tinha sido
+ * localizada e chutar seria pior que não ter.
  *
- * Foi tentado deduzir do próprio painel: ele mostra "R$ 76.490 faturado em
- * vendas concluídas" na tela do Gold, e a leitura óbvia seria tratar isso
- * como alvo. Medido contra a conta, porém, R$ 76.490 é praticamente o
- * faturamento acumulado em ~120 dias (R$ 77.218 na medição, 1% de diferença
- * explicada pela borda da janela) — ou seja, é PROGRESSO, não meta.
+ * A tabela apareceu (ver `mercadolider-metas.ts`, lida em 05/09/2026), e com
+ * ela o progresso passou a ser calculado lá: com os dois eixos que o ML de
+ * fato exige (vendas E faturamento) e na janela certa (3 meses + mês vigente,
+ * não os 60 dias da reputação). Manter as duas contas vivas seria repetir o
+ * erro que originou quase todo número errado nesta base — duas definições da
+ * mesma coisa, divergindo na primeira correção.
  *
- * Inventar um limiar aqui seria pior que não ter: o vendedor planejaria
- * compra e verba de anúncio em cima de um número que ninguém conferiu. Então
- * o alvo vem do painel do ML, digitado uma vez, e o app faz o que sabe fazer
- * com precisão — medir o que já existe e projetar o ritmo.
+ * Aqui ficou o que não mudou: as três métricas de qualidade, cujos tetos
+ * (1% / 0,5% / 6%) são os do critério de MercadoLíder e valem pra qualquer
+ * medalha.
  */
-
-export type ProgressoMedalha = {
-  /** Faturamento já acumulado na janela. */
-  atual: number;
-  /** Alvo informado pelo usuário. */
-  alvo: number;
-  /** Quanto falta. Zero quando já alcançou. */
-  falta: number;
-  /** Percentual do alvo já alcançado (limitado a 100 na exibição). */
-  pct: number;
-  alcancado: boolean;
-  /** Ritmo atual, por dia, medido na janela. */
-  porDia: number;
-  /** Dias no ritmo atual pra fechar o que falta. `null` sem ritmo. */
-  diasNoRitmo: number | null;
-  /** Data estimada de chegada no alvo, yyyy-mm-dd. `null` sem ritmo. */
-  chegaEm: string | null;
-};
-
-/**
- * @param diasDaJanela  período em que `atual` foi acumulado — é o que
- *   transforma o total em ritmo diário.
- * @param hojeISO  entra como parâmetro pra função continuar pura: a data
- *   projetada depende de hoje, e sem isso o teste dependeria do relógio.
- */
-export function progressoDaMedalha(
-  atual: number,
-  alvo: number,
-  diasDaJanela: number,
-  hojeISO: string,
-): ProgressoMedalha {
-  const a = Math.max(Number(atual) || 0, 0);
-  const meta = Math.max(Number(alvo) || 0, 0);
-  const dias = Math.max(Number(diasDaJanela) || 0, 0);
-
-  const falta = Math.max(0, meta - a);
-  const alcancado = meta > 0 && a >= meta;
-  const pct = meta > 0 ? (a / meta) * 100 : 0;
-  const porDia = dias > 0 ? a / dias : 0;
-
-  /**
-   * Sem ritmo não há previsão — e `null` aqui é diferente de "hoje". Dizer
-   * que chega hoje quando não se vende nada seria a pior forma de errar.
-   */
-  const diasNoRitmo = alcancado ? 0 : porDia > 0 ? Math.ceil(falta / porDia) : null;
-
-  let chegaEm: string | null = null;
-  if (diasNoRitmo != null) {
-    const m = String(hojeISO).slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (m) {
-      const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + diasNoRitmo);
-      chegaEm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    }
-  }
-
-  return { atual: a, alvo: meta, falta, pct, alcancado, porDia, diasNoRitmo, chegaEm };
-}
 
 export type MetricaQualidade = {
   id: string;
