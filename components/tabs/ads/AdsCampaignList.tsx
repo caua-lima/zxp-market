@@ -122,7 +122,15 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
                   }}
                 >
                   {c.margem != null ? `${num(c.margem, 1)}%` : (
-                    <span title={c.motivoSemLucro ?? undefined} style={{ fontWeight: 400 }}>—</span>
+                    /* Mesmo criterio da coluna ao lado: ou o numero, ou o
+                       motivo. Margem some num caso a mais que o lucro —
+                       gastou e nao vendeu —, por isso motivo proprio. */
+                    <span
+                      title={c.motivoSemMargem ?? undefined}
+                      style={{ fontWeight: 400, fontSize: ".7rem", whiteSpace: "normal", display: "inline-block", maxWidth: 190 }}
+                    >
+                      {c.motivoSemMargem ?? "—"}
+                    </span>
                   )}
                 </td>
                 <td data-cell="acoes" style={{ textAlign: "right", whiteSpace: "nowrap" }}>

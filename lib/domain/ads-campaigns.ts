@@ -111,6 +111,15 @@ export type CampanhaAgregada = {
    */
   motivoSemLucro: string | null;
   /**
+   * Por que nao ha margem a mostrar. `null` quando ha.
+   *
+   * Margem e lucro/receita: some tambem quando o lucro EXISTE mas a receita e
+   * zero — campanha que gastou e nao vendeu tem prejuizo conhecido e margem
+   * indefinida (divisao por zero). Sem este campo esse caso caia num traco
+   * mudo sem nem tooltip, que e o unico jeito de nao dizer nada.
+   */
+  motivoSemMargem: string | null;
+  /**
    * Orcamento diario e ROAS objetivo configurados na campanha. Vem do anuncio
    * (a config e da campanha, entao todos os anuncios dela trazem o mesmo
    * valor); 0 = o ML nao devolveu a configuracao.
@@ -170,7 +179,8 @@ export function agregarPorCampanha(
         anuncios: 0, prints: 0, clicks: 0, cost: 0, receita: 0, unidades: 0,
         lucroAposAds: 0, roas: null, acos: null, roasMlAds: null, receitaAtribuida: 0,
         // Preenchidos no fecho, a partir das metricas reais quando existirem.
-        metricasDoMlAds: false, atribuicaoIncerta: false, motivoSemLucro: null,
+        metricasDoMlAds: false, atribuicaoIncerta: false,
+        motivoSemLucro: null, motivoSemMargem: null,
         dailyBudget: 0, roasTarget: 0, margem: null,
         temDireto: false,
       };
@@ -249,7 +259,12 @@ export function agregarPorCampanha(
           : c.receita <= 0
             ? "Nenhuma venda atribuida a esta campanha no periodo."
             : "Produto sem custo cadastrado no Estoque — sem custo nao ha lucro a calcular.";
-      const receita = atribuicaoIncerta ? c.receita : c.receita;
+      const receita = c.receita;
+      /** Margem so existe com lucro conhecido E receita pra dividir. */
+      const margem = lucroAposAds != null && receita > 0 ? (lucroAposAds / receita) * 100 : null;
+      const motivoSemMargem = margem != null ? null
+        : motivoSemLucro
+          ?? "Campanha gastou e nao registrou receita no periodo — margem sobre receita zero nao existe. O prejuizo e o proprio investido.";
       return {
         campaignId: c.campaignId,
         campaignName: c.campaignName,
@@ -260,6 +275,7 @@ export function agregarPorCampanha(
         metricasDoMlAds: real != null,
         atribuicaoIncerta,
         motivoSemLucro,
+        motivoSemMargem,
         receita,
         unidades: c.unidades,
         lucroAposAds,
@@ -270,7 +286,7 @@ export function agregarPorCampanha(
         receitaAtribuida,
         dailyBudget: c.dailyBudget,
         roasTarget: c.roasTarget,
-        margem: lucroAposAds != null && receita > 0 ? (lucroAposAds / receita) * 100 : null,
+        margem,
       };
     })
     // Maior investimento primeiro: é onde uma decisão errada custa mais caro.

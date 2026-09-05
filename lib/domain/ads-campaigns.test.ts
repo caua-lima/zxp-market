@@ -310,4 +310,40 @@ describe("motivo quando nao ha lucro a mostrar", () => {
       }
     }
   });
+  /**
+   * Margem some num caso a MAIS que o lucro: gastou, nao vendeu. Ai o lucro
+   * existe (e o proprio investido, negativo) mas a margem seria divisao por
+   * zero. Era o unico traco que sobrava sem nem tooltip.
+   */
+  it("gastou e nao vendeu: lucro existe, margem nao — e o motivo diz por que", () => {
+    const [c] = agregarPorCampanha(
+      [{ ...base, directSales: 0, totalSales: 0, totalUnits: 0, directUnits: 0, lucroLiquido: -base.cost }],
+      "geral",
+    );
+    expect(c.lucroAposAds).not.toBeNull();
+    expect(c.margem).toBeNull();
+    expect(c.motivoSemLucro).toBeNull();
+    expect(c.motivoSemMargem).toMatch(/receita zero/);
+  });
+
+  it("sem lucro, a margem herda o mesmo motivo — as duas colunas contam a mesma historia", () => {
+    const [c] = agregarPorCampanha([{ ...base, diretoDisponivel: false }], "pub");
+    expect(c.margem).toBeNull();
+    expect(c.motivoSemMargem).toBe(c.motivoSemLucro);
+  });
+
+  it("TODA campanha sem margem tem motivo — a coluna nunca fica muda", () => {
+    const casos: ItemParaCampanha[][] = [
+      [{ ...base, diretoDisponivel: false, directSales: 0, totalSales: 0 }],
+      [{ ...base, diretoDisponivel: false }],
+      [{ ...base, directSales: 0, totalSales: 0, lucroLiquido: -base.cost }],
+    ];
+    for (const itens of casos) {
+      for (const modo of ["pub", "geral"] as const) {
+        for (const c of agregarPorCampanha(itens, modo)) {
+          if (c.margem == null) expect(c.motivoSemMargem).toBeTruthy();
+        }
+      }
+    }
+  });
 });
