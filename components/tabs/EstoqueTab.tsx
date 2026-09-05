@@ -7,7 +7,7 @@ import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas
 import { fmtBRL } from "@/lib/domain/calc";
 import { getCoverageStatus, COVERAGE_STATUS_LABEL, consolidarEstoqueAnuncios, ehFullLogistic, estoqueForaDoFull, type CoverageStatus } from "@/lib/domain/estoque";
 import { calcularEntradaMassa, custoMedioAposEntrada, type LinhaEntrada, type ProdutoParaEntrada } from "@/lib/domain/entrada-massa";
-import { mediaDiariaAjustada, montarPlanoReposicao, planoEnvioParaFull, situacaoDoEstoque } from "@/lib/domain/reposicao";
+import { fimDaSemanaQueVem, mediaDiariaAjustada, montarPlanoReposicao, planoEnvioAteData, planoEnvioParaFull, situacaoDoEstoque } from "@/lib/domain/reposicao";
 import { calcularLucroEstoque, medirTaxas, type FinanceiroProduto, type LucroEstoque } from "@/lib/domain/estoque-lucro";
 import Modal from "@/components/Modal";
 import EditarMovimentoModal from "@/components/tabs/estoque/EditarMovimentoModal";
@@ -40,6 +40,17 @@ function newId() {
 function newMovId() {
   return "mov" + Date.now() + Math.random().toString(36).slice(2, 6);
 }
+/**
+ * Hoje no fuso de Brasilia. `todayISO` usa o relogio LOCAL da maquina,
+ * que diverge do dia BR quando o navegador esta em outro fuso — e a data alvo
+ * do planejamento nao pode depender disso.
+ */
+function hojeBR(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+}
+
 function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -1548,6 +1559,8 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
 
   const [aba, setAba] = useState<"pedir" | "full" | "todos">("pedir");
   const [busca, setBusca] = useState("");
+  const [alvoData, setAlvoData] = useState(() => fimDaSemanaQueVem(hojeBR()));
+  const [transito, setTransito] = useState("3");
 
   /**
    * Filtro unico pras tres abas: o produto que voce esta investigando e o
@@ -1610,6 +1623,17 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
   const planoFull = useMemo(
     () => planoEnvioParaFull(paraDominio.map((x) => ({ ...x, noFull: x.noFull, ehFull: x.ehFull })), diasN),
     [paraDominio, diasN],
+  );
+
+  const transitoN = Math.max(0, Math.round(parseNum(transito) || 0));
+  /**
+   * "Quanto enviar pra durar ate DIA X" — a pergunta como ela e feita de
+   * verdade. O ML mostra sugestao parecida na tela de envio, mas nao expoe
+   * por API (oito endpoints testados, 404/403), entao o numero e nosso.
+   */
+  const planoSemana = useMemo(
+    () => planoEnvioAteData(paraDominio, hojeBR(), alvoData, transitoN),
+    [paraDominio, alvoData, transitoN],
   );
 
   const todos = useMemo(() => situacaoDoEstoque(paraDominio), [paraDominio]);
@@ -1800,6 +1824,98 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
         </>
       ) : aba === "full" ? (
         <>
+          {/* ─── PLANEJAMENTO DA SEMANA ───────────────────────────────
+              Responde "quanto enviar pra durar ate a data X", que e como a
+              decisao e tomada de verdade: a coleta tem dia, o fim de semana
+              tem dia. Traduzir isso pra "16 dias" de cabeca toda vez e onde
+              se erra — hoje sao 16, amanha sao 15.
+
+              O ML mostra uma sugestao parecida na tela de envio, mas ela NAO
+              e exposta pela API: oito endpoints testados, todos 404 ou 403.
+              Entao o numero e calculado aqui, e a conta fica a vista. */}
+          <div style={{ border: "1px solid var(--accent)", borderRadius: 10, padding: 12, marginBottom: 14, background: "var(--surface2)" }}>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 10 }}>
+              <div className="config-field" style={{ margin: 0, maxWidth: 190 }}>
+                <label>Precisa durar até</label>
+                <input type="date" value={alvoData} onChange={(e) => setAlvoData(e.target.value)} />
+              </div>
+              <div className="config-field" style={{ margin: 0, maxWidth: 150 }}>
+                <label>Trânsito (dias)</label>
+                <input inputMode="numeric" value={transito} onChange={(e) => setTransito(e.target.value)} />
+                <div className="hint">Coleta + processamento no CD.</div>
+              </div>
+              <button
+                type="button" className="btn btn-ghost btn-sm" style={{ marginBottom: 18 }}
+                onClick={() => setAlvoData(fimDaSemanaQueVem(hojeBR()))}
+              >
+                Fim da semana que vem
+              </button>
+            </div>
+
+            <div style={{ fontSize: ".8rem", marginBottom: 8 }}>
+              Cobrindo <b>{planoSemana.diasAteAlvo} dia(s)</b> de venda
+              {transitoN > 0 ? <> + <b>{transitoN}</b> de trânsito</> : null} ·{" "}
+              <b style={{ color: "var(--green)" }}>{planoSemana.totalAEnviar} un</b> a despachar
+              {planoSemana.totalAComprar > 0 && (
+                <> · <b style={{ color: "var(--warning)" }}>{planoSemana.totalAComprar} un</b> que o galpão não cobre</>
+              )}
+            </div>
+
+            {planoSemana.itens.length === 0 ? (
+              <div style={{ fontSize: ".82rem", color: "var(--green)" }}>
+                O Full já cobre até lá em todos os produtos. Nada a enviar.
+              </div>
+            ) : (
+              <>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {planoSemana.itens.map((i) => (
+                    <div key={i.produtoId} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: ".82rem" }}>
+                      <span>
+                        {i.naoChega && (
+                          <span className="chip chip-red" style={{ marginRight: 6 }} title={`O Full de hoje não alcança ${alvoData}.`}>
+                            não chega
+                          </span>
+                        )}
+                        {i.nome}
+                        <span style={{ color: "var(--muted)", fontSize: ".72rem" }}>
+                          {" "}· {i.noFull} no Full · {i.mediaDiaria.toFixed(1)}/dia
+                        </span>
+                      </span>
+                      <span style={{ whiteSpace: "nowrap" }}>
+                        <b style={{ color: i.enviar > 0 ? "var(--green)" : "var(--muted)" }}>
+                          {i.enviar > 0 ? `enviar ${i.enviar} un` : "sem estoque em casa"}
+                        </b>
+                        {i.faltaComprar > 0 && (
+                          <span style={{ color: "var(--warning)" }}> · comprar {i.faltaComprar}</span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button" className="btn btn-ghost btn-xs" style={{ marginTop: 10 }}
+                  onClick={() => {
+                    const linhas = [
+                      `Envio pro Full — durar até ${alvoData.split("-").reverse().join("/")}`,
+                      `(${planoSemana.diasAteAlvo} dias de venda + ${transitoN} de trânsito)`,
+                      "",
+                      ...planoSemana.itens
+                        .filter((i) => i.enviar > 0)
+                        .map((i) => `${i.nome}: ${i.enviar} un`),
+                      "",
+                      `Total: ${planoSemana.totalAEnviar} un`,
+                      ...(planoSemana.totalAComprar > 0
+                        ? [`Falta comprar: ${planoSemana.totalAComprar} un`] : []),
+                    ];
+                    navigator.clipboard?.writeText(linhas.join("\n")).catch(() => {});
+                  }}
+                >
+                  Copiar lista
+                </button>
+              </>
+            )}
+          </div>
+
           {planoFull.urgentes.length > 0 && (
             <div className="note note-danger" style={{ marginBottom: 12 }}>
               <b>{planoFull.urgentes.length} produto(s) com o Full acabando antes dos {diasN} dias.</b>{" "}

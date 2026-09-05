@@ -388,3 +388,146 @@ export function planoEnvioParaFull(
     diasAlvo: alvo,
   };
 }
+
+/**
+ * "Quanto enviar pro Full pra durar até uma DATA."
+ *
+ * ─── POR QUE UMA DATA, E NÃO UM NÚMERO DE DIAS ──────────────────────────
+ *
+ * "Durar até o fim da semana que vem" é como a decisão é tomada de verdade —
+ * a coleta tem dia, o fim de semana tem dia. Traduzir isso pra "16 dias" na
+ * cabeça, toda vez, é onde se erra: hoje são 16, amanhã são 15, e o número
+ * digitado continua 16.
+ *
+ * ─── POR QUE O FULL SOZINHO ─────────────────────────────────────────────
+ *
+ * O galpão não segura o Full. O que decide se o anúncio para é o que está no
+ * centro de distribuição, e é só isso que entra na conta de duração.
+ *
+ * ─── O TEMPO DE TRÂNSITO É PARTE DA PERGUNTA ────────────────────────────
+ *
+ * O que você manda hoje não está vendável hoje: a coleta sai, o CD recebe e
+ * processa. Se o envio leva 3 dias e você calcula pro dia exato, os 3 dias de
+ * trânsito saem do estoque que já estava lá — e falta no fim.
+ */
+
+export type ItemEnvioAteData = {
+  produtoId: string;
+  nome: string;
+  mediaDiaria: number;
+  noFull: number;
+  emCasa: number;
+  /** Dias entre hoje e a data alvo, inclusive. */
+  diasAteAlvo: number;
+  /** Unidades que o Full precisa ter pra cobrir até lá. */
+  precisaNoFull: number;
+  /** Quanto mandar — limitado ao que existe no galpão. */
+  enviar: number;
+  /** O que falta mesmo esvaziando o galpão: isso é compra, não envio. */
+  faltaComprar: number;
+  /** O Full atual não chega na data. */
+  naoChega: boolean;
+};
+
+export type PlanoAteData = {
+  itens: ItemEnvioAteData[];
+  /** Quem não chega na data com o Full de hoje — decide a coleta. */
+  urgentes: ItemEnvioAteData[];
+  totalAEnviar: number;
+  totalAComprar: number;
+  diasAteAlvo: number;
+  /** Data alvo, yyyy-mm-dd. */
+  alvoISO: string;
+};
+
+/** Dias entre duas datas yyyy-mm-dd, contando o dia de hoje. */
+export function diasEntre(deISO: string, ateISO: string): number {
+  const p = (s: string) => {
+    const m = String(s ?? "").slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+  };
+  const a = p(deISO);
+  const b = p(ateISO);
+  if (!a || !b) return 0;
+  // +1 porque o dia de hoje conta: "até amanhã" são dois dias de venda.
+  return Math.max(0, Math.round((b.getTime() - a.getTime()) / 86400000) + 1);
+}
+
+/**
+ * O domingo do fim da semana QUE VEM.
+ *
+ * Semana começa no domingo no Brasil, então "fim da semana que vem" é o
+ * sábado depois do próximo — 13 a 19 dias à frente conforme o dia de hoje.
+ * Calcular isso de cabeça toda vez é onde nasce o erro.
+ */
+export function fimDaSemanaQueVem(hojeISO: string): string {
+  const m = String(hojeISO ?? "").slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  // 6 = sábado. Dias até o sábado desta semana, mais 7 pra ir ao da que vem.
+  const ateSabado = (6 - d.getDay() + 7) % 7;
+  d.setDate(d.getDate() + ateSabado + 7);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * @param diasTransito  dias entre despachar e a unidade ficar vendável no
+ *   Full. Entram na janela porque nesse período só o estoque atual vende.
+ */
+export function planoEnvioAteData(
+  produtos: (ProdutoReposicao & { noFull: number; ehFull: boolean })[],
+  hojeISO: string,
+  alvoISO: string,
+  diasTransito: number,
+): PlanoAteData {
+  const diasAteAlvo = diasEntre(hojeISO, alvoISO);
+  const transito = Math.max(0, Math.floor(diasTransito) || 0);
+  const itens: ItemEnvioAteData[] = [];
+
+  for (const p of produtos) {
+    if (!p.ativo || !p.ehFull) continue;
+    const media = Number.isFinite(p.mediaDiaria) && p.mediaDiaria > 0 ? p.mediaDiaria : 0;
+    if (media <= 0) continue;
+
+    const noFull = Math.max(Number(p.noFull) || 0, 0);
+    const emCasa = Math.max(Number(p.emCasa) || 0, 0);
+
+    /**
+     * A janela inclui o trânsito: o que sai hoje só vende depois de
+     * processado, e até lá quem atende é o estoque que já está no Full.
+     */
+    const precisaNoFull = necessarioParaJanela(media, diasAteAlvo + transito);
+    const falta = Math.max(0, precisaNoFull - noFull);
+    if (falta <= 0) continue;
+
+    const enviar = Math.min(falta, emCasa);
+    const duraFull = duracaoDoEstoque(noFull, media) ?? 0;
+
+    itens.push({
+      produtoId: p.id,
+      nome: p.nome || p.id,
+      mediaDiaria: media,
+      noFull,
+      emCasa,
+      diasAteAlvo,
+      precisaNoFull,
+      enviar,
+      faltaComprar: falta - enviar,
+      naoChega: duraFull < diasAteAlvo,
+    });
+  }
+
+  itens.sort((a, b) => {
+    if (a.naoChega !== b.naoChega) return a.naoChega ? -1 : 1;
+    return b.enviar - a.enviar || a.nome.localeCompare(b.nome);
+  });
+
+  return {
+    itens,
+    urgentes: itens.filter((i) => i.naoChega),
+    totalAEnviar: itens.reduce((s, i) => s + i.enviar, 0),
+    totalAComprar: itens.reduce((s, i) => s + i.faltaComprar, 0),
+    diasAteAlvo,
+    alvoISO,
+  };
+}

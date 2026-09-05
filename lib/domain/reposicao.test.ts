@@ -4,6 +4,9 @@ import {
   montarPlanoReposicao,
   mediaDiariaAjustada,
   necessarioParaJanela,
+  diasEntre,
+  fimDaSemanaQueVem,
+  planoEnvioAteData,
   planoEnvioParaFull,
   situacaoDoEstoque,
   type ProdutoReposicao,
@@ -324,5 +327,113 @@ describe("planoEnvioParaFull", () => {
     ], 30);
     expect(r.totalAEnviar).toBe(40);
     expect(r.totalAComprar).toBe(50);
+  });
+});
+
+describe("fimDaSemanaQueVem", () => {
+  it("de uma quarta, cai no sábado da semana seguinte", () => {
+    // 2026-09-02 é quarta → sábado desta semana é 05, o da que vem é 12.
+    expect(fimDaSemanaQueVem("2026-09-02")).toBe("2026-09-12");
+  });
+
+  it("de um sábado, vai pro sábado seguinte — não pro mesmo dia", () => {
+    // 2026-09-05 é sábado. "Semana que vem" nunca é hoje.
+    expect(fimDaSemanaQueVem("2026-09-05")).toBe("2026-09-12");
+  });
+
+  it("de um domingo, alcança o sábado 13 dias à frente", () => {
+    // 2026-09-06 é domingo, início da semana → sábado da que vem é 19.
+    expect(fimDaSemanaQueVem("2026-09-06")).toBe("2026-09-19");
+  });
+
+  it("atravessa a virada do mês", () => {
+    expect(fimDaSemanaQueVem("2026-09-28")).toBe("2026-10-10");
+  });
+
+  it("data inválida devolve vazio em vez de uma data inventada", () => {
+    expect(fimDaSemanaQueVem("sei lá")).toBe("");
+  });
+});
+
+describe("diasEntre", () => {
+  it("conta o dia de hoje — 'até amanhã' são dois dias de venda", () => {
+    expect(diasEntre("2026-09-02", "2026-09-03")).toBe(2);
+  });
+
+  it("mesmo dia é um dia", () => {
+    expect(diasEntre("2026-09-02", "2026-09-02")).toBe(1);
+  });
+
+  it("data alvo no passado não vira negativo", () => {
+    expect(diasEntre("2026-09-10", "2026-09-02")).toBe(0);
+  });
+});
+
+/**
+ * "Quanto enviar pro Full pra durar até o fim da semana que vem."
+ */
+describe("planoEnvioAteData", () => {
+  const full = (over: Partial<ProdutoReposicao & { noFull: number; ehFull: boolean }> = {}) =>
+    ({ ...prod(), noFull: 20, emCasa: 200, ehFull: true, ...over });
+
+  it("cobre até a data, contando o TRÂNSITO na janela", () => {
+    /**
+     * De 02/09 a 12/09 são 11 dias. Com 3 de trânsito, o Full precisa
+     * atender 14 dias — porque o que sai hoje só fica vendável no dia 3.
+     */
+    const r = planoEnvioAteData([full({ noFull: 0, mediaDiaria: 2 })], "2026-09-02", "2026-09-12", 3);
+    expect(r.diasAteAlvo).toBe(11);
+    expect(r.itens[0].precisaNoFull).toBe(28); // 2 × (11 + 3)
+    expect(r.itens[0].enviar).toBe(28);
+  });
+
+  it("sem contar o trânsito o número sairia CURTO", () => {
+    // Mesma situação com trânsito 0: 22 em vez de 28 — faltariam 6 unidades.
+    const semTransito = planoEnvioAteData([full({ noFull: 0, mediaDiaria: 2 })], "2026-09-02", "2026-09-12", 0);
+    expect(semTransito.itens[0].precisaNoFull).toBe(22);
+  });
+
+  it("desconta o que já está no Full", () => {
+    const r = planoEnvioAteData([full({ noFull: 20, mediaDiaria: 2 })], "2026-09-02", "2026-09-12", 3);
+    expect(r.itens[0].enviar).toBe(8); // 28 − 20
+  });
+
+  it("o galpão é o teto: o resto vira compra", () => {
+    const r = planoEnvioAteData([full({ noFull: 0, emCasa: 10, mediaDiaria: 2 })], "2026-09-02", "2026-09-12", 3);
+    expect(r.itens[0].enviar).toBe(10);
+    expect(r.itens[0].faltaComprar).toBe(18);
+  });
+
+  it("Full que já cobre a data sai da lista", () => {
+    const r = planoEnvioAteData([full({ noFull: 100, mediaDiaria: 2 })], "2026-09-02", "2026-09-12", 3);
+    expect(r.itens).toEqual([]);
+  });
+
+  it("marca quem NÃO chega na data com o Full de hoje", () => {
+    // 20 un a 2/dia = 10 dias, e faltam 11 até o alvo.
+    const r = planoEnvioAteData([full({ noFull: 20, mediaDiaria: 2 })], "2026-09-02", "2026-09-12", 3);
+    expect(r.itens[0].naoChega).toBe(true);
+    expect(r.urgentes).toHaveLength(1);
+  });
+
+  it("quem chega na data não é marcado, mesmo precisando de envio pelo trânsito", () => {
+    // 24 un = 12 dias, alvo 11: chega. Mas precisa de 28 com o trânsito.
+    const r = planoEnvioAteData([full({ noFull: 24, mediaDiaria: 2 })], "2026-09-02", "2026-09-12", 3);
+    expect(r.itens[0].naoChega).toBe(false);
+    expect(r.itens[0].enviar).toBe(4);
+  });
+
+  it("produto sem Full ou sem venda fica de fora", () => {
+    expect(planoEnvioAteData([full({ ehFull: false })], "2026-09-02", "2026-09-12", 3).itens).toEqual([]);
+    expect(planoEnvioAteData([full({ mediaDiaria: 0 })], "2026-09-02", "2026-09-12", 3).itens).toEqual([]);
+  });
+
+  it("soma o que despachar e o que ainda falta comprar", () => {
+    const r = planoEnvioAteData([
+      full({ id: "a", nome: "A", noFull: 0, emCasa: 100, mediaDiaria: 2 }), // 28
+      full({ id: "b", nome: "B", noFull: 0, emCasa: 5, mediaDiaria: 1 }),   // 14 → envia 5, compra 9
+    ], "2026-09-02", "2026-09-12", 3);
+    expect(r.totalAEnviar).toBe(33);
+    expect(r.totalAComprar).toBe(9);
   });
 });
