@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Modal from "@/components/Modal";
 import { fmtBRL } from "@/lib/domain/calc";
-import { agregarPorCampanha, type CampanhaAgregada, type ItemParaCampanha, type MetricasReais } from "@/lib/domain/ads-campaigns";
+import { agregarPorCampanha, rotuloCampanha, type CampanhaAgregada, type ItemParaCampanha, type MetricasReais } from "@/lib/domain/ads-campaigns";
 import { corMargem, corRoas, num, type Modo } from "./ads-types";
 import AdsFunnel from "./AdsFunnel";
 
@@ -62,7 +62,7 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
             {campanhas.map((c) => (
               <tr key={c.campaignId}>
                 <td style={{ textAlign: "left", fontWeight: 600 }}>
-                  {c.campaignName}
+                  {rotuloCampanha(c.campaignName)}
                   <span style={{ display: "block", fontSize: ".68rem", color: "var(--muted)", fontWeight: 400 }}>
                     {c.anuncios} anúncio(s) · {num(c.clicks)} cliques
                     {c.atribuicaoIncerta && (
@@ -146,7 +146,7 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
 
       {aberta && (
         <Modal open onClose={() => setAberta(null)} wide>
-          <div className="modal-title">{aberta.campaignName}</div>
+          <div className="modal-title">{rotuloCampanha(aberta.campaignName)}</div>
           <div className="modal-sub">
             funil desta campanha · {aberta.anuncios} anúncio(s) ·{" "}
             {aberta.acos != null ? `ACOS ${num(aberta.acos, 1)}%` : "ACOS indisponível"}

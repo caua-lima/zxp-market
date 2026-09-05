@@ -193,12 +193,6 @@ header p{color:var(--muted);font-size:.9rem;margin-top:4px}
 .results-section{margin-top:32px}
 .results-section h2{font-size:1.05rem;font-weight:600;margin-bottom:16px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 .table-wrapper{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch;border-radius:var(--radius);border:1px solid var(--border)}
-/* Cabeçalho sticky (aba Ads): teto de altura só faz sentido na tabela
-   desktop de verdade rolando por dentro — no celular a tabela vira cartão
-   empilhado (thead nem existe mais) e uma altura travada aqui criaria um
-   scroll aninhado dentro da página, ruim de usar no toque. Desligado dentro
-   do breakpoint de celular, mais abaixo. */
-.ads-table-scroll{max-height:620px;overflow-y:auto}
 table{width:100%;border-collapse:collapse;font-size:.87rem}
 thead tr{background:var(--surface2)}
 thead th{padding:11px 13px;text-align:left;color:var(--muted);font-weight:600;font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
@@ -680,7 +674,6 @@ canvas.chart-canvas{width:100%!important;height:100%!important}
    ========================================================================= */
 @media(max-width:720px){
   .table-wrapper:has(.tbl-cards){overflow:visible;border:none;border-radius:0}
-  .ads-table-scroll{max-height:none;overflow-y:visible}
   .tbl-cards{display:block;font-size:.84rem}
   .tbl-cards thead{display:none}
   .tbl-cards tbody,.tbl-cards tr,.tbl-cards td,.tbl-cards tfoot{display:block;width:100%}

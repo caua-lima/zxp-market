@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { agregarPorCampanha, CAMPANHA_SEM_ID, type ItemParaCampanha } from "./ads-campaigns";
+import {
+  rotuloCampanha, agregarPorCampanha, CAMPANHA_SEM_ID, type ItemParaCampanha } from "./ads-campaigns";
 
 function item(over: Partial<ItemParaCampanha> = {}): ItemParaCampanha {
   return {
@@ -345,5 +346,31 @@ describe("motivo quando nao ha lucro a mostrar", () => {
         }
       }
     }
+  });
+});
+
+describe("rotuloCampanha", () => {
+  it("prefixa o nome que o vendedor deu no ML", () => {
+    expect(rotuloCampanha("Menta Stronger")).toBe("Campanha Menta Stronger");
+  });
+
+  it("nao duplica o prefixo em quem ja se chama assim", () => {
+    // O vendedor batiza a campanha no proprio ML, e varias ja nascem com a
+    // palavra. "Campanha Campanha X" seria pior que nao prefixar nada.
+    expect(rotuloCampanha("Campanha Menta")).toBe("Campanha Menta");
+    expect(rotuloCampanha("CAMPANHA VERAO")).toBe("CAMPANHA VERAO");
+  });
+
+  it("nao confunde palavra que so comeca igual", () => {
+    expect(rotuloCampanha("Campanhas de inverno")).toBe("Campanha Campanhas de inverno");
+  });
+
+  it("sem nome vira \"Sem campanha\" — nunca a palavra sozinha", () => {
+    // Anuncio que nunca entrou em campanha nenhuma existe e aparece na
+    // tabela; "Campanha " com o nome vazio seria uma linha muda.
+    expect(rotuloCampanha("")).toBe("Sem campanha");
+    expect(rotuloCampanha("   ")).toBe("Sem campanha");
+    expect(rotuloCampanha(null)).toBe("Sem campanha");
+    expect(rotuloCampanha(undefined)).toBe("Sem campanha");
   });
 });

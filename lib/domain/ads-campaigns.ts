@@ -8,6 +8,27 @@
  * indo precisa ser testável sem subir tela nenhuma.
  */
 
+/**
+ * Como a campanha se chama na tela.
+ *
+ * ─── POR QUE O PREFIXO ──────────────────────────────────────────────────
+ *
+ * A visão analítica é uma linha por ANÚNCIO, e a coluna de identidade era o
+ * título do produto. Só que a decisão que se toma ali é sobre CAMPANHA —
+ * pausar, subir orçamento, mexer no ROAS objetivo — e ler nome de produto
+ * numa tela onde se age sobre campanha obriga a traduzir de cabeça a cada
+ * linha, com dois produtos de nome parecido em campanhas diferentes.
+ *
+ * O prefixo entra só quando o nome ainda não o tem: o vendedor batiza a
+ * campanha no ML, e várias já se chamam "Campanha X". "Campanha Campanha X"
+ * seria pior que não ter prefixo nenhum.
+ */
+export function rotuloCampanha(nome: string | null | undefined): string {
+  const n = String(nome ?? "").trim();
+  if (!n) return "Sem campanha";
+  return /^campanha\b/i.test(n) ? n : `Campanha ${n}`;
+}
+
 /** Fatia do investimento de um anúncio dentro de UMA campanha. */
 export type FatiaCampanha = {
   campaignId: string;
