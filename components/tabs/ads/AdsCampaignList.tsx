@@ -100,13 +100,19 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
                 </td>
                 <td
                   data-label="Lucro após Ads"
-                  title={c.lucroAposAds == null ? "Nenhum anúncio desta campanha tem venda vinculada no período — não é prejuízo, é falta de dado." : undefined}
+                  /* Sem numero, entra o MOTIVO: traco mudo nao diz se falta
+                     cadastrar custo, esperar venda ou revisar a campanha. */
+                  title={c.motivoSemLucro ?? undefined}
                   style={{
                     fontWeight: 700, whiteSpace: "nowrap",
                     color: c.lucroAposAds == null ? "var(--muted)" : c.lucroAposAds >= 0 ? "var(--green)" : "var(--red)",
                   }}
                 >
-                  {c.lucroAposAds != null ? fmtBRL(c.lucroAposAds) : "—"}
+                  {c.lucroAposAds != null ? fmtBRL(c.lucroAposAds) : (
+                    <span style={{ fontWeight: 400, fontSize: ".7rem", whiteSpace: "normal", display: "inline-block", maxWidth: 190 }}>
+                      {c.motivoSemLucro ?? "—"}
+                    </span>
+                  )}
                 </td>
                 <td
                   data-label="Margem"
@@ -115,7 +121,9 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
                     color: c.margem == null ? "var(--muted)" : corMargem(c.margem),
                   }}
                 >
-                  {c.margem != null ? `${num(c.margem, 1)}%` : "—"}
+                  {c.margem != null ? `${num(c.margem, 1)}%` : (
+                    <span title={c.motivoSemLucro ?? undefined} style={{ fontWeight: 400 }}>—</span>
+                  )}
                 </td>
                 <td data-cell="acoes" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                   <button type="button" className="btn btn-ghost btn-xs" onClick={() => setAberta(c)}>

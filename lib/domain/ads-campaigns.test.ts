@@ -255,3 +255,59 @@ describe("anúncio em duas campanhas: o ML manda, não a soma dos anúncios", ()
     expect(c.lucroAposAds).not.toBeNull();
   });
 });
+
+/**
+ * "Lucro apos ads e margem tem que estar em TODOS."
+ *
+ * Nem sempre da pra calcular — mas um traco mudo nao diz se falta cadastrar
+ * custo, esperar venda ou revisar a campanha, e sem saber qual nao da pra
+ * corrigir. Entao a coluna carrega sempre uma das duas coisas: o numero, ou
+ * o que falta pra te-lo.
+ */
+describe("motivo quando nao ha lucro a mostrar", () => {
+  const base: ItemParaCampanha = {
+    campaignId: "c1", campaignName: "Campanha X",
+    clicks: 10, prints: 100, cost: 5,
+    directSales: 100, directUnits: 2, totalSales: 100, totalUnits: 2,
+    lucroLiquido: 20, lucroDiretoLiquido: 18, diretoDisponivel: true,
+  };
+
+  it("com lucro, nao ha motivo — o motivo e o oposto do numero", () => {
+    const [c] = agregarPorCampanha([base], "geral");
+    expect(c.lucroAposAds).not.toBeNull();
+    expect(c.motivoSemLucro).toBeNull();
+  });
+
+  it("sem venda atribuida, o motivo diz isso", () => {
+    const [c] = agregarPorCampanha(
+      [{ ...base, diretoDisponivel: false, directSales: 0, totalSales: 0 }], "pub",
+    );
+    expect(c.lucroAposAds).toBeNull();
+    expect(c.motivoSemLucro).toMatch(/Nenhuma venda atribuida/);
+  });
+
+  it("com venda mas sem custo, o motivo aponta o Estoque — e o que da pra corrigir", () => {
+    const [c] = agregarPorCampanha([{ ...base, diretoDisponivel: false }], "pub");
+    expect(c.lucroAposAds).toBeNull();
+    expect(c.motivoSemLucro).toMatch(/custo cadastrado/);
+  });
+
+  it("anuncio em duas campanhas: o motivo explica que o ML soma as metricas", () => {
+    const reais = new Map([["c1", { clicks: 10, prints: 100, cost: 99, receitaAtribuida: 100 }]]);
+    const [c] = agregarPorCampanha([base], "geral", reais);
+    expect(c.atribuicaoIncerta).toBe(true);
+    expect(c.motivoSemLucro).toMatch(/roda em outra/);
+  });
+
+  it("TODA campanha sem lucro tem motivo — nunca um traco mudo", () => {
+    const casos: ItemParaCampanha[][] = [
+      [{ ...base, diretoDisponivel: false, directSales: 0, totalSales: 0 }],
+      [{ ...base, diretoDisponivel: false }],
+    ];
+    for (const itens of casos) {
+      for (const c of agregarPorCampanha(itens, "pub")) {
+        if (c.lucroAposAds == null) expect(c.motivoSemLucro).toBeTruthy();
+      }
+    }
+  });
+});

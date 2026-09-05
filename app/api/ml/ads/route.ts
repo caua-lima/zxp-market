@@ -27,7 +27,17 @@ import { ratearFretePorPedido } from "@/lib/domain/frete-pacote";
 
 export const maxDuration = 30;
 
-type ProdutoData = { custo: number; imposto: number };
+type ProdutoData = {
+  custo: number;
+  imposto: number;
+  /**
+   * Id do produto no Estoque. Existe pra agrupar as vendas por PRODUTO, e não
+   * só por anúncio: um produto costuma ter várias listagens, e a venda que o
+   * ML atribui ao anúncio X frequentemente é registrada no anúncio Y do mesmo
+   * produto (catálogo, variação, listagem antiga).
+   */
+  produtoId: string;
+};
 type OrderItem = { sku?: string; item_id?: string; quantity?: number; unit_price?: number; sale_fee?: number };
 
 function todayISO(offsetDays = 0): string {
@@ -64,8 +74,14 @@ function vendasPorItem(
   orders: FirebaseFirestore.DocumentData[],
   porMlb: Map<string, ProdutoData>, porSku: Map<string, ProdutoData>,
   cancelIds: Set<string>, devolIds: Set<string>,
-): Map<string, VendaItem> {
+): { porItem: Map<string, VendaItem>; porProduto: Map<string, VendaItem> } {
   const map = new Map<string, VendaItem>();
+  /**
+   * As mesmas somas, agrupadas por PRODUTO. Servem só pra calcular a MARGEM
+   * (uma taxa) quando o anúncio não tem venda própria — nunca pra somar
+   * receita, senão o mesmo dinheiro entraria duas vezes.
+   */
+  const porProduto = new Map<string, VendaItem>();
   // Separação de envio: o ML cancela o pedido e cria outros no mesmo pacote.
   // Sem isto o item apareceria com a receita contada duas vezes aqui.
   const substituidos = detectarPedidosSubstituidos(
@@ -132,9 +148,23 @@ function vendasPorItem(
         cur.semCusto = true;
       }
       map.set(id, cur);
+
+      // Mesmo acúmulo por produto — ver `porProduto` acima.
+      if (prod) {
+        const pk = prod.produtoId;
+        const acc = porProduto.get(pk)
+          ?? { receita: 0, unidades: 0, cmv: 0, imposto: 0, taxaML: 0, envio: 0, semCusto: false };
+        acc.receita += receita;
+        acc.unidades += qty;
+        acc.taxaML += Number(it.sale_fee ?? 0) * qty;
+        acc.envio += envioPerUnit * qty;
+        acc.cmv += prod.custo * qty;
+        acc.imposto += receita * (prod.imposto / 100);
+        porProduto.set(pk, acc);
+      }
     }
   }
-  return map;
+  return { porItem: map, porProduto };
 }
 
 export async function GET(req: Request) {
@@ -183,7 +213,11 @@ export async function GET(req: Request) {
     const porSku = new Map<string, ProdutoData>();
     for (const doc of prodSnap.docs) {
       const d = doc.data();
-      const entry: ProdutoData = { custo: Number(d.custoMedio ?? d.custo ?? 0), imposto: Number(d.imposto ?? 0) };
+      const entry: ProdutoData = {
+        custo: Number(d.custoMedio ?? d.custo ?? 0),
+        imposto: Number(d.imposto ?? 0),
+        produtoId: String(d.id ?? doc.id),
+      };
       const mlbs: string[] = Array.isArray(d.mlbs) && d.mlbs.length ? d.mlbs : d.mlb ? [String(d.mlb)] : [];
       for (const m of mlbs) { const n = normId(String(m)); if (n) porMlb.set(n, entry); }
       const sku = String(d.sku ?? "").trim();
@@ -216,7 +250,7 @@ export async function GET(req: Request) {
       else cancelIds.add(doc.id);
     }
 
-    const vendas = vendasPorItem(orders, porMlb, porSku, cancelIds, devolIds);
+    const { porItem: vendas, porProduto: vendasProduto } = vendasPorItem(orders, porMlb, porSku, cancelIds, devolIds);
 
     // Configuração de cada anúncio (orçamento, meta de ROAS, última alteração).
     // Best-effort: se falhar, os anúncios ainda saem, só sem esses campos.
@@ -274,8 +308,51 @@ export async function GET(req: Request) {
        * ROAS bom. Isso não é um prejuízo real, é falta de dado — marcamos
        * como indisponível em vez de inventar perda.
        */
-      const diretoDisponivel = v.receita > 0 && custoDisponivel;
-      const margemItem = diretoDisponivel ? lucroAntesAds / v.receita : 0;
+      /**
+       * ─── A MARGEM CAI NO PRODUTO QUANDO O ANÚNCIO NÃO VENDEU ──────────
+       *
+       * `v` são as vendas REGISTRADAS naquele MLB. Só que um produto costuma
+       * ter várias listagens, e a venda que o ML atribui ao clique no anúncio
+       * X entra com frequência pelo anúncio Y do mesmo produto — catálogo,
+       * variação, listagem antiga.
+       *
+       * Medido na conta em 01–05/09: 13 dos 22 anúncios tinham R$ 0,00 de
+       * venda no próprio MLB enquanto o PRODUTO vendia. Abacaxi & Hortelã:
+       * R$ 0 no anúncio, R$ 192,65 no produto. Limão Caipira: R$ 0 e
+       * R$ 278,20. Trot's Tradicional: R$ 0 e R$ 221,16.
+       *
+       * Resultado: "Lucro após ads" e "Margem" vinham "—" na maioria das
+       * campanhas, e a tela não conseguia responder a única pergunta que
+       * justifica ela existir.
+       *
+       * ─── POR QUE A TAXA, E NÃO O VALOR ────────────────────────────────
+       *
+       * O que se toma emprestado do produto é a MARGEM (uma proporção),
+       * aplicada sobre a receita direta DO PRÓPRIO anúncio. Herdar a receita
+       * faria o mesmo dinheiro contar em cada anúncio do produto e inflaria
+       * o total da conta — o erro que a fatia por campanha acabou de corrigir.
+       */
+      // O produto do anuncio vem do mapa de MLB, que ja carrega a identidade.
+      const produtoDoAnuncio = porMlb.get(normId(a.itemId))?.produtoId;
+      const vProd = produtoDoAnuncio ? vendasProduto.get(produtoDoAnuncio) : undefined;
+      const lucroAntesAdsProd = vProd
+        ? vProd.receita - vProd.cmv - vProd.imposto - vProd.taxaML - vProd.envio
+        : 0;
+
+      /** Margem do próprio anúncio quando ele vendeu; senão, a do produto. */
+      const margemItem = custoDisponivel
+        ? (v.receita > 0
+          ? lucroAntesAds / v.receita
+          : (vProd && !vProd.semCusto && vProd.receita > 0 ? lucroAntesAdsProd / vProd.receita : 0))
+        : 0;
+
+      /**
+       * Há margem utilizável — do anúncio ou do produto. Sem NENHUMA das
+       * duas continua indisponível: aí é falta de dado mesmo, e inventar
+       * margem zero viraria "prejuízo de 100% do investido", que não é
+       * verdade.
+       */
+      const diretoDisponivel = custoDisponivel && margemItem !== 0;
       const lucroDiretoAntesAds = a.directSales * margemItem;
       const lucroDiretoLiquido = diretoDisponivel ? lucroDiretoAntesAds - a.cost : 0;
 

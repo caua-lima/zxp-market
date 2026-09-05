@@ -103,6 +103,14 @@ export type CampanhaAgregada = {
    */
   atribuicaoIncerta: boolean;
   /**
+   * Por que nao ha lucro a mostrar. `null` quando ha.
+   *
+   * Um traco mudo na coluna nao diz se o problema e do produto, do periodo
+   * ou da campanha — e sem saber qual, nao da pra corrigir. A coluna passa a
+   * carregar sempre um dos dois: o numero, ou o que falta pra te-lo.
+   */
+  motivoSemLucro: string | null;
+  /**
    * Orcamento diario e ROAS objetivo configurados na campanha. Vem do anuncio
    * (a config e da campanha, entao todos os anuncios dela trazem o mesmo
    * valor); 0 = o ML nao devolveu a configuracao.
@@ -162,7 +170,7 @@ export function agregarPorCampanha(
         anuncios: 0, prints: 0, clicks: 0, cost: 0, receita: 0, unidades: 0,
         lucroAposAds: 0, roas: null, acos: null, roasMlAds: null, receitaAtribuida: 0,
         // Preenchidos no fecho, a partir das metricas reais quando existirem.
-        metricasDoMlAds: false, atribuicaoIncerta: false,
+        metricasDoMlAds: false, atribuicaoIncerta: false, motivoSemLucro: null,
         dailyBudget: 0, roasTarget: 0, margem: null,
         temDireto: false,
       };
@@ -231,6 +239,16 @@ export function agregarPorCampanha(
        * de campanha menor seria uma incoerência silenciosa na tela.
        */
       const lucroAposAds = atribuicaoIncerta ? null : (c.temDireto ? c.lucroAposAds : null);
+      /**
+       * O motivo e tao importante quanto o numero: cada caso pede uma acao
+       * diferente — cadastrar custo, esperar venda, ou revisar a campanha.
+       */
+      const motivoSemLucro = lucroAposAds != null ? null
+        : atribuicaoIncerta
+          ? "Algum anuncio desta campanha roda em outra tambem, e o ML entrega as metricas somadas — nao da pra separar o lucro por campanha."
+          : c.receita <= 0
+            ? "Nenhuma venda atribuida a esta campanha no periodo."
+            : "Produto sem custo cadastrado no Estoque — sem custo nao ha lucro a calcular.";
       const receita = atribuicaoIncerta ? c.receita : c.receita;
       return {
         campaignId: c.campaignId,
@@ -241,6 +259,7 @@ export function agregarPorCampanha(
         cost,
         metricasDoMlAds: real != null,
         atribuicaoIncerta,
+        motivoSemLucro,
         receita,
         unidades: c.unidades,
         lucroAposAds,
