@@ -5,6 +5,7 @@ import { TIPO_MOVIMENTO_LABEL, type EstoqueMovimento, type Product } from "@/lib
 import { deleteMovimento, logAudit, updateMovimento } from "@/lib/firebase/data";
 import { fmtBRL } from "@/lib/domain/calc";
 import Modal from "@/components/Modal";
+import BaixasPorRemessa from "@/components/tabs/full/BaixasPorRemessa";
 
 type Filtro = "todos" | "saida_full" | "entrada" | "saldo_inicial" | "ajuste";
 
@@ -64,6 +65,13 @@ export default function HistoricoMovimentos({ movimentos, products }: { moviment
   }
 
   return (
+    <>
+      {/* Agrupado por ENVIO primeiro, no formato do painel do ML: a
+          conferencia e sempre contra a tela deles, e comparar um envio com
+          quatro lancamentos soltos exigia somar de cabeca. A lista plana
+          continua abaixo, pra corrigir ou excluir lancamento avulso. */}
+      <BaixasPorRemessa movimentos={movimentos} products={products} onEditar={setEditando} />
+
     <div className="panel" style={{ marginTop: 16 }}>
       <div className="panel-head" style={{ marginBottom: 6 }}>
         <span className="panel-title">Histórico de movimentações</span>
@@ -153,6 +161,7 @@ export default function HistoricoMovimentos({ movimentos, products }: { moviment
         />
       )}
     </div>
+    </>
   );
 }
 
