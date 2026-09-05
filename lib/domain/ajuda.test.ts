@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { TOPICOS, buscarTopicos, normalizar, sugestoesPara } from "./ajuda";
+import { METAS_MERCADOLIDER } from "./mercadolider-metas";
 
 describe("buscarTopicos — acha a resposta certa", () => {
   it("a pergunta do usuário: como altero o custo de entrada", () => {
@@ -101,6 +102,62 @@ describe("base de conhecimento", () => {
     for (const t of TOPICOS) {
       const achados = buscarTopicos(t.pergunta, t.aba).map((x) => x.id);
       expect(achados).toContain(t.id);
+    }
+  });
+});
+
+/**
+ * Reputacao e MercadoLider — o que foi lido nas paginas oficiais do ML em
+ * 05/09/2026. Os testes fixam a forma como a pergunta e feita de verdade,
+ * nao a redacao do titulo do topico: base que so responde a pergunta exata
+ * nao serve de nada num chat ("quanto falta pro gold?" nao e o titulo).
+ */
+describe("reputacao e MercadoLider — as perguntas como elas chegam", () => {
+  it("quanto falta pro Gold", () => {
+    expect(buscarTopicos("quanto falta pra eu ser mercado lider gold?").map((t) => t.id))
+      .toContain("mercadolider-metas");
+  });
+
+  it("ser mercadolider aumenta exposicao?", () => {
+    expect(buscarTopicos("ser mercadolider aumenta a exposicao dos anuncios?").map((t) => t.id))
+      .toContain("mercadolider-exposicao");
+  });
+
+  it("vale a pena subir de medalha", () => {
+    expect(buscarTopicos("vale a pena subir de medalha?").map((t) => t.id))
+      .toContain("mercadolider-exposicao");
+  });
+
+  it("bati as metas e nao subi", () => {
+    expect(buscarTopicos("bati o faturamento e nao subi de medalha, porque?").map((t) => t.id))
+      .toContain("mercadolider-requisitos");
+  });
+
+  it("qual o periodo da reputacao", () => {
+    expect(buscarTopicos("de quantos dias e o calculo da minha reputacao?").map((t) => t.id))
+      .toContain("reputacao-janela");
+  });
+
+  it("quantos por cento posso ter de cancelamento", () => {
+    expect(buscarTopicos("qual o limite de cancelamento pra ficar verde?").map((t) => t.id))
+      .toContain("reputacao-limites");
+  });
+
+  it("pacote avariado conta como reclamacao?", () => {
+    expect(buscarTopicos("pacote avariado conta como reclamacao?").map((t) => t.id))
+      .toContain("reputacao-o-que-conta");
+  });
+
+  /**
+   * A tabela oficial esta no dominio (mercadolider-metas.ts) E na resposta do
+   * chat. Duas copias do mesmo numero e exatamente o que costuma divergir
+   * nesta base — o teste amarra as duas.
+   */
+  it("os numeros da resposta batem com a tabela oficial do dominio", () => {
+    const topico = TOPICOS.find((t) => t.id === "mercadolider-metas")!;
+    for (const m of METAS_MERCADOLIDER) {
+      expect(topico.resposta).toContain(m.vendas.toLocaleString("pt-BR"));
+      expect(topico.resposta).toContain(m.faturamento.toLocaleString("pt-BR"));
     }
   });
 });

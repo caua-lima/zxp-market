@@ -250,7 +250,30 @@ export const TOPICOS: Topico[] = [
       "Aba Acesso › adicione o e-mail da pessoa e escolha o papel.\n\n"
       + "São três papéis. OWNER tem acesso total, inclusive a esta aba. PARTNER vê todas as abas e é somente-leitura por padrão — você libera edição por aba, dá pra deixar alguém mexer só em Estoque sem acesso a Custos. MEMBER vê só o Dashboard e recebe notificações, sem custo, margem, preço nem estoque.\n\nQuem já era Colaborador virou Partner, com o mesmo acesso de antes.\n\n"
       + "Toda alteração fica registrada com quem fez e quando, na trilha de auditoria.",
-    relacionados: [],
+    relacionados: ["acesso-senha", "acesso-remover"],
+  },
+  {
+    id: "acesso-senha",
+    pergunta: "Consigo ver a senha de quem já tem acesso?",
+    aba: "acesso",
+    termos: ["ver senha", "senha", "mostrar senha", "esqueci", "resetar", "trocar senha", "login"],
+    resposta:
+      "Da senha JÁ CADASTRADA, não — e isso é proteção, não limitação do app. O Firebase guarda um hash, não a senha: ninguém consegue ler de volta, nem eu, nem você, nem quem invadisse o banco.\n\n"
+      + "O que dá pra ver é a senha que você está DIGITANDO agora: o olho ao lado do campo revela o que foi teclado, pra você conferir antes de salvar. É onde o erro de digitação acontece de verdade.\n\n"
+      + "Se a pessoa esqueceu: abra o acesso dela, digite uma senha nova e salve. Isso substitui a antiga — não precisa apagar e recriar, e o histórico de auditoria fica preservado.\n\n"
+      + "A senha é opcional. Sem senha, a pessoa entra pelo botão do Google com o mesmo e-mail.",
+    relacionados: ["colaborador"],
+  },
+  {
+    id: "acesso-remover",
+    pergunta: "Como tiro o acesso de alguém?",
+    aba: "acesso",
+    termos: ["remover acesso", "tirar acesso", "tiro acesso", "remover", "removo", "tiro", "tirar", "excluir", "revogar", "demitir", "saiu", "bloquear"],
+    resposta:
+      "Aba Acesso › na linha da pessoa, botão de excluir. O acesso cai na hora: a próxima tela que ela abrir já não carrega.\n\n"
+      + "A exclusão fica registrada na auditoria com quem removeu e quando — o registro do que ela fez enquanto tinha acesso continua lá, com o nome dela. É de propósito: apagar o rastro junto tornaria a auditoria inútil.\n\n"
+      + "Pra tirar só uma parte, não precisa excluir: troque o papel pra MEMBER (só Dashboard e notificações) ou tire as abas de edição do PARTNER.",
+    relacionados: ["colaborador"],
   },
   {
     id: "tarefas",
@@ -286,9 +309,10 @@ export const TOPICOS: Topico[] = [
     termos: ["reputacao", "mercado lider", "termometro", "cancelamento", "reclamacao", "atraso", "medalha"],
     resposta:
       "Aba Desempenho › o painel espelha o do Seller Center: cancelamentos, reclamações e atrasos, com o limite de cada um.\n\n"
-      + "Também mostra quanto falta pra MercadoLíder, com a conta dos últimos 60 dias — vendas, faturamento e as métricas que o ML exige.\n\n"
+      + "São DUAS janelas diferentes, e o painel usa cada uma no lugar certo: a qualidade é medida em 60 dias "
+      + "(a janela da reputação) e a medalha em 3 meses mais os dias do mês vigente (a janela do MercadoLíder).\n\n"
       + "Quando você sobe de nível, chega uma notificação.",
-    relacionados: ["notificacoes"],
+    relacionados: ["mercadolider-metas", "reputacao-janela", "notificacoes"],
   },
   {
     id: "devolucao",
@@ -432,6 +456,101 @@ export const TOPICOS: Topico[] = [
       + "Mudar a alíquota hoje não reescreve o lucro de meses fechados — o que já passou fica com a "
       + "alíquota da época, que é o comportamento contábil correto.\n\n"
       + "Se você não sabe qual usar, confirme com seu contador: varia por regime e por produto.",
+  },
+  {
+    id: "mercadolider-metas",
+    pergunta: "O que o ML pede pra eu ser MercadoLíder Gold?",
+    aba: "desempenho",
+    termos: ["mercadolider", "mercado lider", "gold", "platinum", "medalha", "requisito", "meta", "faturamento", "quanto falta", "subir de nivel", "selo"],
+    resposta:
+      "São duas metas ao mesmo tempo — vendas concretizadas E faturamento — medidas nos 3 meses mais os dias do mês vigente:\n\n"
+      + "MercadoLíder: 230 vendas e R$ 37.000\n"
+      + "MercadoLíder Gold: 575 vendas e R$ 118.400\n"
+      + "MercadoLíder Platinum: 1.725 vendas e R$ 296.000\n\n"
+      + "Bater só uma das duas não sobe: o painel Próxima medalha mostra as duas barras e marca qual está travando.\n\n"
+      + "O faturamento do critério não conta vendas vindas de anúncios Grátis.\n\n"
+      + "Fonte: página oficial “Tudo sobre ser MercadoLíder” do Mercado Livre.",
+    relacionados: ["mercadolider-requisitos", "mercadolider-exposicao", "reputacao"],
+  },
+  {
+    id: "mercadolider-requisitos",
+    pergunta: "Bati vendas e faturamento e não subi de medalha. Por quê?",
+    aba: "desempenho",
+    termos: ["nao subi", "bati", "porque nao", "requisito", "medalha", "termometro", "verde escuro", "documento", "fiscal", "cadastro"],
+    resposta:
+      "Vendas e faturamento são só metade. Estes valem pra qualquer medalha e são o motivo mais comum:\n\n"
+      + "· Mais de 4 meses de cadastro\n"
+      + "· Documento de identidade e dados de contato enviados\n"
+      + "· Comprovação fiscal\n"
+      + "· Termômetro em VERDE ESCURO\n"
+      + "· Reclamações abaixo de 1% das vendas\n"
+      + "· Reclamações mediadas pelo ML abaixo de 0,5%\n"
+      + "· Vendas canceladas abaixo de 0,5%\n"
+      + "· Envios incorretos abaixo de 6%\n\n"
+      + "Repare que os tetos aqui são bem mais apertados que os de ficar verde — é isso que separa “estou bem” de “estou bem o suficiente pro selo”.",
+    relacionados: ["mercadolider-metas", "reputacao-limites"],
+  },
+  {
+    id: "mercadolider-exposicao",
+    pergunta: "Ser MercadoLíder muda a exposição dos meus anúncios?",
+    aba: "desempenho",
+    termos: ["exposicao", "visibilidade", "busca", "aparecer", "vale a pena", "vantagem", "medalha", "ranking", "posicao"],
+    resposta:
+      "Muda, e o ML é explícito: anúncios de MercadoLíder têm prioridade e mais visibilidade nas buscas, e QUANTO MAIS ALTA A MEDALHA, MAIOR A EXPOSIÇÃO na lista.\n\n"
+      + "A reputação em si já pesa antes da medalha: a cor verde faz mais compradores encontrarem seus anúncios. O caminho é cor verde primeiro, medalha depois.\n\n"
+      + "O ML não publica o quanto de exposição cada degrau dá — quem prometer um número exato está chutando. O que é oficial é a direção: mais alta a medalha, maior a exposição.\n\n"
+      + "Na prática vale ler junto com a aba Ads: exposição orgânica ganha é verba de anúncio que você não precisa gastar pro mesmo giro.",
+    relacionados: ["mercadolider-metas", "reputacao"],
+  },
+  {
+    id: "reputacao-janela",
+    pergunta: "De quanto tempo é a conta da minha reputação?",
+    aba: "desempenho",
+    termos: ["janela", "periodo", "quanto tempo", "dias", "60 dias", "365", "medicao", "calculo", "retroativo", "reputacao"],
+    resposta:
+      "Depende do seu volume nos últimos 60 dias:\n\n"
+      + "· 101 vendas ou mais nesse período → você é medido pelos últimos 60 dias\n"
+      + "· menos de 101 → medido pelos últimos 365 dias\n\n"
+      + "ATENÇÃO: esse corte mudou em 10 de setembro de 2026 — antes bastavam 60 vendas. Com o volume desta conta (centenas por mês) a medição continua sendo a de 60 dias, então os limites que o painel mostra seguem valendo.\n\n"
+      + "A contagem é retroativa e atualiza todo dia. Sem 10 vendas concluídas nos últimos 365 dias não há reputação calculada (fica cinza).",
+    relacionados: ["reputacao-limites", "reputacao"],
+  },
+  {
+    id: "reputacao-limites",
+    pergunta: "Quantos por cento de reclamação ou cancelamento posso ter?",
+    aba: "desempenho",
+    termos: ["limite", "porcentagem", "teto", "quanto posso", "verde", "amarelo", "laranja", "vermelho", "reclamacao", "cancelamento", "envio incorreto", "atraso"],
+    resposta:
+      "Pra ficar VERDE, medido em 60 dias:\n\n"
+      + "· Reclamações: até 2%\n"
+      + "· Canceladas por você: até 1,5%\n"
+      + "· Envios incorretos: até 10%\n\n"
+      + "Se a sua medição for a de 365 dias, os tetos são mais folgados: canceladas até 2,5% e envios incorretos até 13%. Reclamações continuam em 2% nos dois casos.\n\n"
+      + "Mas o que o painel Próxima medalha cobra é o teto do MERCADOLÍDER, bem mais apertado: 1% de reclamações, 0,5% de canceladas e 6% de envios incorretos. É por isso que dá pra estar verde e ainda assim não bater o selo.",
+    relacionados: ["reputacao-o-que-conta", "mercadolider-requisitos"],
+  },
+  {
+    id: "reputacao-o-que-conta",
+    pergunta: "O que conta como reclamação, cancelamento e envio incorreto?",
+    aba: "desempenho",
+    termos: ["o que conta", "afeta", "reclamacao", "cancelamento", "envio incorreto", "flex", "mediacao", "avariado", "defeito"],
+    resposta:
+      "RECLAMAÇÕES: só as de produto incompleto/faltando item e as de qualidade (defeito, problema de fabricação, parou de funcionar). Pacote aberto ou avariado no transporte NÃO afeta.\n\n"
+      + "CANCELADAS POR VOCÊ: só as que partem de você. Se quem se arrependeu foi o comprador, ELE precisa pedir o cancelamento — senão entra na sua conta. E se a venda recebeu reclamação antes de ser cancelada, ela conta em “Reclamações”, não aqui.\n\n"
+      + "ENVIOS INCORRETOS: despachado com atraso, ou despachado do depósito errado. Com Flex entram também: não entregue até as 21h com reagendamento, tentativa com comprador ausente depois das 21h, e envio atrasado cancelado pelo comprador.\n\n"
+      + "MEDIAÇÕES: só contam pra quem já é MercadoLíder, e valem mesmo quando foi você quem abriu.",
+    relacionados: ["reputacao-limites", "reputacao"],
+  },
+  {
+    id: "beneficio-reputacao",
+    pergunta: "O que é o Benefício de Reputação?",
+    aba: "desempenho",
+    termos: ["beneficio de reputacao", "beneficio", "garantia", "verde claro", "decola", "reputacao ruim", "recuperar", "caucao"],
+    resposta:
+      "É a opção do ML de deixar dinheiro preso como garantia (de R$ 75 a R$ 250.000, conforme seu volume) pra aparecer em VERDE-CLARO enquanto se recupera. Dura até 120 dias, e nesse tempo nenhum anúncio perde exposição por atendimento.\n\n"
+      + "Tem limite de vendas afetadas: passou do limite, perde o benefício e o ML debita 100% da garantia. Abaixo do limite, você recupera uma parte proporcional — sem nenhuma venda afetada, recupera tudo.\n\n"
+      + "Só faz sentido com reputação vermelha, laranja ou amarela. Verde não precisa, e o dinheiro fica bloqueado à toa.",
+    relacionados: ["reputacao-limites", "reputacao"],
   },
 ];
 
