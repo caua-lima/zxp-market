@@ -38,7 +38,16 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
     <div className="panel">
       <div className="panel-head" style={{ marginBottom: 8 }}>
         <span className="panel-title">Performance por campanha</span>
-        <span className="panel-sub">{campanhas.length} campanha(s) · maior investimento primeiro</span>
+        <span className="panel-sub">
+          {campanhas.length} campanha(s) · maior investimento primeiro
+          {/* A legenda evita que o "≈" vire um simbolo misterioso: aparece so
+              quando ha ao menos uma linha rateada, e explica na hora. */}
+          {campanhas.some((c) => c.lucroAproximado) && (
+            <span title={campanhas.find((c) => c.avisoLucro)?.avisoLucro ?? undefined} style={{ cursor: "help" }}>
+              {" · "}<b style={{ color: "var(--warning)" }}>≈</b> = anúncio dividido entre campanhas, receita rateada pelo gasto
+            </span>
+          )}
+        </span>
       </div>
 
       <div className="table-wrapper" style={{ border: "none" }}>
@@ -65,13 +74,16 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
                   {rotuloCampanha(c.campaignName)}
                   <span style={{ display: "block", fontSize: ".68rem", color: "var(--muted)", fontWeight: 400 }}>
                     {c.anuncios} anúncio(s) · {num(c.clicks)} cliques
+                    {/* Um anúncio desta campanha roda em outra também. A marca
+                        fica no nome, junto do "≈" das colunas de lucro e margem —
+                        é o mesmo fato, dito uma vez em cada lugar que ele afeta. */}
                     {c.atribuicaoIncerta && (
-                      <span title={
-                        "Algum anúncio desta campanha roda também em outra, e o Mercado Livre entrega as métricas dele já somadas, "
-                        + "sem dizer quanto foi de cada campanha. Investimento, cliques e impressões acima são os da CAMPANHA "
-                        + "(batem com o painel do ML). O lucro fica indisponível porque dependeria de repartir as suas vendas "
-                        + "entre as campanhas, e esse dado o ML não fornece."
-                      } style={{ marginLeft: 6, cursor: "help" }}>⚠</span>
+                      <span
+                        title={c.avisoLucro ?? undefined}
+                        style={{ marginLeft: 6, cursor: "help", color: "var(--warning)" }}
+                      >
+                        ⚠ rateado
+                      </span>
                     )}
                   </span>
                 </td>
@@ -101,14 +113,20 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
                 <td
                   data-label="Lucro após Ads"
                   /* Sem numero, entra o MOTIVO: traco mudo nao diz se falta
-                     cadastrar custo, esperar venda ou revisar a campanha. */
-                  title={c.motivoSemLucro ?? undefined}
+                     cadastrar custo ou esperar venda. Com numero rateado,
+                     entra o til e o aviso no tooltip — ver avisoLucro. */
+                  title={c.avisoLucro ?? c.motivoSemLucro ?? undefined}
                   style={{
                     fontWeight: 700, whiteSpace: "nowrap",
                     color: c.lucroAposAds == null ? "var(--muted)" : c.lucroAposAds >= 0 ? "var(--green)" : "var(--red)",
                   }}
                 >
-                  {c.lucroAposAds != null ? fmtBRL(c.lucroAposAds) : (
+                  {c.lucroAposAds != null ? (
+                    <span style={{ cursor: c.lucroAproximado ? "help" : undefined }}>
+                      {c.lucroAproximado && <span style={{ fontWeight: 400 }}>≈ </span>}
+                      {fmtBRL(c.lucroAposAds)}
+                    </span>
+                  ) : (
                     <span style={{ fontWeight: 400, fontSize: ".7rem", whiteSpace: "normal", display: "inline-block", maxWidth: 190 }}>
                       {c.motivoSemLucro ?? "—"}
                     </span>
@@ -116,12 +134,14 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
                 </td>
                 <td
                   data-label="Margem"
+                  title={c.avisoLucro ?? undefined}
                   style={{
                     fontWeight: 700, whiteSpace: "nowrap",
                     color: c.margem == null ? "var(--muted)" : corMargem(c.margem),
+                    cursor: c.lucroAproximado ? "help" : undefined,
                   }}
                 >
-                  {c.margem != null ? `${num(c.margem, 1)}%` : (
+                  {c.margem != null ? `${c.lucroAproximado ? "≈ " : ""}${num(c.margem, 1)}%` : (
                     /* Mesmo criterio da coluna ao lado: ou o numero, ou o
                        motivo. Margem some num caso a mais que o lucro —
                        gastou e nao vendeu —, por isso motivo proprio. */

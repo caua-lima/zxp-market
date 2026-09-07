@@ -236,9 +236,25 @@ describe("anúncio em duas campanhas: o ML manda, não a soma dos anúncios", ()
     expect(agregarPorCampanha([item], "geral", reais)[0].atribuicaoIncerta).toBe(true);
   });
 
-  it("e por isso NÃO afirma lucro: seria o custo do anúncio inteiro ao lado de um custo menor", () => {
-    expect(agregarPorCampanha([item], "geral", reais)[0].lucroAposAds).toBeNull();
-    expect(agregarPorCampanha([item], "geral", reais)[0].margem).toBeNull();
+  it("mostra o lucro assim mesmo, marcado como rateado", () => {
+    const [c] = agregarPorCampanha([item], "geral", reais);
+    expect(c.lucroAposAds).not.toBeNull();
+    expect(c.margem).not.toBeNull();
+    expect(c.lucroAproximado).toBe(true);
+    expect(c.avisoLucro).toMatch(/proporcao do que cada uma gastou/);
+    // O motivo e o oposto do numero: tendo numero, nao ha motivo a dar.
+    expect(c.motivoSemLucro).toBeNull();
+  });
+
+  it("o lucro desconta o custo QUE ESTA NA TELA, nao o derivado", () => {
+    /**
+     * A linha mostra o investimento da campanha (R$ 65,46, o do painel do ML).
+     * Se o lucro descontasse o custo derivado da soma dos anuncios, a mesma
+     * linha exibiria lucro de um investimento e investimento de outro.
+     */
+    const [c] = agregarPorCampanha([item], "geral", reais);
+    const bruto = item.lucroLiquido + item.cost;
+    expect(c.lucroAposAds).toBeCloseTo(bruto - c.cost, 2);
   });
 
   it("o ROAS do ML é recalculado sobre o custo certo", () => {
@@ -293,11 +309,26 @@ describe("motivo quando nao ha lucro a mostrar", () => {
     expect(c.motivoSemLucro).toMatch(/custo cadastrado/);
   });
 
-  it("anuncio em duas campanhas: o motivo explica que o ML soma as metricas", () => {
+  it("anuncio em duas campanhas: numero na tela, com aviso do que foi estimado", () => {
     const reais = new Map([["c1", { clicks: 10, prints: 100, cost: 99, receitaAtribuida: 100 }]]);
     const [c] = agregarPorCampanha([base], "geral", reais);
     expect(c.atribuicaoIncerta).toBe(true);
-    expect(c.motivoSemLucro).toMatch(/roda em outra/);
+    expect(c.lucroAposAds).not.toBeNull();
+    expect(c.lucroAproximado).toBe(true);
+    // O aviso separa o que e do ML do que e estimativa nossa — sem isso o
+    // "≈" da tela nao diria O QUE foi rateado.
+    expect(c.avisoLucro).toMatch(/batem com o painel/);
+    expect(c.avisoLucro).toMatch(/repartida entre as campanhas/);
+  });
+
+  it("campanha sem anuncio compartilhado nao ganha marca nenhuma", () => {
+    // O aviso so vale quando ha o que avisar; carimbar tudo de "aproximado"
+    // faria a marca virar ruido e parar de ser lida.
+    const reais = new Map([["c1", { clicks: 10, prints: 100, cost: base.cost, receitaAtribuida: 100 }]]);
+    const [c] = agregarPorCampanha([base], "geral", reais);
+    expect(c.atribuicaoIncerta).toBe(false);
+    expect(c.lucroAproximado).toBe(false);
+    expect(c.avisoLucro).toBeNull();
   });
 
   it("TODA campanha sem lucro tem motivo — nunca um traco mudo", () => {

@@ -132,6 +132,19 @@ export type CampanhaAgregada = {
    */
   motivoSemLucro: string | null;
   /**
+   * O lucro e a margem saem de um RATEIO, nao de um numero que o ML entregou.
+   *
+   * Acontece quando um anuncio roda em mais de uma campanha: o ML devolve as
+   * metricas dele ja somadas, sem dizer quanto foi de cada. A receita das
+   * nossas vendas e entao repartida na proporcao do que cada campanha gastou.
+   *
+   * O numero continua util — e a melhor estimativa disponivel e a ordem de
+   * grandeza esta certa. So nao serve pra conferir centavo contra o painel.
+   */
+  lucroAproximado: boolean;
+  /** O que exatamente foi estimado. `null` quando o numero e exato. */
+  avisoLucro: string | null;
+  /**
    * Por que nao ha margem a mostrar. `null` quando ha.
    *
    * Margem e lucro/receita: some tambem quando o lucro EXISTE mas a receita e
@@ -185,7 +198,18 @@ export function agregarPorCampanha(
    */
   metricasReais?: Map<string, MetricasReais>,
 ): CampanhaAgregada[] {
-  const mapa = new Map<string, CampanhaAgregada & { temDireto: boolean }>();
+  /**
+   * `lucroAntesAds` e `custoDosQueContaram` sao internos: o lucro final e
+   * calculado no fecho como (lucro bruto − custo EXIBIDO), pra o numero da
+   * coluna sempre bater com o investimento da linha ao lado. Somar o liquido
+   * anuncio a anuncio descontava o custo DERIVADO, que diverge do real
+   * justamente nas campanhas com anuncio compartilhado.
+   */
+  const mapa = new Map<string, CampanhaAgregada & {
+    temDireto: boolean;
+    lucroAntesAds: number;
+    custoDosQueContaram: number;
+  }>();
 
   for (const i of itens) {
     const fatias = fatiasDe(i);
@@ -198,12 +222,14 @@ export function agregarPorCampanha(
         campaignId: id,
         campaignName: f.campaignName || (id === CAMPANHA_SEM_ID ? "Sem campanha identificada" : id),
         anuncios: 0, prints: 0, clicks: 0, cost: 0, receita: 0, unidades: 0,
-        lucroAposAds: 0, roas: null, acos: null, roasMlAds: null, receitaAtribuida: 0,
+        // Calculado no fecho a partir de lucroAntesAds — aqui nao acumula nada.
+        lucroAposAds: null, roas: null, acos: null, roasMlAds: null, receitaAtribuida: 0,
         // Preenchidos no fecho, a partir das metricas reais quando existirem.
         metricasDoMlAds: false, atribuicaoIncerta: false,
+        lucroAproximado: false, avisoLucro: null,
         motivoSemLucro: null, motivoSemMargem: null,
         dailyBudget: 0, roasTarget: 0, margem: null,
-        temDireto: false,
+        temDireto: false, lucroAntesAds: 0, custoDosQueContaram: 0,
       };
       // A config e da CAMPANHA: o primeiro anuncio que a trouxer ja define.
       if (!atual.dailyBudget && i.dailyBudget) atual.dailyBudget = i.dailyBudget;
@@ -237,14 +263,21 @@ export function agregarPorCampanha(
        * do que é — então só soma quem tem dado, e a campanha inteira fica sem
        * lucro (null) se NINGUÉM tiver.
        */
+      /**
+       * `lucroLiquido` e `lucroDiretoLiquido` ja vem com o custo do anuncio
+       * INTEIRO descontado; somar `i.cost` de volta devolve o bruto, que e o
+       * que se rateia. O custo entra uma vez so, no fecho.
+       */
       if (modo === "pub") {
         if (i.diretoDisponivel) {
           atual.temDireto = true;
-          atual.lucroAposAds = (atual.lucroAposAds ?? 0) + i.lucroDiretoLiquido * peso;
+          atual.lucroAntesAds += (i.lucroDiretoLiquido + i.cost) * peso;
+          atual.custoDosQueContaram += f.cost;
         }
       } else {
         atual.temDireto = true;
-        atual.lucroAposAds = (atual.lucroAposAds ?? 0) + i.lucroLiquido * peso;
+        atual.lucroAntesAds += (i.lucroLiquido + i.cost) * peso;
+        atual.custoDosQueContaram += f.cost;
       }
 
       mapa.set(id, atual);
@@ -265,21 +298,49 @@ export function agregarPorCampanha(
       const cost = real?.cost ?? c.cost;
       const receitaAtribuida = real?.receitaAtribuida ?? c.receitaAtribuida;
       /**
-       * Lucro sai como indisponível quando a atribuição é incerta: ele
-       * desconta o custo do anúncio INTEIRO, e mostrá-lo ao lado de um custo
-       * de campanha menor seria uma incoerência silenciosa na tela.
+       * ─── ATRIBUICAO INCERTA MOSTRA O NUMERO, COM AVISO ─────────────────
+       *
+       * Antes o lucro saia como indisponivel aqui, e a coluna virava um
+       * paragrafo de explicacao — em 6 das 15 campanhas desta conta. A tela
+       * ficava ilegivel e, pior, deixava de responder a unica pergunta que
+       * justifica ela existir.
+       *
+       * O que e incerto NAO e o lucro: e o RATEIO da receita entre as
+       * campanhas que dividem um anuncio. A estimativa e defensavel (rateio
+       * proporcional ao gasto de cada uma) e a ordem de grandeza esta certa.
+       * Esconder um numero util pra evitar um erro de centavos troca uma
+       * imprecisao pequena por uma cegueira total.
+       *
+       * ─── O CUSTO DESCONTADO E O QUE ESTA NA TELA ───────────────────────
+       *
+       * O lucro sai de (bruto rateado − custo). Quando as metricas reais
+       * chegam, o custo exibido e o do ML, entao o descontado tem que ser
+       * esse mesmo — senao a linha mostraria lucro de um investimento e
+       * investimento de outro. `fatorCusto` reajusta na mesma proporcao.
+       *
+       * No modo "pub" so os anuncios com venda vinculada entram no bruto, e
+       * so o custo DELES e descontado (`custoDosQueContaram`): descontar a
+       * campanha inteira faria a parte medida parecer pior do que e.
        */
-      const lucroAposAds = atribuicaoIncerta ? null : (c.temDireto ? c.lucroAposAds : null);
+      const fatorCusto = real != null && c.cost > 0 ? real.cost / c.cost : 1;
+      const custoDescontado = c.custoDosQueContaram * fatorCusto;
+      const lucroAposAds = c.temDireto ? c.lucroAntesAds - custoDescontado : null;
+
+      const lucroAproximado = lucroAposAds != null && atribuicaoIncerta;
+      const avisoLucro = !lucroAproximado ? null
+        : "Algum anuncio desta campanha roda em outra tambem, e o Mercado Livre entrega as metricas dele ja somadas, "
+          + "sem dizer quanto foi de cada. Investimento, cliques e impressoes acima sao os da CAMPANHA e batem com o painel. "
+          + "Ja a receita e o lucro sao a sua venda repartida entre as campanhas na proporcao do que cada uma gastou — "
+          + "melhor estimativa disponivel, boa pra decidir onde mexer, nao pra conferir centavo.";
+
       /**
        * O motivo e tao importante quanto o numero: cada caso pede uma acao
-       * diferente — cadastrar custo, esperar venda, ou revisar a campanha.
+       * diferente — cadastrar custo ou esperar venda.
        */
       const motivoSemLucro = lucroAposAds != null ? null
-        : atribuicaoIncerta
-          ? "Algum anuncio desta campanha roda em outra tambem, e o ML entrega as metricas somadas — nao da pra separar o lucro por campanha."
-          : c.receita <= 0
-            ? "Nenhuma venda atribuida a esta campanha no periodo."
-            : "Produto sem custo cadastrado no Estoque — sem custo nao ha lucro a calcular.";
+        : c.receita <= 0
+          ? "Nenhuma venda atribuida a esta campanha no periodo."
+          : "Produto sem custo cadastrado no Estoque — sem custo nao ha lucro a calcular.";
       const receita = c.receita;
       /** Margem so existe com lucro conhecido E receita pra dividir. */
       const margem = lucroAposAds != null && receita > 0 ? (lucroAposAds / receita) * 100 : null;
@@ -295,6 +356,8 @@ export function agregarPorCampanha(
         cost,
         metricasDoMlAds: real != null,
         atribuicaoIncerta,
+        lucroAproximado,
+        avisoLucro,
         motivoSemLucro,
         motivoSemMargem,
         receita,
