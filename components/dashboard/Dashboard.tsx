@@ -11,7 +11,6 @@ import {
   diaAtualNoMes,
   diasNoMes,
   clamp,
-  yesterdayStr,
   daysAgoStr,
   projetarMes,
   todayStr,
@@ -19,6 +18,7 @@ import {
   prevPeriod,
 } from "@/lib/domain/calc";
 import { calcularMetaDiaria, idealAteHoje } from "@/lib/domain/meta-diaria";
+import { diaEmFoco, rotuloDoDia } from "@/lib/domain/dia-em-foco";
 import {
   custoPorPedido, margemReal, margemSemAds, roasBreakEven, roasDireto, roasGeral,
   receitaForaDoCalculo, ticketMedio, unidadesPorPedido, variacao, type EntradaDia,
@@ -478,7 +478,15 @@ function DevolucoesPanel({ total, emAndamento, detalhe }: { total: number; emAnd
 }
 
 // ── Hoje vs Ontem (leitura curta em texto) ──────────────────────
-function HojeVsOntem({ hoje, ontem }: { hoje?: HojeBreakdown; ontem: MlMetrics | null }) {
+function HojeVsOntem({ hoje, ontem, rotulo, rotuloAnterior }: {
+  hoje?: HojeBreakdown;
+  ontem: MlMetrics | null;
+  /* O dia mostrado nem sempre e hoje: com o periodo filtrado em "Ontem" ou
+     num mes fechado, ele acompanha o periodo. Chamar tudo de "hoje" foi a
+     origem do problema — ver lib/domain/dia-em-foco.ts. */
+  rotulo: string;
+  rotuloAnterior: string;
+}) {
   if (!hoje) return null;
   const margemHoje = hoje.faturamentoBruto > 0 ? (hoje.lucroLiquido / hoje.faturamentoBruto) * 100 : 0;
 
@@ -487,15 +495,15 @@ function HojeVsOntem({ hoje, ontem }: { hoje?: HojeBreakdown; ontem: MlMetrics |
     const diffPct = ((hoje.faturamentoLiquido - ontem.faturamentoLiquido) / Math.abs(ontem.faturamentoLiquido)) * 100;
     const tone = diffPct >= 0 ? "var(--success)" : "var(--danger)";
     diffTxt = (
-      <> Diferença de <b style={{ color: tone }}>{diffPct >= 0 ? "+" : ""}{diffPct.toFixed(1)}%</b> vs ontem ({fmtBRL(ontem.faturamentoLiquido)}).</>
+      <> Diferença de <b style={{ color: tone }}>{diffPct >= 0 ? "+" : ""}{diffPct.toFixed(1)}%</b> vs {rotuloAnterior.toLowerCase()} ({fmtBRL(ontem.faturamentoLiquido)}).</>
     );
   } else if (ontem) {
-    diffTxt = <> Ontem não teve faturamento pra comparar.</>;
+    diffTxt = <> {rotuloAnterior} não teve faturamento pra comparar.</>;
   }
 
   return (
     <div className="panel" style={{ fontSize: ".92rem", lineHeight: 1.6, color: "var(--text-secondary,var(--muted))" }}>
-      <b style={{ color: "var(--text-primary,var(--text))" }}>Hoje:</b>{" "}
+      <b style={{ color: "var(--text-primary,var(--text))" }}>{rotulo}:</b>{" "}
       {fmtBRL(hoje.faturamentoLiquido)} faturados, {hoje.pedidos} pedido(s), margem de{" "}
       <b style={{ color: margemHoje >= 0 ? "var(--success)" : "var(--danger)" }}>{margemHoje.toFixed(1)}%</b>.
       {diffTxt}
@@ -504,7 +512,14 @@ function HojeVsOntem({ hoje, ontem }: { hoje?: HojeBreakdown; ontem: MlMetrics |
 }
 
 // ── Vendas do Dia (hero) ───────────────────────────────────────
-function VendasDoDiaHero({ hoje, ontem }: { hoje?: HojeBreakdown; ontem?: HojeBreakdown | null }) {
+function VendasDoDiaHero({ hoje, ontem, rotulo, rotuloAnterior }: {
+  hoje?: HojeBreakdown;
+  ontem?: HojeBreakdown | null;
+  /* Ver HojeVsOntem: o bloco segue o periodo, entao o titulo diz de qual dia
+     se trata em vez de afirmar "Dia" e deixar o leitor supor que e hoje. */
+  rotulo: string;
+  rotuloAnterior: string;
+}) {
   const vazio: HojeBreakdown = {
     faturamentoBruto: 0, faturamentoLiquido: 0, vendasCanceladas: 0, vendasDevolvidas: 0,
     totalCMV: 0, totalAds: 0, totalEnvio: 0,
@@ -645,7 +660,7 @@ function VendasDoDiaHero({ hoje, ontem }: { hoje?: HojeBreakdown; ontem?: HojeBr
   return (
     <section className="hero">
       <div className="hero-head">
-        <span className="hero-title">Vendas do Dia</span>
+        <span className="hero-title">Vendas — {rotulo}</span>
         <span className="hero-badge">
           {h.pedidos} pedido(s) · margem <b style={{ color: margem >= 0 ? "var(--green)" : "var(--red)" }}>{pctFmt(margem)}</b>
           {tacos != null && (
@@ -691,10 +706,10 @@ function VendasDoDiaHero({ hoje, ontem }: { hoje?: HojeBreakdown; ontem?: HojeBr
                 return (
                   <div style={{ fontSize: ".65rem", fontWeight: 700, color: cor }}>
                     {v.vindoDoZero
-                      ? "novo vs ontem"
+                      ? `novo vs ${rotuloAnterior.toLowerCase()}`
                       : semMudanca
-                        ? "= igual a ontem"
-                        : `${v.subiu ? "↑" : "↓"} ${Math.abs(arredondado!)}% vs ontem`}
+                        ? `= igual a ${rotuloAnterior.toLowerCase()}`
+                        : `${v.subiu ? "↑" : "↓"} ${Math.abs(arredondado!)}% vs ${rotuloAnterior.toLowerCase()}`}
                   </div>
                 );
               })()}
@@ -1581,6 +1596,9 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
    * mostravam "↑ 0% vs ontem" — a seta pra cima porque 0 >= 0.
    */
   const [ontemMetrics, setOntemMetrics] = useState<MlMetrics | null>(null);
+  /* Fixar em "ontem do relogio" faria o filtro "Ontem" comparar ontem consigo
+     mesmo e mostrar 0% em tudo — o mesmo bug que `dia=` veio corrigir,
+     voltando pela outra ponta. Ver lib/domain/dia-em-foco.ts. */
   // Últimos 30 dias corridos fixos (independe do período selecionado no
   // topo) — alimenta só "Melhores dias da semana". Com o range padrão (mês
   // corrente), começar o mês dava poucas amostras por dia da semana e a
@@ -1629,10 +1647,24 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
     return range.to > todayStr() ? "vs mesmo dia do mês anterior" : "vs mês anterior";
   }, [range]);
 
-  const fetchMetrics = useCallback(async (from: string, to: string, silent = false, fresh = false) => {
+  /**
+   * O bloco "Vendas do Dia" segue o PERIODO, nao o relogio.
+   *
+   * Sem `dia=`, o campo `hoje` da resposta e sempre o dia corrente — a rota
+   * documenta isso. Com o periodo em "Ontem", a tela mostrava os cards de
+   * cima com ontem e o bloco do dia com hoje, os dois sem etiqueta de data.
+   */
+  const foco = useMemo(
+    () => diaEmFoco(periodoRange.from, periodoRange.to, todayStr()),
+    [periodoRange],
+  );
+  const rotuloDia = useMemo(() => rotuloDoDia(foco.dia, todayStr()), [foco.dia]);
+  const rotuloDiaAnterior = useMemo(() => rotuloDoDia(foco.comparacao, todayStr()), [foco.comparacao]);
+
+  const fetchMetrics = useCallback(async (from: string, to: string, silent = false, fresh = false, dia?: string) => {
     if (!silent) setMlLoading(true);
     try {
-      const res = await authedFetch(`/api/ml/metrics?from=${from}&to=${to}${fresh ? "&fresh=1" : ""}`, { cache: "no-store" });
+      const res = await authedFetch(`/api/ml/metrics?from=${from}&to=${to}${dia ? `&dia=${dia}` : ""}${fresh ? "&fresh=1" : ""}`, { cache: "no-store" });
       if (!res.ok) { if (!silent) setMlMetrics(null); return; }
       const json = await res.json();
       if (mountedRef.current) { setMlMetrics(json); setLastUpdated(Date.now()); }
@@ -1649,8 +1681,8 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
   }, []);
 
   useEffect(() => {
-    fetchMetrics(periodoRange.from, periodoRange.to);
-  }, [periodoRange, fetchMetrics]);
+    fetchMetrics(periodoRange.from, periodoRange.to, false, false, foco.dia);
+  }, [periodoRange, foco.dia, fetchMetrics]);
 
   // Métricas do período ANTERIOR (mesmo tamanho) para a comparação vs. anterior.
   const prevRange = useMemo(() => prevPeriod(periodoRange.from, periodoRange.to), [periodoRange]);
@@ -1676,12 +1708,12 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
   }, []);
 
   useEffect(() => {
-    const ontemISO = yesterdayStr();
-    authedFetch(`/api/ml/metrics?from=${ontemISO}&to=${ontemISO}&dia=${ontemISO}`, { cache: "no-store" })
+    const anterior = foco.comparacao;
+    authedFetch(`/api/ml/metrics?from=${anterior}&to=${anterior}&dia=${anterior}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((j) => { if (mountedRef.current) setOntemMetrics(j); })
       .catch(() => {});
-  }, []);
+  }, [foco.comparacao]);
 
   useEffect(() => {
     authedFetch(`/api/ml/metrics?from=${daysAgoStr(29)}&to=${todayStr()}`, { cache: "no-store" })
@@ -1707,7 +1739,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
       setMlRefreshing(true);
       try {
         await authedFetch("/api/ml/sync-all", { method: "POST" });
-        if (mountedRef.current) await fetchMetrics(periodoRange.from, periodoRange.to, true, true);
+        if (mountedRef.current) await fetchMetrics(periodoRange.from, periodoRange.to, true, true, foco.dia);
       } catch { /* silencioso */ }
       finally { if (mountedRef.current) setMlRefreshing(false); }
     })();
@@ -1719,17 +1751,17 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
     const id = setInterval(() => {
       (async () => {
         try { await authedFetch("/api/ml/sync-all", { method: "POST" }); } catch { /* ignora */ }
-        if (mountedRef.current) fetchMetrics(periodoRange.from, periodoRange.to, true, true);
+        if (mountedRef.current) fetchMetrics(periodoRange.from, periodoRange.to, true, true, foco.dia);
       })();
     }, 15 * 60 * 1000);
     return () => clearInterval(id);
-  }, [periodoRange, fetchMetrics]);
+  }, [periodoRange, foco.dia, fetchMetrics]);
 
   async function handleRefreshML() {
     setMlRefreshing(true);
     try {
       await authedFetch("/api/ml/sync-all", { method: "POST" });
-      await fetchMetrics(periodoRange.from, periodoRange.to, false, true);
+      await fetchMetrics(periodoRange.from, periodoRange.to, false, true, foco.dia);
     } catch (e) { console.error(e); }
     finally { setMlRefreshing(false); }
   }
@@ -1957,7 +1989,12 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
           )}
 
           {/* Hoje vs Ontem — leitura rápida em texto */}
-          {mlMetrics && <HojeVsOntem hoje={mlMetrics.hoje} ontem={ontemMetrics} />}
+          {mlMetrics && (
+            <HojeVsOntem
+              hoje={mlMetrics.hoje} ontem={ontemMetrics}
+              rotulo={rotuloDia} rotuloAnterior={rotuloDiaAnterior}
+            />
+          )}
 
           {/* Fluxo e tendência */}
           <section>
@@ -1973,7 +2010,10 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
           {selectedDay && <DayDetailModal date={selectedDay} onClose={() => setSelectedDay(null)} />}
 
           {/* Vendas do dia */}
-          <VendasDoDiaHero hoje={mlMetrics?.hoje} ontem={ontemMetrics?.hoje} />
+          <VendasDoDiaHero
+            hoje={mlMetrics?.hoje} ontem={ontemMetrics?.hoje}
+            rotulo={rotuloDia} rotuloAnterior={rotuloDiaAnterior}
+          />
 
           {/* Resultado do período */}
           <section>
