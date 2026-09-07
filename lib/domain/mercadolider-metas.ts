@@ -16,7 +16,7 @@
  *
  * A tabela abaixo é a da página oficial "Tudo sobre ser MercadoLíder"
  * (mercadolivre.com.br/ajuda/como-se-tornar-mercadolider_1359), lida em
- * 05/09/2026. Com ela o alvo deixa de ser digitado.
+ * 07/09/2026. Com ela o alvo deixa de ser digitado.
  *
  * ─── SÃO DUAS CONDIÇÕES, NÃO UMA ────────────────────────────────────────
  *

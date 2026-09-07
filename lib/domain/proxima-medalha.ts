@@ -8,7 +8,7 @@
  * DIGITADO — porque, na época, a tabela oficial de limiares não tinha sido
  * localizada e chutar seria pior que não ter.
  *
- * A tabela apareceu (ver `mercadolider-metas.ts`, lida em 05/09/2026), e com
+ * A tabela apareceu (ver `mercadolider-metas.ts`, lida em 07/09/2026), e com
  * ela o progresso passou a ser calculado lá: com os dois eixos que o ML de
  * fato exige (vendas E faturamento) e na janela certa (3 meses + mês vigente,
  * não os 60 dias da reputação). Manter as duas contas vivas seria repetir o

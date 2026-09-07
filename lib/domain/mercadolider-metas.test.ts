@@ -8,7 +8,7 @@ import {
 
 /**
  * A tabela da página oficial "Tudo sobre ser MercadoLíder", lida em
- * 05/09/2026. Estes testes travam os números: se alguém encostar neles sem
+ * 07/09/2026. Estes testes travam os números: se alguém encostar neles sem
  * conferir a fonte, o app volta a planejar compra em cima de chute.
  */
 describe("a tabela oficial", () => {

@@ -108,7 +108,7 @@ describe("base de conhecimento", () => {
 
 /**
  * Reputacao e MercadoLider — o que foi lido nas paginas oficiais do ML em
- * 05/09/2026. Os testes fixam a forma como a pergunta e feita de verdade,
+ * 07/09/2026. Os testes fixam a forma como a pergunta e feita de verdade,
  * nao a redacao do titulo do topico: base que so responde a pergunta exata
  * nao serve de nada num chat ("quanto falta pro gold?" nao e o titulo).
  */

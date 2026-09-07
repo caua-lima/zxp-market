@@ -18,7 +18,7 @@ import {
  *
  * Este painel pedia o limiar de faturamento na mão, porque a API não devolve
  * e chutar seria pior que não ter. A tabela oficial foi localizada em
- * 05/09/2026 na página "Tudo sobre ser MercadoLíder" e agora mora em
+ * 07/09/2026 na página "Tudo sobre ser MercadoLíder" e agora mora em
  * lib/domain/mercadolider-metas.ts — 230/575/1.725 vendas e
  * R$ 37.000/118.400/296.000.
  *
@@ -212,7 +212,7 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
           ))}
         </div>
         <div style={{ fontSize: ".7rem", color: "var(--muted)", marginTop: 8 }}>
-          Fonte: página oficial &quot;Tudo sobre ser MercadoLíder&quot; do Mercado Livre, lida em 05/09/2026.
+          Fonte: página oficial &quot;Tudo sobre ser MercadoLíder&quot; do Mercado Livre, lida em 07/09/2026.
           O faturamento do critério não conta vendas vindas de anúncios Grátis.
         </div>
       </details>
