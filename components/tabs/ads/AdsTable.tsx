@@ -8,32 +8,35 @@ import { corAcos, corMargem, corRoas, num, STATUS_META, type LinhaAds, type Modo
 /**
  * Visão analítica — uma linha por ANÚNCIO, com tudo que a decisão pede.
  *
- * ─── POR QUE ELA MUDOU DE FORMA ─────────────────────────────────────────
+ * ─── UM MODO SÓ, E É O COMPACTO ─────────────────────────────────────────
  *
- * Eram 19 colunas em rolagem horizontal. Cada uma existia por um motivo real,
- * e ainda assim a tela não servia: pra comparar dois anúncios era preciso
- * rolar de lado e voltar, perdendo de vista qual linha era qual. Informação
- * que não cabe no olho de uma vez não é informação, é arquivo.
+ * Isto já foi 19 colunas em rolagem horizontal, depois virou 9 colunas com
+ * uma segunda linha em cada célula e um alternador Confortável/Compacta.
  *
- * O formato agora é o da "Performance por campanha" — 8 colunas de dado, sem
- * rolagem —, e nada foi perdido: o que era coluna própria virou SEGUNDA LINHA
- * da célula com que tem parentesco. Impressões e cliques moram no investimento
- * (é o que ele comprou), vendas atribuídas e ACOS moram na receita (é o que
- * ela custou), break-even e ROAS ideal moram no ROAS (são metas dele).
+ * O alternador saiu. Duas densidades significavam dois lugares onde um dado
+ * podia estar, e o que estava só na segunda linha sumia justamente na
+ * Compacta — que é o modo em que se compara anúncio com anúncio. Um dado que
+ * some no modo em que se decide não está ali de verdade.
  *
- * "Compacta" some com as segundas linhas — vira a mesma tabela, só os números
- * que mandam.
+ * Agora cada número que importa tem COLUNA PRÓPRIA. Uma linha por anúncio,
+ * um número por coluna, nada escondido atrás de um botão. O detalhe fino
+ * (impressões, CTR, CPC, ACOS, break-even, lucro no ROAS ideal) mora no
+ * tooltip de cada célula e no drawer de "Ver detalhes" — lugar de consulta,
+ * não de comparação.
+ *
+ * A exceção é a primeira coluna: ali a segunda linha é IDENTIDADE, não
+ * métrica. Sem o produto e o MLB, três anúncios da mesma campanha viram três
+ * linhas idênticas e não dá pra saber em qual se está mexendo.
  *
  * ─── POR QUE A IDENTIDADE É A CAMPANHA ──────────────────────────────────
  *
  * A coluna era o título do produto. Mas o que se faz nesta tela é mexer em
  * CAMPANHA — pausar, mudar orçamento, ajustar ROAS objetivo. Ler nome de
- * produto e agir em campanha obriga a traduzir de cabeça linha por linha. O
- * produto continua ali, na segunda linha, porque é ele que se reconhece.
+ * produto e agir em campanha obriga a traduzir de cabeça linha por linha.
  */
 
-type ColunaOrdenavel = "campanha" | "investido" | "lucro" | "roas" | "margem" | "decisao";
-type Densidade = "confortavel" | "compacta";
+type ColunaOrdenavel =
+  | "campanha" | "investido" | "lucro" | "roas" | "roasobj" | "margem" | "viaads" | "decisao";
 
 function StatusTag({ l }: { l: LinhaAds }) {
   const m = STATUS_META[l.i.status];
@@ -93,14 +96,14 @@ function textoDecisao(l: LinhaAds): string {
   return l.reco.label;
 }
 
-/** A segunda linha de uma célula: o dado que explica o número de cima. */
-function Sub({ children, title, cor }: { children: React.ReactNode; title?: string; cor?: string }) {
+/** A linha de identidade sob o nome da campanha — produto e MLB. */
+function Identidade({ l }: { l: LinhaAds }) {
   return (
     <span
-      title={title}
-      style={{ display: "block", fontSize: ".64rem", fontWeight: 400, color: cor ?? "var(--muted)", cursor: title ? "help" : undefined }}
+      title={`${l.i.title || l.i.itemId} · ${l.i.itemId}`}
+      style={{ display: "block", fontSize: ".64rem", fontWeight: 400, color: "var(--muted)", cursor: "help" }}
     >
-      {children}
+      {l.i.title || l.i.itemId} · {l.i.itemId}
     </span>
   );
 }
@@ -112,8 +115,6 @@ export default function AdsTable({
 }) {
   const pub = modo === "pub";
   const [ordem, setOrdem] = useState<{ col: ColunaOrdenavel; dir: 1 | -1 }>({ col: "investido", dir: -1 });
-  const [densidade, setDensidade] = useState<Densidade>("confortavel");
-  const detalhado = densidade === "confortavel";
 
   const linhasOrdenadas = useMemo(() => {
     const arr = [...linhas];
@@ -133,7 +134,13 @@ export default function AdsTable({
         case "investido": return l.i.cost;
         case "lucro": return l.lucroAtual ?? -Infinity;
         case "roas": return l.r;
+        // Campanha sem meta configurada vai pro fim: "sem meta" não é meta
+        // baixa, e ordenar como zero misturaria as duas coisas.
+        case "roasobj": return l.i.roasTarget > 0 ? l.i.roasTarget : -Infinity;
         case "margem": return l.margemAtual ?? -Infinity;
+        // Sem venda no anúncio não há dependência a medir — vai pro fim em
+        // vez de posar de 0%, que leria como "não depende de verba".
+        case "viaads": return l.i.totalSales > 0 ? l.pctAds : -Infinity;
         // "impacto negativo primeiro" — usa o próprio lucro (menor = pior) como ordenação de impacto.
         case "decisao": return l.lucroAtual ?? -l.i.cost;
         default: return 0;
@@ -150,16 +157,16 @@ export default function AdsTable({
   const seta = (col: ColunaOrdenavel, asc: 1 | -1 = -1) =>
     (ordem.col === col ? (ordem.dir === asc ? " ↓" : " ↑") : "");
 
+  /** Alguma campanha tem meta abaixo do ROAS ideal? Só então a legenda aparece. */
+  const temMetaCurta = linhasOrdenadas.some(
+    (l) => l.i.roasTarget > 0 && l.roasIdeal != null && l.i.roasTarget < l.roasIdeal,
+  );
+
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
-        <span style={{ fontSize: ".72rem", color: "var(--muted)" }}>
-          Clique no cabeçalho pra ordenar — <b>Campanha</b> agrupa os anúncios da mesma verba.
-        </span>
-        <div className="seg">
-          <button type="button" className={`seg-btn ${detalhado ? "active" : ""}`} onClick={() => setDensidade("confortavel")}>Confortável</button>
-          <button type="button" className={`seg-btn ${!detalhado ? "active" : ""}`} onClick={() => setDensidade("compacta")}>Compacta</button>
-        </div>
+      <div style={{ fontSize: ".72rem", color: "var(--muted)", marginBottom: 6 }}>
+        Clique no cabeçalho pra ordenar — <b>Campanha</b> agrupa os anúncios da mesma verba.
+        Passe o mouse em qualquer número pra ver a conta por trás.
       </div>
 
       <div className="table-wrapper" style={{ border: "none" }}>
@@ -169,21 +176,30 @@ export default function AdsTable({
               <th style={{ textAlign: "left", cursor: "pointer" }} onClick={() => alternarOrdem("campanha", 1)} title="Ordenar por campanha — agrupa os anúncios da mesma verba">
                 Campanha{seta("campanha", 1)}
               </th>
-              <th title="Orçamento diário da campanha deste anúncio, e o ROAS objetivo que você configurou nela.">Orçamento</th>
-              <th style={{ cursor: "pointer" }} onClick={() => alternarOrdem("investido", -1)} title="Ordenar por investimento. Abaixo do valor: impressões, cliques e CTR.">
+              <th title="Orçamento diário configurado na campanha deste anúncio, no painel do Mercado Ads.">Orçamento</th>
+              {/* ROAS objetivo em coluna propria, ao lado do orcamento: sao os
+                  dois numeros que se ajusta no ML, e ve-los junto do ROAS real
+                  e o que responde "a meta que eu pus esta sendo batida?". */}
+              <th style={{ cursor: "pointer" }} onClick={() => alternarOrdem("roasobj", -1)} title="ROAS Objetivo que VOCÊ configurou na campanha, no painel do Mercado Ads. É a meta; a coluna ROAS ao lado é o resultado.">
+                ROAS obj.{seta("roasobj")}
+              </th>
+              <th style={{ cursor: "pointer" }} onClick={() => alternarOrdem("investido", -1)} title="Quanto a campanha gastou com este anúncio no período. No tooltip de cada valor: impressões, cliques, CTR e CPC.">
                 Investido{seta("investido")}
               </th>
-              <th title="Receita atribuída pelo Mercado Ads (clique direto + venda assistida) — a mesma coluna 'Receita' do painel do ML. Abaixo: vendas atribuídas e ACOS.">
+              <th title="Receita atribuída pelo Mercado Ads (clique direto + venda assistida) — a mesma coluna 'Receita' do painel do ML. No tooltip: vendas atribuídas e ACOS.">
                 Receita
               </th>
-              <th style={{ cursor: "pointer" }} onClick={() => alternarOrdem("roas", -1)} title="ROAS do painel do Mercado Ads. Abaixo: o ROAS do modo escolhido e as metas (equilíbrio e ideal).">
+              <th style={{ cursor: "pointer" }} onClick={() => alternarOrdem("roas", -1)} title="ROAS do painel do Mercado Ads. No tooltip: o ROAS do modo escolhido e as metas de equilíbrio e ideal.">
                 ROAS{seta("roas")}
               </th>
-              <th style={{ cursor: "pointer" }} onClick={() => alternarOrdem("lucro", -1)} title="Ordenar por lucratividade. Abaixo: quanto sobraria no ROAS ideal.">
+              <th style={{ cursor: "pointer" }} onClick={() => alternarOrdem("lucro", -1)} title="Ordenar por lucratividade. No tooltip: quanto sobraria no ROAS ideal.">
                 Lucro após Ads{seta("lucro")}
               </th>
-              <th style={{ cursor: "pointer" }} onClick={() => alternarOrdem("margem", -1)} title="Lucro ÷ receita. Abaixo: quanto da venda deste anúncio depende de verba.">
+              <th style={{ cursor: "pointer" }} onClick={() => alternarOrdem("margem", -1)} title="Lucro ÷ receita.">
                 Margem{seta("margem")}
+              </th>
+              <th style={{ cursor: "pointer" }} onClick={() => alternarOrdem("viaads", -1)} title="Quanto da venda deste anúncio o Mercado Ads credita à campanha. Alto = a venda depende da verba, e pausar derruba o faturamento junto.">
+                Via Ads{seta("viaads")}
               </th>
               <th style={{ textAlign: "left", cursor: "pointer" }} onClick={() => alternarOrdem("decisao", 1)} title="Ordenar por impacto — pior impacto primeiro">
                 Decisão{seta("decisao", 1)}
@@ -195,9 +211,9 @@ export default function AdsTable({
             {linhasOrdenadas.map((l) => {
               const acos = l.i.adSales > 0 ? (l.i.cost / l.i.adSales) * 100 : null;
               const metaAbaixoDoIdeal = l.i.roasTarget > 0 && l.roasIdeal != null && l.i.roasTarget < l.roasIdeal;
+              const bateuAMeta = l.i.roasTarget > 0 && l.roasMlAds != null && l.roasMlAds >= l.i.roasTarget;
               return (
                 <tr key={l.i.itemId} style={{ cursor: "pointer" }} onClick={() => onAbrirAnuncio(l.i.itemId)}>
-                  {/* ─── IDENTIDADE: CAMPANHA EM CIMA, PRODUTO EMBAIXO ─── */}
                   <td className="ads-name" style={{ textAlign: "left", fontWeight: 600, maxWidth: 260 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                       <span title={l.i.campaignName || l.i.campaignId || "Sem campanha"}>
@@ -205,122 +221,107 @@ export default function AdsTable({
                       </span>
                       <StatusTag l={l} />
                     </span>
-                    {detalhado && (
-                      <Sub title={`${l.i.title || l.i.itemId} · ${l.i.itemId}`}>
-                        {l.i.title || l.i.itemId}
-                        {" · "}{l.i.itemId}
-                      </Sub>
-                    )}
+                    <Identidade l={l} />
                   </td>
 
                   <td data-label="Orçamento" style={{ whiteSpace: "nowrap", color: l.i.dailyBudget > 0 ? "var(--text)" : "var(--muted)" }}>
                     {l.i.dailyBudget > 0 ? `${fmtBRL(l.i.dailyBudget)}/dia` : "—"}
-                    {detalhado && (
-                      /* ROAS objetivo (o que VOCÊ configurou no ML) fica junto do
-                         orçamento porque são a mesma coisa: o que se ajusta lá.
-                         O ⚠ compara com o ROAS ideal — meta configurada abaixo do
-                         que o produto precisa é invisível no painel do ML, que
-                         mostra os dois em telas separadas. */
-                      <Sub
-                        cor={metaAbaixoDoIdeal ? "var(--warning)" : undefined}
-                        title={metaAbaixoDoIdeal
-                          ? `Sua meta no ML (${num(l.i.roasTarget, 2)}x) está ABAIXO do ROAS que entrega a margem alvo (${num(l.roasIdeal!, 2)}x). Bater a meta configurada não fecha a margem.`
-                          : "ROAS objetivo configurado na campanha, no painel do Mercado Ads."}
-                      >
-                        {l.i.roasTarget > 0 ? `obj. ${num(l.i.roasTarget, 2)}x${metaAbaixoDoIdeal ? " ⚠" : ""}` : "sem ROAS obj."}
-                      </Sub>
-                    )}
                   </td>
 
-                  <td data-label="Investido" style={{ color: "var(--red)", fontWeight: 600, whiteSpace: "nowrap" }}>
+                  {/* ─── ROAS OBJETIVO: A META QUE VOCÊ PÔS NO ML ───────────
+                      O ⚠ compara com o ROAS ideal (o que a sua margem alvo
+                      exige). Meta configurada ABAIXO do que o produto precisa é
+                      invisível no painel do ML, que mostra os dois em telas
+                      separadas — e é o erro mais caro de configuração: bater a
+                      meta e ainda assim não fechar a margem. */}
+                  <td
+                    data-label="ROAS obj."
+                    title={l.i.roasTarget <= 0
+                      ? "Nenhum ROAS Objetivo configurado nesta campanha no painel do Mercado Ads."
+                      : metaAbaixoDoIdeal
+                        ? `Sua meta no ML é ${num(l.i.roasTarget, 2)}x, ABAIXO do ROAS que entrega a sua margem alvo (${num(l.roasIdeal!, 2)}x). Bater a meta configurada não fecha a margem — é ela que precisa subir.`
+                        : `Meta de ${num(l.i.roasTarget, 2)}x configurada por você na campanha.`
+                          + (l.roasIdeal != null ? ` Cobre o ROAS ideal (${num(l.roasIdeal, 2)}x).` : "")
+                          + (l.roasMlAds != null ? ` Hoje a campanha entrega ${num(l.roasMlAds, 2)}x.` : "")}
+                    style={{
+                      whiteSpace: "nowrap", fontWeight: 700, cursor: "help",
+                      color: l.i.roasTarget <= 0 ? "var(--muted)"
+                        : metaAbaixoDoIdeal ? "var(--warning)"
+                          : bateuAMeta ? "var(--green)" : "var(--text)",
+                    }}
+                  >
+                    {l.i.roasTarget > 0 ? `${num(l.i.roasTarget, 2)}x${metaAbaixoDoIdeal ? " ⚠" : ""}` : "—"}
+                  </td>
+
+                  <td
+                    data-label="Investido"
+                    title={`${num(l.i.prints)} impressões e ${num(l.i.clicks)} cliques — CTR de ${num(l.ctr, 2)}%. CPC médio ${fmtBRL(l.cpc)}.`}
+                    style={{ color: "var(--red)", fontWeight: 600, whiteSpace: "nowrap", cursor: "help" }}
+                  >
                     {fmtBRL(l.i.cost)}
-                    {detalhado && (
-                      <Sub title={`${num(l.i.prints)} impressões e ${num(l.i.clicks)} cliques — CTR de ${num(l.ctr, 2)}%. CPC médio ${fmtBRL(l.cpc)}.`}>
-                        {num(l.i.clicks)} cliq · CTR {num(l.ctr, 2)}%
-                      </Sub>
-                    )}
                   </td>
 
-                  <td data-label="Receita" style={{ color: "var(--green)", fontWeight: 600, whiteSpace: "nowrap" }}>
+                  <td
+                    data-label="Receita"
+                    title={`${num(l.i.adUnitsAtribuidas)} venda(s) atribuída(s): ${num(l.i.directUnits)} de clique direto + ${num(l.i.indirectUnits)} assistida(s). `
+                      + (acos != null ? `ACOS ${num(acos, 1)}% (investido ÷ receita atribuída, a mesma conta do painel do ML). ` : "Sem ACOS: não houve receita atribuída. ")
+                      + `A receita do modo "${pub ? "Publicidade direta" : "Geral"}" é ${fmtBRL(l.v)}.`}
+                    style={{ color: acos != null ? corAcos(acos, true) : "var(--green)", fontWeight: 600, whiteSpace: "nowrap", cursor: "help" }}
+                  >
                     {fmtBRL(l.i.adSales)}
-                    {detalhado && (
-                      <Sub
-                        cor={acos != null ? corAcos(acos, true) : undefined}
-                        title={`${num(l.i.adUnitsAtribuidas)} venda(s) atribuída(s): ${num(l.i.directUnits)} de clique direto + ${num(l.i.indirectUnits)} assistida(s). `
-                          + `ACOS = investido ÷ receita atribuída, a mesma conta do painel do ML. `
-                          + `A receita do modo "${pub ? "Publicidade direta" : "Geral"}" é ${fmtBRL(l.v)}.`}
-                      >
-                        {num(l.i.adUnitsAtribuidas)} vd
-                        {acos != null ? ` · ACOS ${num(acos, 1)}%` : " · sem ACOS"}
-                      </Sub>
-                    )}
                   </td>
 
-                  {/* ─── ROAS: O DO ML EM CIMA, O DO MODO E AS METAS EMBAIXO ───
-                      O do painel vem primeiro porque é o número que se confere
-                      contra o ML. Ter só o do modo já gerou "o ROAS está errado"
-                      (4,71x aqui contra 10,77x lá, mesmo anúncio) — são duas
-                      definições, as duas certas. */}
-                  <td data-label="ROAS" style={{ fontWeight: 700, whiteSpace: "nowrap", color: corRoas(l.roasMlAds ?? l.r) }}>
+                  {/* O ROAS do painel do ML é o que se confere contra o Mercado
+                      Ads. Ter só o do modo já gerou "o ROAS está errado" (4,71x
+                      aqui contra 10,77x lá, mesmo anúncio) — são duas
+                      definições, as duas certas; a outra vive no tooltip. */}
+                  <td
+                    data-label="ROAS"
+                    title={`Do painel do Mercado Ads: receita atribuída TOTAL (${fmtBRL(l.i.adSales)}) ÷ investido. `
+                      + `No modo "${pub ? "Publicidade direta" : "Geral"}", sobre ${fmtBRL(l.v)}, dá ${num(l.r, 2)}x. `
+                      + (l.breakEven != null ? `Equilíbrio (não perder dinheiro): ${num(l.breakEven, 2)}x. ` : "")
+                      + (l.roasIdeal != null
+                        ? `Ideal (fechar a margem alvo): ${num(l.roasIdeal, 2)}x.`
+                        : (l.motivoSemIdeal ?? ""))}
+                    style={{
+                      fontWeight: 700, whiteSpace: "nowrap", cursor: "help",
+                      color: corRoas(l.roasMlAds ?? l.r),
+                    }}
+                  >
                     {l.roasMlAds != null ? `${num(l.roasMlAds, 2)}x` : "—"}
-                    {detalhado && (
-                      <>
-                        {l.i.cost > 0 && l.roasMlAds != null && Math.abs(l.roasMlAds - l.r) > 0.01 && (
-                          <Sub title={`Acima: ROAS do painel do Mercado Ads — receita atribuída TOTAL (${fmtBRL(l.i.adSales)}) ÷ investido. Aqui: o modo "${pub ? "Publicidade direta" : "Geral"}", sobre ${fmtBRL(l.v)}.`}>
-                            {pub ? "direta" : "geral"} {num(l.r, 2)}x
-                          </Sub>
-                        )}
-                        <Sub
-                          cor={l.abaixoDoBreakEven ? "var(--red)" : l.abaixoDoIdeal ? "var(--warning)" : undefined}
-                          title={l.roasIdeal == null
-                            // O motivo é específico por caso (falta venda ×
-                            // produto não fecha conta × meta inalcançável) e
-                            // cada um pede ação diferente — ver motivoSemIdeal.
-                            ? (l.motivoSemIdeal ?? "Sem ROAS ideal calculável para este anúncio.")
-                            : "Equilíbrio: o mínimo pra não perder dinheiro. Ideal: o mínimo pra sobrar a sua margem alvo. Entre os dois o anúncio se paga mas não entrega margem."}
-                        >
-                          {l.breakEven != null ? `eq. ${num(l.breakEven, 2)}x` : "eq. —"}
-                          {" · "}
-                          {l.roasIdeal != null ? `ideal ${num(l.roasIdeal, 2)}x` : "ideal — ⓘ"}
-                        </Sub>
-                      </>
-                    )}
+                    {l.abaixoDoBreakEven && <span title="Abaixo do ROAS de equilíbrio — este anúncio perde dinheiro."> ⚠</span>}
                   </td>
 
                   <td
                     data-label="Lucro após Ads"
-                    title={l.lucroAtual == null ? "Sem venda vinculada no período pra calcular — não é prejuízo, é falta de dado." : undefined}
-                    style={{ whiteSpace: "nowrap", fontWeight: 700, color: l.lucroAtual == null ? "var(--muted)" : l.lucroAtual >= 0 ? "var(--green)" : "var(--red)" }}
+                    title={l.lucroAtual == null
+                      ? "Sem venda vinculada no período pra calcular — não é prejuízo, é falta de dado."
+                      : l.lucroNoIdeal != null
+                        ? `Hoje ${fmtBRL(l.lucroAtual)} → ${fmtBRL(l.lucroNoIdeal)} se atingisse o ROAS ideal, mantendo a receita atual. É teto de comparação entre anúncios, não promessa: cortar verba costuma derrubar a receita junto.`
+                        : (l.motivoSemIdeal ?? "Sem ROAS ideal calculável — não há lucro alvo pra projetar.")}
+                    style={{ whiteSpace: "nowrap", fontWeight: 700, cursor: "help", color: l.lucroAtual == null ? "var(--muted)" : l.lucroAtual >= 0 ? "var(--green)" : "var(--red)" }}
                   >
                     {l.lucroAtual != null ? fmtBRL(l.lucroAtual) : "—"}
-                    {detalhado && (
-                      /* O ROAS ideal em dinheiro. "62,75x" é abstrato; "+R$ 38" decide. */
-                      <Sub title={l.lucroNoIdeal == null
-                        ? (l.motivoSemIdeal ?? "Sem ROAS ideal calculável — não há lucro alvo pra projetar.")
-                        : `Hoje ${fmtBRL(l.lucroAtual ?? 0)} → ${fmtBRL(l.lucroNoIdeal)} no ROAS ideal, mantendo a receita atual. É teto de comparação entre anúncios, não promessa: cortar verba costuma derrubar a receita junto.`}
-                      >
-                        {l.lucroNoIdeal != null
-                          ? `no ideal ${fmtBRL(l.lucroNoIdeal)}${l.ganhoNoIdeal != null && l.ganhoNoIdeal > 0 ? ` (+${fmtBRL(l.ganhoNoIdeal)})` : ""}`
-                          : "sem alvo a projetar"}
-                      </Sub>
-                    )}
                   </td>
 
                   <td data-label="Margem" style={{ whiteSpace: "nowrap", fontWeight: 700, color: l.margemAtual != null ? corMargem(l.margemAtual) : "var(--muted)" }}>
                     {l.margemAtual != null ? `${num(l.margemAtual, 1)}%` : "—"}
-                    {detalhado && (
-                      /* "% via Ads" era calculado desde sempre e nunca exibido —
-                         é a pergunta "quanto deste item depende da verba?", que
-                         é o corte de decisão quando se pensa em pausar. */
-                      <Sub
-                        cor={l.i.totalSales > 0 ? corParticipacao(l.pctAds) : undefined}
-                        title={l.i.totalSales > 0
-                          ? `${fmtBRL(l.i.adSales)} de ${fmtBRL(l.i.totalSales)} vendidos neste anúncio foram creditados à campanha. Quanto maior, mais a venda depende da verba.`
-                          : "Sem venda registrada neste anúncio no período."}
-                      >
-                        {l.i.totalSales > 0 ? `${num(l.pctAds, 0)}% via Ads` : "sem venda no anúncio"}
-                      </Sub>
-                    )}
+                  </td>
+
+                  {/* Quanto desta venda depende de verba. Cor pela escala de
+                      lerParticipacao: quanto maior a fatia, maior o tombo se a
+                      campanha parar. */}
+                  <td
+                    data-label="Via Ads"
+                    title={l.i.totalSales > 0
+                      ? `${fmtBRL(l.i.adSales)} de ${fmtBRL(l.i.totalSales)} vendidos neste anúncio foram creditados à campanha (clique direto + venda assistida). Quanto maior, mais a venda depende da verba — pausar derruba o faturamento junto.`
+                      : "Sem venda registrada neste anúncio no período — não há dependência a medir."}
+                    style={{
+                      whiteSpace: "nowrap", fontWeight: 700, cursor: "help",
+                      color: l.i.totalSales <= 0 ? "var(--muted)" : corParticipacao(l.pctAds),
+                    }}
+                  >
+                    {l.i.totalSales > 0 ? `${num(l.pctAds, 0)}%` : "—"}
                   </td>
 
                   <td
@@ -346,8 +347,17 @@ export default function AdsTable({
       </div>
 
       <div style={{ marginTop: 8, fontSize: ".7rem", color: "var(--muted)" }}>
-        Impressões, CPC, TACOS e o histórico de cada anúncio ficam em &quot;Ver detalhes&quot;.
-        Cor de ROAS, margem e equilíbrio segue os mesmos limiares do resto do app.
+        Impressões, CTR, CPC, ACOS, break-even e o histórico de cada anúncio estão no
+        tooltip de cada número e em &quot;Ver detalhes&quot;.
+        Em <b>Via Ads</b>, verde é abaixo de 40% e vermelho a partir de 70% — quanto
+        maior, mais o faturamento do anúncio cai junto se a campanha parar.
+        {temMetaCurta && (
+          <>
+            {" "}O <b style={{ color: "var(--warning)" }}>⚠</b> em <b>ROAS obj.</b> marca meta
+            configurada no ML abaixo do ROAS que fecha a sua margem alvo: bater essa meta
+            não basta.
+          </>
+        )}
       </div>
     </div>
   );
