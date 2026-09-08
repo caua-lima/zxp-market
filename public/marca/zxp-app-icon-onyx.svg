@@ -1,4 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
 <rect width="200" height="200" rx="44" fill="#10100E"/>
-<g transform="translate(24,24) scale(0.76)"><polyline points="30,47 170,47 30,153 170,153" fill="none" stroke-width="34" stroke-linejoin="miter" stroke-linecap="butt" stroke="#F4B942"/></g>
+<polyline points="30,47 170,47 30,153 170,153" fill="none" stroke-width="34" stroke-linejoin="miter" stroke-linecap="butt" stroke="#F4B942"/>
 </svg>

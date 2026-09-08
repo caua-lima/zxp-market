@@ -17,10 +17,15 @@ import { MARCA_DOURADO, MARCA_ONYX } from "@/lib/marca";
  * Sem gradiente e sem detalhe fino de propósito — a marca tem que ler igual
  * em 16px (favicon) e em 512px (ícone de app).
  */
-export function ZxpMark({ size = 30, radius = 24 }: { size?: number; radius?: number }) {
-  // O raio chega na escala 0-100 (uso histórico do componente); o viewBox
-  // agora é 0-200, então dobra pra manter o arredondamento igual ao pedido.
-  const rx = radius * 2;
+/**
+ * @param radius raio dos cantos NA ESCALA DO viewBox (0-200). O padrão 44 é o
+ *   do guia de identidade. Antes o valor chegava na escala 0-100 e era
+ *   dobrado aqui dentro, o que dava 48 no padrão — perto de 44, e diferente.
+ *   Ninguém passava o parâmetro, então a conversão só existia pra manter um
+ *   uso histórico que já não havia.
+ */
+export function ZxpMark({ size = 30, radius = 44 }: { size?: number; radius?: number }) {
+  const rx = radius;
   return (
     <svg
       width={size}

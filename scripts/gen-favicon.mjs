@@ -1,6 +1,19 @@
-// Gera app/favicon.ico (32x32, 32bpp com alpha) desenhando o mesmo logomark
-// usado em components/ZxpMark.tsx e app/icon.tsx: quadrado amarelo
-// dourado assinatura (#F4B942) com um "Z" onyx (#10100E).
+// ⚠ DESATUALIZADO — NÃO RODE SEM CORRIGIR ANTES.
+//
+// Este script desenha o "Z" como POLÍGONO PREENCHIDO de 10 vértices (Z_POLY
+// abaixo), que é a aproximação feita à mão e já substituída em todo o resto
+// do app: a marca real é uma POLILINHA com traço de espessura 34 (ver
+// lib/marca.ts, fonte única do desenho). As cores também estão invertidas em
+// relação ao guia de identidade — aqui o fundo é dourado e o Z é onyx.
+//
+// Rodar como está sobrescreveria app/favicon.ico com um símbolo que não é
+// mais o da marca. Não está ligado a nenhum script do package.json e não há
+// .ico versionado no repositório, então hoje ele não roda sozinho.
+//
+// Pra consertar: rasterizar o traço de lib/marca.ts em vez de preencher
+// Z_POLY, e usar onyx como fundo com o Z dourado.
+//
+// Gera app/favicon.ico (32x32, 32bpp com alpha) desenhando o logomark:
 //
 // Existe porque Next.js não gera favicon.ico a partir de código (só icon.tsx,
 // que produz PNG); browsers/OS que buscam /favicon.ico direto ainda precisam
