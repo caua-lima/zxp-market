@@ -43,11 +43,28 @@ export function formatTaxaDecimal(v: number | null | undefined): string | null {
   return `${(v * 100).toFixed(1)}%`;
 }
 
+/**
+ * A cor de cada degrau do termometro, como o app pinta.
+ *
+ * ─── POR QUE LARANJA NAO PODE SER O DOURADO DA MARCA ────────────────────
+ *
+ * "2_orange" vinha com #F4B942 cravado, que e o dourado de ASSINATURA — a
+ * cor de acao/CTA. Duas consequencias, as duas ruins:
+ *
+ *   · --yellow tambem e o dourado desde a unificacao dos tokens, entao
+ *     "Amarelo" e "Laranja" — dois degraus DIFERENTES do termometro do ML —
+ *     saiam exatamente da mesma cor. O degrau ficava ilegivel.
+ *   · um estado de alerta vestia a cor de acao da marca, que o guia de
+ *     identidade manda manter visualmente distinta.
+ *
+ * --warning e o laranja operacional (#FF8A1F), que e literalmente a cor do
+ * degrau. E o unico dos cinco que precisava mudar.
+ */
 const LEVEL_META: Record<string, { label: string; cor: string }> = {
   "5_green": { label: "Verde — melhor nível", cor: "var(--green)" },
   "4_light_green": { label: "Verde claro", cor: "var(--green)" },
   "3_yellow": { label: "Amarelo — atenção", cor: "var(--yellow)" },
-  "2_orange": { label: "Laranja — atenção", cor: "#F4B942" },
+  "2_orange": { label: "Laranja — atenção", cor: "var(--warning)" },
   "1_red": { label: "Vermelho — crítico", cor: "var(--red)" },
 };
 
