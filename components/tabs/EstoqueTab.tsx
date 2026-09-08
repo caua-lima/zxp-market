@@ -619,7 +619,7 @@ function ProductRow({
                   <span key={mlb} style={{ fontSize: ".7rem", background: "var(--surface2)", border: "1px solid var(--border)", padding: "1px 6px", borderRadius: 5, color: "var(--muted)" }}>
                     {mlb}
                     {item && item.price > 0 && <b style={{ color: "var(--green)", marginLeft: 4 }}>{fmtBRL(item.price)}</b>}
-                    {item && item.hasPromo && <span style={{ marginLeft: 4, fontSize: ".62rem", color: "#F4B942", fontWeight: 700 }}>promo</span>}
+                    {item && item.hasPromo && <span style={{ marginLeft: 4, fontSize: ".62rem", color: "var(--accent)", fontWeight: 700 }}>promo</span>}
                     {item && <span style={{ marginLeft: 4, color: ehFullLogistic(item.logistic) ? "#E9A92D" : "var(--muted)" }}>{ehFullLogistic(item.logistic) ? "Full" : "próprio"}</span>}
                   </span>
                 ))}
@@ -667,7 +667,7 @@ function ProductRow({
         </td>
         <td data-label="Preço venda" style={{ textAlign: "right", color: precoMax > 0 ? "var(--green)" : "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }}>
           {precoMax > 0 ? (precoMin === precoMax ? fmtBRL(precoMax) : `${fmtBRL(precoMin)}–${fmtBRL(precoMax)}`) : "—"}
-          {temPromo && <span style={{ display: "block", fontSize: ".62rem", color: "#F4B942" }}>promoção</span>}
+          {temPromo && <span style={{ display: "block", fontSize: ".62rem", color: "var(--accent)" }}>promoção</span>}
         </td>
         <td data-label="Imposto" style={{ textAlign: "right", whiteSpace: "nowrap", color: imposto > 0 ? "var(--red)" : "var(--muted)" }}>{imposto > 0 ? `${imposto.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : "—"}</td>
         <td data-label="Movimentar" data-cell="acoes">
@@ -731,7 +731,7 @@ function AgenciasModal({ product, estoqueML, onClose }: { product: Product; esto
                 <div style={{ fontFamily: "ui-monospace, monospace", fontSize: ".8rem", fontWeight: 700 }}>{mlb}</div>
                 {!!item?.price && (
                   <div style={{ fontSize: ".76rem", color: "var(--green)" }}>
-                    {fmtBRL(item.price)}{item.hasPromo && <span style={{ color: "#F4B942" }}> · promoção</span>}
+                    {fmtBRL(item.price)}{item.hasPromo && <span style={{ color: "var(--accent)" }}> · promoção</span>}
                   </div>
                 )}
               </div>
@@ -949,7 +949,7 @@ function MovimentoModal({ product, tipo, estoqueML, onClose, onSaved }: { produc
       )}
 
       {tipo === "saida_full" && (
-        <div style={{ margin: "4px 0 12px", padding: "8px 12px", borderRadius: 8, background: "rgba(244,185,66,.08)", border: "1px solid rgba(244,185,66,.25)", fontSize: ".78rem", color: "var(--muted)" }}>
+        <div style={{ margin: "4px 0 12px", padding: "8px 12px", borderRadius: 8, background: "rgba(var(--brand-rgb),.08)", border: "1px solid rgba(var(--brand-rgb),.25)", fontSize: ".78rem", color: "var(--muted)" }}>
           Baixa por <b>envio ao Full</b> — sai de casa e vai pro Full, mas <b>não é venda</b>. Não afeta o lucro; o custo só entra quando o produto vende.
         </div>
       )}
@@ -1824,98 +1824,98 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
         </>
       ) : aba === "full" ? (
         <>
-          {/* ─── PLANEJAMENTO DA SEMANA ───────────────────────────────
-              Responde "quanto enviar pra durar ate a data X", que e como a
-              decisao e tomada de verdade: a coleta tem dia, o fim de semana
-              tem dia. Traduzir isso pra "16 dias" de cabeca toda vez e onde
-              se erra — hoje sao 16, amanha sao 15.
-
-              O ML mostra uma sugestao parecida na tela de envio, mas ela NAO
-              e exposta pela API: oito endpoints testados, todos 404 ou 403.
-              Entao o numero e calculado aqui, e a conta fica a vista. */}
-          <div style={{ border: "1px solid var(--accent)", borderRadius: 10, padding: 12, marginBottom: 14, background: "var(--surface2)" }}>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 10 }}>
-              <div className="config-field" style={{ margin: 0, maxWidth: 190 }}>
-                <label>Precisa durar até</label>
-                <input type="date" value={alvoData} onChange={(e) => setAlvoData(e.target.value)} />
-              </div>
-              <div className="config-field" style={{ margin: 0, maxWidth: 150 }}>
-                <label>Trânsito (dias)</label>
-                <input inputMode="numeric" value={transito} onChange={(e) => setTransito(e.target.value)} />
-                <div className="hint">Coleta + processamento no CD.</div>
-              </div>
-              <button
-                type="button" className="btn btn-ghost btn-sm" style={{ marginBottom: 18 }}
-                onClick={() => setAlvoData(fimDaSemanaQueVem(hojeBR()))}
-              >
-                Fim da semana que vem
-              </button>
-            </div>
-
-            <div style={{ fontSize: ".8rem", marginBottom: 8 }}>
-              Cobrindo <b>{planoSemana.diasAteAlvo} dia(s)</b> de venda
-              {transitoN > 0 ? <> + <b>{transitoN}</b> de trânsito</> : null} ·{" "}
-              <b style={{ color: "var(--green)" }}>{planoSemana.totalAEnviar} un</b> a despachar
-              {planoSemana.totalAComprar > 0 && (
-                <> · <b style={{ color: "var(--warning)" }}>{planoSemana.totalAComprar} un</b> que o galpão não cobre</>
-              )}
-            </div>
-
-            {planoSemana.itens.length === 0 ? (
-              <div style={{ fontSize: ".82rem", color: "var(--green)" }}>
-                O Full já cobre até lá em todos os produtos. Nada a enviar.
-              </div>
-            ) : (
-              <>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  {planoSemana.itens.map((i) => (
-                    <div key={i.produtoId} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: ".82rem" }}>
-                      <span>
-                        {i.naoChega && (
-                          <span className="chip chip-red" style={{ marginRight: 6 }} title={`O Full de hoje não alcança ${alvoData}.`}>
-                            não chega
-                          </span>
-                        )}
-                        {i.nome}
-                        <span style={{ color: "var(--muted)", fontSize: ".72rem" }}>
-                          {" "}· {i.noFull} no Full · {i.mediaDiaria.toFixed(1)}/dia
-                        </span>
-                      </span>
-                      <span style={{ whiteSpace: "nowrap" }}>
-                        <b style={{ color: i.enviar > 0 ? "var(--green)" : "var(--muted)" }}>
-                          {i.enviar > 0 ? `enviar ${i.enviar} un` : "sem estoque em casa"}
-                        </b>
-                        {i.faltaComprar > 0 && (
-                          <span style={{ color: "var(--warning)" }}> · comprar {i.faltaComprar}</span>
-                        )}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  type="button" className="btn btn-ghost btn-xs" style={{ marginTop: 10 }}
-                  onClick={() => {
-                    const linhas = [
-                      `Envio pro Full — durar até ${alvoData.split("-").reverse().join("/")}`,
-                      `(${planoSemana.diasAteAlvo} dias de venda + ${transitoN} de trânsito)`,
-                      "",
-                      ...planoSemana.itens
-                        .filter((i) => i.enviar > 0)
-                        .map((i) => `${i.nome}: ${i.enviar} un`),
-                      "",
-                      `Total: ${planoSemana.totalAEnviar} un`,
-                      ...(planoSemana.totalAComprar > 0
-                        ? [`Falta comprar: ${planoSemana.totalAComprar} un`] : []),
-                    ];
-                    navigator.clipboard?.writeText(linhas.join("\n")).catch(() => {});
-                  }}
-                >
-                  Copiar lista
-                </button>
-              </>
-            )}
-          </div>
-
+          {/* ─── PLANEJAMENTO DA SEMANA ───────────────────────────────
+              Responde "quanto enviar pra durar ate a data X", que e como a
+              decisao e tomada de verdade: a coleta tem dia, o fim de semana
+              tem dia. Traduzir isso pra "16 dias" de cabeca toda vez e onde
+              se erra — hoje sao 16, amanha sao 15.
+
+              O ML mostra uma sugestao parecida na tela de envio, mas ela NAO
+              e exposta pela API: oito endpoints testados, todos 404 ou 403.
+              Entao o numero e calculado aqui, e a conta fica a vista. */}
+          <div style={{ border: "1px solid var(--accent)", borderRadius: 10, padding: 12, marginBottom: 14, background: "var(--surface2)" }}>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 10 }}>
+              <div className="config-field" style={{ margin: 0, maxWidth: 190 }}>
+                <label>Precisa durar até</label>
+                <input type="date" value={alvoData} onChange={(e) => setAlvoData(e.target.value)} />
+              </div>
+              <div className="config-field" style={{ margin: 0, maxWidth: 150 }}>
+                <label>Trânsito (dias)</label>
+                <input inputMode="numeric" value={transito} onChange={(e) => setTransito(e.target.value)} />
+                <div className="hint">Coleta + processamento no CD.</div>
+              </div>
+              <button
+                type="button" className="btn btn-ghost btn-sm" style={{ marginBottom: 18 }}
+                onClick={() => setAlvoData(fimDaSemanaQueVem(hojeBR()))}
+              >
+                Fim da semana que vem
+              </button>
+            </div>
+
+            <div style={{ fontSize: ".8rem", marginBottom: 8 }}>
+              Cobrindo <b>{planoSemana.diasAteAlvo} dia(s)</b> de venda
+              {transitoN > 0 ? <> + <b>{transitoN}</b> de trânsito</> : null} ·{" "}
+              <b style={{ color: "var(--green)" }}>{planoSemana.totalAEnviar} un</b> a despachar
+              {planoSemana.totalAComprar > 0 && (
+                <> · <b style={{ color: "var(--warning)" }}>{planoSemana.totalAComprar} un</b> que o galpão não cobre</>
+              )}
+            </div>
+
+            {planoSemana.itens.length === 0 ? (
+              <div style={{ fontSize: ".82rem", color: "var(--green)" }}>
+                O Full já cobre até lá em todos os produtos. Nada a enviar.
+              </div>
+            ) : (
+              <>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {planoSemana.itens.map((i) => (
+                    <div key={i.produtoId} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: ".82rem" }}>
+                      <span>
+                        {i.naoChega && (
+                          <span className="chip chip-red" style={{ marginRight: 6 }} title={`O Full de hoje não alcança ${alvoData}.`}>
+                            não chega
+                          </span>
+                        )}
+                        {i.nome}
+                        <span style={{ color: "var(--muted)", fontSize: ".72rem" }}>
+                          {" "}· {i.noFull} no Full · {i.mediaDiaria.toFixed(1)}/dia
+                        </span>
+                      </span>
+                      <span style={{ whiteSpace: "nowrap" }}>
+                        <b style={{ color: i.enviar > 0 ? "var(--green)" : "var(--muted)" }}>
+                          {i.enviar > 0 ? `enviar ${i.enviar} un` : "sem estoque em casa"}
+                        </b>
+                        {i.faltaComprar > 0 && (
+                          <span style={{ color: "var(--warning)" }}> · comprar {i.faltaComprar}</span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button" className="btn btn-ghost btn-xs" style={{ marginTop: 10 }}
+                  onClick={() => {
+                    const linhas = [
+                      `Envio pro Full — durar até ${alvoData.split("-").reverse().join("/")}`,
+                      `(${planoSemana.diasAteAlvo} dias de venda + ${transitoN} de trânsito)`,
+                      "",
+                      ...planoSemana.itens
+                        .filter((i) => i.enviar > 0)
+                        .map((i) => `${i.nome}: ${i.enviar} un`),
+                      "",
+                      `Total: ${planoSemana.totalAEnviar} un`,
+                      ...(planoSemana.totalAComprar > 0
+                        ? [`Falta comprar: ${planoSemana.totalAComprar} un`] : []),
+                    ];
+                    navigator.clipboard?.writeText(linhas.join("\n")).catch(() => {});
+                  }}
+                >
+                  Copiar lista
+                </button>
+              </>
+            )}
+          </div>
+
           {planoFull.urgentes.length > 0 && (
             <div className="note note-danger" style={{ marginBottom: 12 }}>
               <b>{planoFull.urgentes.length} produto(s) com o Full acabando antes dos {diasN} dias.</b>{" "}
@@ -2393,7 +2393,7 @@ function ImpostoMassaModal({ uid, produtos, escopoBusca, onClose }: {
                 <span style={{ flex: 1, minWidth: 0, fontSize: ".84rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {p.name || "Sem nome"}
                 </span>
-                <span style={{ fontSize: ".74rem", color: atual > 0 ? "#F4B942" : "var(--muted)", whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: ".74rem", color: atual > 0 ? "var(--accent)" : "var(--muted)", whiteSpace: "nowrap" }}>
                   {atual > 0 ? `hoje ${atual}%` : "sem imposto"}
                 </span>
               </label>

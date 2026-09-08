@@ -1,5 +1,7 @@
 "use client";
 
+import { MARCA_DOURADO, MARCA_ONYX } from "@/lib/marca";
+
 /**
  * Logomark oficial da ZXP Solutions.
  *
@@ -28,11 +30,11 @@ export function ZxpMark({ size = 30, radius = 24 }: { size?: number; radius?: nu
       aria-hidden="true"
       focusable="false"
     >
-      <rect width="200" height="200" rx={rx} fill="#10100E" />
+      <rect width="200" height="200" rx={rx} fill={MARCA_ONYX} />
       <polyline
         points="30,47 170,47 30,153 170,153"
         fill="none"
-        stroke="#F4B942"
+        stroke={MARCA_DOURADO}
         strokeWidth="34"
         strokeLinejoin="miter"
         strokeLinecap="butt"

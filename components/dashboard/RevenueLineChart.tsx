@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { MARCA_DOURADO, MARCA_DOURADO_SUAVE } from "@/lib/marca";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -57,13 +58,13 @@ export default function RevenueLineChart({ serie, loading, onSelectDay }: Props)
       {
         label: modo === "diario" ? "Faturamento líquido do dia" : "Faturamento líquido acumulado",
         data: valores,
-        borderColor: "#F4B942",
-        backgroundColor: "rgba(244,185,66,.12)",
+        borderColor: MARCA_DOURADO,
+        backgroundColor: MARCA_DOURADO_SUAVE,
         fill: true,
         tension: 0.3,
         pointRadius: 3,
         pointHoverRadius: 5,
-        pointBackgroundColor: "#F4B942",
+        pointBackgroundColor: MARCA_DOURADO,
         borderWidth: 2,
       },
     ],

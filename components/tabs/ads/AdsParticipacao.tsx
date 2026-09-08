@@ -60,7 +60,7 @@ export default function AdsParticipacao({
               <div title={`Clique direto: ${num(p.direta, 1)}%`} style={{ width: `${Math.min(p.direta, 100)}%`, background: "var(--brand)" }} />
               <div
                 title={`Assistida (viu o anúncio, comprou por outro caminho): ${num(Math.max((p.comAssistidas ?? 0) - p.direta, 0), 1)}%`}
-                style={{ width: `${Math.min(Math.max((p.comAssistidas ?? 0) - p.direta, 0), 100)}%`, background: "rgba(244,185,66,.4)" }}
+                style={{ width: `${Math.min(Math.max((p.comAssistidas ?? 0) - p.direta, 0), 100)}%`, background: "rgba(var(--brand-rgb),.4)" }}
               />
             </div>
           )}

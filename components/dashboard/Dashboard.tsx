@@ -19,6 +19,7 @@ import {
 } from "@/lib/domain/calc";
 import { calcularMetaDiaria, idealAteHoje } from "@/lib/domain/meta-diaria";
 import { diaEmFoco, rotuloDoDia } from "@/lib/domain/dia-em-foco";
+import { MARCA_DOURADO } from "@/lib/marca";
 import {
   custoPorPedido, margemReal, margemSemAds, roasBreakEven, roasDireto, roasGeral,
   receitaForaDoCalculo, ticketMedio, unidadesPorPedido, variacao, type EntradaDia,
@@ -151,7 +152,7 @@ type Devolucao = {
  * repetido em duas fatias, que ficavam indistinguíveis lado a lado.
  */
 const COST_COLORS = {
-  cmv:  "#F4B942", // custo da mercadoria — ouro, é o maior bloco (série principal)
+  cmv:  MARCA_DOURADO, // custo da mercadoria — ouro, é o maior bloco (série principal)
   full: "#5B8DEF", // frete/Full — azul aço
   taxa: "#C98218", // taxas do ML — âmbar queimado
   imp:  "#B9B5A6", // impostos — marfim apagado

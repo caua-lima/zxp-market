@@ -19,7 +19,7 @@ import { calcularMetaDiaria, idealAteHoje } from "@/lib/domain/meta-diaria";
 type MetricsAtivo = { faturamentoLiquido: number; lucroComCustos: number; margemComCustos: number; faturamentoHoje: number };
 
 const TONE_COLOR: Record<string, string> = {
-  success: "var(--success,var(--green))", warning: "var(--warning,#F4B942)",
+  success: "var(--success,var(--green))", warning: "var(--warning)",
   danger: "var(--danger,var(--red))", neutral: "var(--brand,var(--accent))",
 };
 
@@ -381,8 +381,8 @@ function GoalEntryRow({
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
           {chip("Meta 1", entry.meta1, "#E9A92D")}
-          {chip("Meta 2", entry.meta2, "#F4B942")}
-          {chip("Meta 3", entry.meta3, "#F4B942")}
+          {chip("Meta 2", entry.meta2, "var(--accent)")}
+          {chip("Meta 3", entry.meta3, "var(--accent)")}
           <span className="chip chip-green">margem {entry.metaMargem ?? 10}%</span>
         </div>
       </div>

@@ -10,6 +10,7 @@ import {
 } from "chart.js";
 import { Doughnut } from "react-chartjs-2";
 import { fmtBRL } from "@/lib/domain/calc";
+import { MARCA_DOURADO } from "@/lib/marca";
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
@@ -73,7 +74,7 @@ export default function ExpensesDoughnut({ produto, envio = 0, taxasML, imposto 
         // barra de composição de custos e este gráfico mostram os mesmos
         // valores, então a cor de cada custo tem que bater nos dois.
         backgroundColor: [
-          "#F4B942", // Produto (CMV)
+          MARCA_DOURADO, // Produto (CMV)
           "#5B8DEF", // Frete (envio)
           "#C98218", // Taxas ML
           "#B9B5A6", // Imposto

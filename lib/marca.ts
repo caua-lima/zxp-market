@@ -15,6 +15,14 @@
 
 export const MARCA_ONYX = "#10100E";
 export const MARCA_DOURADO = "#F4B942";
+/**
+ * O dourado suave usado como area preenchida nos graficos.
+ *
+ * Chart.js desenha em canvas e nao enxerga custom property de CSS, entao aqui
+ * a cor precisa ser literal. Ficar como literal DENTRO deste modulo mantem
+ * uma fonte so — espalhada pelos componentes de grafico, ja eram tres copias.
+ */
+export const MARCA_DOURADO_SUAVE = "rgba(244,185,66,.12)";
 
 /** Traço do "Z" — idêntico ao arquivo de marca, sem reescalar. */
 const TRACO = 'points="30,47 170,47 30,153 170,153" fill="none" stroke-width="34" stroke-linejoin="miter" stroke-linecap="butt"';

@@ -13,6 +13,10 @@
   /* Tokens de marca — fonte única de verdade, nomeados como no guia de marca. */
   --color-onyx:#10100E;
   --color-gold:#F4B942;
+  /* O mesmo dourado em componentes RGB crus. Existe porque rgba() nao aceita
+     um hex vindo de var() — sem ele, cada transparencia do dourado repetia
+     "244,185,66" na mao, e havia 14 copias espalhadas pelo arquivo. */
+  --brand-rgb:244,185,66;
   --color-ivory:#F6F3E8;
   --color-alert-operational:#FF8A1F; /* laranja VAZXPRESS — só alerta operacional, nunca decoração/CTA */
 }
@@ -39,7 +43,7 @@
      tonalidade de "ação" competindo com a marca; agora os dois são a MESMA
      cor. --accent-hover continua mais escuro, só pro estado de :hover. */
   --brand:var(--color-gold);
-  --accent:var(--color-gold);--accent-hover:#C98218;--accent-glow:rgba(244,185,66,0.22);
+  --accent:var(--color-gold);--accent-hover:#C98218;--accent-glow:rgba(var(--brand-rgb),0.22);
   --focus:#FFD76A;--focus-bg:rgba(255,215,106,0.14);
   --green:#36B37E;--green-bg:rgba(54,179,126,0.12);
   --red:#D65A4A;--red-bg:rgba(214,90,74,0.12);
@@ -71,7 +75,7 @@
   --text-muted:#838278;
 
   --brand-strong:#E8A91D;
-  --brand-soft:rgba(244,185,66,0.12);
+  --brand-soft:rgba(var(--brand-rgb),0.12);
 
   --success:#3CCB83;--success-soft:rgba(60,203,131,0.12);
   /* --warning = laranja operacional da VAZXPRESS (#FF8A1F), não um amber
@@ -97,7 +101,7 @@
 .severity-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:var(--radius-chip);font-size:.72rem;font-weight:700;white-space:nowrap;border:1px solid transparent}
 .severity-critical{background:var(--danger-soft);color:var(--danger);border-color:rgba(239,102,88,.35)}
 .severity-warning{background:var(--warning-soft);color:var(--warning);border-color:rgba(242,169,59,.35)}
-.severity-opportunity{background:var(--brand-soft);color:var(--brand);border-color:rgba(244,185,66,.35)}
+.severity-opportunity{background:var(--brand-soft);color:var(--brand);border-color:rgba(var(--brand-rgb),.35)}
 .severity-success{background:var(--success-soft);color:var(--success);border-color:rgba(60,203,131,.35)}
 .severity-info{background:var(--info-2-soft);color:var(--info-2);border-color:rgba(110,157,248,.35)}
 
@@ -117,7 +121,7 @@ h1,h2,h3,.font-display,.tab-title,.panel-title,.kpi .k-val,.hero-stat .val,
 .meta-atual,.summary-card .card-value,.dre-line .dre-val{font-family:var(--font-display)}
 header{text-align:center;margin-bottom:28px}
 header h1{font-size:clamp(1.4rem,4vw,2rem);font-weight:700}
-header h1 .logo-text{background:linear-gradient(135deg,#E9A92D,#F4B942);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;display:inline-block}
+header h1 .logo-text{background:linear-gradient(135deg,var(--accent-hover),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;display:inline-block}
 header h1 .logo-emoji{margin-right:8px;color:var(--accent);}
 header p{color:var(--muted);font-size:.9rem;margin-top:4px}
 .date-badge{display:inline-block;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 14px;font-size:.8rem;color:var(--muted);margin-top:10px}
@@ -209,9 +213,9 @@ tbody td{padding:11px 13px;white-space:nowrap}
 .summary-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;position:relative;overflow:hidden;transition:transform .18s}
 .summary-card:hover{transform:translateY(-2px)}
 .summary-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
-.card-bruto::before{background:linear-gradient(90deg,var(--accent),#F4B942)}
+.card-bruto::before{background:var(--accent)}
 .card-liquido::before{background:linear-gradient(90deg,var(--green),#36B37E)}
-.card-roas::before{background:linear-gradient(90deg,var(--yellow),#F4B942)}
+.card-roas::before{background:var(--accent)}
 .card-receita::before{background:linear-gradient(90deg,#FFD76A,#E9A92D)}
 .summary-card .card-label{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
 .summary-card .card-value{font-size:1.55rem;font-weight:700;line-height:1.1}
@@ -231,13 +235,13 @@ tbody td{padding:11px 13px;white-space:nowrap}
 .meta-card.achieved{border-color:var(--green)}
 .meta-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
 .meta-card-1::before{background:linear-gradient(90deg,#E9A92D,#FFD76A)}
-.meta-card-2::before{background:linear-gradient(90deg,var(--yellow),#F4B942)}
-.meta-card-3::before{background:linear-gradient(90deg,var(--purple),#F4B942)}
+.meta-card-2::before{background:var(--accent)}
+.meta-card-3::before{background:linear-gradient(90deg,var(--purple),var(--accent))}
 .meta-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
 .meta-badge{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;font-weight:700;padding:3px 10px;border-radius:20px}
 .meta-badge-1{background:rgba(233,169,45,.15);color:#E9A92D;border:1px solid #E9A92D}
-.meta-badge-2{background:rgba(244,185,66,.15);color:var(--yellow);border:1px solid var(--yellow)}
-.meta-badge-3{background:rgba(244,185,66,.15);color:var(--purple);border:1px solid var(--purple)}
+.meta-badge-2{background:rgba(var(--brand-rgb),.15);color:var(--yellow);border:1px solid var(--yellow)}
+.meta-badge-3{background:rgba(var(--brand-rgb),.15);color:var(--purple);border:1px solid var(--purple)}
 .meta-locked-badge{font-size:.75rem;color:var(--muted);display:flex;align-items:center;gap:4px}
 .meta-valores{display:flex;align-items:baseline;gap:6px;margin-bottom:14px}
 .meta-atual{font-size:1.5rem;font-weight:700}
@@ -258,8 +262,8 @@ tbody td{padding:11px 13px;white-space:nowrap}
 .pbar-fill{position:absolute;left:0;top:0;height:100%;border-radius:99px;transition:width .5s ease}
 .pbar-label{position:absolute;top:50%;transform:translateY(-50%);font-size:10px;font-weight:700;color:var(--text);text-shadow:0 1px 3px rgba(0,0,0,.7);white-space:nowrap}
 .fill-blue{background:linear-gradient(90deg,#E9A92D,#FFD76A)}
-.fill-yellow{background:linear-gradient(90deg,var(--yellow),#F4B942)}
-.fill-purple{background:linear-gradient(90deg,var(--purple),#F4B942)}
+.fill-yellow{background:var(--accent)}
+.fill-purple{background:linear-gradient(90deg,var(--purple),var(--accent))}
 .fill-green{background:linear-gradient(90deg,var(--green),#36B37E)}
 
 /* History */
@@ -359,7 +363,7 @@ canvas.chart-canvas{width:100%!important;height:100%!important}
 /* Hero (Vendas do dia) */
 /* Faixa amarela fina no topo do card principal ("Vendas do dia") — o
    destaque de identidade ML pedido pra este card, sem tingir o fundo. */
-.hero{position:relative;overflow:hidden;background:radial-gradient(1200px 400px at 0% 0%,rgba(244,185,66,.06),transparent),linear-gradient(135deg,#16150F,#26251D);border:1px solid var(--border);border-radius:16px;padding:22px 24px;box-shadow:var(--shadow)}
+.hero{position:relative;overflow:hidden;background:radial-gradient(1200px 400px at 0% 0%,rgba(var(--brand-rgb),.06),transparent),linear-gradient(135deg,#16150F,#26251D);border:1px solid var(--border);border-radius:16px;padding:22px 24px;box-shadow:var(--shadow)}
 .hero::before{content:'';position:absolute;left:0;right:0;top:0;height:3px;background:var(--brand)}
 .hero-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px}
 .hero-title{display:inline-flex;align-items:center;gap:8px;font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;font-weight:800;color:var(--text)}
@@ -377,7 +381,7 @@ canvas.chart-canvas{width:100%!important;height:100%!important}
 .kpi::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--muted)}
 .kpi.k-pos::before{background:linear-gradient(180deg,var(--green),#36B37E)}
 .kpi.k-neg::before{background:linear-gradient(180deg,var(--red),#E68B7E)}
-.kpi.k-acc::before{background:linear-gradient(180deg,var(--accent),#F4B942)}
+.kpi.k-acc::before{background:var(--accent)}
 .kpi.k-warn::before{background:linear-gradient(180deg,var(--warning),#FF8A1F)}
 .kpi .k-lbl{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;font-weight:500}
 /* Sora 30px/700 nos números — é o elemento que o vendedor lê primeiro, e o
@@ -446,7 +450,7 @@ canvas.chart-canvas{width:100%!important;height:100%!important}
 .ped-card-cell span{color:var(--muted)}
 .ped-card-cell b{font-variant-numeric:tabular-nums}
 .ped-badge{font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:5px}
-.ped-badge.semcad{color:#F4B942;background:rgba(244,185,66,.12)}
+.ped-badge.semcad{color:var(--accent);background:rgba(var(--brand-rgb),.12)}
 .ped-badge.multi{color:var(--accent);background:rgba(233,169,45,.14)}
 
 /* conteúdo principal */
@@ -617,7 +621,7 @@ canvas.chart-canvas{width:100%!important;height:100%!important}
 .note{font-size:.8rem;color:var(--muted);border-radius:10px;padding:11px 14px;line-height:1.6;border:1px solid}
 .note b,.note strong{color:var(--text);font-weight:700}
 .note-accent{background:rgba(233,169,45,.06);border-color:rgba(233,169,45,.22)}
-.note-purple{background:rgba(244,185,66,.07);border-color:rgba(244,185,66,.24)}
+.note-purple{background:rgba(var(--brand-rgb),.07);border-color:rgba(var(--brand-rgb),.24)}
 .note-warn{background:var(--warning-soft);border-color:rgba(255,138,31,.4);color:var(--warning)}
 .note-warn b,.note-warn strong{color:var(--warning)}
 .note-danger{background:rgba(214,90,74,.08);border-color:rgba(214,90,74,.32);color:#E68B7E}
@@ -640,7 +644,7 @@ canvas.chart-canvas{width:100%!important;height:100%!important}
 .chip-accent{background:rgba(233,169,45,.14);border-color:var(--accent);color:var(--accent)}
 .chip-green{background:var(--green-bg);border-color:var(--green);color:var(--green)}
 .chip-yellow{background:var(--warning-soft);border-color:var(--warning);color:var(--warning)}
-.chip-purple{background:rgba(244,185,66,.16);border-color:var(--purple);color:var(--purple)}
+.chip-purple{background:rgba(var(--brand-rgb),.16);border-color:var(--purple);color:var(--purple)}
 .chip-red{background:var(--red-bg);border-color:var(--red);color:var(--red)}
 
 /* ---- Formulários em grade ---- */
@@ -854,7 +858,7 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
 .goals-tier-stepper{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
 .goals-tier{display:inline-flex;align-items:center;gap:5px;font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:8px;border:1px solid var(--border)}
 .goals-tier-done{color:var(--success);background:var(--success-soft);border-color:rgba(60,203,131,.3)}
-.goals-tier-current{color:var(--brand);background:var(--brand-soft);border-color:rgba(244,185,66,.35)}
+.goals-tier-current{color:var(--brand);background:var(--brand-soft);border-color:rgba(var(--brand-rgb),.35)}
 .goals-tier-locked{color:var(--text-muted)}
 
 .pg-row{display:grid;grid-template-columns:1fr 1fr;gap:0}

@@ -13,7 +13,7 @@ import { authedFetch } from "@/lib/api/authed-fetch";
 
 const PRIORIDADE_META: Record<TaskPriority, { label: string; cor: string; peso: number }> = {
   critica: { label: "Crítica", cor: "var(--danger,var(--red))", peso: 3 },
-  alta: { label: "Alta", cor: "var(--warning,#F4B942)", peso: 2 },
+  alta: { label: "Alta", cor: "var(--warning)", peso: 2 },
   media: { label: "Média", cor: "var(--info-2,var(--info))", peso: 1 },
   baixa: { label: "Baixa", cor: "var(--text-muted,var(--muted))", peso: 0 },
 };

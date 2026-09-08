@@ -310,7 +310,7 @@ function DetalhePedido({ pedido: p }: { pedido: Pedido }) {
             <span
               style={{
                 display: "block", marginTop: 2, fontSize: ".64rem", fontWeight: 700,
-                color: p.netReceived ? "var(--success,var(--green))" : "var(--warning,#F4B942)",
+                color: p.netReceived ? "var(--success,var(--green))" : "var(--warning)",
               }}
             >
               {p.netReceived ? "CONFIRMADO PELO MP" : "ESTIMADO (retorno calculado)"}
