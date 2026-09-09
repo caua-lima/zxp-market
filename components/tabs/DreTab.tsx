@@ -6,6 +6,8 @@ import { authedFetch } from "@/lib/api/authed-fetch";
 import DateRangePicker from "@/components/dashboard/DateRangePicker";
 import { Delta } from "@/components/dashboard/ExecutiveKpis";
 import CustosColetaFull, { type RemessaCusto } from "@/components/tabs/full/CustosColetaFull";
+import ApresentacaoDre from "@/components/tabs/dre/ApresentacaoDre";
+import type { DadosDre } from "@/lib/domain/dre-apresentacao";
 
 type CustoDre = { nome: string; valor: number; freq: string };
 
@@ -187,6 +189,7 @@ export default function DreTab() {
   const [mPrev, setMPrev] = useState<Metrics | null>(null);
   const [coletaFull, setColetaFull] = useState<CustoColetaFull | null>(null);
   const [loading, setLoading] = useState(true);
+  const [apresentando, setApresentando] = useState(false);
 
   const load = useCallback(async (forcar = false) => {
     setLoading(true);
@@ -294,6 +297,58 @@ export default function DreTab() {
   const resultadoOperacionalPrev = mPrev?.lucroComCustos ?? null;
   const resultadoLiquidoPrev = mPrev ? mPrev.lucroComCustos - mPrev.custosDre : null;
 
+  /**
+   * Os dados da apresentação saem EXATAMENTE dos valores já calculados acima.
+   *
+   * A tentação era recalcular lá dentro a partir das métricas cruas, e é assim
+   * que duas telas passam a mostrar números diferentes do mesmo mês. O PDF é
+   * uma VISTA da DRE, não um segundo cálculo dela.
+   */
+  const dadosApres: DadosDre = {
+    pedidos: metrics.ordersCount,
+    receitaBruta,
+    canceladas,
+    receitaLiquida,
+    taxasML: metrics.totalTaxasML,
+    frete: metrics.totalEnvio,
+    receitaOperacional,
+    cmv: metrics.totalCMV,
+    lucroBruto,
+    imposto: metrics.totalImposto,
+    ads: metrics.totalAds,
+    despesasOperacionais: metrics.custosOperacionais,
+    resultadoOperacional,
+    despesasEmpresa: metrics.custosDreDetalhe.map((c) => ({ nome: c.nome, valor: c.valor })),
+    coletaFull: custoColetaFull,
+    resultadoLiquido,
+  };
+
+  /**
+   * O período anterior, pras comparações. `coletaFull` entra como 0 porque a
+   * aba só busca a coleta do período ATUAL — a janela do ML pra operações de
+   * estoque tem teto de 55 dias e uma segunda busca dobraria o tempo de carga
+   * por uma linha que costuma valer pouco. O efeito é a comparação sair
+   * levemente otimista pro mês anterior; é dito no rodapé da apresentação.
+   */
+  const anteriorApres: DadosDre | null = mPrev ? {
+    pedidos: mPrev.ordersCount,
+    receitaBruta: mPrev.faturamentoBruto,
+    canceladas: mPrev.vendasCanceladas + mPrev.vendasDevolvidas,
+    receitaLiquida: mPrev.faturamentoLiquido,
+    taxasML: mPrev.totalTaxasML,
+    frete: mPrev.totalEnvio,
+    receitaOperacional: mPrev.totalRetorno,
+    cmv: mPrev.totalCMV,
+    lucroBruto: mPrev.totalRetorno - mPrev.totalCMV,
+    imposto: mPrev.totalImposto,
+    ads: mPrev.totalAds,
+    despesasOperacionais: mPrev.custosOperacionais,
+    resultadoOperacional: mPrev.lucroComCustos,
+    despesasEmpresa: mPrev.custosDreDetalhe.map((c) => ({ nome: c.nome, valor: c.valor })),
+    coletaFull: 0,
+    resultadoLiquido: mPrev.lucroComCustos - mPrev.custosDre,
+  } : null;
+
   function exportarCsv() {
     const linhas: { rotulo: string; valor: number; ded?: boolean }[] = [
       { rotulo: "Receita bruta de vendas", valor: receitaBruta },
@@ -335,7 +390,16 @@ export default function DreTab() {
             {fmtPeriodo(range.from, range.to)} · {m.ordersCount} pedido(s)
           </span>
         </div>
-        <DateRangePicker from={range.from} to={range.to} onApply={(from, to) => setRange({ from, to })} />
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button" className="btn btn-primary btn-sm"
+            onClick={() => setApresentando(true)}
+            title="Monta uma apresentação de 4 páginas do fechamento do período, pronta pra salvar em PDF e mandar pro sócio"
+          >
+            Apresentação em PDF
+          </button>
+          <DateRangePicker from={range.from} to={range.to} onApply={(from, to) => setRange({ from, to })} />
+        </div>
       </div>
 
       {m.adsFalhou && (
@@ -527,6 +591,20 @@ export default function DreTab() {
           </div>
         )}
       </div>
+
+      {/* A apresentacao se monta num portal direto no body (ver
+          ApresentacaoDre.tsx); aqui e so o gatilho. */}
+      {apresentando && (
+        <ApresentacaoDre
+          dados={dadosApres}
+          anterior={anteriorApres}
+          periodo={fmtPeriodo(range.from, range.to)}
+          geradoEm={new Intl.DateTimeFormat("pt-BR", {
+            dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo",
+          }).format(new Date())}
+          onFechar={() => setApresentando(false)}
+        />
+      )}
     </div>
   );
 }

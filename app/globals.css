@@ -1075,3 +1075,112 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
 .notif-item-itens li{display:flex;justify-content:space-between;gap:8px;font-size:.74rem;color:var(--text-secondary,var(--muted))}
 .notif-item-itens li span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .notif-item-time{font-size:.7rem;color:var(--text-muted,var(--muted));margin-top:4px}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   APRESENTAÇÃO DA DRE — o fechamento do mês em folhas A4 deitadas
+   ═══════════════════════════════════════════════════════════════════════
+   Vira PDF pela impressão nativa do navegador (ver ApresentacaoDre.tsx: sai
+   vetorial, com texto selecionável, e sem adicionar dependência). Por isso
+   as medidas são em mm — é a unidade que o `@page` entende.
+
+   Na tela isto é uma sobreposição rolável, pra conferir antes de gerar.
+   ═══════════════════════════════════════════════════════════════════════ */
+.apres-overlay{position:fixed;inset:0;z-index:200;background:#0A0A08;overflow:auto;display:flex;flex-direction:column;align-items:center}
+.apres-barra{position:sticky;top:0;z-index:2;width:100%;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:10px 18px;background:var(--sidebar);border-bottom:1px solid var(--border)}
+.apres-folhas{display:flex;flex-direction:column;gap:20px;padding:20px 0 40px}
+
+.apres-pagina{width:297mm;height:210mm;background:var(--color-onyx);color:var(--color-ivory);
+  display:flex;flex-direction:column;position:relative;overflow:hidden;
+  box-shadow:0 8px 40px rgba(0,0,0,.6);border:1px solid var(--border)}
+/* A faixa dourada no topo é o que faz a folha parecer papel timbrado da casa
+   em vez de página exportada. */
+.apres-pagina::before{content:"";position:absolute;top:0;left:0;right:0;height:5px;background:var(--accent)}
+.apres-conteudo{flex:1;padding:16mm 18mm 6mm;display:flex;flex-direction:column;min-height:0}
+.apres-rodape{display:flex;justify-content:space-between;padding:0 18mm 8mm;font-size:8.5pt;color:var(--muted);letter-spacing:.02em}
+
+.apres-h2{font-size:20pt;font-weight:800;margin:0 0 2mm;letter-spacing:-.01em}
+.apres-lead{font-size:10pt;color:var(--muted);margin:0 0 7mm;max-width:190mm;line-height:1.5}
+
+/* ── Capa ─────────────────────────────────────────────────────────── */
+.apres-capa{flex:1;display:flex;flex-direction:column;justify-content:space-between}
+.apres-capa-topo{display:flex;align-items:center;gap:12px}
+.apres-capa-marca{font-size:15pt;font-weight:800;letter-spacing:.08em}
+.apres-capa-sub{font-size:9pt;color:var(--muted)}
+.apres-capa-titulo{font-size:40pt;font-weight:800;line-height:1.05;letter-spacing:-.02em}
+.apres-capa-titulo span{display:block;color:var(--accent);text-transform:lowercase}
+.apres-capa-titulo span::first-letter{text-transform:uppercase}
+.apres-capa-numeros{display:grid;grid-template-columns:repeat(3,1fr);gap:10mm;padding-top:8mm;border-top:1px solid var(--border)}
+.apres-num-lbl{font-size:9pt;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2mm}
+.apres-num-val{font-size:24pt;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.apres-num-val.bom{color:var(--green)}
+.apres-num-val.ruim{color:var(--red)}
+.apres-var{display:block;font-size:8.5pt;margin-top:1.5mm}
+.apres-var.sobe{color:var(--green)}
+.apres-var.desce{color:var(--red)}
+.apres-var.neutra{color:var(--muted)}
+.apres-capa-pe{font-size:8.5pt;color:var(--muted)}
+
+/* ── Cascata deitada ──────────────────────────────────────────────── */
+.apres-cascata{display:flex;flex-direction:column;justify-content:center;gap:3.2mm;flex:1;padding-bottom:4mm}
+.apres-casc-linha{display:grid;grid-template-columns:62mm 1fr 30mm 16mm;align-items:center;gap:5mm;font-size:9.5pt}
+.apres-casc-linha.destaque{font-weight:700}
+.apres-casc-rot{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.apres-casc-trilho{position:relative;height:8.5mm;background:var(--surface);border-radius:2px}
+.apres-casc-barra{position:absolute;top:0;bottom:0;border-radius:2px}
+.apres-casc-barra.abre{background:var(--accent)}
+.apres-casc-barra.sai{background:var(--red);opacity:.85}
+.apres-casc-barra.fecha{background:var(--green)}
+.apres-casc-barra.fecha-neg{background:var(--red)}
+.apres-casc-val{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.apres-casc-val.neg{color:var(--red)}
+.apres-casc-pct{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.apres-aviso{margin-top:5mm;padding:3mm 4mm;border-radius:4px;font-size:9pt;
+  background:var(--red-bg);border:1px solid var(--red);color:var(--red)}
+
+/* ── Leitura do período ───────────────────────────────────────────── */
+.apres-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:5mm;margin-bottom:7mm}
+.apres-kpis>div{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4mm 5mm}
+.apres-kpis span{display:block;font-size:8.5pt;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:1.5mm}
+.apres-kpis b{font-size:16pt;font-weight:800;letter-spacing:-.01em}
+.apres-kpis b.bom{color:var(--green)}
+.apres-kpis b.ruim{color:var(--red)}
+.apres-destaques{display:flex;flex-direction:column;justify-content:space-evenly;gap:3.5mm;flex:1;padding-bottom:4mm}
+/* A borda colorida à esquerda é o que deixa "foi bom" e "foi ruim" legível
+   antes mesmo de ler a frase. */
+.apres-dest{border-left:3px solid var(--muted);padding:2mm 0 2mm 5mm}
+.apres-dest.bom{border-left-color:var(--green)}
+.apres-dest.ruim{border-left-color:var(--red)}
+.apres-dest.neutro{border-left-color:var(--accent)}
+.apres-dest-tit{font-size:12pt;font-weight:700;margin-bottom:1mm}
+.apres-dest-txt{font-size:9.5pt;color:var(--muted);line-height:1.5}
+
+/* ── DRE completa ─────────────────────────────────────────────────── */
+.apres-tabela{width:100%;border-collapse:collapse;font-size:9.5pt;font-variant-numeric:tabular-nums}
+.apres-tabela th{text-align:left;font-size:8.5pt;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);
+  padding:0 0 2mm;border-bottom:1px solid var(--border);font-weight:600}
+.apres-tabela td{padding:1.7mm 0;border-bottom:1px solid rgba(var(--brand-rgb),.07)}
+.apres-tabela tr.ded td{color:var(--muted)}
+.apres-tabela tr.forte td{font-weight:800;border-bottom:1px solid var(--border)}
+.apres-tabela tr.forte:last-child td{color:var(--accent);font-size:11pt}
+.apres-nota{margin-top:auto;padding-top:6mm;font-size:8.5pt;color:var(--muted);line-height:1.5}
+
+/* ── Impressão ────────────────────────────────────────────────────────
+   Uma folha por página, sem margem do navegador (a margem é o padding do
+   .apres-conteudo, que já está em mm). `print-color-adjust:exact` é o que
+   preserva o fundo onyx — sem ele o navegador descarta cor de fundo e o
+   documento sai branco com texto marfim, ilegível. */
+@media print{
+  @page{size:A4 landscape;margin:0}
+  html,body{background:#fff}
+  /* Só a apresentação vai pro papel. Funciona porque ela é montada num
+     portal DIRETO no body (ver ApresentacaoDre.tsx) — dentro da árvore do
+     React ela seria neta de vários contêineres e não haveria seletor
+     simples que escondesse os irmãos sem escondê-la junto. */
+  body>*:not(.apres-overlay){display:none!important}
+  .apres-overlay{position:static;overflow:visible;display:block;background:none}
+  .apres-barra{display:none!important}
+  .apres-folhas{display:block;padding:0;gap:0}
+  .apres-pagina{width:297mm;height:210mm;box-shadow:none;border:none;break-after:page;page-break-after:always;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .apres-pagina:last-child{break-after:auto;page-break-after:auto}
+}
