@@ -3,29 +3,30 @@ import { DEGRAUS_FATURAMENTO, marcoDeReputacao, marcosDeFaturamento, ordemDoNive
 
 describe("marcosDeFaturamento — a chave é o que impede virar spam", () => {
   it("não devolve nada abaixo do primeiro degrau", () => {
-    expect(marcosDeFaturamento(9_999, "2026-08")).toEqual([]);
+    expect(marcosDeFaturamento(4_999, "2026-08")).toEqual([]);
   });
 
-  it("passar de 10 mil gera o marco de 10 mil", () => {
-    const m = marcosDeFaturamento(10_000, "2026-08");
+  it("passar de 5 mil gera o marco de 5 mil", () => {
+    const m = marcosDeFaturamento(5_000, "2026-08");
     expect(m).toHaveLength(1);
-    expect(m[0].chave).toBe("marco_faturamento:2026-08:10000");
+    expect(m[0].chave).toBe("marco_faturamento:2026-08:5000");
   });
 
   it("devolve TODOS os degraus abaixo — salto entre syncs não pula nenhum", () => {
     // Primeiro sync do dia pode encontrar o faturamento já em 35 mil; sem
     // isto, 10 mil e 20 mil nunca seriam comemorados.
-    const m = marcosDeFaturamento(35_000, "2026-08");
+    const m = marcosDeFaturamento(22_000, "2026-08");
     expect(m.map((x) => x.chave)).toEqual([
+      "marco_faturamento:2026-08:5000",
       "marco_faturamento:2026-08:10000",
+      "marco_faturamento:2026-08:15000",
       "marco_faturamento:2026-08:20000",
-      "marco_faturamento:2026-08:30000",
     ]);
   });
 
   it("a chave carrega o MÊS — setembro comemora de novo", () => {
-    const ago = marcosDeFaturamento(10_000, "2026-08")[0].chave;
-    const set = marcosDeFaturamento(10_000, "2026-09")[0].chave;
+    const ago = marcosDeFaturamento(5_000, "2026-08")[0].chave;
+    const set = marcosDeFaturamento(5_000, "2026-09")[0].chave;
     expect(ago).not.toBe(set);
   });
 
@@ -114,11 +115,11 @@ describe("ordemDoNivel", () => {
 
 describe("proximoDegrau — o alvo, não só o que passou", () => {
   it("aponta o próximo e quanto falta", () => {
-    expect(proximoDegrau(33_377)).toEqual({ alvo: 40_000, falta: 40_000 - 33_377 });
+    expect(proximoDegrau(33_377)).toEqual({ alvo: 35_000, falta: 35_000 - 33_377 });
   });
 
   it("exatamente no degrau, aponta o seguinte", () => {
-    expect(proximoDegrau(30_000)?.alvo).toBe(40_000);
+    expect(proximoDegrau(30_000)?.alvo).toBe(35_000);
   });
 
   it("acima do último degrau não há alvo", () => {
@@ -126,6 +127,6 @@ describe("proximoDegrau — o alvo, não só o que passou", () => {
   });
 
   it("faturamento zero aponta o primeiro degrau inteiro", () => {
-    expect(proximoDegrau(0)).toEqual({ alvo: 10_000, falta: 10_000 });
+    expect(proximoDegrau(0)).toEqual({ alvo: 5_000, falta: 5_000 });
   });
 });

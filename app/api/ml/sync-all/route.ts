@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getMlAccessToken } from "../token";
 import { requireAccess } from "@/lib/api-auth";
+import { dispararMarcos } from "@/lib/marcos-gatilho";
 import {
   currentMonthRangeBR,
   lastNDaysRangeBR,
@@ -45,7 +46,22 @@ export async function POST(req: Request) {
       syncClaimsRange(accessToken, range).catch(() => 0), // best-effort
     ]);
 
-    return NextResponse.json({ ok: true, savedOrders, savedReturns, savedClaims, range });
+    /**
+     * Marcos, DEPOIS do sync: as vendas que acabaram de entrar ja contam.
+     *
+     * Rodava so no cron diario, e passar de R$ 10 mil as 14h de terca so era
+     * comemorado as 6h de quarta. O sync roda a cada 15 minutos com o painel
+     * aberto, entao o aviso passa a chegar no mesmo dia.
+     *
+     * Best-effort de proposito: comemoracao nunca pode derrubar a
+     * sincronizacao, que e o que mantem o painel correto.
+     */
+    const marcos = await dispararMarcos(
+      new URL(req.url).origin,
+      req.headers.get("authorization"),
+    ).catch(() => null);
+
+    return NextResponse.json({ ok: true, savedOrders, savedReturns, savedClaims, range, marcos });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: "sync_failed", details: msg }, { status: 500 });

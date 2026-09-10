@@ -4,7 +4,7 @@ import { motivoRecusaDoCron } from "@/lib/api-auth";
 import { currentMonthRangeBR, previousMonthRangeBR, syncOrdersRange, syncReturnsRange, syncClaimsRange } from "@/lib/ml/sync";
 import { enviarLembretesDeTarefa } from "@/lib/task-reminders-run";
 import { ehDomingoBR, fazerBackupSemanal } from "@/lib/backup-run";
-import { verificarMarcos } from "@/lib/marcos-run";
+import { dispararMarcos } from "@/lib/marcos-gatilho";
 import { verificarDevolucoes } from "@/lib/devolucoes-run";
 import { verificarEstoqueBaixo } from "@/lib/estoque-alerta-run";
 import { podarWebhookLog } from "@/lib/webhook-log-prune";
@@ -135,36 +135,8 @@ export async function GET(req: Request) {
      * origem de quase todo numero errado nesta base.
      */
     const marcos = await (async () => {
-      try {
-        const mesAtual = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 7);
-        const origem = new URL(req.url).origin;
-        const auth = req.headers.get("authorization");
-        /**
-         * Faturamento é best-effort. Falhar aqui NÃO pode cancelar a checagem
-         * de reputação: eram duas conquistas independentes amarradas numa
-         * chamada só, e quando esta falhava (401 do cron, que era o caso) as
-         * duas morriam caladas.
-         */
-        let faturamento: number | null = null;
-        try {
-          const rm = await fetch(`${origem}/api/ml/metrics?month=${mesAtual}`, {
-            headers: auth ? { Authorization: auth } : {},
-            cache: "no-store",
-          });
-          if (rm.ok) {
-            const j = (await rm.json()) as { faturamentoLiquido?: number };
-            faturamento = Number(j.faturamentoLiquido ?? 0);
-          } else {
-            console.error("[cron] faturamento do mes indisponivel:", rm.status);
-          }
-        } catch (err) {
-          console.error("[cron] faturamento do mes falhou", err);
-        }
-        return await verificarMarcos(faturamento, mesAtual);
-      } catch (err) {
-        console.error("[cron] marcos falharam", err);
-        return null;
-      }
+      const origem = new URL(req.url).origin;
+      return dispararMarcos(origem, req.headers.get("authorization"));
     })();
 
     /**
@@ -205,7 +177,10 @@ export async function GET(req: Request) {
       syncFalhas: syncFalhas.length,
       lembretes: lembretes?.enviados ?? null,
       backup: backup?.feito ?? false,
-      marcos: marcos ? marcos.faturamento.length + (marcos.reputacao ? 1 : 0) : null,
+      marcos: marcos
+        ? marcos.faturamento.length + marcos.dia.length + marcos.recordes.length
+          + (marcos.reputacao ? 1 : 0)
+        : null,
       estoqueBaixo: estoqueBaixo?.avisados?.length ?? null,
       devolucoes: devolucoes?.avisados?.length ?? null,
       poda: poda?.apagados ?? null,
