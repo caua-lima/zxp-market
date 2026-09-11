@@ -7,6 +7,9 @@ import DateRangePicker from "@/components/dashboard/DateRangePicker";
 import { Delta } from "@/components/dashboard/ExecutiveKpis";
 import CustosColetaFull, { type RemessaCusto } from "@/components/tabs/full/CustosColetaFull";
 import ApresentacaoDre from "@/components/tabs/dre/ApresentacaoDre";
+import CustoForm from "@/components/custos/CustoForm";
+import Modal from "@/components/Modal";
+import { useAccess } from "@/components/tabs/AccessGuard";
 import type { DadosDre } from "@/lib/domain/dre-apresentacao";
 
 type CustoDre = { nome: string; valor: number; freq: string };
@@ -190,11 +193,26 @@ export default function DreTab() {
   const [coletaFull, setColetaFull] = useState<CustoColetaFull | null>(null);
   const [loading, setLoading] = useState(true);
   const [apresentando, setApresentando] = useState(false);
+  /**
+   * Cadastro de custo sem sair da DRE. É onde a falta de uma despesa aparece
+   * — o resultado líquido parece bom demais — e mandar a pessoa pra outra aba
+   * pra corrigir era o jeito mais certo de ela não corrigir.
+   *
+   * Mesma permissão da aba de Custos: quem não edita custo lá não edita aqui.
+   */
+  const [novoCusto, setNovoCusto] = useState(false);
+  const { canEditTab } = useAccess();
+  const podeCadastrarCusto = canEditTab("custos");
 
   const load = useCallback(async (forcar = false) => {
     setLoading(true);
     try {
-      const r = await authedFetch(`/api/ml/metrics?from=${range.from}&to=${range.to}`, { cache: "no-store" });
+      /**
+       * `forcar` fura o cache de 60s da rota de metricas. Sem isso, um custo
+       * recem-cadastrado nao aparecia na DRE por ate um minuto depois de
+       * salvo — e na tela isso e indistinguivel de "nao salvou".
+       */
+      const r = await authedFetch(`/api/ml/metrics?from=${range.from}&to=${range.to}${forcar ? "&fresh=1" : ""}`, { cache: "no-store" });
       setM(r.ok ? await r.json() : null);
     } catch {
       setM(null);
@@ -556,14 +574,24 @@ export default function DreTab() {
 
       <div className="panel">
         <div className="panel-head" style={{ marginBottom: 8 }}>
-          <span className="panel-title">Despesas da empresa no período</span>
+          <span className="panel-title" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            Despesas da empresa no período
+            {podeCadastrarCusto && (
+              <button
+                type="button" className="btn btn-xs btn-primary" onClick={() => setNovoCusto(true)}
+                title="Cadastra um custo aqui mesmo — pró-labore, contador, aluguel — e a DRE recalcula na hora"
+              >
+                ＋ Adicionar custo
+              </button>
+            )}
+          </span>
           <span className="panel-sub">cadastre na aba Custos marcando <b>Só na DRE</b></span>
         </div>
         {m.custosDreDetalhe.length === 0 ? (
           <div style={{ fontSize: ".82rem", color: "var(--muted)", lineHeight: 1.6 }}>
-            Nenhuma despesa marcada como <b>Só na DRE</b> neste período. Vá em <b>Custos</b>,
-            cadastre o custo e escolha <b>Só na DRE</b> — ele entra aqui sem mexer no lucro
-            que aparece no Dashboard.
+            Nenhuma despesa marcada como <b>Só na DRE</b> neste período. {podeCadastrarCusto
+              ? <>Use <b>＋ Adicionar custo</b> aqui em cima — pró-labore, contador, retirada — e ele entra na DRE sem mexer no lucro que aparece no Dashboard.</>
+              : <>Quem administra os custos pode cadastrar a despesa como <b>Despesa da empresa</b>, e ela passa a aparecer aqui.</>}
             <div style={{ marginTop: 6, fontSize: ".78rem" }}>
               Lembre que custo <b>mensal</b> só entra quando o período é um mês inteiro.
             </div>
@@ -591,6 +619,22 @@ export default function DreTab() {
           </div>
         )}
       </div>
+
+      {novoCusto && (
+        <Modal open onClose={() => setNovoCusto(false)}>
+          <CustoForm
+            inicial={null}
+            escopoPadrao="dre"
+            onCancelar={() => setNovoCusto(false)}
+            onSalvo={() => {
+              setNovoCusto(false);
+              // true = fura o cache da rota; sem isso o custo novo demorava
+              // até um minuto pra aparecer, e parecia não ter salvo.
+              load(true);
+            }}
+          />
+        </Modal>
+      )}
 
       {/* A apresentacao se monta num portal direto no body (ver
           ApresentacaoDre.tsx); aqui e so o gatilho. */}

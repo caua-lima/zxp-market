@@ -1,277 +1,323 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { fmtBRL, mesAtual, todayStr, totalCustosMes, diasNoMes } from "@/lib/domain/calc";
-import { COST_CATEGORIA_LABEL, type Cost, type CostCategoria } from "@/lib/domain/types";
+import { useEffect, useRef, useState } from "react";
+import Modal from "@/components/Modal";
+import CustoForm from "@/components/custos/CustoForm";
+import { fmtBRL, mesAtual, parseBRNumber, totalCustosMes } from "@/lib/domain/calc";
+import { COST_CATEGORIA_LABEL, type Cost } from "@/lib/domain/types";
+import { ESCOPO_META, FREQUENCIA_META, type Escopo } from "@/lib/domain/custo-form";
 import { deleteCost, logAudit, upsertCost } from "@/lib/firebase/data";
 import type { UserData } from "@/components/useUserData";
 import { useAccess } from "@/components/tabs/AccessGuard";
 import { authedFetch } from "@/lib/api/authed-fetch";
 
-function newId() {
-  return "c" + Date.now() + Math.random().toString(36).slice(2, 6);
+/**
+ * Custos — a lista do que a operação e a empresa gastam.
+ *
+ * ─── O QUE MUDOU, E POR QUÊ ─────────────────────────────────────────────
+ *
+ * Cada custo era um bloco de SETE campos abertos, todos editáveis, gravando a
+ * cada tecla. Com três custos a aba virava um formulário sem fim, e não havia
+ * como bater o olho e responder "quanto eu gasto por mês e com o quê".
+ *
+ * Agora a lista é pra LER: uma linha por custo, com quanto ele pesa no mês. A
+ * edição acontece num formulário separado, com botão de salvar — ver
+ * components/custos/CustoForm.tsx.
+ *
+ * A lista também se divide em dois grupos, custo da operação e despesa da
+ * empresa. Essa diferença decide se o custo mexe no lucro do Dashboard, e
+ * antes ela vivia num select dentro de cada bloco, explicada num quadro no
+ * topo da página. Agrupada, ela aparece sozinha.
+ */
+
+type Aviso = { tipo: "ok" | "erro"; texto: string };
+type Edicao = { custo: Cost | null; escopo: Escopo };
+
+/**
+ * Quanto um custo pesa no mês corrente.
+ *
+ * `totalCustosMes`, e não uma conta própria: a versão anterior tinha a sua
+ * (com `parseFloat` e comparação de mês diferente pro avulso), e a soma das
+ * linhas podia não bater com o total exibido logo acima delas.
+ */
+function pesoNoMes(c: Cost): number {
+  return totalCustosMes([c], mesAtual());
 }
 
-// Quanto o custo pesa no mês atual (fixo × dias, mensal cheio, avulso no mês).
-function impactoMes(c: Cost, dias: number): number {
-  const v = parseFloat(c.valor) || 0;
-  if (c.freq === "diario") return v * dias;
-  if (c.freq === "mensal") return v;
-  // avulso: só conta se for do mês corrente
-  return (c.data ?? "").slice(0, 7) === mesAtual() ? v : 0;
+function sufixoDaFrequencia(c: Cost): string {
+  if (c.freq === "diario") return "por dia";
+  if (c.freq === "mensal") return "por mês";
+  const [y, m, d] = String(c.data ?? "").split("-");
+  return d ? `em ${d}/${m}/${y}` : "uma vez";
 }
 
 export default function CustosTab({ uid, data }: { uid: string; data: UserData }) {
   const { canEditTab } = useAccess();
   const canEdit = canEditTab("custos");
-  const dias = diasNoMes(mesAtual());
+  const [edicao, setEdicao] = useState<Edicao | null>(null);
   const [mostrarArquivados, setMostrarArquivados] = useState(false);
+  const [aviso, setAviso] = useState<Aviso | null>(null);
+  const timerAviso = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * A confirmação de que deu certo — que a aba antiga nunca dava. Some sozinha
+   * depois de uns segundos quando é sucesso; erro fica até a próxima ação,
+   * porque erro que some antes de ser lido é o mesmo que erro engolido.
+   */
+  function avisar(a: Aviso) {
+    if (timerAviso.current) clearTimeout(timerAviso.current);
+    setAviso(a);
+    if (a.tipo === "ok") timerAviso.current = setTimeout(() => setAviso(null), 4000);
+  }
+  useEffect(() => () => { if (timerAviso.current) clearTimeout(timerAviso.current); }, []);
+
   // Arquivado (ativo:false) para de contar em tudo — mesmo filtro que a rota
-  // de métricas do Dashboard aplica, senão "Arquivar" não significaria nada.
+  // de métricas aplica, senão "Arquivar" não significaria nada.
   const ativos = data.costs.filter((c) => c.ativo !== false);
   const arquivados = data.costs.filter((c) => c.ativo === false);
-  // Os totais aqui são os que batem no Dashboard. Custo marcado "só na DRE"
-  // fica de fora, senão o número desta tela não explicaria o de lá.
-  const doDash = ativos.filter((c) => (c.escopo ?? "dash") === "dash");
-  const soDre = ativos.filter((c) => c.escopo === "dre");
-  const totalDia = doDash.filter((c) => c.freq === "diario").reduce((s, c) => s + (parseFloat(c.valor) || 0), 0);
-  const totalMensais = doDash.filter((c) => c.freq === "mensal").reduce((s, c) => s + (parseFloat(c.valor) || 0), 0);
-  const totalMes = totalCustosMes(doDash, mesAtual());
-  const totalMesDre = totalCustosMes(soDre, mesAtual());
-  const nDiario = doDash.filter((c) => c.freq === "diario").length;
-  const nMensal = doDash.filter((c) => c.freq === "mensal").length;
+  const daOperacao = ativos.filter((c) => (c.escopo ?? "dash") === "dash");
+  const daEmpresa = ativos.filter((c) => c.escopo === "dre");
+  const totalOperacao = totalCustosMes(daOperacao, mesAtual());
+  const totalEmpresa = totalCustosMes(daEmpresa, mesAtual());
 
-  // Impacto % no faturamento e no lucro (antes dos custos operacionais) do
-  // mes atual — mesma rota que o Dashboard ja usa, so pra dar contexto aqui.
-  const [impactoRef, setImpactoRef] = useState<{ faturamentoLiquido: number; lucroSemCustos: number } | null>(null);
+  // Contexto: quanto os custos da operação comem do faturamento e do lucro do
+  // mês. Mesma rota que o Dashboard usa.
+  const [ref, setRef] = useState<{ faturamentoLiquido: number; lucroSemCustos: number } | null>(null);
   useEffect(() => {
     let vivo = true;
     authedFetch(`/api/ml/metrics?month=${mesAtual()}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (vivo && j) setImpactoRef({ faturamentoLiquido: j.faturamentoLiquido ?? 0, lucroSemCustos: j.lucroSemCustos ?? 0 }); })
+      .then((j) => {
+        if (vivo && j) setRef({ faturamentoLiquido: j.faturamentoLiquido ?? 0, lucroSemCustos: j.lucroSemCustos ?? 0 });
+      })
       .catch(() => {});
     return () => { vivo = false; };
   }, []);
-  const impactoFaturamentoPct = impactoRef && impactoRef.faturamentoLiquido > 0 ? (totalMes / impactoRef.faturamentoLiquido) * 100 : null;
-  const impactoLucroPct = impactoRef && impactoRef.lucroSemCustos > 0 ? (totalMes / impactoRef.lucroSemCustos) * 100 : null;
+  const pctFaturamento = ref && ref.faturamentoLiquido > 0 ? (totalOperacao / ref.faturamentoLiquido) * 100 : null;
+  const pctLucro = ref && ref.lucroSemCustos > 0 ? (totalOperacao / ref.lucroSemCustos) * 100 : null;
+  const nomeMes = new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date());
 
-  function onAdd() {
-    const id = newId();
-    upsertCost(uid, { id, nome: "", valor: "", freq: "diario", data: todayStr() }).catch(() => {});
-    logAudit({ acao: "criar", entidade: "custo", entidadeId: id, entidadeLabel: "(novo custo)" }).catch(() => {});
+  async function arquivar(c: Cost, ativo: boolean) {
+    try {
+      await upsertCost(uid, { ...c, ativo });
+      logAudit({
+        acao: ativo ? "reativar" : "arquivar", entidade: "custo", entidadeId: c.id, entidadeLabel: c.nome || "(sem nome)",
+      }).catch(() => {});
+      avisar({ tipo: "ok", texto: ativo ? `"${c.nome}" voltou a contar.` : `"${c.nome}" arquivado — parou de contar.` });
+    } catch (err) {
+      avisar({ tipo: "erro", texto: `Não consegui ${ativo ? "reativar" : "arquivar"}: ${err instanceof Error ? err.message : String(err)}` });
+    }
   }
+
+  async function excluir(c: Cost) {
+    if (!confirm(`Excluir "${c.nome || "este custo"}" de vez? Não dá pra desfazer — arquivar mantém o histórico.`)) return;
+    try {
+      await deleteCost(uid, c.id);
+      logAudit({ acao: "excluir", entidade: "custo", entidadeId: c.id, entidadeLabel: c.nome || "(sem nome)" }).catch(() => {});
+      avisar({ tipo: "ok", texto: `"${c.nome}" excluído.` });
+    } catch (err) {
+      avisar({ tipo: "erro", texto: `Não consegui excluir: ${err instanceof Error ? err.message : String(err)}` });
+    }
+  }
+
+  const abrirNovo = (escopo: Escopo) => setEdicao({ custo: null, escopo });
+  const abrirEdicao = (c: Cost) => setEdicao({ custo: c, escopo: c.escopo ?? "dash" });
 
   return (
     <div className="dash">
       <div className="tab-head">
-        <div className="tab-head-left"><h2 className="tab-title">Custos Operacionais</h2></div>
+        <div className="tab-head-left">
+          <h2 className="tab-title">Custos</h2>
+          <span className="tab-head-sub">{ativos.length} ativo(s) · valores de {nomeMes}</span>
+        </div>
         {canEdit && (
           <div className="tab-actions">
-            <button type="button" className="btn btn-primary btn-sm" onClick={onAdd}>＋ Adicionar Custo</button>
-          </div>
-        )}
-      </div>
-
-      <div className="kpi-grid">
-        <div className="kpi k-neg"><div className="k-lbl">Custo fixo / dia</div><div className="k-val" style={{ color: "var(--red)" }}>{fmtBRL(totalDia)}</div><div className="k-sub">{nDiario} diário(s) · desconta todo dia</div></div>
-        <div className="kpi k-warn"><div className="k-lbl">Mensais fixos</div><div className="k-val" style={{ color: "var(--yellow)" }}>{fmtBRL(totalMensais)}</div><div className="k-sub">{nMensal} custo(s) · 1×/mês</div></div>
-        <div className="kpi k-neg"><div className="k-lbl">Impacto no mês</div><div className="k-val" style={{ color: "var(--red)" }}>{fmtBRL(totalMes)}</div><div className="k-sub">fixos × {dias}d + mensais + avulsos</div></div>
-        <div className="kpi k-acc"><div className="k-lbl">Só na DRE</div><div className="k-val" style={{ color: soDre.length ? "var(--purple)" : "var(--muted)" }}>{fmtBRL(totalMesDre)}</div><div className="k-sub">{soDre.length} custo(s) · fora do Dashboard</div></div>
-        <div className="kpi k-warn">
-          <div className="k-lbl">Impacto no faturamento</div>
-          <div className="k-val" style={{ color: "var(--yellow)" }}>{impactoFaturamentoPct != null ? `${impactoFaturamentoPct.toFixed(1)}%` : "—"}</div>
-          <div className="k-sub">custos ÷ faturamento líquido do mês</div>
-        </div>
-        <div className="kpi k-neg">
-          <div className="k-lbl">Impacto no lucro</div>
-          <div className="k-val" style={{ color: "var(--red)" }}>{impactoLucroPct != null ? `${impactoLucroPct.toFixed(1)}%` : "—"}</div>
-          <div className="k-sub" title="Lucro antes de descontar estes custos operacionais">% do lucro (antes destes custos) que eles consomem</div>
-        </div>
-      </div>
-
-      <div className="note note-accent">
-        <strong>Diário</strong> = desconta todo dia · <strong>Mensal</strong> = só no lucro do mês · <strong>Avulso</strong> = apenas na data informada
-        <div style={{ marginTop: 4 }}>
-          <strong>Desconta no Dashboard</strong> = custo da operação de venda, entra no lucro líquido ·
-          {" "}<strong>Só na DRE</strong> = despesa da empresa (pró-labore, contador, retirada), aparece apenas na aba DRE
-        </div>
-      </div>
-
-      <div className="panel">
-        {arquivados.length > 0 && (
-          <div style={{ marginBottom: 12 }}>
-            <button type="button" className="btn btn-ghost btn-xs" onClick={() => setMostrarArquivados((v) => !v)}>
-              {mostrarArquivados ? "Ocultar" : "Mostrar"} arquivados ({arquivados.length})
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => abrirNovo("dash")}>
+              ＋ Novo custo
             </button>
           </div>
         )}
-        {ativos.length === 0 ? (
+      </div>
+
+      {/* Quatro números, cada um respondendo uma pergunta. Eram seis, e
+          "custo fixo por dia" e "mensais fixos" ao lado de "impacto no mês"
+          obrigavam a somar de cabeça pra achar o total. */}
+      <div className="kpi-grid">
+        <div className="kpi k-neg">
+          <div className="k-lbl">Pesa no lucro do mês</div>
+          <div className="k-val" style={{ color: "var(--red)" }}>{fmtBRL(totalOperacao)}</div>
+          <div className="k-sub">{daOperacao.length} custo(s) da operação</div>
+        </div>
+        <div className="kpi k-acc">
+          <div className="k-lbl">Só na DRE</div>
+          <div className="k-val" style={{ color: daEmpresa.length ? "var(--text)" : "var(--muted)" }}>{fmtBRL(totalEmpresa)}</div>
+          <div className="k-sub">{daEmpresa.length} despesa(s) da empresa</div>
+        </div>
+        <div className="kpi k-warn">
+          <div className="k-lbl">% do faturamento</div>
+          <div className="k-val" style={{ color: "var(--yellow)" }}>{pctFaturamento != null ? `${pctFaturamento.toFixed(1)}%` : "—"}</div>
+          <div className="k-sub">custos da operação ÷ faturamento do mês</div>
+        </div>
+        <div className="kpi k-neg">
+          <div className="k-lbl">% do lucro</div>
+          <div className="k-val" style={{ color: "var(--red)" }}>{pctLucro != null ? `${pctLucro.toFixed(1)}%` : "—"}</div>
+          <div className="k-sub">quanto do lucro, antes deles, eles consomem</div>
+        </div>
+      </div>
+
+      {aviso && (
+        <div className={`note ${aviso.tipo === "ok" ? "note-accent" : "note-danger"}`} role={aviso.tipo === "erro" ? "alert" : "status"}>
+          {aviso.tipo === "ok" ? "✓ " : ""}{aviso.texto}
+        </div>
+      )}
+
+      {!canEdit && (
+        <div className="note">Você pode ver os custos, mas não tem permissão pra editar.</div>
+      )}
+
+      {ativos.length === 0 ? (
+        <div className="panel">
           <div className="empty-state">
             <span className="empty-ico">💸</span>
-            Nenhum custo cadastrado.<br />Clique em <strong>＋ Adicionar Custo</strong>.
+            Nenhum custo cadastrado ainda.
+            {canEdit && (
+              <div style={{ marginTop: 10 }}>
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => abrirNovo("dash")}>
+                  ＋ Cadastrar o primeiro custo
+                </button>
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="list-stack">
-            {ativos.map((c) => (<CustoRow key={c.id} uid={uid} cost={c} canEdit={canEdit} impacto={impactoMes(c, dias)} />))}
-          </div>
-        )}
-        {mostrarArquivados && arquivados.length > 0 && (
-          <div className="list-stack" style={{ marginTop: 16, opacity: 0.6 }}>
-            {arquivados.map((c) => (<CustoRow key={c.id} uid={uid} cost={c} canEdit={canEdit} impacto={0} />))}
-          </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <>
+          <GrupoCustos
+            escopo="dash" custos={daOperacao} total={totalOperacao} canEdit={canEdit}
+            onNovo={abrirNovo} onEditar={abrirEdicao} onArquivar={arquivar} onExcluir={excluir}
+          />
+          <GrupoCustos
+            escopo="dre" custos={daEmpresa} total={totalEmpresa} canEdit={canEdit}
+            onNovo={abrirNovo} onEditar={abrirEdicao} onArquivar={arquivar} onExcluir={excluir}
+          />
+        </>
+      )}
+
+      {arquivados.length > 0 && (
+        <div className="panel">
+          <button type="button" className="btn btn-ghost btn-xs" onClick={() => setMostrarArquivados((v) => !v)}>
+            {mostrarArquivados ? "▾ Ocultar" : "▸ Mostrar"} arquivados ({arquivados.length})
+          </button>
+          {mostrarArquivados && (
+            <div className="list-stack" style={{ marginTop: 12 }}>
+              {arquivados.map((c) => (
+                <LinhaCusto
+                  key={c.id} custo={c} canEdit={canEdit}
+                  onEditar={abrirEdicao} onArquivar={arquivar} onExcluir={excluir}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {edicao && (
+        <Modal open onClose={() => setEdicao(null)}>
+          <CustoForm
+            inicial={edicao.custo}
+            escopoPadrao={edicao.escopo}
+            onCancelar={() => setEdicao(null)}
+            onSalvo={(c) => {
+              setEdicao(null);
+              avisar({ tipo: "ok", texto: edicao.custo ? `"${c.nome}" atualizado.` : `"${c.nome}" cadastrado.` });
+            }}
+          />
+        </Modal>
+      )}
     </div>
   );
 }
 
-const FREQ_META: Record<Cost["freq"], { cor: string; label: string }> = {
-  diario: { cor: "var(--red)", label: "Diário" },
-  mensal: { cor: "var(--yellow)", label: "Mensal" },
-  avulso: { cor: "var(--purple)", label: "Avulso" },
-};
-
-function CustoRow({ uid, cost, canEdit, impacto }: { uid: string; cost: Cost; canEdit: boolean; impacto: number }) {
-  const [nome, setNome] = useState(cost.nome);
-  const [valor, setValor] = useState(cost.valor);
-  const [freq, setFreq] = useState<Cost["freq"]>(cost.freq);
-  const [dataAvulso, setDataAvulso] = useState(cost.data || todayStr());
-  const [escopo, setEscopo] = useState<NonNullable<Cost["escopo"]>>(cost.escopo ?? "dash");
-  const [categoria, setCategoria] = useState<CostCategoria | "">(cost.categoria ?? "");
-  const [centroCusto, setCentroCusto] = useState(cost.centroCusto ?? "");
-  const [observacao, setObservacao] = useState(cost.observacao ?? "");
-
-  useEffect(() => {
-    setNome(cost.nome); setValor(cost.valor); setFreq(cost.freq); setDataAvulso(cost.data || todayStr());
-    setEscopo(cost.escopo ?? "dash");
-    setCategoria(cost.categoria ?? ""); setCentroCusto(cost.centroCusto ?? ""); setObservacao(cost.observacao ?? "");
-  }, [cost.nome, cost.valor, cost.freq, cost.data, cost.escopo, cost.categoria, cost.centroCusto, cost.observacao]);
-
-  useEffect(() => {
-    if (!canEdit) return;
-    const handle = setTimeout(() => {
-      const next: Cost = {
-        id: cost.id, nome, valor, freq, data: dataAvulso, escopo,
-        categoria: categoria || undefined, centroCusto: centroCusto || undefined, observacao: observacao || undefined,
-      };
-      if (next.nome === cost.nome && next.valor === cost.valor && next.freq === cost.freq
-        && next.data === cost.data && next.escopo === (cost.escopo ?? "dash")
-        && next.categoria === (cost.categoria ?? undefined) && next.centroCusto === (cost.centroCusto ?? undefined)
-        && next.observacao === (cost.observacao ?? undefined)) return;
-      upsertCost(uid, next).catch(() => {});
-    }, 350);
-    return () => clearTimeout(handle);
-  }, [nome, valor, freq, dataAvulso, escopo, categoria, centroCusto, observacao, cost, uid, canEdit]);
-
-  const meta = FREQ_META[freq];
-  const ro = !canEdit;
+function GrupoCustos({ escopo, custos, total, canEdit, onNovo, onEditar, onArquivar, onExcluir }: {
+  escopo: Escopo;
+  custos: Cost[];
+  total: number;
+  canEdit: boolean;
+  onNovo: (escopo: Escopo) => void;
+  onEditar: (c: Cost) => void;
+  onArquivar: (c: Cost, ativo: boolean) => void;
+  onExcluir: (c: Cost) => void;
+}) {
+  const meta = ESCOPO_META[escopo];
   return (
-    <div className="list-row" style={{ borderLeft: `3px solid ${meta.cor}` }}>
-      {/* Cabeçalho: identifica o custo e o quanto ele pesa — o que se lê primeiro */}
-      <div className="list-row-split" style={{ marginBottom: 12 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 9, flex: "1 1 220px", minWidth: 0 }}>
-          <span className="chip" style={{ color: meta.cor, background: `${meta.cor}1a`, borderColor: `${meta.cor}55` }}>{meta.label}</span>
-          <input
-            className="inp" type="text" placeholder="Ex: Mercado Turbo, aluguel…"
-            value={nome} onChange={(e) => setNome(e.target.value)} readOnly={ro}
-            aria-label="Nome do custo" style={{ fontWeight: 600 }}
-          />
+    <div className="panel">
+      <div className="panel-head" style={{ marginBottom: 4 }}>
+        <span className="panel-title">{escopo === "dash" ? "Custos da operação" : "Despesas da empresa"}</span>
+        <span className="panel-sub">{fmtBRL(total)} no mês</span>
+      </div>
+      <div style={{ fontSize: ".78rem", color: "var(--muted)", marginBottom: 12 }}>{meta.explica}</div>
+
+      {custos.length === 0 ? (
+        <div style={{ fontSize: ".84rem", color: "var(--muted)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          Nenhum cadastrado.
+          {canEdit && (
+            <button type="button" className="btn btn-ghost btn-xs" onClick={() => onNovo(escopo)}>
+              ＋ Adicionar {escopo === "dash" ? "custo da operação" : "despesa da empresa"}
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="list-stack">
+          {custos.map((c) => (
+            <LinhaCusto
+              key={c.id} custo={c} canEdit={canEdit}
+              onEditar={onEditar} onArquivar={onArquivar} onExcluir={onExcluir}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LinhaCusto({ custo: c, canEdit, onEditar, onArquivar, onExcluir }: {
+  custo: Cost;
+  canEdit: boolean;
+  onEditar: (c: Cost) => void;
+  onArquivar: (c: Cost, ativo: boolean) => void;
+  onExcluir: (c: Cost) => void;
+}) {
+  const arquivado = c.ativo === false;
+  const peso = arquivado ? 0 : pesoNoMes(c);
+  return (
+    <div className="list-row" style={{ padding: "12px 14px", opacity: arquivado ? 0.6 : 1 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ minWidth: 0, flex: "1 1 220px" }}>
+          <div style={{ fontWeight: 700, overflowWrap: "anywhere" }}>{c.nome || "(sem nome)"}</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4, fontSize: ".72rem", color: "var(--muted)" }}>
+            <span className="chip">{FREQUENCIA_META[c.freq]?.rotulo ?? c.freq}</span>
+            {c.categoria && <span className="chip">{COST_CATEGORIA_LABEL[c.categoria]}</span>}
+            {c.centroCusto && <span>{c.centroCusto}</span>}
+            {c.observacao && <span>· {c.observacao}</span>}
+          </div>
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
-          <div style={{ fontSize: ".62rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".04em" }}>no mês</div>
-          <div style={{ fontWeight: 800, color: "var(--red)", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{fmtBRL(impacto)}</div>
-        </div>
-      </div>
-
-      <div className="form-grid">
-        <div className="field">
-          <label>Valor</label>
-          <div className="inp-wrap">
-            <span className="inp-prefix">R$</span>
-            <input
-              className="inp inp-money" type="number" min="0" step="0.01" placeholder="0,00"
-              value={valor} onChange={(e) => setValor(e.target.value)} readOnly={ro}
-            />
+          <div style={{ fontWeight: 800, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+            {fmtBRL(parseBRNumber(c.valor))}{" "}
+            <span style={{ fontWeight: 400, fontSize: ".74rem", color: "var(--muted)" }}>{sufixoDaFrequencia(c)}</span>
           </div>
-        </div>
-        <div className="field">
-          <label>Frequência</label>
-          <select className="inp" value={freq} onChange={(e) => setFreq(e.target.value as Cost["freq"])} disabled={ro} style={{ color: meta.cor, fontWeight: 600 }}>
-            <option value="diario">Diário</option>
-            <option value="mensal">Mensal</option>
-            <option value="avulso">Avulso</option>
-          </select>
-        </div>
-        {freq === "avulso" && (
-          <div className="field">
-            <label>Data</label>
-            <input className="inp" type="date" value={dataAvulso} onChange={(e) => setDataAvulso(e.target.value)} readOnly={ro} />
+          <div style={{ fontSize: ".74rem", color: arquivado ? "var(--muted)" : "var(--red)", whiteSpace: "nowrap" }}>
+            {arquivado ? "arquivado — não conta" : `pesa ${fmtBRL(peso)} no mês`}
           </div>
-        )}
-        <div className="field">
-          <label>Onde desconta</label>
-          <select
-            className="inp" value={escopo}
-            onChange={(e) => setEscopo(e.target.value as NonNullable<Cost["escopo"]>)}
-            disabled={ro} title="Desconta no Dashboard = custo da operação de venda (ex.: embalagem). Só na DRE = despesa da empresa (ex.: pró-labore, contador) — não aparece no lucro do dia a dia."
-          >
-            <option value="dash">Desconta no Dashboard</option>
-            <option value="dre">Só na DRE</option>
-          </select>
-        </div>
-        <div className="field">
-          <label>Categoria {!categoria && <span style={{ color: "var(--warning)", fontWeight: 700 }}>· sem categoria</span>}</label>
-          <select className="inp" value={categoria} onChange={(e) => setCategoria(e.target.value as CostCategoria | "")} disabled={ro}>
-            <option value="">— sem categoria —</option>
-            {(Object.keys(COST_CATEGORIA_LABEL) as CostCategoria[]).map((c) => (
-              <option key={c} value={c}>{COST_CATEGORIA_LABEL[c]}</option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label>Centro de custo (opcional)</label>
-          <input className="inp" type="text" placeholder="Ex: Anúncios ML, Galpão…" value={centroCusto} onChange={(e) => setCentroCusto(e.target.value)} readOnly={ro} />
-        </div>
-        <div className="field">
-          <label>Observação (opcional)</label>
-          <input className="inp" type="text" placeholder="Ex: contrato até dez/2026" value={observacao} onChange={(e) => setObservacao(e.target.value)} readOnly={ro} />
         </div>
       </div>
 
       {canEdit && (
-        <div className="row-actions" style={{ marginTop: 12, justifyContent: "flex-end" }}>
-          {cost.ativo === false ? (
-            <button
-              type="button" className="btn btn-ghost btn-xs"
-              onClick={() => {
-                upsertCost(uid, { ...cost, ativo: true }).catch(() => {});
-                logAudit({ acao: "reativar", entidade: "custo", entidadeId: cost.id, entidadeLabel: cost.nome || "(sem nome)" }).catch(() => {});
-              }}
-            >
-              Reativar
-            </button>
-          ) : (
-            <button
-              type="button" className="btn btn-ghost btn-xs"
-              onClick={() => {
-                if (!confirm(`Arquivar "${cost.nome || "este custo"}"? Ele some da lista ativa, mas o histórico continua.`)) return;
-                upsertCost(uid, { ...cost, ativo: false }).catch(() => {});
-                logAudit({ acao: "arquivar", entidade: "custo", entidadeId: cost.id, entidadeLabel: cost.nome || "(sem nome)" }).catch(() => {});
-              }}
-            >
-              Arquivar
-            </button>
-          )}
-          <button
-            type="button" className="btn btn-danger btn-xs"
-            onClick={() => {
-              if (!confirm(`Excluir "${cost.nome || "este custo"}" definitivamente? Essa ação não pode ser desfeita — considere Arquivar em vez disso.`)) return;
-              deleteCost(uid, cost.id).catch(() => {});
-              logAudit({ acao: "excluir", entidade: "custo", entidadeId: cost.id, entidadeLabel: cost.nome || "(sem nome)" }).catch(() => {});
-            }}
-          >
-            Excluir
+        <div className="row-actions" style={{ marginTop: 10, justifyContent: "flex-end" }}>
+          <button type="button" className="btn btn-ghost btn-xs" onClick={() => onEditar(c)}>Editar</button>
+          <button type="button" className="btn btn-ghost btn-xs" onClick={() => onArquivar(c, arquivado)}>
+            {arquivado ? "Reativar" : "Arquivar"}
           </button>
+          <button type="button" className="btn btn-danger btn-xs" onClick={() => onExcluir(c)}>Excluir</button>
         </div>
       )}
     </div>
