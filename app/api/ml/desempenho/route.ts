@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { diaRelativoBR, diasNaJanela, janelaDeDias } from "@/lib/domain/janela-dias";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
 import { fetchMlUserProfileFresh } from "@/lib/ml/account";
@@ -28,10 +29,14 @@ function isNaoVenda(status: unknown): boolean {
   return s === "cancelled" || s === "invalid";
 }
 
-function brDayISO(offsetDays = 0): string {
-  const d = new Date(Date.now() - 3 * 3600 * 1000 + offsetDays * 86400000);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-}
+/**
+ * Reexporta a definicao compartilhada em vez de manter uma copia.
+ *
+ * Esta rota ja contava certo (-(dias-1)); /api/ml/reputacao-vendas, que recebe
+ * o mesmo parametro da mesma tela, contava um dia a mais. Duas copias da mesma
+ * conta e como as duas divergem — ver lib/domain/janela-dias.
+ */
+const brDayISO = diaRelativoBR;
 
 function monthsAgoISO(months: number): string {
   const d = new Date(Date.now() - 3 * 3600 * 1000);
@@ -67,7 +72,7 @@ export async function GET(req: Request) {
 
     const db = getAdminDb();
     const toStr = brDayISO();
-    const periodoInicio = dias != null ? brDayISO(-(dias - 1)) : monthsAgoISO(months);
+    const periodoInicio = dias != null ? janelaDeDias(dias).de : monthsAgoISO(months);
     const historicoInicio = monthsAgoISO(months + HISTORICO_EXTRA_MESES);
 
     const start = `${historicoInicio}T00:00:00.000Z`;
@@ -135,6 +140,8 @@ export async function GET(req: Request) {
     const body = {
       months,
       dias,
+      // O tamanho REAL da janela, pra a tela nao ter que reconstruir a conta.
+      diasCobertos: diasNaJanela(periodoInicio, toStr),
       semComprador,
       from: periodoInicio,
       to: toStr,

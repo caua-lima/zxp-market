@@ -3,6 +3,7 @@ import { requireAccess } from "@/lib/api-auth";
 import { getMlAccessToken } from "../token";
 import { fetchOrdersLive } from "@/lib/ml/orders";
 import { montarBlocoVendas } from "@/lib/domain/reputacao-vendas";
+import { diasNaJanela, janelaDeDias } from "@/lib/domain/janela-dias";
 
 export const maxDuration = 60;
 
@@ -26,10 +27,6 @@ export const maxDuration = 60;
 let cache: { at: number; dias: number; body: Record<string, unknown> } | null = null;
 const CACHE_TTL = 5 * 60 * 1000;
 
-function diaBR(offset = 0): string {
-  const d = new Date(Date.now() - 3 * 3600 * 1000 + offset * 86400000);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-}
 
 export async function GET(req: Request) {
   const gate = await requireAccess(req, { capacidade: "ver_operacao" });
@@ -40,8 +37,30 @@ export async function GET(req: Request) {
     // 60 é o que o Mercado Livre usa pra reputação; o parâmetro existe pra o
     // filtro de período da tela reaproveitar a mesma conta.
     const dias = Math.max(1, Math.min(180, Number(url.searchParams.get("dias") ?? 60) || 60));
-    const de = url.searchParams.get("from") || diaBR(-dias);
-    const ate = url.searchParams.get("to") || diaBR();
+
+    /**
+     * REP-02: a janela era `de = diaBR(-dias)` com `ate = diaBR()`, e a busca
+     * e INCLUSIVA nas duas pontas — com dias=60 isso cobria 61 datas: os 60
+     * dias anteriores MAIS hoje.
+     *
+     * Pior, /api/ml/desempenho recebe o MESMO parametro da MESMA tela e ja
+     * fazia -(dias-1). Os dois paineis liam um filtro so e contavam bases
+     * diferentes: a reputacao saia com um dia a mais de vendas no denominador
+     * do que o desempenho ao lado. Um dia a mais vira ~1,6% de erro na taxa de
+     * reclamacao, sempre pra baixo — a direcao que engana.
+     *
+     * A definicao agora e uma so, em lib/domain/janela-dias.
+     */
+    const padrao = janelaDeDias(dias);
+    const de = url.searchParams.get("from") || padrao.de;
+    const ate = url.searchParams.get("to") || padrao.ate;
+
+    /**
+     * Quantas datas a janela cobre DE FATO. Quando a tela manda from/to
+     * direto, o parametro `dias` deixa de descrever o intervalo — e quem le a
+     * resposta precisa do numero real, nao do pedido.
+     */
+    const diasCobertos = diasNaJanela(de, ate);
 
     const chave = `${de}|${ate}`;
     if (cache && cache.dias === dias && cache.body.chave === chave && Date.now() - cache.at < CACHE_TTL) {
@@ -72,7 +91,7 @@ export async function GET(req: Request) {
       })),
     );
 
-    const body = { bloco, de, ate, dias, chave };
+    const body = { bloco, de, ate, dias, diasCobertos, chave };
     cache = { at: Date.now(), dias, body };
     return NextResponse.json(body);
   } catch (err: unknown) {
