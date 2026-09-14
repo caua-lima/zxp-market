@@ -33,6 +33,18 @@ export type PedidoParaReputacao = {
   packId?: string | null;
   orderId: string;
   total: number;
+  /**
+   * Dia do pedido no fuso de Sao Paulo, yyyy-mm-dd. So a serie diaria usa —
+   * os agregados nao precisam, e por isso e opcional.
+   */
+  dia?: string | null;
+};
+
+/** Um dia da serie: o que aquele dia produziu, sozinho. */
+export type DiaDeVendas = {
+  dia: string;
+  concluidas: number;
+  faturado: number;
 };
 
 export type BlocoVendas = {
@@ -74,4 +86,38 @@ export function montarBlocoVendas(pedidos: PedidoParaReputacao[]): BlocoVendas {
   }
 
   return { vendas: pedidos.length, comEnvios: envios.size, concluidas, faturado };
+}
+
+/**
+ * O que cada dia produziu, separadamente.
+ *
+ * ─── POR QUE A SERIE, E NAO SO O TOTAL ──────────────────────────────────
+ *
+ * A janela da medalha e MOVEL: "3 meses + os dias do mes vigente". Quando o
+ * mes vira, o mes mais antigo SAI dela. Medindo em 05/09 a janela e 01/06 a
+ * 05/09; em 01/10 ela passa a ser 01/07 a 01/10, e junho inteiro desaparece
+ * do acumulado.
+ *
+ * Com so o total da janela nao da pra saber quanto vai sair — e a projecao
+ * que somava ritmo sem subtrair nada prometia uma data que a conta nunca
+ * alcancaria. A serie e o que permite simular a janela andando.
+ *
+ * Dias sem venda NAO aparecem: quem simula precisa tratar dia ausente como
+ * zero de qualquer forma, e inventar linhas vazias so aumenta o tamanho.
+ */
+export function serieDiariaDeVendas(pedidos: PedidoParaReputacao[]): DiaDeVendas[] {
+  const porDia = new Map<string, DiaDeVendas>();
+
+  for (const p of pedidos) {
+    const dia = String(p.dia ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) continue;
+    if (ehCancelado(p.status)) continue;
+
+    const atual = porDia.get(dia) ?? { dia, concluidas: 0, faturado: 0 };
+    atual.concluidas += 1;
+    atual.faturado += Math.max(Number(p.total) || 0, 0);
+    porDia.set(dia, atual);
+  }
+
+  return Array.from(porDia.values()).sort((a, b) => a.dia.localeCompare(b.dia));
 }

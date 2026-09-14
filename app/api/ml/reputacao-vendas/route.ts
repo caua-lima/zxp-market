@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAccess } from "@/lib/api-auth";
 import { getMlAccessToken } from "../token";
 import { fetchOrdersLive } from "@/lib/ml/orders";
-import { montarBlocoVendas } from "@/lib/domain/reputacao-vendas";
+import { montarBlocoVendas, serieDiariaDeVendas } from "@/lib/domain/reputacao-vendas";
 import { diasNaJanela, janelaDeDias } from "@/lib/domain/janela-dias";
 
 export const maxDuration = 60;
@@ -27,6 +27,17 @@ export const maxDuration = 60;
 let cache: { at: number; dias: number; body: Record<string, unknown> } | null = null;
 const CACHE_TTL = 5 * 60 * 1000;
 
+
+/**
+ * O dia no fuso de Sao Paulo a partir do ISO que o ML devolve (com offset).
+ * Agrupar por UTC jogaria as vendas da noite pro dia seguinte.
+ */
+function diaBRDeISO(iso: string): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  const d = new Date(t - 3 * 3600 * 1000);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
 
 export async function GET(req: Request) {
   const gate = await requireAccess(req, { capacidade: "ver_operacao" });
@@ -62,7 +73,22 @@ export async function GET(req: Request) {
      */
     const diasCobertos = diasNaJanela(de, ate);
 
-    const chave = `${de}|${ate}`;
+    /**
+     * REP-01: uma sub-janela calculada da MESMA busca.
+     *
+     * A tela de Desempenho pedia esta rota DUAS vezes — uma pra reputacao (60
+     * dias) e outra pra medalha (3 meses + mes vigente) — e cada chamada e ate
+     * 16 paginas de pedidos na API do ML. Como a janela da medalha CONTEM a da
+     * reputacao, buscar de novo e pagar duas vezes pelos mesmos pedidos.
+     *
+     * Com `subFrom`/`subTo` a rota devolve os dois blocos de uma busca so.
+     */
+    const subDe = url.searchParams.get("subFrom");
+    const subAte = url.searchParams.get("subTo");
+
+    // A sub-janela entra na chave: senao uma resposta guardada sem `sub`
+    // responderia a um pedido que pede `sub`, e a tela ficaria sem o bloco.
+    const chave = `${de}|${ate}|${url.searchParams.get("subFrom") ?? ""}|${url.searchParams.get("subTo") ?? ""}`;
     if (cache && cache.dias === dias && cache.body.chave === chave && Date.now() - cache.at < CACHE_TTL) {
       return NextResponse.json({ ...cache.body, cached: true });
     }
@@ -81,17 +107,42 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "pedidos_indisponiveis", bloco: null, de, ate }, { status: 200 });
     }
 
-    const bloco = montarBlocoVendas(
-      pedidos.map((o) => ({
-        orderId: String(o.order_id ?? ""),
-        status: o.status,
-        shippingId: (o.shipping_id as string | null | undefined) ?? null,
-        packId: (o.pack_id as string | null | undefined) ?? null,
-        total: Number(o.total_amount ?? 0),
-      })),
-    );
+    /**
+     * Mapeia UMA vez e reaproveita: o bloco agregado e a serie diaria saem dos
+     * mesmos pedidos, e percorrer a lista duas vezes com dois formatos e como
+     * as duas contas divergem.
+     */
+    const paraDominio = pedidos.map((o) => ({
+      orderId: String(o.order_id ?? ""),
+      status: o.status,
+      shippingId: (o.shipping_id as string | null | undefined) ?? null,
+      packId: (o.pack_id as string | null | undefined) ?? null,
+      total: Number(o.total_amount ?? 0),
+      // Dia no fuso de Sao Paulo — date_created vem com offset do ML.
+      dia: diaBRDeISO(String(o.date_created ?? "")),
+    }));
 
-    const body = { bloco, de, ate, dias, diasCobertos, chave };
+    const bloco = montarBlocoVendas(paraDominio);
+
+    // O bloco da sub-janela sai dos mesmos pedidos, so filtrando por dia.
+    const blocoSub = subDe && subAte
+      ? montarBlocoVendas(paraDominio.filter((p) => p.dia >= subDe && p.dia <= subAte))
+      : null;
+
+    /**
+     * A serie por dia, pra a projecao da medalha poder simular a JANELA MOVEL.
+     *
+     * A janela e "3 meses + os dias do mes vigente": quando o mes vira, o mes
+     * mais antigo sai dela inteiro. Sem saber o que cada dia produziu nao da
+     * pra saber o que vai sair — e a projecao linear, que so somava ritmo,
+     * prometia uma data que a conta nao alcanca.
+     */
+    const serie = serieDiariaDeVendas(paraDominio);
+
+    const body = {
+      bloco, serie, de, ate, dias, diasCobertos, chave,
+      sub: blocoSub ? { bloco: blocoSub, de: subDe, ate: subAte } : null,
+    };
     cache = { at: Date.now(), dias, body };
     return NextResponse.json(body);
   } catch (err: unknown) {

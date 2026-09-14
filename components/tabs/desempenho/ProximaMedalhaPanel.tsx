@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import { fmtBRL } from "@/lib/domain/calc";
 import { metricasDeQualidade } from "@/lib/domain/proxima-medalha";
+import { projetarMedalha } from "@/lib/domain/projecao-medalha";
+import type { DiaDeVendas } from "@/lib/domain/reputacao-vendas";
+import { janelaDeDias } from "@/lib/domain/janela-dias";
 import type { MetricaML } from "@/lib/domain/limites-reputacao";
 import {
   REQUISITOS_COMUNS,
@@ -49,6 +52,14 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
 }) {
   /** Janela da reputação — denominador das três métricas de qualidade. */
   const [reputacao, setReputacao] = useState<{ concluidas: number; faturado: number } | null>(null);
+  /** Vendas por dia da janela da medalha — o que a projeção simula. */
+  const [serie, setSerie] = useState<DiaDeVendas[]>([]);
+  /**
+   * Qual fonte falhou, se alguma. Antes o `.catch(() => null)` engolia o erro
+   * e a tela mostrava zero — que lê como "não vendeu nada", o oposto de "não
+   * consegui perguntar".
+   */
+  const [falhou, setFalhou] = useState(false);
   /** Janela da medalha — 3 meses + mês vigente. */
   const [medalha, setMedalha] = useState<{ concluidas: number; faturado: number } | null>(null);
   /**
@@ -63,25 +74,45 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
   }).format(new Date());
   const janela = janelaDaMedalha(hoje);
 
+  /** A janela da reputação, contida na da medalha. */
+  const janelaRep = janelaDeDias(60);
+
   useEffect(() => {
     let vivo = true;
-    const pega = (qs: string) =>
-      authedFetch(`/api/ml/reputacao-vendas?${qs}`, { cache: "no-store" })
-        .then((r) => (r.ok ? r.json() : Promise.reject(new Error("falhou"))))
-        .then((j) => j?.bloco ?? null)
-        .catch(() => null);
 
-    Promise.all([
-      pega("dias=60"),
-      pega(`from=${janela.de}&to=${janela.ate}&dias=${janela.dias}`),
-    ]).then(([rep, med]) => {
-      if (!vivo) return;
-      setReputacao(rep);
-      setMedalha(med);
-      setCarregando(false);
+    /**
+     * UMA busca, não duas.
+     *
+     * A tela pedia esta rota duas vezes — reputação (60 dias) e medalha (3
+     * meses + mês vigente) — e cada chamada é até 16 páginas de pedidos na API
+     * do ML. Como a janela da medalha CONTÉM a da reputação, a segunda busca
+     * pagava de novo pelos mesmos pedidos. A rota passou a aceitar uma
+     * sub-janela e devolver os dois blocos de uma vez.
+     */
+    const qs = new URLSearchParams({
+      from: janela.de, to: janela.ate, dias: String(janela.dias),
+      subFrom: janelaRep.de, subTo: janelaRep.ate,
     });
+
+    authedFetch(`/api/ml/reputacao-vendas?${qs}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("falhou"))))
+      .then((j) => {
+        if (!vivo) return;
+        setMedalha(j?.bloco ?? null);
+        setReputacao(j?.sub?.bloco ?? null);
+        setSerie(Array.isArray(j?.serie) ? j.serie : []);
+        setFalhou(!j?.bloco);
+        setCarregando(false);
+      })
+      .catch(() => {
+        if (!vivo) return;
+        // Falhar não pode virar zero: a tela precisa dizer que não perguntou.
+        setFalhou(true);
+        setCarregando(false);
+      });
+
     return () => { vivo = false; };
-  }, [janela.de, janela.ate, janela.dias]);
+  }, [janela.de, janela.ate, janela.dias, janelaRep.de, janelaRep.ate]);
 
   const vendasReputacao = reputacao?.concluidas ?? 0;
   const qualidade = metricasDeQualidade(metrics, vendasReputacao);
@@ -104,6 +135,26 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
     hoje,
   );
 
+  /**
+   * A projeção, simulando a janela MÓVEL.
+   *
+   * `progressoMercadoLider` ainda calcula `chegaEm` linearmente — some o
+   * ritmo e divide. Mas a janela é "3 meses + mês vigente" e ANDA: na virada
+   * do mês o mês mais antigo sai dela inteiro, e o acumulado pode CAIR. A
+   * conta linear nunca subtraía isso e prometia uma data que não chega.
+   *
+   * Ver lib/domain/projecao-medalha.ts.
+   */
+  const projecao = p
+    ? projetarMedalha(
+        serie,
+        p.meta,
+        hoje,
+        { vendasPorDia: p.vendasPorDia, faturamentoPorDia: p.faturamentoPorDia },
+        { vendas: p.vendas.atual, faturamento: p.faturamento.atual },
+      )
+    : null;
+
   const dataBR = (iso: string) => iso.split("-").reverse().join("/");
 
   return (
@@ -114,6 +165,21 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
           <span className="panel-sub"> · {p ? p.meta.label : "MercadoLíder Platinum — você está no topo"}</span>
         </span>
       </div>
+
+      {/*
+        Falhar nao pode virar zero.
+
+        A busca engolia o erro com `.catch(() => null)` e a tela mostrava
+        0 vendas, 0 faturado — que le como "nao vendeu nada", o oposto de "nao
+        consegui perguntar". Atualizar tem que renovar as fontes ou dizer qual
+        nao veio.
+      */}
+      {falhou && !carregando && (
+        <div className="note note-accent" style={{ marginBottom: 10, fontSize: ".78rem" }}>
+          Nao consegui buscar as vendas da janela agora. Os numeros abaixo estao
+          vazios por falta de resposta, nao por falta de venda — recarregue em instantes.
+        </div>
+      )}
 
       {/* ─── OS DOIS EIXOS DA MEDALHA ───────────────────────────────────
           Vendas E faturamento, lado a lado. Acompanhar só o dinheiro esconde
@@ -158,12 +224,38 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
                     : fmtBRL(p.faturamento.falta)}
                 </b>{" "}
                 no que está mais atrasado.
-                <div style={{ color: "var(--muted)", fontSize: ".76rem", marginTop: 2 }}>
+<div style={{ color: "var(--muted)", fontSize: ".76rem", marginTop: 2 }}>
                   Ritmo de {p.vendasPorDia.toFixed(1)} venda(s)/dia e {fmtBRL(p.faturamentoPorDia)}/dia.
-                  {p.diasNoRitmo != null
-                    ? ` Nesse passo, ${p.diasNoRitmo} dia(s)${p.chegaEm ? ` — ${dataBR(p.chegaEm)}` : ""}.`
-                    : " Sem vendas no período, não dá pra projetar quando chega."}
+                  {/*
+                    A data vem da SIMULAÇÃO da janela móvel, não de uma divisão.
+
+                    A janela é "3 meses + mês vigente" e anda: na virada do mês
+                    o mês mais antigo sai dela inteiro, e o acumulado pode CAIR.
+                    Dividir "falta / ritmo" nunca subtraía isso e prometia uma
+                    data que a conta não alcança — quanto mais longe a data,
+                    pior, e a data longe é justamente a de quem está atrás.
+                  */}
+                  {projecao?.tipo === "chega" && (
+                    <> Nesse passo, {projecao.dias} dia(s) — <b>{dataBR(projecao.chegaEm)}</b>.</>
+                  )}
+                  {projecao?.tipo === "nao_chega" && (
+                    <> Nesse ritmo <b>não fecha</b>: o que entra por dia não cobre o que sai da janela na virada do mês.</>
+                  )}
+                  {projecao?.tipo === "sem_cobertura" && (
+                    <> Sem histórico suficiente pra projetar a data ({projecao.diasCobertos} de {projecao.diasNecessarios} dias da janela).</>
+                  )}
+                  {projecao == null && " Sem vendas no período, não dá pra projetar quando chega."}
                 </div>
+
+                {/* O que SAI da janela é a diferença entre esta data e a conta
+                    ingênua — dizer o número evita a pergunta "por que demorou
+                    mais do que eu calculei?". */}
+                {projecao?.tipo === "chega" && projecao.atravessaViradaDeMes && (
+                  <div style={{ color: "var(--muted)", fontSize: ".72rem", marginTop: 4 }}>
+                    Considera que {projecao.vendasQueSaem.toLocaleString("pt-BR")} venda(s) e{" "}
+                    {fmtBRL(projecao.faturamentoQueSai)} saem da janela até lá — a janela anda com o mês.
+                  </div>
+                )}
                 {/* Os dois eixos avançam juntos, mas a projeção segue o pior:
                     prometer a data do eixo adiantado erraria sempre pra menos. */}
                 {p.vendas.ok !== p.faturamento.ok && (
