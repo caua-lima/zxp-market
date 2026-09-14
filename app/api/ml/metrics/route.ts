@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
 import { redigirFinanceiro } from "@/lib/domain/redacao-financeira";
+import { mesesCompletosNoPeriodo } from "@/lib/domain/competencia";
 import { getAdsGastoEDireto, getAdsSpendByItem, probeAds } from "@/lib/ml/ads";
 import { completarFretesFaltantes, fetchOrdersLive, loadOrders, readShippingCosts } from "@/lib/ml/orders";
 import { getMlAccessToken } from "../token";
@@ -725,13 +726,20 @@ export async function GET(req: Request) {
     const dFrom = new Date(`${fromStr}T00:00:00Z`).getTime();
     const dTo = new Date(`${toStr}T00:00:00Z`).getTime();
     const daysInPeriod = Math.max(1, Math.round((dTo - dFrom) / 86400000) + 1);
-    const [fy, fm, fd] = fromStr.split("-").map(Number);
-    const [ty, tm, td] = toStr.split("-").map(Number);
     // Custo MENSAL só entra em períodos que cobrem mês(es) completo(s).
     // Assim ele NÃO polui o lucro de "Hoje"/dias avulsos (é um custo do mês).
-    const lastDayFrom = new Date(Date.UTC(fy, fm, 0)).getUTCDate();
-    const isFullMonth = fy === ty && fm === tm && fd === 1 && td === lastDayFrom;
-    const monthsInPeriod = Math.max(1, (ty - fy) * 12 + (tm - fm) + 1);
+    /**
+     * FIN-02: quantos meses INTEIROS cabem no periodo.
+     *
+     * Era `isFullMonth`, que exigia fy===ty && fm===tm — o MESMO mes. Num
+     * intervalo de 01/07 a 31/08, dois meses fechados, ele dava falso e o
+     * custo mensal entrava como zero; e `monthsInPeriod`, que existia pra
+     * contar varios meses, so era lido no ramo onde sempre valia 1.
+     *
+     * Resultado: toda DRE de mais de um mes perdia pro-labore, contador e
+     * aluguel, e o resultado saia otimista. Ver lib/domain/competencia.ts.
+     */
+    const mesesFechados = mesesCompletosNoPeriodo(fromStr, toStr);
 
     const custosSnap = await db.collection("custos").get();
     let custosOp = 0;
@@ -753,7 +761,9 @@ export async function GET(req: Request) {
       if (freq === "diario" || freq === "daily") {
         noPeriodo = valor * daysInPeriod;                     // desconta todo dia
       } else if (freq === "mensal" || freq === "monthly") {
-        if (isFullMonth) noPeriodo = valor * monthsInPeriod;  // só no mês completo
+        // Uma vez por mes INTEIRO dentro do periodo — zero em mes pela metade,
+        // pra custo mensal nao poluir o lucro de um dia avulso.
+        noPeriodo = valor * mesesFechados;
       } else if (data >= fromStr && data <= toStr) {
         noPeriodo = valor;                                    // avulso: só na data
       }
