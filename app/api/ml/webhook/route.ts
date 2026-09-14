@@ -6,6 +6,14 @@ import { mapOrderItems } from "@/lib/ml/sync";
 import { createNotificationEventIdempotent } from "@/lib/notification-events";
 import { buildPayload, enviarEPersistirEntrega, notificarVendaConfirmada } from "@/lib/ml/notificar-venda";
 import { buildCancelContent, buildOrderDeepLink } from "@/lib/domain/notifications";
+import { rotuloDaRecusa, validarNotificacao } from "@/lib/domain/webhook-ml";
+import { SELLER_ID } from "@/lib/ml/orders";
+
+/**
+ * Teto do corpo: uma notificacao do ML tem algumas centenas de bytes. Ler um
+ * corpo de megabytes numa rota publica e trabalho de graca pra quem manda.
+ */
+const LIMITE_CORPO = 16 * 1024;
 
 export const maxDuration = 30;
 
@@ -88,26 +96,59 @@ async function registrarChamada(dados: Record<string, unknown>) {
  * pra isso (ver lib/notification-events.ts).
  */
 export async function POST(req: Request) {
-  let body: { resource?: string; topic?: string } | null = null;
+  /**
+   * Corpo com teto ANTES de desserializar. A rota e publica: o ML chama sem
+   * token e nao ha como exigir um, entao tudo que da pra fazer e sair barato
+   * de quem manda lixo.
+   */
+  const declarado = Number(req.headers.get("content-length") ?? 0);
+  if (Number.isFinite(declarado) && declarado > LIMITE_CORPO) {
+    return NextResponse.json({ ok: false, error: "corpo_grande" }, { status: 413 });
+  }
+
+  let bruto = "";
   try {
-    body = await req.json();
+    bruto = await req.text();
+  } catch {
+    return NextResponse.json({ ok: false, error: "corpo_ilegivel" });
+  }
+  if (bruto.length > LIMITE_CORPO) {
+    return NextResponse.json({ ok: false, error: "corpo_grande" }, { status: 413 });
+  }
+
+  let body: Record<string, unknown> | null = null;
+  try {
+    body = JSON.parse(bruto);
   } catch {
     return NextResponse.json({ ok: false, error: "invalid_json" });
   }
 
-  const resource = body?.resource ?? "";
-  const match = resource.match(/^\/orders\/(\d+)/);
-  if (!match) {
-    // outros tópicos (mensagens, reclamações, etc.) — ignora sem erro, não
-    // queremos que o ML pare de mandar os outros por causa disso. Registra
-    // mesmo assim: saber que o ML chega aqui, ainda que com outro tópico, já
-    // separa "não configurado" de "configurado no tópico errado".
-    await contarTopicoIgnorado(String(body?.topic ?? ""), new Intl.DateTimeFormat("en-CA", {
+  /**
+   * Confere o que da pra conferir ANTES de gastar uma chamada a API do ML.
+   *
+   * A rota so olhava o formato do `resource`. Nao conferia o topico, nem de
+   * qual vendedor era a notificacao, nem de qual aplicacao — entao qualquer um
+   * que soubesse a URL disparava consulta a API com o NOSSO token e escritas
+   * no Firestore, em laco, sem limite.
+   *
+   * O ML nao assina notificacao: isto nao prova origem e nao finge provar. O
+   * objetivo e recusar lixo e engano sem pagar por eles; a garantia de nao
+   * duplicar efeito continua sendo a idempotencia pelo dedupeKey.
+   */
+  const veredito = validarNotificacao(body, {
+    sellerId: process.env.ML_SELLER_ID || SELLER_ID,
+    appId: process.env.ML_APP_ID,
+  });
+
+  if (!veredito.ok) {
+    // Contagem por dia, com o motivo: separa "nao configurado" de "configurado
+    // no topico errado" de "chamada vinda de fora".
+    await contarTopicoIgnorado(rotuloDaRecusa(veredito), new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
     }).format(new Date()));
-    return NextResponse.json({ ok: true, ignored: true });
+    return NextResponse.json({ ok: true, ignored: true, motivo: veredito.motivo });
   }
-  const orderId = match[1];
+  const orderId = veredito.orderId;
 
   try {
     const token = await getValidMlAccessToken();
