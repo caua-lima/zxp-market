@@ -137,20 +137,36 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
 
         if (!bootstrap) {
-          const newEntry: AccessEntry = {
-            email,
-            role: "owner",
-            displayName: u.displayName ?? undefined,
-            photoURL: u.photoURL ?? undefined,
-          };
-          await bootstrapAccessOwner(newEntry);
-          if (!cancelled) {
+          /**
+           * O navegador PEDE o bootstrap; quem decide e o servidor.
+           *
+           * Este bloco gravava `role: "owner"` direto, e as regras do Firestore
+           * permitiam isso a qualquer autenticado enquanto o config nao
+           * existisse. Quem abrisse o app logado virava dono do painel.
+           *
+           * Recusa nao vira acesso: cai no fluxo normal de "sem permissao".
+           */
+          const erro = await bootstrapAccessOwner();
+          if (cancelled) return;
+          if (!erro) {
+            const newEntry: AccessEntry = {
+              email,
+              role: "owner",
+              displayName: u.displayName ?? undefined,
+              photoURL: u.photoURL ?? undefined,
+            };
             const nextAccess = { email, granted: true, entry: newEntry };
             writeCachedAccess(nextAccess);
             setAccess((prev) =>
               prev && prev.email === email && prev.granted === true ? prev : nextAccess,
             );
+            return;
           }
+          setAccess((prev) =>
+            prev && prev.email === email && prev.granted === false
+              ? prev
+              : { email, granted: false, entry: null },
+          );
           return;
         }
 

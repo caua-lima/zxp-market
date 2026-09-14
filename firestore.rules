@@ -81,24 +81,31 @@ service cloud.firestore {
         && request.resource.data.displayName.size() < 120;
     }
 
+    /**
+     * O primeiro owner NAO nasce mais aqui.
+     *
+     * A regra era: qualquer autenticado podia criar controleAcessoMeta/config
+     * com o proprio e-mail, desde que esse documento ainda nao existisse.
+     * Junto com a regra de controleAcesso logo abaixo, abrir o app logado
+     * com qualquer conta Google bastava pra virar dono do painel — a unica
+     * trava era chegar primeiro.
+     *
+     * Agora quem cria e POST /api/acesso/bootstrap, pelo Admin SDK, contra a
+     * lista em BOOTSTRAP_OWNER_EMAILS e numa transacao unica. O Admin SDK
+     * passa por cima destas regras, entao fechar aqui nao tira nada dele.
+     */
     match /controleAcessoMeta/{docId} {
       allow read: if signedIn();
-      allow create: if signedIn()
-        && docId == "config"
-        && !exists(/databases/$(database)/documents/controleAcessoMeta/config)
-        && request.resource.data.ownerEmail == request.auth.token.email;
+      allow create: if false;
       allow update, delete: if isOwner();
     }
 
     match /controleAcesso/{email} {
       allow read: if signedIn() && (request.auth.token.email == email || isOwner());
       allow list: if isOwner();
-      allow create: if signedIn() && (
-        (!exists(/databases/$(database)/documents/controleAcessoMeta/config)
-          && request.auth.token.email == email
-          && request.resource.data.role == "owner")
-        || isOwner()
-      );
+      // Sem o ramo de bootstrap: criar o primeiro owner e da rota
+      // /api/acesso/bootstrap, pelo Admin SDK. Aqui so o owner convida.
+      allow create: if isOwner();
       allow update: if isOwner()
         || (signedIn() && request.auth.token.email == email && resource.data.role == "owner")
         || isSelfPhotoUpdate(email)

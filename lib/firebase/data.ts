@@ -578,16 +578,30 @@ export async function addAccessEntry(entry: AccessEntry) {
   invalidar("controleAcesso");
 }
 
-export async function bootstrapAccessOwner(entry: AccessEntry) {
-  await setDoc(aDoc(entry.email), sanitizeUndefined({
-    ...entry,
-    email: entry.email.toLowerCase(),
-    addedAt: Date.now(),
-  }));
-  await setDoc(accessMetaDoc(), {
-    ownerEmail: entry.email.toLowerCase(),
-    createdAt: Date.now(),
-  });
+/**
+ * Pede ao servidor pra criar o primeiro owner.
+ *
+ * Eram dois `setDoc` daqui mesmo, e as regras do Firestore liberavam isso pra
+ * qualquer autenticado enquanto `controleAcessoMeta/config` nao existisse —
+ * abrir o app logado com qualquer conta Google bastava pra virar dono. Alem de
+ * nao ter lista de quem podia, as duas gravacoes eram separadas: duas abas
+ * carregando juntas viravam owner as duas.
+ *
+ * Agora a decisao e do servidor, contra BOOTSTRAP_OWNER_EMAILS, numa transacao
+ * unica. Ver app/api/acesso/bootstrap e lib/domain/bootstrap-acesso.
+ *
+ * @returns null quando deu certo; a explicacao da recusa quando nao.
+ */
+export async function bootstrapAccessOwner(): Promise<string | null> {
+  const { authedFetch } = await import("@/lib/api/authed-fetch");
+  try {
+    const res = await authedFetch("/api/acesso/bootstrap", { method: "POST" });
+    if (res.ok) return null;
+    const json = await res.json().catch(() => ({}));
+    return json?.details || "Nao foi possivel configurar o primeiro acesso.";
+  } catch {
+    return "Falha de rede ao configurar o primeiro acesso.";
+  }
 }
 
 export async function updateAccessEntry(
