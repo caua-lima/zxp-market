@@ -3,6 +3,59 @@ import { getAdminDb, getAdminMessaging } from "@/lib/firebase/admin";
 import type { NotificationEventType, SalePushPayload } from "@/lib/domain/notifications";
 import { isPushAllowedForRecipient } from "@/lib/domain/notification-preferences";
 import { agoraBR, getNotificationPreferencesByEmail } from "@/lib/notification-preferences";
+import {
+  redigirPush,
+  separarPorAcesso,
+  type AcessoDoDestinatario,
+  type NivelConteudo,
+} from "@/lib/domain/notificacao-publico";
+import { papelDe, type PermissionTab } from "@/lib/domain/types";
+
+/**
+ * Lê quem ainda tem acesso, uma vez por envio.
+ *
+ * O envio nao consultava isto: lia `pushTokens` inteira e mandava pra todo
+ * mundo. Tirar alguem de `controleAcesso` nao parava nada — o aparelho
+ * continuava recebendo o faturamento da empresa ate o token do FCM morrer.
+ * Preferencia de notificacao nunca foi autorizacao.
+ */
+async function lerAcessos(): Promise<Map<string, AcessoDoDestinatario>> {
+  const snap = await getAdminDb().collection("controleAcesso").get();
+  const mapa = new Map<string, AcessoDoDestinatario>();
+  for (const d of snap.docs) {
+    const dados = d.data() ?? {};
+    const email = String(dados.email ?? d.id).toLowerCase();
+    if (!email) continue;
+    mapa.set(email, {
+      papel: papelDe(dados.role),
+      permissoesEdicao: Array.isArray(dados.permissoesEdicao)
+        ? (dados.permissoesEdicao as PermissionTab[])
+        : [],
+    });
+  }
+  return mapa;
+}
+
+/**
+ * Envia respeitando acesso e nivel de conteudo.
+ *
+ * Um multicast por nivel, porque o conteudo agora DIFERE por destinatario: o
+ * member recebe a mesma venda sem valor, lucro nem margem.
+ *
+ * Quem perdeu o acesso e apenas pulado, nao apagado — restaurar o acesso nao
+ * deve obrigar a pessoa a reativar a notificacao no aparelho.
+ */
+async function enviarComAcesso(
+  registros: Registro[],
+  payload: SalePushPayload,
+): Promise<{ enviados: number; semAcesso: number }> {
+  const { porNivel, semAcesso } = separarPorAcesso(registros, await lerAcessos());
+  let enviados = 0;
+  for (const [nivel, grupo] of porNivel) {
+    enviados += await enviarPara(grupo, redigirPush(payload, nivel as NivelConteudo));
+  }
+  return { enviados, semAcesso: semAcesso.length };
+}
 
 type Registro = {
   docId: string; token: string; updatedAt: number;
@@ -178,7 +231,7 @@ export async function sendPushToAll(payload: SalePushPayload): Promise<{ enviado
     await batch.commit();
   }
 
-  const enviados = await enviarPara(envio, payload);
+  const { enviados } = await enviarComAcesso(envio, payload);
   return { enviados };
 }
 
@@ -221,7 +274,7 @@ export async function sendSalePushToAll(
   const elegiveis = envio.filter((r) => permitidoPorEmail.get(r.email) !== false);
   const bloqueadosPorPreferencia = envio.length - elegiveis.length;
 
-  const enviados = await enviarPara(elegiveis, payload);
+  const { enviados } = await enviarComAcesso(elegiveis, payload);
   return { enviados, elegiveis: elegiveis.length, bloqueadosPorPreferencia };
 }
 
@@ -243,7 +296,7 @@ export async function sendPushToUser(email: string, payload: SalePushPayload): P
     await batch.commit();
   }
 
-  const enviados = await enviarPara(envio, payload);
+  const { enviados } = await enviarComAcesso(envio, payload);
   return { enviados };
 }
 

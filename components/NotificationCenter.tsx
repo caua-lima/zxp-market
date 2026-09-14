@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { useAccess } from "@/components/tabs/AccessGuard";
 import { markNotificationRead, watchNotificationEvents } from "@/lib/firebase/data";
 import { NOTIFICATION_TYPE_META, type NotificationEvent } from "@/lib/domain/notifications";
+import { colecaoDoNivel, nivelDoDestinatario } from "@/lib/domain/notificacao-publico";
 
 type AbaFiltro = "todas" | "vendas" | "alertas" | "sistema";
 
@@ -45,7 +46,7 @@ function IconePorTipo({ type }: { type: NotificationEvent["type"] }) {
 }
 
 export function NotificationCenter({ onNavigate }: { onNavigate: (deepLink: string) => void }) {
-  const { email } = useAccess();
+  const { email, papel } = useAccess();
   const [eventos, setEventos] = useState<NotificationEvent[]>([]);
   const [open, setOpen] = useState(false);
   const [aba, setAba] = useState<AbaFiltro>("todas");
@@ -63,7 +64,13 @@ export function NotificationCenter({ onNavigate }: { onNavigate: (deepLink: stri
     });
   }
 
-  useEffect(() => watchNotificationEvents(setEventos, 50), []);
+  /**
+   * Quem nao pode ver financeiro escuta o espelho redigido. As regras do
+   * Firestore sao por documento — nao havia como liberar o evento e esconder
+   * lucro e margem dentro dele, e o member via os dois.
+   */
+  const colecao = colecaoDoNivel(nivelDoDestinatario(papel, []));
+  useEffect(() => watchNotificationEvents(setEventos, 50, colecao), [colecao]);
 
   useEffect(() => {
     if (!open) return;
@@ -83,14 +90,14 @@ export function NotificationCenter({ onNavigate }: { onNavigate: (deepLink: stri
   }, [eventos, aba]);
 
   function abrir(evt: NotificationEvent) {
-    if (email) markNotificationRead(evt.id, email);
+    if (email) markNotificationRead(evt.id, email, colecao);
     onNavigate(evt.deepLink);
     setOpen(false);
   }
 
   function marcarTodasLidas() {
     if (!email) return;
-    eventos.filter((e) => !e.readBy || !(email in e.readBy)).forEach((e) => markNotificationRead(e.id, email));
+    eventos.filter((e) => !e.readBy || !(email in e.readBy)).forEach((e) => markNotificationRead(e.id, email, colecao));
   }
 
   return (

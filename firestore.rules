@@ -199,8 +199,19 @@ service cloud.firestore {
     // campo inteiro) — é informação de leitura, não crítica o suficiente pra
     // justificar a regra mais complexa; o que importa é travar os campos de
     // negócio (valor, margem, título) contra edição pelo cliente.
+    /**
+     * O evento COMPLETO — com grossAmount, estimatedProfit e estimatedMargin,
+     * e com o dinheiro escrito no titulo e no corpo.
+     *
+     * A leitura era `isAuthorized()`, ou seja, o `member` lia tudo: o papel
+     * que existe pra acompanhar o resultado SEM ver custo e margem recebia
+     * lucro e margem de toda venda, pela Central e pelo SDK. Regra do
+     * Firestore e por documento, entao esconder tres campos nao era possivel —
+     * o evento passou a ser gravado tambem em notification_events_publico, sem
+     * dinheiro, e e de la que o member le.
+     */
     match /notification_events/{eventId} {
-      allow read: if isAuthorized();
+      allow read: if veOperacao();
       allow create, delete: if false;
       // Cada um so marca o PROPRIO lido/dispensado. Antes bastava mexer nos
       // dois mapas, e qualquer autorizado podia gravar (ou apagar) a marca de
@@ -210,6 +221,24 @@ service cloud.firestore {
         && request.resource.data.get('readBy', {}).diff(resource.data.get('readBy', {}))
              .affectedKeys().hasOnly([request.auth.token.email])
         && request.resource.data.get('dismissedBy', {}).diff(resource.data.get('dismissedBy', {}))
+             .affectedKeys().hasOnly([request.auth.token.email]);
+    }
+
+    /**
+     * O espelho redigido: mesmo evento, sem nenhum campo de dinheiro e com
+     * titulo/corpo reescritos (ver lib/domain/notificacao-publico).
+     *
+     * So o Admin SDK grava. A marca de lido/dispensado segue a mesma regra do
+     * original: cada um so mexe na propria.
+     */
+    match /notification_events_publico/{eventId} {
+      allow read: if isAuthorized();
+      allow create, delete: if false;
+      allow update: if isAuthorized()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["readBy", "dismissedBy"])
+        && request.resource.data.get("readBy", {}).diff(resource.data.get("readBy", {}))
+             .affectedKeys().hasOnly([request.auth.token.email])
+        && request.resource.data.get("dismissedBy", {}).diff(resource.data.get("dismissedBy", {}))
              .affectedKeys().hasOnly([request.auth.token.email]);
     }
 

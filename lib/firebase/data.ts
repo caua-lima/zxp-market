@@ -685,11 +685,21 @@ export function watchAuditLog(
 // pelo backend (ver lib/notification-events.ts) — aqui é só leitura +
 // marcar lido/dispensado, os dois únicos campos que firestore.rules deixa o
 // cliente tocar.
-export function watchNotificationEvents(cb: (events: NotificationEvent[]) => void, max = 50): () => void {
+export function watchNotificationEvents(
+  cb: (events: NotificationEvent[]) => void,
+  max = 50,
+  /**
+   * De qual colecao escutar. Quem nao pode ver financeiro escuta o espelho
+   * redigido — as regras do Firestore sao por documento, entao nao havia como
+   * liberar o evento e esconder lucro e margem dentro dele. Ver
+   * lib/domain/notificacao-publico.
+   */
+  colecao: string = "notification_events",
+): () => void {
   // limit(50) de propósito — sem isso o listener ficaria cada vez mais caro
   // conforme o histórico cresce (é o requisito explícito da Fase 7: nunca um
   // listener global sem limite).
-  const q = query(sCol("notification_events"), orderBy("createdAt", "desc"), limit(max));
+  const q = query(sCol(colecao), orderBy("createdAt", "desc"), limit(max));
   return onSnapshot(q, (snap) => {
     cb(snap.docs.map((d) => d.data() as NotificationEvent));
   });
@@ -708,12 +718,12 @@ export function watchNotificationEvents(cb: (events: NotificationEvent[]) => voi
  * readBy[email], que continua ausente) e o documento acumulava lixo
  * aninhado. FieldPath trata cada argumento como UM segmento, ponto incluso.
  */
-export async function markNotificationRead(eventId: string, email: string): Promise<void> {
-  await updateDoc(sDoc("notification_events", eventId), new FieldPath("readBy", email), Date.now()).catch(() => {});
+export async function markNotificationRead(eventId: string, email: string, colecao = "notification_events"): Promise<void> {
+  await updateDoc(sDoc(colecao, eventId), new FieldPath("readBy", email), Date.now()).catch(() => {});
 }
 
-export async function markNotificationDismissed(eventId: string, email: string): Promise<void> {
-  await updateDoc(sDoc("notification_events", eventId), new FieldPath("dismissedBy", email), Date.now()).catch(() => {});
+export async function markNotificationDismissed(eventId: string, email: string, colecao = "notification_events"): Promise<void> {
+  await updateDoc(sDoc(colecao, eventId), new FieldPath("dismissedBy", email), Date.now()).catch(() => {});
 }
 
 // ── Preferências de notificação por usuário ──────────────────────

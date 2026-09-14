@@ -2,8 +2,13 @@ import "server-only";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import type { NotificationEvent } from "@/lib/domain/notifications";
+import {
+  COLECAO_EVENTOS,
+  COLECAO_EVENTOS_PUBLICA,
+  redigirEvento,
+} from "@/lib/domain/notificacao-publico";
 
-const COL = "notification_events";
+const COL = COLECAO_EVENTOS;
 
 /**
  * O Admin SDK, ao contrário do client SDK usado em lib/firebase/data.ts,
@@ -40,12 +45,29 @@ export async function createNotificationEventIdempotent(
 ): Promise<{ created: boolean; eventId: string }> {
   const db = getAdminDb();
   const ref = db.collection(COL).doc(input.dedupeKey);
+  const completo = sanitizeUndefined({
+    ...input,
+    id: input.dedupeKey,
+    createdAt: FieldValue.serverTimestamp(),
+  });
   try {
-    await ref.create(sanitizeUndefined({
-      ...input,
-      id: input.dedupeKey,
-      createdAt: FieldValue.serverTimestamp(),
-    }));
+    await ref.create(completo);
+    /**
+     * Espelho redigido, pra quem nao pode ver financeiro.
+     *
+     * As regras do Firestore sao por DOCUMENTO: nao da pra liberar o evento e
+     * esconder grossAmount/estimatedProfit/estimatedMargin dentro dele. Entao
+     * o `member` lia tudo — pela Central e pelo SDK. Aqui nasce a versao sem
+     * dinheiro, que e a unica que ele alcanca.
+     *
+     * Escrito DEPOIS do create original de proposito: o `create()` e o que
+     * garante a idempotencia, e um espelho que falhe nao pode fazer o evento
+     * (e o push) sumirem. `set` sem merge deixa o espelho convergir num
+     * eventual retry.
+     */
+    await db.collection(COLECAO_EVENTOS_PUBLICA).doc(input.dedupeKey)
+      .set(sanitizeUndefined(redigirEvento(completo as Partial<NotificationEvent>)))
+      .catch(() => {});
     return { created: true, eventId: input.dedupeKey };
   } catch (err) {
     // ALREADY_EXISTS (code 6) é o caso esperado de retry — qualquer outro

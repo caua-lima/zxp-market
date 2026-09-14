@@ -229,7 +229,9 @@ export async function verificarEstoqueBaixo(): Promise<ResultadoEstoqueAlerta> {
     for (const id of rearmar) {
       try {
         await db.collection(ESTADO).doc(id).delete();
+        // Os dois: o evento e o espelho redigido (ver lib/domain/notificacao-publico).
         await db.collection("notification_events").doc(`stock_low:${id}`).delete().catch(() => {});
+        await db.collection("notification_events_publico").doc(`stock_low:${id}`).delete().catch(() => {});
         rearmados.push(id);
       } catch { /* tenta de novo na próxima rodada */ }
     }
