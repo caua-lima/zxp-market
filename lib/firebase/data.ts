@@ -13,6 +13,7 @@ import {
   setDoc,
   updateDoc,
   where,
+  FieldPath,
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import {
@@ -680,12 +681,25 @@ export function watchNotificationEvents(cb: (events: NotificationEvent[]) => voi
   });
 }
 
+/**
+ * ─── POR QUE FieldPath, E NAO A CHAVE COM PONTO ─────────────────────────
+ *
+ * `{ [`readBy.${email}`]: ... }` parece gravar a chave "readBy.fulano@x.com",
+ * mas o Firestore le PONTO como separador de caminho. Um e-mail tem pelo
+ * menos um ponto no dominio, entao "caua@gmail.com" virava o caminho
+ * readBy > caua@gmail > com — tres niveis aninhados, com a marca de lido no
+ * lugar errado.
+ *
+ * O efeito: a notificacao nunca ficava lida de verdade (a tela procura
+ * readBy[email], que continua ausente) e o documento acumulava lixo
+ * aninhado. FieldPath trata cada argumento como UM segmento, ponto incluso.
+ */
 export async function markNotificationRead(eventId: string, email: string): Promise<void> {
-  await updateDoc(sDoc("notification_events", eventId), { [`readBy.${email}`]: Date.now() }).catch(() => {});
+  await updateDoc(sDoc("notification_events", eventId), new FieldPath("readBy", email), Date.now()).catch(() => {});
 }
 
 export async function markNotificationDismissed(eventId: string, email: string): Promise<void> {
-  await updateDoc(sDoc("notification_events", eventId), { [`dismissedBy.${email}`]: Date.now() }).catch(() => {});
+  await updateDoc(sDoc("notification_events", eventId), new FieldPath("dismissedBy", email), Date.now()).catch(() => {});
 }
 
 // ── Preferências de notificação por usuário ──────────────────────

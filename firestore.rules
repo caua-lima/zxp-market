@@ -195,8 +195,15 @@ service cloud.firestore {
     match /notification_events/{eventId} {
       allow read: if isAuthorized();
       allow create, delete: if false;
+      // Cada um so marca o PROPRIO lido/dispensado. Antes bastava mexer nos
+      // dois mapas, e qualquer autorizado podia gravar (ou apagar) a marca de
+      // leitura de outra pessoa.
       allow update: if isAuthorized()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy', 'dismissedBy']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy', 'dismissedBy'])
+        && request.resource.data.get('readBy', {}).diff(resource.data.get('readBy', {}))
+             .affectedKeys().hasOnly([request.auth.token.email])
+        && request.resource.data.get('dismissedBy', {}).diff(resource.data.get('dismissedBy', {}))
+             .affectedKeys().hasOnly([request.auth.token.email]);
     }
 
     // Preferências de notificação por usuário — cada um só lê/escreve as
