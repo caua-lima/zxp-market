@@ -3,7 +3,7 @@ import { getMlTokenStatus, getMlAccessToken, getMlTokenData } from "../token";
 import { requireAccess } from "@/lib/api-auth";
 
 export async function GET(req: Request) {
-  const gate = await requireAccess(req);
+  const gate = await requireAccess(req, { capacidade: "ver_operacao" });
   if (gate instanceof NextResponse) return gate;
 
   const status = await getMlTokenStatus();

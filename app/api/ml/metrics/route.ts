@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
+import { redigirFinanceiro } from "@/lib/domain/redacao-financeira";
 import { getAdsGastoEDireto, getAdsSpendByItem, probeAds } from "@/lib/ml/ads";
 import { completarFretesFaltantes, fetchOrdersLive, loadOrders, readShippingCosts } from "@/lib/ml/orders";
 import { getMlAccessToken } from "../token";
@@ -446,7 +447,7 @@ export async function GET(req: Request) {
    *
    * Dez outras rotas do cron já tinham isto. Esta era a única sem.
    */
-  const gate = await requireAccess(req, { allowCron: true });
+  const gate = await requireAccess(req, { allowCron: true, capacidade: "ver_resumo" });
   if (gate instanceof NextResponse) return gate;
 
   try {
@@ -462,7 +463,11 @@ export async function GET(req: Request) {
     if (!bust) {
       const cached = metricsCache.get(cacheKey);
       if (cached && Date.now() - cached.at < CACHE_TTL) {
-        return NextResponse.json({ ...cached.body, cached: true });
+        const doCache = { ...cached.body, cached: true };
+        // O cache guarda a versao COMPLETA: redige aqui tambem, senao um
+        // member que acertasse o cache quente receberia custo e margem.
+        if (!gate.pode("ver_financeiro")) return NextResponse.json(redigirFinanceiro(doCache));
+        return NextResponse.json(doCache);
       }
     }
 
@@ -918,6 +923,12 @@ export async function GET(req: Request) {
       to: toStr,
     };
     metricsCache.set(cacheKey, { at: Date.now(), body: responseBody });
+    /**
+     * A redacao acontece na SAIDA, por requisitante — o cache guarda a
+     * versao completa. Guardar o redigido envenenaria a resposta do
+     * proximo owner que caisse no mesmo cache.
+     */
+    if (!gate.pode("ver_financeiro")) return NextResponse.json(redigirFinanceiro(responseBody));
     return NextResponse.json(responseBody);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

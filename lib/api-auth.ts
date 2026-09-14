@@ -1,11 +1,22 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { podeCapacidade, type Capacidade } from "@/lib/domain/capacidades";
+import { papelDe, type Papel, type PermissionTab } from "@/lib/domain/types";
 
 export type AuthContext = {
   email: string;
   uid: string;
-  role: "owner" | "user"; // admin foi removido; papéis legados viram "user"
+  /**
+   * Mantido por compatibilidade com quem já lia `gate.role`. Prefira `papel`
+   * ou `pode()`: este campo achata partner e member no mesmo "user", que foi
+   * exatamente a origem do vazamento corrigido aqui.
+   */
+  role: "owner" | "user";
+  papel: Papel;
+  permissoesEdicao: PermissionTab[];
+  /** A matriz única de capacidades — ver lib/domain/capacidades.ts. */
+  pode: (cap: Capacidade) => boolean;
 };
 
 function bearer(req: Request): string | null {
@@ -47,22 +58,48 @@ export function motivoRecusaDoCron(req: Request): "cron_secret_nao_configurado" 
 }
 
 /**
- * Verifica o ID token do Firebase enviado pelo cliente e confirma que o e-mail
- * está autorizado na coleção `controleAcesso`. Retorna o contexto autenticado
- * ou um NextResponse de erro (401/403) — o handler deve repassar esse response.
+ * Verifica o ID token do Firebase, confirma que o e-mail está autorizado em
+ * `controleAcesso` e — quando `capacidade` é pedida — que o papel realmente
+ * alcança aquilo. Retorna o contexto autenticado ou um NextResponse de erro
+ * (401/403), que o handler deve repassar.
+ *
+ * ─── POR QUE A CAPACIDADE É EXPLÍCITA ───────────────────────────────────
+ *
+ * Antes existiam dois papéis aqui — `owner` e `user` — e todo papel diferente
+ * de owner virava `user`. Com isso a restrição de `member` (que existe pra
+ * NÃO ver custo, margem, preço nem estoque) desaparecia no servidor: as
+ * regras do Firestore barravam a leitura direta da coleção, mas a rota de
+ * métricas respondia faturamento, CMV e margem pro member.
+ *
+ * Esconder campo no frontend não corrige isso — a resposta da API é pública
+ * pra quem tem o token. Por isso cada handler declara a capacidade que exige,
+ * e quem não a tem recebe 403 antes de qualquer consulta cara.
  *
  * Uso:
- *   const gate = await requireAccess(req);
+ *   const gate = await requireAccess(req, { capacidade: "ver_financeiro" });
  *   if (gate instanceof NextResponse) return gate;
- *   // gate.email, gate.role disponíveis
  */
 export async function requireAccess(
   req: Request,
-  opts: { adminOnly?: boolean; allowCron?: boolean } = {},
+  opts: {
+    /** Atalho histórico pra `capacidade: "administrar"`. */
+    adminOnly?: boolean;
+    allowCron?: boolean;
+    capacidade?: Capacidade;
+  } = {},
 ): Promise<AuthContext | NextResponse> {
-  // Bypass para jobs automatizados (sincronização agendada)
+  const exigida: Capacidade | undefined = opts.capacidade ?? (opts.adminOnly ? "administrar" : undefined);
+
+  // Bypass para jobs automatizados (sincronização agendada).
   if (opts.allowCron && isCronRequest(req)) {
-    return { email: "cron@system", uid: "cron", role: "owner" };
+    return {
+      email: "cron@system",
+      uid: "cron",
+      role: "owner",
+      papel: "owner",
+      permissoesEdicao: [],
+      pode: () => true,
+    };
   }
 
   const idToken = bearer(req);
@@ -87,11 +124,25 @@ export async function requireAccess(
     return NextResponse.json({ error: "forbidden", details: "Not authorized" }, { status: 403 });
   }
 
-  // Qualquer papel que não seja "owner" é tratado como somente-leitura ("user").
-  const role: AuthContext["role"] = snap.data()?.role === "owner" ? "owner" : "user";
-  if (opts.adminOnly && role !== "owner") {
-    return NextResponse.json({ error: "forbidden", details: "Owner only" }, { status: 403 });
+  const dados = snap.data() ?? {};
+  const papel = papelDe(dados.role);
+  const permissoesEdicao: PermissionTab[] = Array.isArray(dados.permissoesEdicao) ? dados.permissoesEdicao : [];
+  const pode = (cap: Capacidade) => podeCapacidade(papel, permissoesEdicao, cap);
+
+  if (exigida && !pode(exigida)) {
+    return NextResponse.json(
+      { error: "forbidden", details: `Requer capacidade: ${exigida}`, capacidade: exigida },
+      { status: 403 },
+    );
   }
 
-  return { email, uid: decoded.uid, role };
+  return {
+    email,
+    uid: decoded.uid,
+    // Compatibilidade: quem ainda lê `role` continua vendo owner/user.
+    role: papel === "owner" ? "owner" : "user",
+    papel,
+    permissoesEdicao,
+    pode,
+  };
 }

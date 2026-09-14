@@ -168,7 +168,7 @@ export async function GET(req: Request) {
 
 /** POST = disparo manual, pra testar sem esperar o horário. */
 export async function POST(req: Request) {
-  const gate = await requireAccess(req, { allowCron: true });
+  const gate = await requireAccess(req, { allowCron: true, capacidade: "administrar" });
   if (gate instanceof NextResponse) return gate;
   return handler(req);
 }

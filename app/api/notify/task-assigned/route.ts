@@ -20,7 +20,7 @@ import {
  * — diferente de venda, que é informação de todo mundo.
  */
 export async function POST(req: Request) {
-  const gate = await requireAccess(req);
+  const gate = await requireAccess(req, { capacidade: "ver_operacao" });
   if (gate instanceof NextResponse) return gate;
 
   const body = await req.json().catch(() => null) as {

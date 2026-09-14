@@ -16,7 +16,7 @@ async function getSellerId() {
 }
 
 export async function GET(req: Request) {
-  const gate = await requireAccess(req, { allowCron: true });
+  const gate = await requireAccess(req, { allowCron: true, capacidade: "ver_operacao" });
   if (gate instanceof NextResponse) return gate;
 
   try {

@@ -18,7 +18,7 @@ import { enviarLembretesDeTarefa } from "@/lib/task-reminders-run";
  * novo — é o comportamento correto, não uma falha.
  */
 export async function POST(req: Request) {
-  const gate = await requireAccess(req, { allowCron: true });
+  const gate = await requireAccess(req, { allowCron: true, capacidade: "administrar" });
   if (gate instanceof NextResponse) return gate;
 
   const body = await req.json().catch(() => null) as { dia?: string } | null;

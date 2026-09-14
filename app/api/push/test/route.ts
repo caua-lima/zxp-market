@@ -82,7 +82,7 @@ function montarCenario(scenario: TestScenario) {
  * notification_events depois.
  */
 export async function POST(req: Request) {
-  const gate = await requireAccess(req);
+  const gate = await requireAccess(req, { capacidade: "ver_resumo" });
   if (gate instanceof NextResponse) return gate;
 
   const body = await req.json().catch(() => ({}));

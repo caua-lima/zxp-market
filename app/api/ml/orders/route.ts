@@ -4,7 +4,7 @@ import { getMlAccessToken } from "../token";
 import { requireAccess } from "@/lib/api-auth";
 
 export async function POST(req: Request) {
-  const gate = await requireAccess(req, { allowCron: true });
+  const gate = await requireAccess(req, { allowCron: true, capacidade: "ver_operacao" });
   if (gate instanceof NextResponse) return gate;
 
   try {

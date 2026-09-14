@@ -24,7 +24,7 @@ export const maxDuration = 60;
  * manhã e subir toda tarde sem nada ter acontecido.
  */
 export async function GET(req: Request) {
-  const gate = await requireAccess(req, { allowCron: true });
+  const gate = await requireAccess(req, { allowCron: true, capacidade: "administrar" });
   if (gate instanceof NextResponse) return gate;
 
   const hoje = hojeBR();

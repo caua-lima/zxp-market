@@ -15,7 +15,7 @@ function normId(s: string) {
 export async function GET(req: Request) {
   // Somente leitura, e o snapshot diário lê o estoque do ML daqui — sem
   // `allowCron` a chamada interna leva 401 e o aviso morre calado.
-  const gate = await requireAccess(req, { allowCron: true });
+  const gate = await requireAccess(req, { allowCron: true, capacidade: "ver_operacao" });
   if (gate instanceof NextResponse) return gate;
 
   try {

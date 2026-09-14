@@ -43,7 +43,7 @@ function mesAnterior(ano: number, mes: number): { ano: number; mes: number } {
 }
 
 export async function POST(req: Request) {
-  const gate = await requireAccess(req, { allowCron: true });
+  const gate = await requireAccess(req, { allowCron: true, capacidade: "administrar" });
   if (gate instanceof NextResponse) return gate;
 
   try {

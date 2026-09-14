@@ -6,7 +6,7 @@ import { currentMonthRangeBR, syncOrdersRange } from "@/lib/ml/sync";
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
-  const gate = await requireAccess(req, { allowCron: true });
+  const gate = await requireAccess(req, { allowCron: true, capacidade: "ver_operacao" });
   if (gate instanceof NextResponse) return gate;
 
   try {

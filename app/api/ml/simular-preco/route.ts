@@ -73,7 +73,7 @@ async function buscarFrete(token: string, mlb: string, preco: number, cep: strin
 const normId = (s: string) => s.trim().toUpperCase().replace(/^MLB/, "");
 
 export async function GET(req: Request) {
-  const gate = await requireAccess(req);
+  const gate = await requireAccess(req, { capacidade: "ver_financeiro" });
   if (gate instanceof NextResponse) return gate;
 
   try {

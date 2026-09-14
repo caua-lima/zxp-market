@@ -30,7 +30,7 @@ function rangeFromRequest(req: Request): SyncRange {
 }
 
 export async function POST(req: Request) {
-  const gate = await requireAccess(req, { allowCron: true });
+  const gate = await requireAccess(req, { allowCron: true, capacidade: "ver_operacao" });
   if (gate instanceof NextResponse) return gate;
 
   try {

@@ -28,7 +28,7 @@ export const maxDuration = 30;
  * Só metadado: nunca token, nunca corpo de requisição.
  */
 export async function GET(req: Request) {
-  const gate = await requireAccess(req);
+  const gate = await requireAccess(req, { capacidade: "administrar" });
   if (gate instanceof NextResponse) return gate;
 
   const db = getAdminDb();

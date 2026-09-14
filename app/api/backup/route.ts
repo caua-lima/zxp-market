@@ -13,7 +13,7 @@ import { fazerBackupSemanal } from "@/lib/backup-run";
  * sem tocar em nada de novo.
  */
 export async function POST(req: Request) {
-  const gate = await requireAccess(req, { allowCron: true });
+  const gate = await requireAccess(req, { allowCron: true, capacidade: "administrar" });
   if (gate instanceof NextResponse) return gate;
 
   try {

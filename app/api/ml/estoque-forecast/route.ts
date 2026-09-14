@@ -24,7 +24,7 @@ function normalizeSku(s: string): string {
 export async function GET(req: Request) {
   // Somente leitura, e o resumo diário usa isto pra contar produtos em risco — sem
   // `allowCron` a chamada interna leva 401 e o aviso morre calado.
-  const gate = await requireAccess(req, { allowCron: true });
+  const gate = await requireAccess(req, { allowCron: true, capacidade: "ver_operacao" });
   if (gate instanceof NextResponse) return gate;
 
   try {

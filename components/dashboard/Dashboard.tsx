@@ -111,6 +111,13 @@ type MlMetrics = {
   devolucoesDetalhe?: Devolucao[];
   adsDiag?:           unknown;
   adsFalhou?:         boolean;
+  /**
+   * O servidor removeu custo, lucro e margem porque o papel de quem pediu
+   * nao alcanca o financeiro (ver lib/domain/redacao-financeira.ts). Sem
+   * este aviso, os campos ausentes virariam `?? 0` e a tela mostraria
+   * "Lucro R$ 0,00" como se fosse o resultado do mes.
+   */
+  financeiroOculto?:  boolean;
   conciliacao?:       Conciliacao;
   from:               string;
   to:                 string;
@@ -1842,6 +1849,13 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
 
   return (
     <div className="dash">
+      {mlMetrics?.financeiroOculto && (
+        <div className="note note-accent">
+          <b>Seu acesso mostra o resultado de vendas, sem custo e margem.</b>{" "}
+          Faturamento, pedidos e unidades aparecem normalmente; lucro, CMV, taxas e
+          impostos ficam fora — nao sao zero, nao foram enviados.
+        </div>
+      )}
       {/* ── Barra de contexto ── */}
       <div className="dash-greeting">
         <div>

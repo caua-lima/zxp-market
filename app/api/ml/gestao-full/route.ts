@@ -46,7 +46,7 @@ type Item = { mlb: string; title: string; available: number; sold: number; statu
  * API pública do ML (só Seller Center), então mostramos o que a API entrega.
  */
 export async function GET(req: Request) {
-  const gate = await requireAccess(req);
+  const gate = await requireAccess(req, { capacidade: "ver_operacao" });
   if (gate instanceof NextResponse) return gate;
 
   const params = new URL(req.url).searchParams;

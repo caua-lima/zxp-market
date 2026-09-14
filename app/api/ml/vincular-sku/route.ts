@@ -53,7 +53,7 @@ function skusDoItem(b: Record<string, unknown>): string[] {
  * cliente (owner) para não abrir caminho de escrita no servidor.
  */
 export async function GET(req: Request) {
-  const gate = await requireAccess(req);
+  const gate = await requireAccess(req, { capacidade: "editar_estoque" });
   if (gate instanceof NextResponse) return gate;
 
   try {

@@ -49,7 +49,7 @@ type CommitDaApi = {
 };
 
 export async function GET(req: Request) {
-  const gate = await requireAccess(req);
+  const gate = await requireAccess(req, { capacidade: "administrar" });
   if (gate instanceof NextResponse) return gate;
 
   if (cache && Date.now() - cache.at < CACHE_TTL) {

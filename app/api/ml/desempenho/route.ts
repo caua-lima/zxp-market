@@ -40,7 +40,7 @@ function monthsAgoISO(months: number): string {
 }
 
 export async function GET(req: Request) {
-  const gate = await requireAccess(req);
+  const gate = await requireAccess(req, { capacidade: "ver_operacao" });
   if (gate instanceof NextResponse) return gate;
 
   try {

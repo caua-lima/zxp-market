@@ -3,7 +3,7 @@ import { requireAccess } from "@/lib/api-auth";
 import { getAdsSpendByItem } from "@/lib/ml/ads";
 
 export async function GET(req: Request) {
-  const gate = await requireAccess(req, { allowCron: true });
+  const gate = await requireAccess(req, { allowCron: true, capacidade: "ver_financeiro" });
   if (gate instanceof NextResponse) return gate;
 
   try {
