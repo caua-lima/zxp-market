@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { papelDe, roleLabel, type AccessEntry, type AuditEvent, type PermissionTab } from "@/lib/domain/types";
 import MudancasPanel from "@/components/tabs/acesso/MudancasPanel";
+import ManutencaoPanel from "@/components/tabs/acesso/ManutencaoPanel";
 import {
   addAccessEntry,
   logAudit,
@@ -517,6 +518,10 @@ export default function AccessControlTab({
         {/* Junto da auditoria de proposito: uma cobre o que muda nos DADOS,
             a outra o que muda no SISTEMA. Ver MudancasPanel.tsx. */}
         <MudancasPanel />
+
+        {/* Rotinas de uma vez so, pra nao dependerem de alguem montar um POST
+            com ID token na mao — instrucao que ninguem segue. So o owner ve. */}
+        <ManutencaoPanel />
       </div>
     </div>
   );
