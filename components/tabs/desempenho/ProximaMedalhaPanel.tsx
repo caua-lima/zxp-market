@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import { fmtBRL } from "@/lib/domain/calc";
 import { metricasDeQualidade } from "@/lib/domain/proxima-medalha";
+import type { MetricaML } from "@/lib/domain/limites-reputacao";
 import {
   REQUISITOS_COMUNS,
   janelaDaMedalha,
@@ -33,10 +34,16 @@ import {
  * errado nos dois lados.
  */
 export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
+  /**
+   * `seller_reputation.metrics` como a API devolve — inclusive `period` por
+   * metrica, `excluded` (protecao) e `sales.completed`, que e o denominador
+   * oficial de reclamacoes e cancelamentos.
+   */
   metrics: {
-    claims?: { rate?: number | null; value?: number | null } | null;
-    cancellations?: { rate?: number | null; value?: number | null } | null;
-    delayed_handling_time?: { rate?: number | null; value?: number | null } | null;
+    claims?: MetricaML;
+    cancellations?: MetricaML;
+    delayed_handling_time?: MetricaML;
+    sales?: { period?: string | null; completed?: number | null } | null;
   } | null | undefined;
   nivelAtual: string | null | undefined;
 }) {
@@ -78,6 +85,17 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
 
   const vendasReputacao = reputacao?.concluidas ?? 0;
   const qualidade = metricasDeQualidade(metrics, vendasReputacao);
+
+  /**
+   * A janela vem da RESPOSTA, nao de uma constante da tela.
+   *
+   * As tres metricas costumam compartilhar o mesmo periodo; quando divergirem,
+   * mostrar os dois e mais honesto do que escolher um.
+   */
+  const periodos = Array.from(new Set(qualidade.map((q) => q.periodo).filter(Boolean)));
+  const janelaDaQualidade = periodos.length === 0
+    ? "janela informada pelo ML"
+    : periodos.map((p) => (p === "60 days" ? "últimos 60 dias" : p === "365 days" ? "últimos 365 dias" : p)).join(" / ");
 
   const p = progressoMercadoLider(
     medalha?.concluidas ?? 0,
@@ -161,11 +179,18 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
         </div>
       )}
 
-      {/* A qualidade tem janela própria (60 dias) — é o critério da REPUTAÇÃO,
-          não o da medalha, e os limites são os publicados pelo ML. */}
+{/*
+        A qualidade tem janela propria — e o criterio da REPUTACAO, nao o da
+        medalha, e os limites sao os publicados pelo ML.
+
+        O rotulo dizia "nos ultimos 60 dias" fixo. A documentacao oficial e
+        clara: no MLB o periodo e de 60 dias so pra quem teve 60 ou mais vendas
+        nos ultimos 60 dias; abaixo disso o ML avalia 365 dias. Cada metrica
+        vem com o proprio `period` na resposta, e e ele que a tela mostra.
+      */}
       <div style={{ borderTop: p ? "1px solid var(--border)" : "none", paddingTop: p ? 12 : 0 }}>
         <div style={{ fontSize: ".72rem", color: "var(--muted)", marginBottom: 6 }}>
-          Qualidade — nos últimos 60 dias, sobre {vendasReputacao} vendas concluídas
+          Qualidade — {janelaDaQualidade} · base de {vendasReputacao} vendas concluídas
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {qualidade.map((q) => (
@@ -181,12 +206,32 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
               </span>
               <span style={{ whiteSpace: "nowrap", textAlign: "right" }}>
                 <b>{q.taxa == null ? "—" : `${(q.taxa * 100).toFixed(2)}%`}</b>
+                {/* Protegido: o ML zera o numero visivel e guarda o real em
+                    `excluded`. A tela mostra o real — a protecao acaba numa
+                    data, e o zero so adia a noticia. */}
+                {q.protegida && (
+                  <span style={{ color: "var(--warning)", fontSize: ".68rem" }} title="Valor real; a proteção de reputação está escondendo este número no painel do ML">
+                    {" "}(protegida)
+                  </span>
+                )}
                 {q.casos != null && <span style={{ color: "var(--muted)" }}> ({q.casos})</span>}
                 {/* A folga em CASOS é o que dá pra agir: "0,22%" não diz se
                     está perto do limite; "cabem mais 54" diz. */}
-                {q.folgaEmCasos != null && (
+                {q.folgaEmCasos != null ? (
                   <div style={{ fontSize: ".68rem", color: "var(--muted)" }}>
                     cabem mais {q.folgaEmCasos}
+                  </div>
+                ) : q.taxa != null && (
+                  /*
+                    Sem a base certa, nao ha "cabem mais X".
+
+                    O atraso no envio divide por "vendas enviadas com ME2", nao
+                    pelo total de vendas, e esse numero so aparece quando ja ha
+                    algum caso. Antes a tela usava o total pras tres metricas e
+                    mostrava um numero que nao correspondia a nada.
+                  */
+                  <div style={{ fontSize: ".68rem", color: "var(--muted)" }} title="A base desta métrica não vem na resposta do ML">
+                    sem base pra converter em casos
                   </div>
                 )}
               </span>

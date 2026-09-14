@@ -1,3 +1,5 @@
+import { dentroDoLimite, emPorcento, TETOS, type ChaveMetrica } from "@/lib/domain/limites-reputacao";
+
 /**
  * Leitura da reputação do vendedor (seller_reputation, já vem de graça em
  * app/api/ml/account/route.ts → user.seller_reputation). Nada aqui bate em
@@ -9,15 +11,43 @@
  */
 
 export type SellerReputationMetricEntry = {
+  /**
+   * A janela que o ML usou NESTA metrica ("60 days", "365 days"). No MLB sao
+   * 60 dias so pra quem teve 60+ vendas nos ultimos 60 dias; abaixo disso o ML
+   * avalia 365. Nao e uma constante do sistema.
+   */
   period?: string;
   rate?: number;
   value?: number;
+  /**
+   * Vendedor protegido: `rate`/`value` vem ZERADOS e os numeros reais ficam
+   * aqui. A protecao termina numa data conhecida — mostrar so o zero adia a
+   * noticia em vez de evitar o problema.
+   */
+  excluded?: { real_rate?: number | null; real_value?: number | null } | null;
 };
 
+/**
+ * As tres metricas de QUALIDADE, que tem teto. `sales` fica de fora de
+ * proposito: e o denominador delas, nao uma metrica com limite, e mante-la
+ * aqui quebraria os Record<keyof ...> que dependem de "toda chave tem teto".
+ */
 export type SellerReputationMetrics = {
   claims?: SellerReputationMetricEntry;
   delayed_handling_time?: SellerReputationMetricEntry;
   cancellations?: SellerReputationMetricEntry;
+};
+
+/**
+ * O bloco `metrics` inteiro, como a API devolve.
+ *
+ * `sales.completed` e o denominador oficial de reclamacoes e cancelamentos, e
+ * `sales.period` diz qual janela o ML usou — 60 dias, ou 365 pra quem teve
+ * menos de 60 vendas em 60 dias. Sem isto no tipo, o numero chegava na tela
+ * por acidente de runtime e a tela assumia 60 dias fixos.
+ */
+export type SellerReputationMetricsBloco = SellerReputationMetrics & {
+  sales?: { period?: string | null; completed?: number | null } | null;
 };
 
 export type SellerReputation = {
@@ -28,7 +58,7 @@ export type SellerReputation = {
     canceled?: number;
     ratings?: { positive?: number; negative?: number; neutral?: number };
   } | null;
-  metrics?: SellerReputationMetrics | null;
+  metrics?: SellerReputationMetricsBloco | null;
 };
 
 export const METRIC_LABELS: Record<keyof SellerReputationMetrics, string> = {
@@ -120,10 +150,19 @@ export type LimiteMetrica = {
   mercadoLider: number;
 };
 
+/**
+ * Derivado de TETOS (lib/domain/limites-reputacao), que guarda os valores em
+ * DECIMAL — a unidade que a API do ML devolve.
+ *
+ * Os tetos estavam escritos duas vezes, em unidades diferentes: 1, 0.5 e 6 em
+ * porcento aqui; 0.01, 0.005 e 0.06 em decimal em proxima-medalha.ts. Iguais
+ * hoje por coincidencia de manutencao, nao por construcao — e o comparador dos
+ * dois lados ja tinha divergido.
+ */
 export const METRIC_LIMITES: Record<keyof SellerReputationMetrics, LimiteMetrica> = {
-  claims: { permitido: 2, mercadoLider: 1 },
-  cancellations: { permitido: 1.5, mercadoLider: 0.5 },
-  delayed_handling_time: { permitido: 10, mercadoLider: 6 },
+  claims: { permitido: emPorcento(TETOS.claims.permitido), mercadoLider: emPorcento(TETOS.claims.mercadoLider) },
+  cancellations: { permitido: emPorcento(TETOS.cancellations.permitido), mercadoLider: emPorcento(TETOS.cancellations.mercadoLider) },
+  delayed_handling_time: { permitido: emPorcento(TETOS.delayed_handling_time.permitido), mercadoLider: emPorcento(TETOS.delayed_handling_time.mercadoLider) },
 };
 
 export type SituacaoMetrica = "ok" | "atencao" | "estourado" | "indisponivel";
@@ -144,9 +183,18 @@ export function situacaoDaMetrica(
   if (rate == null || !Number.isFinite(rate)) return "indisponivel";
   const lim = METRIC_LIMITES[chave];
   if (!lim) return "indisponivel";
-  const pct = rate * 100;
-  if (pct > lim.permitido) return "estourado";
-  if (pct > lim.mercadoLider) return "atencao";
+  /**
+   * O comparador e UM SO, compartilhado com proxima-medalha.ts.
+   *
+   * Aqui era `pct > lim` — taxa IGUAL ao teto contava como ok — enquanto
+   * proxima-medalha.ts fazia `taxa < limite`, em que igual conta como NAO ok.
+   * Os dois paineis ficam lado a lado na aba Desempenho: com a taxa exatamente
+   * no teto, este pintava verde e o outro dizia que a medalha nao sai.
+   */
+  const tetos = TETOS[chave as ChaveMetrica];
+  if (!tetos) return "indisponivel";
+  if (!dentroDoLimite(rate, tetos.permitido)) return "estourado";
+  if (!dentroDoLimite(rate, tetos.mercadoLider)) return "atencao";
   return "ok";
 }
 

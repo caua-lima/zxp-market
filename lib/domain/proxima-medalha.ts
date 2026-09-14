@@ -1,3 +1,14 @@
+import {
+  baseDaMetrica,
+  dentroDoLimite,
+  folgaEmCasos,
+  lerMetrica,
+  periodoDaMetrica,
+  TETOS,
+  type ChaveMetrica,
+  type MetricaML,
+} from "@/lib/domain/limites-reputacao";
+
 /**
  * As métricas de qualidade que o MercadoLíder exige, em unidades que dão pra
  * agir.
@@ -25,6 +36,21 @@ export type MetricaQualidade = {
   label: string;
   /** Taxa atual (0,0022 = 0,22%). */
   taxa: number | null;
+  /**
+   * A janela que o ML usou NESTA metrica, como ele mesmo devolve ("60 days",
+   * "365 days"). A tela dizia "ultimos 60 dias" fixo; no MLB o periodo vira
+   * 365 dias pra quem teve menos de 60 vendas em 60 dias — justamente a conta
+   * em recuperacao, que mais precisa ler o numero certo.
+   */
+  periodo: string | null;
+  /**
+   * Vendedor protegido: o `rate`/`value` visivel vem zerado e os numeros
+   * reais ficam em `excluded`. Mostrar o zero e confortavel e falso — a
+   * protecao termina numa data, e ai o real aparece de uma vez.
+   */
+  protegida: boolean;
+  /** Taxa real sob protecao, quando houver. */
+  taxaReal: number | null;
   /** Teto permitido (0,06 = 6%). */
   limite: number;
   /** Quantas vendas geraram o problema. */
@@ -46,34 +72,69 @@ export type MetricaQualidade = {
  */
 export function metricasDeQualidade(
   m: {
-    claims?: { rate?: number | null; value?: number | null } | null;
-    cancellations?: { rate?: number | null; value?: number | null } | null;
-    delayed_handling_time?: { rate?: number | null; value?: number | null } | null;
+    claims?: MetricaML;
+    cancellations?: MetricaML;
+    delayed_handling_time?: MetricaML;
+    /** `metrics.sales` da API — o denominador oficial de claims e cancellations. */
+    sales?: { period?: string | null; completed?: number | null } | null;
   } | null | undefined,
   vendasNaJanela: number,
 ): MetricaQualidade[] {
-  const vendas = Math.max(Number(vendasNaJanela) || 0, 0);
+  /**
+   * O denominador oficial e `metrics.sales.completed`, nao a contagem de
+   * pedidos do app: a taxa vem da janela do ML (60 ou 365 dias, conforme o
+   * volume) e a contagem do app e feita sobre a janela da tela. Quando a API
+   * nao traz, cai na contagem do app como ultima opcao.
+   */
+  const vendasOficiais = Number(m?.sales?.completed);
+  const vendas = Number.isFinite(vendasOficiais) && vendasOficiais > 0
+    ? vendasOficiais
+    : Math.max(Number(vendasNaJanela) || 0, 0);
 
   const montar = (
-    id: string, label: string, limite: number,
-    entrada: { rate?: number | null; value?: number | null } | null | undefined,
+    id: string, label: string, chave: ChaveMetrica, entrada: MetricaML,
   ): MetricaQualidade => {
-    const taxa = entrada?.rate == null ? null : Number(entrada.rate);
-    const casos = entrada?.value == null ? null : Number(entrada.value);
-    const ok = taxa == null ? null : taxa < limite;
+    const limite = TETOS[chave].mercadoLider;
+    const lida = lerMetrica(entrada);
+
+    // Sob protecao, o numero que importa e o real: e ele que volta a valer
+    // quando a protecao acabar.
+    const taxa = lida.protegida ? (lida.taxaReal ?? lida.taxa) : lida.taxa;
+    const casos = lida.protegida ? (lida.casosReais ?? lida.casos) : lida.casos;
+
     /**
-     * Teto em casos = quantos cabem antes de a taxa alcançar o limite.
-     * Piso em zero: já estourado não tem folga negativa, tem zero.
+     * O MESMO comparador do ReputacaoPanel. Aqui era `taxa < limite` e la era
+     * `pct > limite`: com a taxa exatamente no teto, os dois paineis lado a
+     * lado davam respostas opostas. A tabela oficial do MLB marca o vermelho
+     * como "> 8%", entao o teto e inclusivo.
      */
-    const folgaEmCasos = vendas > 0 && casos != null
-      ? Math.max(0, Math.floor(limite * vendas) - casos)
-      : null;
-    return { id, label, taxa, limite, casos, ok, folgaEmCasos };
+    const ok = taxa == null ? null : dentroDoLimite(taxa, limite);
+
+    /**
+     * A folga e DERIVADA do comparador, nao calculada em paralelo com ele —
+     * era essa separacao que deixava a tela prometer "cabem mais 1" e reprovar
+     * esse mesmo 1.
+     *
+     * E a base sai de `baseDaMetrica`, que respeita o denominador de CADA
+     * metrica: reclamacoes e cancelamentos dividem por vendas totais, mas
+     * atraso no envio divide por "vendas enviadas com ME2" — outro numero, que
+     * nem vem na resposta. Antes as tres usavam o total de vendas.
+     */
+    const base = baseDaMetrica(chave, entrada, vendas);
+    const folga = base != null && casos != null ? folgaEmCasos(casos, base, limite) : null;
+
+    return {
+      id, label, taxa, limite, casos, ok,
+      folgaEmCasos: folga,
+      periodo: periodoDaMetrica(entrada),
+      protegida: lida.protegida,
+      taxaReal: lida.taxaReal,
+    };
   };
 
   return [
-    montar("reclamacoes", "Reclamações", 0.01, m?.claims),
-    montar("cancelamentos", "Canceladas por você", 0.005, m?.cancellations),
-    montar("envios", "Envios com atraso", 0.06, m?.delayed_handling_time),
+    montar("reclamacoes", "Reclamações", "claims", m?.claims),
+    montar("cancelamentos", "Canceladas por você", "cancellations", m?.cancellations),
+    montar("envios", "Envios com atraso", "delayed_handling_time", m?.delayed_handling_time),
   ];
 }
