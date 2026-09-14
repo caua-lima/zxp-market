@@ -238,6 +238,22 @@ service cloud.firestore {
      * único chamador passa `user.uid` (components/NotificationSettings.tsx),
      * então fechar não tira acesso de ninguém.
      */
+    /**
+     * Transacoes OAuth do Mercado Livre: NINGUEM alcanca pelo cliente.
+     *
+     * Cada documento guarda o `state` e o `verifier` do PKCE de um vinculo em
+     * andamento. Quem lesse um destes conseguiria completar o fluxo no lugar do
+     * dono e apontar o painel pra outra loja.
+     *
+     * So o Admin SDK escreve e le aqui (app/api/ml/auth e app/api/ml/callback),
+     * e o Admin SDK passa por cima destas regras. O Firestore ja negaria por
+     * falta de regra; isto e explicito pra a intencao ficar escrita e pra uma
+     * regra ampla adicionada depois nao abrir a colecao sem querer.
+     */
+    match /ml_oauth_transacoes/{state} {
+      allow read, write: if false;
+    }
+
     match /usuarios/{uid}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }

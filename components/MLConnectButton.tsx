@@ -2,16 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { authedFetch } from "@/lib/api/authed-fetch";
+import { iniciarVinculoML } from "@/lib/ml/iniciar-vinculo";
 
 type MlStatus = {
   connected: boolean;
   user_id: string | null;
 };
 
-export function MLConnectButton() {
+/** @param aviso motivo de uma volta recusada do ML, lido por MlAccountStatus. */
+export function MLConnectButton({ aviso }: { aviso?: string | null } = {}) {
   const [status, setStatus] = useState<MlStatus>({ connected: false, user_id: null });
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(aviso ?? null);
   const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
@@ -52,19 +54,11 @@ export function MLConnectButton() {
 
   async function handleConnect() {
     setConnecting(true);
-    try {
-      // 1. Desconecta a conta ML atual (se houver)
-      await authedFetch('/api/ml/disconnect', { method: 'POST' });
-      
-      // 2. Limpa localStorage
-      localStorage.setItem('ml_disconnected', 'true');
-      
-      // 3. Aguarda um pouco e redireciona para login
-      setTimeout(() => {
-        window.location.href = '/api/ml/auth?login=true';
-      }, 300);
-    } catch (err) {
-      console.error('Erro ao conectar ML', err);
+    // O pedido e autenticado: o servidor confere que quem clica administra o
+    // app antes de abrir a transacao OAuth.
+    const erro = await iniciarVinculoML();
+    if (erro) {
+      setError(erro);
       setConnecting(false);
     }
   }
@@ -110,6 +104,7 @@ export function MLConnectButton() {
   }
 
   return (
+    <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
     <button
       type="button"
       onClick={handleConnect}
@@ -132,5 +127,9 @@ export function MLConnectButton() {
     >
       {connecting ? '⏳ Conectando...' : '🛒 Conectar ML'}
     </button>
+    {error && (
+      <span style={{ color: "var(--red)", fontSize: ".72rem", maxWidth: 220 }}>{error}</span>
+    )}
+    </span>
   );
 }

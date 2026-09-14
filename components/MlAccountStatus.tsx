@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { MLConnectButton } from "./MLConnectButton";
 import { authedFetch } from "@/lib/api/authed-fetch";
+import { iniciarVinculoML, motivoDaVolta } from "@/lib/ml/iniciar-vinculo";
 
 type Account = {
   connected: boolean;
@@ -16,7 +17,14 @@ export function MlAccountStatus() {
   const [swapLoading, setSwapLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  const [recusa, setRecusa] = useState<string | null>(null);
+
   useEffect(() => {
+    // A volta recusada cai na home com ?ml_erro=. Sem ler isso, o dono veria a
+    // home em silencio, sem saber por que a conexao nao aconteceu. A leitura e
+    // sincrona (limpa a URL na hora); o estado so muda depois da carga, junto
+    // com o resto — evita um render a mais so pra isso.
+    const motivo = motivoDaVolta();
     async function load() {
       try {
         const res = await authedFetch('/api/ml/account', { cache: 'no-store' });
@@ -27,36 +35,35 @@ export function MlAccountStatus() {
       } catch (e) {
         setData({ connected: false });
       } finally {
+        setRecusa(motivo);
         setLoading(false);
       }
     }
     load();
   }, []);
 
-  if (loading) return <MLConnectButton />;
-  if (!data || !data.connected) return <MLConnectButton />;
+  if (loading) return <MLConnectButton aviso={recusa} />;
+  if (!data || !data.connected) return <MLConnectButton aviso={recusa} />;
 
   async function swapAccount() {
     if (!confirm('Reconectar o Mercado Livre?\n\nVocê será redirecionado para o login do ML e deve autorizar todas as permissões (inclusive Publicidade).')) return;
     setSwapLoading(true);
     setFeedback(null);
-    try {
-      const res = await authedFetch('/api/ml/disconnect', { method: 'POST' });
-      if (res.ok) {
-        localStorage.setItem('ml_disconnected', 'true');
-        window.location.href = '/api/ml/auth?login=true';
-      } else {
-        setFeedback({ type: 'error', message: '❌ Erro ao trocar conta' });
-        setSwapLoading(false);
-      }
-    } catch {
-      setFeedback({ type: 'error', message: '❌ Erro ao trocar conta' });
+    // Nao desconecta antes: o callback so troca a conexao depois de validar o
+    // vendedor, entao cancelar no meio deixa a conexao atual intacta.
+    setRecusa(null); // recomecar limpa o aviso da tentativa anterior
+    const erro = await iniciarVinculoML();
+    if (erro) {
+      setFeedback({ type: 'error', message: '❌ ' + erro });
       setSwapLoading(false);
     }
   }
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+      {recusa && !feedback && (
+        <span style={{ color: 'var(--red)', fontSize: '.72rem', maxWidth: 260 }}>{recusa}</span>
+      )}
       {/* No celular some (.acct-text): o nickname e o e-mail já aparecem no
           rodapé da sidebar, e aqui só empurravam o botão pra fora da tela. */}
       <div className="acct-text" style={{ textAlign: 'right', fontSize: '.8rem', minWidth: 0 }}>

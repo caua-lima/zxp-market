@@ -13,14 +13,20 @@ export function generatePkce(): { verifier: string; challenge: string } {
   return { verifier, challenge };
 }
 
-export function getAuthURL(codeChallenge: string): string {
+/**
+ * @param state o identificador da transacao OAuth (ver lib/ml/oauth-transacao).
+ *   Era `Date.now()` com o comentario "evita cache" — um valor previsivel,
+ *   que o callback nem conferia. `state` existe pra ligar a volta ao pedido;
+ *   sem isso, qualquer volta era aceita.
+ */
+export function getAuthURL(codeChallenge: string, state: string): string {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: ML_APP_ID,
     redirect_uri: ML_REDIRECT_URI,
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
-    state: Date.now().toString(), // evita cache
+    state,
   });
 
   return `https://auth.mercadolivre.com.br/authorization?${params.toString()}`;
