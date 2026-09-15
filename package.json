@@ -9,7 +9,9 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:critical": "vitest run lib/domain"
+    "test:critical": "vitest run lib/domain",
+    "backup": "node scripts/backup-firestore.mjs --saida ./backups",
+    "backup:conferir": "node scripts/restore-firestore.mjs --conferir --dump"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
