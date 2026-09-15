@@ -16,6 +16,7 @@ import type { UserData } from "@/components/useUserData";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import { useAccess } from "@/components/tabs/AccessGuard";
 import { gravarChaveApp, lerChaveApp } from "@/lib/storage";
+import { composicaoDoEstoque } from "@/lib/domain/full-indisponivel";
 
 type MlItem = { available: number; sold: number; status: string; price: number; regularPrice: number; hasPromo: boolean; logistic: string; inventoryId?: string };
 type EstoqueML = Record<string, MlItem>;
@@ -101,6 +102,14 @@ function custoMedioDe(p: Product): number {
 
 // Anúncios (MLBs) do produto com os dados do ML de cada um.
 type AnuncioML = { mlb: string; item: MlItem | null };
+/** Unidades retidas no Full por produto, como a rota de gestão devolve. */
+type RetencaoPorProduto = {
+  productId: string;
+  disponivel: number;
+  indisponivel: number;
+  porStatus: { status: string; qtd: number }[];
+};
+
 function anunciosDe(p: Product, estoqueML: EstoqueML): AnuncioML[] {
   return mlbsDe(p).map((m) => ({ mlb: normMlb(m), item: estoqueML[normMlb(m)] ?? null }));
 }
@@ -203,6 +212,14 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [search, setSearch] = useState("");
   const [estoqueML, setEstoqueML] = useState<EstoqueML>({});
+  const [retencao, setRetencao] = useState<RetencaoPorProduto[]>([]);
+  /**
+   * O detalhe CHEGOU? Lista vazia é ambígua: pode ser 'nada retido' ou
+   * 'a consulta falhou'. A primeira permite afirmar o plano; a segunda não,
+   * e mostrar as duas igual é o mesmo erro de sempre — ausência de dado
+   * desenhada como zero.
+   */
+  const [retencaoVeio, setRetencaoVeio] = useState(false);
   const [forecast, setForecast] = useState<Forecast>({ vendas: {}, dias: DIAS_ALVO });
   const [loadingML, setLoadingML] = useState(false);
   const [movimentos, setMovimentos] = useState<EstoqueMovimento[]>([]);
@@ -239,7 +256,27 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
       ]);
       if (rMl.ok) setEstoqueML((await rMl.json()).estoque ?? {});
       if (rFc.ok) { const j = await rFc.json(); setForecast({ vendas: j.vendas ?? {}, dias: j.dias ?? DIAS_ALVO, financeiro: j.financeiro ?? {} }); }
-      if (rFull?.ok) { const j = await rFull.json(); setRemessas(j.remessas ?? []); }
+      if (rFull?.ok) {
+        const j = await rFull.json();
+        setRemessas(j.remessas ?? []);
+        /**
+         * ─── ISTO JÁ VINHA NA RESPOSTA E ERA JOGADO FORA ─────────────────
+         *
+         * A rota consulta /inventories/{id}/stock/fulfillment e devolve, por
+         * produto, quantas unidades estão retidas e por quê. A aba lia só as
+         * remessas e descartava o resto.
+         *
+         * Sem esse detalhe, `available_quantity` — o número que a aba chama
+         * de Full — era tratado como se fosse o estoque físico. São coisas
+         * diferentes, e os dois erros que isso produz andam em direções
+         * opostas: unidade em transferência entre centros já foi paga e volta
+         * a vender (contá-la de fora faz COMPRAR DUAS VEZES); unidade avariada
+         * está lá e não vende nunca (contá-la dentro faz FALTAR PRODUTO).
+         */
+        const ef = j.estoqueFull as { porProduto?: RetencaoPorProduto[] } | undefined;
+        setRetencao(ef?.porProduto ?? []);
+        setRetencaoVeio(!!ef);
+      }
     } catch { /* ignora */ } finally { setLoadingML(false); }
   }, []);
 
@@ -447,7 +484,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
 
       {/* Antes da lista de produtos: e decisao de COMPRA, e vem antes de
           qualquer ajuste fino de cadastro. */}
-      <ReposicaoPanel produtos={data.products} estoqueML={estoqueML} forecast={forecast} />
+      <ReposicaoPanel produtos={data.products} estoqueML={estoqueML} forecast={forecast} retencao={retencao} retencaoVeio={retencaoVeio} />
 
       {/* Produto cadastrado sem nenhum anúncio ligado nunca recebe venda no
           cálculo de lucro — o pedido chega, não acha o produto e o CMV entra
@@ -1655,10 +1692,14 @@ function VincularSkuModal({ uid, produtos, onClose }: { uid: string; produtos: P
  * Por isso a folga vem preenchida. Dá pra zerar o campo, e a tela avisa o
  * que isso significa em vez de deixar acontecer calado.
  */
-function ReposicaoPanel({ produtos, estoqueML, forecast }: {
+function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio }: {
   produtos: Product[];
   estoqueML: EstoqueML;
   forecast: Forecast;
+  /** Unidades retidas no Full, por produto — vem de quem busca a gestão do Full. */
+  retencao: RetencaoPorProduto[];
+  /** O detalhe chegou? Lista vazia é ambígua; sem isto o plano afirmaria demais. */
+  retencaoVeio: boolean;
 }) {
   const [dias, setDias] = useState("30");
   const [folga, setFolga] = useState("7");
@@ -1699,14 +1740,46 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
    * dias em que ele esteve à venda (ver mediaDiariaAjustada). Sem o ajuste,
    * anúncio pausado metade do período parece vender metade do que vende.
    */
+  /** Retenção por produto, indexada — o plano consulta por id. */
+  const retencaoPorProduto = useMemo(
+    () => new Map(retencao.map((r) => [r.productId, r])),
+    [retencao],
+  );
+
   const paraDominio = useMemo(() => produtos.map((p) => {
     const f = previsaoDe(p, estoqueML, forecast);
+
+    /**
+     * ─── QUANTO VAI ESTAR VENDÁVEL, E NÃO QUANTO ESTÁ DISPONÍVEL ───────
+     *
+     * `f.full` é `available_quantity`: o que dá pra vender AGORA. O plano de
+     * reposição não pergunta isso — ele pergunta com quanto dá pra contar
+     * até o produto chegar. As unidades que o ML está movendo entre centros
+     * entram nessa conta (já foram pagas, voltam a vender sozinhas); as
+     * avariadas e as em retirada, não.
+     *
+     * `baseDaReposicao` é onde essa regra mora, com teste. Aqui só se soma
+     * a diferença — somar `transito` a `estoqueTotal`, que já contém `full`.
+     */
+    const ret = retencaoPorProduto.get(p.id);
+    const comp = composicaoDoEstoque(f.full, ret?.porStatus ?? []);
+    const emTransitoNoFull = comp.transito;
+    const retidoSemVolta = comp.retidoSemVolta + comp.perdido;
     const diasAtivos = forecast.diasAtivos?.[p.id];
     const diasBase = diasAtivos && diasAtivos > 0 ? Math.min(diasAtivos, forecast.dias) : forecast.dias;
     return {
       id: p.id,
       nome: p.name || p.id,
-      estoqueTotal: f.total,
+      /**
+       * O total que o plano usa: disponível + o que volta a vender sozinho.
+       * Não é o físico — avaria e vencido estão no centro, contam no que
+       * você pagou e não vendem nunca.
+       */
+      estoqueTotal: f.total + emTransitoNoFull,
+      /** O físico, pra tela poder mostrar a diferença em vez de escondê-la. */
+      estoqueFisico: f.total + emTransitoNoFull + retidoSemVolta,
+      emTransitoNoFull,
+      retidoSemVolta,
       emCasa: f.casa,
       // Separados do total: a aba de envio precisa do Full sozinho.
       noFull: f.full,
@@ -1718,12 +1791,16 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
       /** Esteve à venda menos que a janela inteira — a tela explica a base. */
       parcial: diasBase < forecast.dias,
     };
-  }), [produtos, estoqueML, forecast]);
+  }), [produtos, estoqueML, forecast, retencaoPorProduto]);
 
   const plano = useMemo(
     () => montarPlanoReposicao(paraDominio, diasN, folgaN),
     [paraDominio, diasN, folgaN],
   );
+
+  /** Só pro aviso: quanto do plano se apoia em unidade que ainda não vende. */
+  const totalEmTransito = useMemo(() => paraDominio.reduce((n, p) => n + p.emTransitoNoFull, 0), [paraDominio]);
+  const totalSemVolta = useMemo(() => paraDominio.reduce((n, p) => n + p.retidoSemVolta, 0), [paraDominio]);
 
   /**
    * Envio pro Full responde outra pergunta: o galpao NAO segura o Full, e
@@ -1827,6 +1904,35 @@ function ReposicaoPanel({ produtos, estoqueML, forecast }: {
         </div>
       )}
 
+      {/*
+        ─── O QUE ESTE PLANO SABE, E O QUE ELE NÃO SABE ───────────────────
+
+        O plano conta com as unidades que o ML está movendo entre centros:
+        já foram pagas e voltam a vender sozinhas, então comprá-las de novo
+        seria comprar duas vezes o mesmo estoque.
+
+        Quando o detalhe de retenção não chega, essas unidades ficam
+        invisíveis — e invisível aqui não é zero, é desconhecido. O plano
+        continua sendo mostrado (sem ele a tela não serve pra nada), com a
+        ressalva de que o número pode estar pedindo a mais.
+      */}
+      {!retencaoVeio && (
+        <div className="note note-warn" style={{ marginBottom: 12 }}>
+          Não consegui ler o detalhe do estoque retido no Full. Unidades em
+          transferência entre centros — já pagas e prestes a voltar a vender —
+          não entraram nesta conta, então o plano pode estar <b>pedindo a mais</b>.
+        </div>
+      )}
+
+      {retencaoVeio && totalEmTransito > 0 && (
+        <div className="note" style={{ marginBottom: 12 }}>
+          <b>{totalEmTransito} unidade(s)</b> em transferência entre centros do ML
+          entraram no plano: estão pagas e voltam a vender sozinhas, então não
+          precisam ser compradas de novo.
+          {totalSemVolta > 0 && <> Outras <b>{totalSemVolta}</b> estão retidas e
+          {" "}<b>não</b> voltam a vender — essas o plano ignora de propósito.</>}
+        </div>
+      )}
       <div className="kpi-grid" style={{ marginBottom: 12 }}>
         <div className="kpi"><div className="k-lbl">Produtos a pedir</div><div className="k-val">{plano.itens.length}</div></div>
         <div className="kpi"><div className="k-lbl">Unidades</div><div className="k-val">{plano.totalUnidades}</div></div>
