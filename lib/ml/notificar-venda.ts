@@ -7,7 +7,13 @@ import { fatiaDoPedidoNoEnvio, type ItemDoEnvio } from "@/lib/domain/frete-pacot
 const ML_API = "https://api.mercadolibre.com";
 import { getMlAccessToken } from "@/app/api/ml/token";
 import { sendSalePushToAll } from "@/lib/push-send";
-import { createNotificationEventIdempotent, markPushAttempted, markPushDelivered, markPushError } from "@/lib/notification-events";
+import { aplicarPatchEntrega, createNotificationEventIdempotent, lerEntrega } from "@/lib/notification-events";
+import {
+  avaliarPendencia,
+  patchDesistencia,
+  patchResultado,
+  patchTentando,
+} from "@/lib/domain/entrega-pendente";
 import { registrarVendaNaJanela } from "@/lib/notification-groups";
 import {
   buildGroupedSalesContent,
@@ -139,16 +145,55 @@ export function buildPayload(eventId: string, type: NotificationEventType, title
  * Envia o push do evento já persistido, registrando tentativa/entrega/erro na
  * trilha do próprio evento (nunca o token ou payload completo).
  */
+/**
+ * Entrega o aviso, tratando-a como uma PENDÊNCIA com tentativas.
+ *
+ * ─── POR QUE ISTO NÃO É SÓ "MANDAR" ─────────────────────────────────────
+ *
+ * A entrega estava grudada na criação do evento. Se o evento nascia e o envio
+ * falhava logo depois — FCM fora do ar, rede caindo, a função encerrada no
+ * meio — o documento ficava sem entrega, e a tentativa seguinte recebia
+ * `created: false`, devolvia "já existia" e não tentava de novo.
+ *
+ * O push sumia. Não com erro: em silêncio, e pra sempre. A rede de segurança
+ * do sync tinha o mesmo furo, porque checava se o EVENTO existia, não se ele
+ * havia sido entregue.
+ *
+ * Agora cada envio consulta o estado: já entregue não repete, alguém tentando
+ * cede a vez, e o que falhou volta a ser tentado — até o teto, ou até o aviso
+ * vencer. As regras estão em lib/domain/entrega-pendente.
+ */
 export async function enviarEPersistirEntrega(eventId: string, type: NotificationEventType, payload: SalePushPayload, isSummary = false) {
-  await markPushAttempted(eventId);
+  const { existe, delivery, criadoEm } = await lerEntrega(eventId);
+  const agora = Date.now();
+  const decisao = avaliarPendencia(delivery, existe ? criadoEm : agora, agora);
+
+  if (decisao.acao === "ja_entregue" || decisao.acao === "outro_entregando") return 0;
+  if (decisao.acao === "desistir") {
+    // Desistir é uma DECISÃO registrada, não um esquecimento.
+    await aplicarPatchEntrega(eventId, patchDesistencia(decisao.motivo, agora));
+    return 0;
+  }
+
+  // A concessão é gravada ANTES da chamada ao FCM: gravar depois deixaria a
+  // janela em que dois processos acham que ninguém está entregando.
+  await aplicarPatchEntrega(eventId, patchTentando(decisao.tentativa, agora));
+
   try {
     const { enviados, bloqueadosPorPreferencia } = await sendSalePushToAll(payload, type, isSummary);
-    if (enviados > 0) await markPushDelivered(eventId);
-    else await markPushError(eventId, bloqueadosPorPreferencia > 0 ? "todos os destinatários bloquearam por preferência/horário silencioso" : "nenhum dispositivo registrado");
+    await aplicarPatchEntrega(eventId, patchResultado(
+      enviados,
+      Date.now(),
+      enviados > 0 ? undefined
+        : bloqueadosPorPreferencia > 0
+          ? "todos os destinatários bloquearam por preferência/horário silencioso"
+          : "nenhum dispositivo registrado",
+    ));
     return enviados;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await markPushError(eventId, msg.slice(0, 160));
+    // Erro NÃO carimba entrega: fica pendente e volta a ser tentado.
+    await aplicarPatchEntrega(eventId, patchResultado(0, Date.now(), msg));
     return 0;
   }
 }
@@ -291,7 +336,26 @@ export async function notificarVendaConfirmada(
     deepLink: buildOrderDeepLink(pedido.orderId),
   });
 
-  if (!created) return { estado: "ja_existia", eventId };
+  if (!created) {
+    /**
+     * O evento já existe — mas isso não diz que ele foi ENTREGUE.
+     *
+     * Era aqui que o push se perdia: `return { estado: "ja_existia" }` e
+     * pronto. Um evento criado cujo envio falhou nunca mais era tentado.
+     *
+     * `enviarEPersistirEntrega` decide sozinho se há o que fazer: entregue
+     * não repete, e vencido ou estourado desiste com registro.
+     */
+    const payloadRetry = buildPayload(eventId, type, content.title, content.body, {
+      orderId: pedido.orderId, productName: finance.productName, grossAmount: finance.grossAmount,
+      estimatedProfit: finance.estimatedProfit ?? undefined, estimatedMargin: finance.estimatedMargin ?? undefined,
+      financialState, tag: `sale-${pedido.orderId}`, itens: finance.itens,
+    });
+    const enviados = await enviarEPersistirEntrega(eventId, type, payloadRetry);
+    return enviados > 0
+      ? { estado: "notificada", eventId, enviados }
+      : { estado: "ja_existia", eventId };
+  }
 
   const payload = buildPayload(eventId, type, content.title, content.body, {
     orderId: pedido.orderId, productName: finance.productName, grossAmount: finance.grossAmount,

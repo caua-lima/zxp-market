@@ -312,9 +312,19 @@ async function notificarEstoque(aviso: AvisoEstoque): Promise<boolean> {
     // Aba Full: e la que a coleta e agendada, nao no Estoque geral.
     deepLink: "/?tab=full",
   });
-  if (!created) return false;
+  /**
+   * Evento já existente NÃO significa entregue.
+   *
+   * Havia `if (!created) return false;` aqui. Um aviso de estoque baixo criado
+   * uma vez, com o envio falhando logo depois, nunca mais era tentado — e o
+   * aviso que existe justamente pra evitar ruptura simplesmente não chegava.
+   *
+   * `enviarEPersistirEntrega` decide sozinho: já entregue não repete, quem
+   * falhou volta à fila, e o que venceu é encerrado com registro.
+   */
+  void created;
 
-  await enviarEPersistirEntrega(
+  const enviados = await enviarEPersistirEntrega(
     eventId,
     "stock_low",
     buildPayload(eventId, "stock_low", aviso.titulo, aviso.corpo, {
@@ -322,5 +332,7 @@ async function notificarEstoque(aviso: AvisoEstoque): Promise<boolean> {
       tag: aviso.chave,
     }),
   );
-  return true;
+  // Só conta como avisado quando alguém recebeu — senão o estado de "já
+  // avisei" travaria a próxima tentativa de um aviso que nunca saiu.
+  return enviados > 0;
 }

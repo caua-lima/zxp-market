@@ -85,9 +85,14 @@ export async function verificarDevolucoes(): Promise<ResultadoDevolucoes> {
         financialState: "estimated",
         deepLink: buildOrderDeepLink(aviso.pedido),
       });
-      if (!created) continue;
+      /**
+       * Evento já existente NÃO significa entregue — era aqui que o aviso de
+       * devolução se perdia: criado uma vez, envio falhou, `continue` pra
+       * sempre.
+       */
+      void created;
 
-      await enviarEPersistirEntrega(
+      const enviados = await enviarEPersistirEntrega(
         eventId,
         aviso.tipo,
         buildPayload(eventId, aviso.tipo, aviso.titulo, aviso.corpo, {
@@ -95,7 +100,8 @@ export async function verificarDevolucoes(): Promise<ResultadoDevolucoes> {
           tag: aviso.chave,
         }),
       );
-      avisados.push(aviso.chave);
+      // Só entra em "avisados" quem de fato chegou a algum aparelho.
+      if (enviados > 0) avisados.push(aviso.chave);
     } catch (err) {
       console.error("[devolucoes] falhou ao avisar", aviso.chave, err);
     }

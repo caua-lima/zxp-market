@@ -102,3 +102,31 @@ export async function markPushError(eventId: string, resumoErro: string): Promis
     "delivery.pushError": resumoErro.slice(0, 200),
   }).catch(() => {});
 }
+
+/**
+ * O estado de entrega de um evento, pra decidir se ainda há o que enviar.
+ *
+ * Existe porque criação e ENTREGA eram a mesma coisa: evento criado com o
+ * envio falhando logo depois ficava sem entrega, e a tentativa seguinte via
+ * `created: false` e desistia. O push sumia em silêncio, pra sempre.
+ */
+export async function lerEntrega(eventId: string): Promise<{
+  existe: boolean;
+  delivery: Record<string, unknown> | null;
+  criadoEm: number;
+}> {
+  const snap = await getAdminDb().collection(COL).doc(eventId).get();
+  if (!snap.exists) return { existe: false, delivery: null, criadoEm: 0 };
+  const d = snap.data() ?? {};
+  const criado = d.createdAt;
+  // `createdAt` é serverTimestamp na escrita e Timestamp na leitura.
+  const criadoEm = criado && typeof (criado as { toMillis?: unknown }).toMillis === "function"
+    ? (criado as { toMillis: () => number }).toMillis()
+    : Number(criado ?? 0) || 0;
+  return { existe: true, delivery: (d.delivery as Record<string, unknown>) ?? null, criadoEm };
+}
+
+/** Aplica um patch de entrega. Caminhos com ponto são de propósito: são campos aninhados em `delivery`. */
+export async function aplicarPatchEntrega(eventId: string, patch: Record<string, unknown>): Promise<void> {
+  await getAdminDb().collection(COL).doc(eventId).update(patch).catch(() => {});
+}
