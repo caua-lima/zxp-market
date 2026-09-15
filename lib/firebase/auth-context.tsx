@@ -9,7 +9,7 @@ import {
 } from "firebase/auth";
 import { createContext, useContext, useEffect, useState } from "react";
 import { getFirebase, googleProvider, getGoogleProviderWithAccountSelection } from "./client";
-import { limparCache } from "./cache";
+import { ligarRevalidacaoAutomatica, limparCache } from "./cache";
 
 type AuthState = {
   user: User | null;
@@ -33,6 +33,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
   }, []);
+
+  /**
+   * SYNC-01: revalidacao por evento.
+   *
+   * A validade do cache era conferida so na INSCRICAO. Depois de inscrito, o
+   * componente segurava o dado indefinidamente — uma aba aberta a tarde
+   * inteira mostrava o estado da manha, e o TTL so tinha efeito na proxima
+   * montagem. O comentario do cache dizia que mudanca de outra pessoa
+   * "aparece quando o TTL vence"; pra quem ja estava assinando, ele nunca
+   * vencia.
+   *
+   * Aqui, no provider que existe durante toda a sessao: revalida o que esta
+   * VELHO quando a janela volta ao foco e quando a conexao volta, mais um
+   * intervalo que so corre com a aba visivel. Aba em segundo plano nao gasta
+   * leitura, que e o ponto do cache inteiro.
+   */
+  useEffect(() => ligarRevalidacaoAutomatica(), []);
 
   async function signIn() {
     const { auth } = getFirebase();
