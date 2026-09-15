@@ -430,6 +430,25 @@ function computeAggregates(
   };
 }
 
+/**
+ * A geração da conexão atual com o Mercado Livre.
+ *
+ * Sobe a cada vínculo concluído (ver app/api/ml/callback). Entra nas chaves de
+ * cache pra que trocar de conta invalide o que ficou guardado da anterior —
+ * senão os números do vendedor antigo continuariam servindo até o TTL passar.
+ *
+ * Falhar aqui devolve 0: o cache fica um pouco menos preciso, mas a rota não
+ * cai por causa de uma leitura auxiliar.
+ */
+async function geracaoDaConexao(): Promise<number> {
+  try {
+    const doc = await getAdminDb().collection("ml_tokens").doc("main").get();
+    return Number(doc.data()?.geracao ?? 0) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 export async function GET(req: Request) {
   /**
    * `allowCron` estava faltando, e era a causa de os marcos comemorativos
@@ -449,8 +468,27 @@ export async function GET(req: Request) {
     const month = parseDateParam(url.searchParams.get("month"));
     const { start, end, startBR, endBR, fromStr, toStr } = buildRange(from, to, month);
 
-    // ── Cache curto (bypass com ?fresh=1, usado no "Atualizar ML") ──
-    const cacheKey = `${fromStr}|${toStr}`;
+    /**
+     * ── Cache curto (bypass com ?fresh=1, usado no "Atualizar ML") ──
+     *
+     * SYNC-03: a chave era só `${fromStr}|${toStr}`.
+     *
+     * Mas esta rota também lê `?dia=`, e esse parâmetro MUDA a resposta: é ele
+     * que escolhe o dia do bloco "Vendas do Dia". Duas requisições com o mesmo
+     * período e dias diferentes compartilhavam a mesma entrada, e a segunda
+     * recebia o dia da primeira.
+     *
+     * É a continuação do bug do filtro "ontem": a requisição passou a mandar
+     * `&dia=`, mas a chave do cache não. Dentro do TTL, trocar o dia em foco
+     * devolvia o dia anterior.
+     *
+     * A geração da conexão entra também: trocar a conta do Mercado Livre não
+     * pode deixar os números do vendedor anterior servindo por mais cinco
+     * minutos.
+     */
+    const diaFoco = url.searchParams.get("dia") ?? "";
+    const geracaoConexao = await geracaoDaConexao();
+    const cacheKey = `${fromStr}|${toStr}|${diaFoco}|g${geracaoConexao}`;
     const bust = url.searchParams.get("fresh") === "1";
     if (!bust) {
       const cached = metricsCache.get(cacheKey);
@@ -510,7 +548,10 @@ export async function GET(req: Request) {
      * outro. Formato yyyy-mm-dd, validado — data solta viraria intervalo
      * inválido no ML e derrubaria a rota inteira por causa de um card.
      */
-    const diaPedido = new URL(req.url).searchParams.get("dia");
+    // Mesmo valor que entrou na chave do cache — reler a URL aqui abriria
+    // espaco pra os dois divergirem, que e como o cache voltou a servir o dia
+    // errado depois de a requisicao ja mandar `&dia=`.
+    const diaPedido = diaFoco || null;
     const hj = diaPedido && /^\d{4}-\d{2}-\d{2}$/.test(diaPedido) ? diaPedido : hoje;
 
     // ── 3. ADS por item_id (período + hoje) ───────────────────

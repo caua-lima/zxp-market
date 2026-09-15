@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { patchArquivar, patchReativar, vigenteHoje } from "@/lib/domain/vigencia-custo";
 import Modal from "@/components/Modal";
 import CustoForm from "@/components/custos/CustoForm";
@@ -96,16 +96,36 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
   // Contexto: quanto os custos da operação comem do faturamento e do lucro do
   // mês. Mesma rota que o Dashboard usa.
   const [ref, setRef] = useState<{ faturamentoLiquido: number; lucroSemCustos: number } | null>(null);
-  useEffect(() => {
-    let vivo = true;
-    authedFetch(`/api/ml/metrics?month=${mesAtual()}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        if (vivo && j) setRef({ faturamentoLiquido: j.faturamentoLiquido ?? 0, lucroSemCustos: j.lucroSemCustos ?? 0 });
-      })
-      .catch(() => {});
-    return () => { vivo = false; };
+
+  /**
+   * SYNC-03: mexer em custo invalida esta referência.
+   *
+   * Ela era buscada UMA vez, na montagem. Cadastrar, arquivar ou apagar uma
+   * despesa mudava os totais da esquerda e deixava o "% do faturamento" da
+   * direita com o número de antes — dois valores contraditórios na mesma tela.
+   *
+   * E o `fresh` importa: a rota de métricas guarda a resposta por alguns
+   * minutos, então sem ele o recarregamento traria exatamente o mesmo corpo
+   * que já estava na tela.
+   */
+  const carregarRef = useCallback(async (fresh = false) => {
+    try {
+      const r = await authedFetch(
+        `/api/ml/metrics?month=${mesAtual()}${fresh ? "&fresh=1" : ""}`,
+        { cache: "no-store" },
+      );
+      if (!r.ok) return;
+      const j = await r.json();
+      if (j && !j.error) setRef({ faturamentoLiquido: j.faturamentoLiquido ?? 0, lucroSemCustos: j.lucroSemCustos ?? 0 });
+    } catch { /* a referência é contexto, não pode derrubar a aba */ }
   }, []);
+
+  useEffect(() => {
+    // Dentro de um callback async de proposito: chamar direto no corpo do
+    // efeito e setState sincrono em efeito, que o lint pega
+    // (react-hooks/set-state-in-effect).
+    void (async () => { await carregarRef(false); })();
+  }, [carregarRef]);
   const pctFaturamento = ref && ref.faturamentoLiquido > 0 ? (totalOperacao / ref.faturamentoLiquido) * 100 : null;
   const pctLucro = ref && ref.lucroSemCustos > 0 ? (totalOperacao / ref.lucroSemCustos) * 100 : null;
   const nomeMes = new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date());
@@ -132,6 +152,7 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
           ? `"${c.nome}" volta a contar a partir de hoje.`
           : `"${c.nome}" arquivado — para de contar a partir de amanhã. Os meses anteriores seguem como estavam.`,
       });
+      carregarRef(true);
     } catch (err) {
       avisar({ tipo: "erro", texto: `Não consegui ${ativo ? "reativar" : "arquivar"}: ${err instanceof Error ? err.message : String(err)}` });
     }
@@ -257,6 +278,7 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
             onSalvo={(c) => {
               setEdicao(null);
               avisar({ tipo: "ok", texto: edicao.custo ? `"${c.nome}" atualizado.` : `"${c.nome}" cadastrado.` });
+              carregarRef(true);
             }}
           />
         </Modal>
