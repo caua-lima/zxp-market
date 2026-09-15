@@ -20,6 +20,7 @@ import {
 } from "@/lib/domain/calc";
 import { calcularMetaDiaria, idealAteHoje } from "@/lib/domain/meta-diaria";
 import { diaEmFoco, rotuloDoDia } from "@/lib/domain/dia-em-foco";
+import { lerConferencia } from "@/lib/domain/apuracao-financeira";
 import { MARCA_DOURADO } from "@/lib/marca";
 import {
   custoPorPedido, margemReal, margemSemAds, roasBreakEven, roasDireto, roasGeral,
@@ -295,31 +296,61 @@ function CurvaABC({ anuncios }: { anuncios: AnuncioResult[] }) {
 }
 
 // ── Conferência da margem com o dinheiro real (Mercado Pago) ────
-function ConferenciaMP({ reconc }: { reconc?: { count: number; nosso: number; real: number } }) {
+/**
+ * ─── O QUE ESTE PAINEL AFIRMAVA DEMAIS ──────────────────────────────────
+ *
+ * Ele comparava `nosso` com `real` e, batendo, escrevia: "Bate. Não há
+ * custo de venda escapando — a margem está confiável."
+ *
+ * Só que os dois lados da conta só incluem pedidos cujo repasse o Mercado
+ * Pago JÁ LIBEROU. Num mês em andamento isso pode ser 3 pedidos de 464: a
+ * comparação continua correta nesses três, e a conclusão sobre a margem do
+ * período é uma extrapolação de 0,6% da amostra.
+ *
+ * O erro não estava na conta, estava na frase. `lerConferencia` separa as
+ * duas perguntas — *bate nos pedidos conferidos?* e *os conferidos falam
+ * pelo período?* — e só deixa afirmar quando as duas respondem sim.
+ *
+ * `total` é o denominador que faltava: sem ele não há como saber que "N
+ * pedidos" era pouco.
+ */
+function ConferenciaMP({ reconc, total }: { reconc?: { count: number; nosso: number; real: number }; total?: number }) {
   if (!reconc || reconc.count === 0) return null;
 
-  const gap = reconc.nosso - reconc.real; // >0 = ML tirou mais do que a gente conta
+  const leitura = lerConferencia({
+    conferidos: reconc.count,
+    total: Math.max(total ?? reconc.count, reconc.count),
+    estimado: reconc.nosso,
+    recebido: reconc.real,
+  });
+  const gap = leitura.diferenca; // >0 = ML tirou mais do que a gente conta
   const pctAbs = reconc.real > 0 ? (Math.abs(gap) / reconc.real) * 100 : 0;
-  // Menos de 1% ou R$5 no período é ruído de arredondamento/fuso, não custo oculto.
-  const ok = Math.abs(gap) < Math.max(5, reconc.real * 0.01);
+  const ok = leitura.dentroDaTolerancia;
   const cor = ok ? "var(--green)" : "var(--red)";
-  const media = gap / reconc.count;
+  const media = leitura.diferencaPorPedido;
+  const pctCobertura = leitura.cobertura === null ? null : leitura.cobertura * 100;
 
   return (
     <div className="panel">
       <div className="panel-head" style={{ marginBottom: 6 }}>
         <span className="panel-title">Conferência com o dinheiro real</span>
-        <span className="panel-sub">nossa conta × líquido do Mercado Pago · {reconc.count} pedido(s)</span>
+        <span className="panel-sub">
+          nossa conta × líquido do Mercado Pago ·{" "}
+          {/* O denominador é o que impede ler a amostra como o período. */}
+          {total && total > reconc.count
+            ? `${reconc.count} de ${total} pedidos${pctCobertura === null ? "" : ` (${pctCobertura.toFixed(0)}%)`}`
+            : `${reconc.count} pedido(s)`}
+        </span>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Repasse estimado (nossa conta)</div>
           <div style={{ fontSize: "1.05rem", fontWeight: 800 }}>{fmtBRL(reconc.nosso)}</div>
-          <div style={{ fontSize: ".68rem", color: "var(--muted)" }}>total − taxa ML − frete</div>
+          <div style={{ fontSize: ".68rem", color: "var(--muted)" }}>total − taxa ML − frete · o que deveria cair</div>
         </div>
         <div>
-          <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Caiu de verdade (MP)</div>
+          <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Recebido de verdade (MP)</div>
           <div style={{ fontSize: "1.05rem", fontWeight: 800 }}>{fmtBRL(reconc.real)}</div>
           <div style={{ fontSize: ".68rem", color: "var(--muted)" }}>net_received_amount</div>
         </div>
@@ -332,13 +363,31 @@ function ConferenciaMP({ reconc }: { reconc?: { count: number; nosso: number; re
         </div>
       </div>
 
-      {ok ? (
+      {/*
+        Três saídas, não duas. A do meio — bate nos conferidos mas eles não
+        cobrem o período — é a que não existia, e era justamente o caso mais
+        comum: mês em andamento, com a maioria dos repasses ainda em trânsito.
+      */}
+      {ok && leitura.podeAfirmarQueBate ? (
         <div style={{
           padding: "10px 12px", borderRadius: 8, fontSize: ".82rem", lineHeight: 1.55,
           background: "rgba(54,179,126,.1)", border: "1px solid rgba(54,179,126,.35)", color: "var(--green)",
         }}>
           <b>Bate.</b> O que a gente calcula como repasse do ML confere com o que o Mercado Pago
           liberou. Não há custo de venda escapando — a margem está confiável.
+        </div>
+      ) : ok ? (
+        <div style={{
+          padding: "10px 12px", borderRadius: 8, fontSize: ".82rem", lineHeight: 1.55,
+          background: "rgba(244,185,66,.1)", border: "1px solid rgba(244,185,66,.35)", color: "var(--gold)",
+        }}>
+          <b>Bate nos {reconc.count} pedidos já liberados</b> — e só neles.
+          {" "}
+          {leitura.pendencias.find((p) => p.chave === "conferencia-parcial")?.detalhe}
+          <div style={{ marginTop: 6, color: "var(--muted)" }}>
+            O repasse do restante ainda está em trânsito no Mercado Pago. Esta conferência
+            volta a falar pelo período inteiro quando a maior parte tiver liberado.
+          </div>
         </div>
       ) : (
         <div style={{
@@ -2278,7 +2327,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
           <MediaVendasDia anuncios={mlMetrics?.anuncios ?? []} from={mlMetrics?.from} to={mlMetrics?.to} />
 
           {/* Conferência da margem contra o dinheiro real */}
-          <ConferenciaMP reconc={mlMetrics?.reconc} />
+          <ConferenciaMP reconc={mlMetrics?.reconc} total={mlMetrics?.ordersCount} />
 
           {/* Melhores dias da semana */}
           <MelhoresDias serie={melhoresDiasMetrics?.serieDiaria ?? []} from={melhoresDiasMetrics?.from} to={melhoresDiasMetrics?.to} />

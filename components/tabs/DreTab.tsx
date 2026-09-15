@@ -11,6 +11,11 @@ import CustoForm from "@/components/custos/CustoForm";
 import Modal from "@/components/Modal";
 import { useAccess } from "@/components/tabs/AccessGuard";
 import type { DadosDre } from "@/lib/domain/dre-apresentacao";
+import {
+  lerConferencia, pendenciasDaColetaFull, pendenciaDeProjecao, estadoGeral,
+  rotuloDoEstado, explicarEstado, corDoEstado, rotuloDoResultado,
+  cabecalhoDeExportacao, type Pendencia,
+} from "@/lib/domain/apuracao-financeira";
 
 type CustoDre = { nome: string; valor: number; freq: string };
 
@@ -31,6 +36,8 @@ type Metrics = {
   lucroComCustos: number;
   adsFalhou?: boolean;
   ordersCount: number;
+  /** Conferência contra o líquido do Mercado Pago — repasse estimado × recebido. */
+  reconc?: { count: number; nosso: number; real: number };
 };
 
 function monthRange() {
@@ -307,6 +314,48 @@ export default function DreTab() {
   const custoColetaFull = coletaFull && !coletaFull.foraDaJanela ? coletaFull.total : 0;
   const resultadoLiquido = resultadoOperacional - m.custosDre - custoColetaFull;
 
+  /**
+   * ─── O ESTADO DA APURAÇÃO (FIN-03) ───────────────────────────────────
+   *
+   * A linha final se chamava "Resultado líquido" em todos os casos: com a
+   * coleta pro Full fora da janela, com remessa sem custo informado, com o
+   * mês pela metade, com o gasto de Ads que não veio do ML. O número mudava
+   * de significado e o rótulo não, e um rótulo que afirma fechamento é
+   * exatamente o que faz alguém mandar o CSV pro contador como fechado.
+   *
+   * As pendências são coletadas UMA VEZ aqui e usadas em três lugares: o
+   * cabeçalho do demonstrativo, o painel de pendências e o CSV. Se cada um
+   * montasse a sua, voltaríamos ao problema de sempre — a mesma informação
+   * dita de três jeitos divergentes.
+   */
+  const conferencia = lerConferencia({
+    conferidos: metrics.reconc?.count ?? 0,
+    total: metrics.ordersCount,
+    estimado: metrics.reconc?.nosso ?? 0,
+    recebido: metrics.reconc?.real ?? 0,
+  });
+
+  const pendencias: Pendencia[] = [
+    ...pendenciaDeProjecao(range.to, todayStr()),
+    ...(coletaFull ? pendenciasDaColetaFull(coletaFull) : [{
+      chave: "coleta-nao-carregou",
+      titulo: "Não consegui carregar os custos de coleta pro Full",
+      detalhe:
+        "A busca das remessas falhou. O custo de levar estoque até o centro não está descontado aqui, e o resultado sai otimista por esse valor.",
+      efeito: "otimista" as const,
+    }]),
+    ...(metrics.adsFalhou ? [{
+      chave: "ads-indisponivel",
+      titulo: "O gasto com ADS não veio do Mercado Livre",
+      detalhe:
+        "A verba de anúncios do período não pôde ser lida, e entra como zero no cálculo. O resultado está otimista pelo valor investido.",
+      efeito: "otimista" as const,
+    }] : []),
+    ...conferencia.pendencias,
+  ];
+
+  const estado = estadoGeral(pendencias, conferencia.estado);
+
   const base = receitaLiquida;
   const margem = (v: number) => (base ? (v / base) * 100 : 0);
 
@@ -387,7 +436,45 @@ export default function DreTab() {
     ];
     const header = ["Linha", "Valor (R$)", "% receita líquida"];
     const linhasCsv = linhas.map((l) => [l.rotulo, `${l.ded ? "-" : ""}${num(l.valor)}`, num(margem(l.valor), 1)]);
-    const csv = [header, ...linhasCsv]
+
+    /**
+     * O contexto vai ANTES dos números, não em rodapé.
+     *
+     * Este arquivo sai do app e vira anexo de e-mail — a partir daí ninguém
+     * sabe de que período é, de quando são os números nem o que faltava
+     * apurar quando foram tirados. Em rodapé, rola-se por cima; no topo,
+     * não tem como abrir a planilha sem ver.
+     */
+    const contexto = cabecalhoDeExportacao({
+      de: range.from,
+      ate: range.to,
+      apuradoEm: new Date().toLocaleString("pt-BR"),
+      // A DRE não tem filtro além do período; declarado explicitamente pra
+      // que a ausência seja uma afirmação e não um esquecimento.
+      filtros: [],
+      estado,
+      pendencias,
+    });
+
+    /**
+     * As duas leituras do repasse, separadas — é o núcleo do FIN-03. Nunca
+     * somadas com as linhas do demonstrativo acima: aquelas são REGIME DE
+     * COMPETÊNCIA (a venda do período), estas são CAIXA (o que o MP liberou).
+     * Somar as duas seria contar a mesma venda duas vezes.
+     */
+    const repasse: string[][] = metrics.reconc && metrics.reconc.count > 0 ? [
+      [""],
+      ["Repasse (caixa) — não somar com as linhas acima, é a mesma venda vista pelo dinheiro"],
+      ["Pedidos com repasse liberado", `${metrics.reconc.count} de ${metrics.ordersCount}`],
+      ["Repasse estimado (nossa conta)", num(metrics.reconc.nosso)],
+      ["Valor efetivamente recebido (Mercado Pago)", num(metrics.reconc.real)],
+      ["Diferença", num(conferencia.diferenca)],
+    ] : [
+      [""],
+      ["Repasse (caixa)", "nenhum pedido do período teve repasse liberado até agora"],
+    ];
+
+    const csv = [...contexto, header, ...linhasCsv, ...repasse]
       .map((cols) => cols.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";"))
       .join("\r\n");
     const blob = new Blob([String.fromCharCode(0xfeff) + csv], { type: "text/csv;charset=utf-8;" });
@@ -427,6 +514,104 @@ export default function DreTab() {
         </div>
       )}
 
+      {/*
+        ─── O PAINEL DE PENDÊNCIAS ──────────────────────────────────────────
+
+        Cada pendência já existia como notinha cinza espalhada pela tela, ao
+        lado da linha a que pertencia. Espalhadas, elas nunca somam: dava pra
+        ler a DRE inteira sem perceber que TRÊS coisas faltavam ao mesmo tempo.
+
+        Juntas e no topo, com a direção do erro em cada uma, viram a resposta
+        pra única pergunta que importa: "posso mandar este número pra fora?"
+      */}
+      <div className="panel" style={{ borderLeft: `3px solid ${corDoEstado(estado)}` }}>
+        <div className="panel-head" style={{ marginBottom: pendencias.length ? 8 : 0 }}>
+          <span className="panel-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            Estado da apuração
+            <span style={{
+              fontSize: ".7rem", fontWeight: 700, letterSpacing: ".03em", textTransform: "uppercase",
+              color: corDoEstado(estado), border: `1px solid ${corDoEstado(estado)}`,
+              borderRadius: 999, padding: "1px 8px",
+            }}>
+              {rotuloDoEstado(estado)}
+            </span>
+          </span>
+          <span className="panel-sub">apurado em {new Date().toLocaleString("pt-BR")}</span>
+        </div>
+        <div style={{ fontSize: ".82rem", color: "var(--muted)", lineHeight: 1.6 }}>
+          {explicarEstado(estado)}
+        </div>
+        {pendencias.length > 0 && (
+          <ul style={{ margin: "10px 0 0", padding: 0, listStyle: "none", display: "grid", gap: 8 }}>
+            {pendencias.map((p) => (
+              <li key={p.chave} style={{
+                padding: "8px 10px", borderRadius: 8, background: "var(--surface2)",
+                border: "1px solid var(--border)",
+              }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: ".82rem", fontWeight: 700 }}>{p.titulo}</span>
+                  {/*
+                    A direção do erro é o que torna a pendência acionável:
+                    saber que o resultado está OTIMISTA dá o que fazer; "há
+                    uma pendência" não dá.
+                  */}
+                  <span style={{
+                    fontSize: ".66rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em",
+                    color: p.efeito === "otimista" ? "var(--red)" : p.efeito === "pessimista" ? "var(--green)" : "var(--muted)",
+                  }}>
+                    {p.efeito === "indefinido" ? "efeito desconhecido" : `resultado ${p.efeito}`}
+                  </span>
+                </div>
+                <div style={{ fontSize: ".76rem", color: "var(--muted)", lineHeight: 1.55, marginTop: 2 }}>
+                  {p.detalhe}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/*
+        Repasse estimado × recebido: as MESMAS vendas, vistas pelo dinheiro em
+        vez de pela competência. Fica fora do demonstrativo de propósito —
+        somar as duas visões contaria cada venda duas vezes.
+      */}
+      {metrics.reconc && metrics.reconc.count > 0 && (
+        <div className="panel">
+          <div className="panel-head" style={{ marginBottom: 8 }}>
+            <span className="panel-title">Repasse do Mercado Pago</span>
+            <span className="panel-sub">
+              {metrics.reconc.count} de {metrics.ordersCount} pedidos com repasse liberado
+              {conferencia.cobertura !== null && ` · ${(conferencia.cobertura * 100).toFixed(0)}% do período`}
+            </span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
+            <div>
+              <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Repasse estimado</div>
+              <div style={{ fontSize: "1.05rem", fontWeight: 800 }}>{fmtBRL(metrics.reconc.nosso)}</div>
+              <div style={{ fontSize: ".68rem", color: "var(--muted)" }}>nossa conta: total − taxa ML − frete</div>
+            </div>
+            <div>
+              <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Valor efetivamente recebido</div>
+              <div style={{ fontSize: "1.05rem", fontWeight: 800 }}>{fmtBRL(metrics.reconc.real)}</div>
+              <div style={{ fontSize: ".68rem", color: "var(--muted)" }}>o que o Mercado Pago liberou</div>
+            </div>
+            <div>
+              <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Diferença</div>
+              <div style={{
+                fontSize: "1.05rem", fontWeight: 800,
+                color: conferencia.dentroDaTolerancia ? "var(--green)" : "var(--red)",
+              }}>
+                {fmtBRL(Math.abs(conferencia.diferenca))}
+              </div>
+              <div style={{ fontSize: ".68rem", color: "var(--muted)" }}>
+                {conferencia.podeAfirmarQueBate ? "confere no período" : "vale só nos pedidos já liberados"}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="kpi-grid">
         <div className="kpi k-acc">
           <div className="k-lbl">Receita líquida</div>
@@ -447,7 +632,7 @@ export default function DreTab() {
           <Delta current={resultadoOperacional} previous={resultadoOperacionalPrev} mode="pct" label={prevLabel} />
         </div>
         <div className="kpi k-neg">
-          <div className="k-lbl">Resultado líquido</div>
+          <div className="k-lbl">{rotuloDoResultado(estado)}</div>
           <div className="k-val" style={{ color: resultadoLiquido >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(resultadoLiquido)}</div>
           <div className="k-sub">margem de {margem(resultadoLiquido).toFixed(1)}%</div>
           <Delta current={resultadoLiquido} previous={resultadoLiquidoPrev} mode="pct" label={prevLabel} />
@@ -562,11 +747,17 @@ export default function DreTab() {
         )}
 
         <div style={{ marginTop: 10 }}>
+          {/*
+            O rótulo carrega o estado. "Resultado líquido" afirmava fechamento
+            mesmo com coleta pro Full fora da janela e Ads faltando — e era o
+            rótulo que ia pro CSV e pro PDF mandados pra fora.
+          */}
           <Linha
-            rotulo="Resultado líquido"
+            rotulo={rotuloDoResultado(estado)}
             valor={resultadoLiquido}
             tipo="resultado"
             base={base}
+            nota={estado === "conciliado" ? undefined : `${pendencias.length} pendência(s) de informação — veja abaixo`}
             tooltip="Resultado operacional menos as despesas da empresa marcadas 'Só na DRE' (pró-labore, contador, retirada) e a taxa de coleta pro Full. É o número final de tudo que saiu, inclusive o que o Dashboard não desconta."
           />
         </div>
