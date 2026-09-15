@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
+import { BUSCA_INICIAL, corpoEhSucesso, criarSequenciador, registrarFalha, registrarSucesso } from "@/lib/domain/resposta-tardia";
 import type { Goals } from "@/lib/domain/types";
 import {
   fmtBRL,
@@ -208,19 +209,39 @@ function Kpi({
 }
 
 // ── Selo "atualizado há X min" ─────────────────────────────────
-function LastUpdated({ at }: { at: number | null }) {
+/**
+ * @param falhou a ÚLTIMA tentativa falhou? É diferente de "está velho".
+ *
+ * O carimbo só marcava sucesso. Quando uma atualização falhava, ele ficava
+ * onde estava e a tela seguia anunciando "Atualizado há 2 min" — mesmo que as
+ * últimas tentativas tivessem todas falhado, e o número na tela fosse de meia
+ * hora atrás. Apagar o carimbo também seria errado: esconderia quão velho o
+ * dado está. Os dois precisam aparecer.
+ */
+function LastUpdated({ at, falhou = false }: { at: number | null; falhou?: boolean }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(id);
   }, []);
-  if (!at) return null;
+  if (!at) {
+    // Nunca deu certo — dizer isso é melhor que não dizer nada.
+    return falhou ? (
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: ".72rem", color: "var(--warning)", whiteSpace: "nowrap" }}>
+        <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--warning)" }} />
+        Não consegui buscar os números
+      </span>
+    ) : null;
+  }
   const mins = Math.floor((now - at) / 60000);
   const txt = mins <= 0 ? "agora" : mins === 1 ? "há 1 min" : `há ${mins} min`;
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: ".72rem", color: "var(--muted)", whiteSpace: "nowrap" }}>
-      <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--green)", boxShadow: "0 0 0 3px rgba(54,179,126,.15)" }} />
-      Atualizado {txt} · auto 15min
+    <span
+      title={falhou ? "A última tentativa de atualizar falhou. O número na tela é do horário indicado." : undefined}
+      style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: ".72rem", color: falhou ? "var(--warning)" : "var(--muted)", whiteSpace: "nowrap" }}
+    >
+      <span style={{ width: 7, height: 7, borderRadius: "50%", background: falhou ? "var(--warning)" : "var(--green)", boxShadow: falhou ? "none" : "0 0 0 3px rgba(54,179,126,.15)" }} />
+      {falhou ? `Desatualizado — dado de ${txt}` : `Atualizado ${txt} · auto 15min`}
     </span>
   );
 }
@@ -1669,23 +1690,70 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
   const rotuloDia = useMemo(() => rotuloDoDia(foco.dia, todayStr()), [foco.dia]);
   const rotuloDiaAnterior = useMemo(() => rotuloDoDia(foco.comparacao, todayStr()), [foco.comparacao]);
 
+  /** Ver lib/domain/resposta-tardia: a busca mais recente é a que vale. */
+  const seqMetrics = useRef(criarSequenciador());
+  /**
+   * Última TENTATIVA e último SUCESSO, separados.
+   *
+   * Havia só `lastUpdated`, gravado no sucesso: uma atualização que falhava
+   * deixava o carimbo antigo intacto, e a tela seguia anunciando "atualizado
+   * há 2 minutos" enquanto as últimas tentativas tinham falhado.
+   */
+  const [buscaMetrics, setBuscaMetrics] = useState(BUSCA_INICIAL);
+
   const fetchMetrics = useCallback(async (from: string, to: string, silent = false, fresh = false, dia?: string) => {
+    /**
+     * SYNC-04: a última seleção de período vence, chegue na ordem que chegar.
+     *
+     * A única guarda aqui era `mountedRef.current` — que diz se o componente
+     * existe, não se a resposta ainda interessa. Trocar o filtro de "Mês" pra
+     * "Hoje" dispara duas buscas; a do mês é mais pesada e costuma demorar
+     * mais. Chegando depois, ela sobrescrevia os dados de hoje, e a tela
+     * mostrava o faturamento do mês inteiro com o seletor dizendo "Hoje".
+     *
+     * Não é um piscar: ficava assim até a busca seguinte. E o erro era sempre
+     * pra MAIS, porque o período maior é justamente o que demora.
+     */
+    const meu = seqMetrics.current.proximo();
     if (!silent) setMlLoading(true);
     try {
       const res = await authedFetch(`/api/ml/metrics?from=${from}&to=${to}${dia ? `&dia=${dia}` : ""}${fresh ? "&fresh=1" : ""}`, { cache: "no-store" });
-      if (!res.ok) { if (!silent) setMlMetrics(null); return; }
-      const json = await res.json();
-      if (mountedRef.current) { setMlMetrics(json); setLastUpdated(Date.now()); }
+      if (!seqMetrics.current.ehAtual(meu)) return; // outra busca já saiu na frente
+
+      const json = res.ok ? await res.json().catch(() => null) : null;
+      if (!seqMetrics.current.ehAtual(meu)) return;
+
+      /**
+       * HTTP 200 não basta: várias rotas deste app respondem 200 com
+       * `{ error: "sem_token" }` de propósito, e gravar esse corpo como se
+       * fossem métricas mostraria uma tela zerada como se fosse a verdade.
+       */
+      if (!res.ok || !corpoEhSucesso(json)) {
+        setBuscaMetrics((a) => registrarFalha(a, Date.now()));
+        if (!silent) setMlMetrics(null);
+        return;
+      }
+
+      setMlMetrics(json);
+      setLastUpdated(Date.now());
+      setBuscaMetrics(registrarSucesso(Date.now()));
     } catch {
-      if (!silent && mountedRef.current) setMlMetrics(null);
+      if (!seqMetrics.current.ehAtual(meu)) return;
+      setBuscaMetrics((a) => registrarFalha(a, Date.now()));
+      if (!silent) setMlMetrics(null);
     } finally {
-      if (!silent && mountedRef.current) setMlLoading(false);
+      if (!silent && seqMetrics.current.ehAtual(meu)) setMlLoading(false);
     }
   }, []);
 
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    const seq = seqMetrics.current;
+    return () => {
+      mountedRef.current = false;
+      // Nenhuma resposta em voo mexe em estado depois de desmontar.
+      seq.descartarTudo();
+    };
   }, []);
 
   useEffect(() => {
@@ -1890,7 +1958,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
           {(mlMetrics && mlMetrics.totalAds === 0) && (
             <button type="button" className="btn btn-xs btn-ghost" onClick={runDiagAds} title="Diagnóstico do ADS">ADS</button>
           )}
-          <LastUpdated at={lastUpdated} />
+          <LastUpdated at={lastUpdated} falhou={buscaMetrics.falhouNaUltima} />
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
