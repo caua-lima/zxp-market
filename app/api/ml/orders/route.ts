@@ -55,7 +55,13 @@ export async function POST(req: Request) {
           currency: order.currency_id ?? "BRL",
           buyer_id: order.buyer?.id ? String(order.buyer.id) : null,
           shipping_status: order.shipping?.status ?? null,
-          items: (order.order_items ?? []).map((item: any) => ({
+          // O item como o ML manda, nos campos que a gente lê. Era `any`.
+          items: (order.order_items ?? []).map((item: {
+            item?: { seller_sku?: string; id?: string; title?: string };
+            quantity?: number;
+            unit_price?: number;
+            sale_fee?: number;
+          }) => ({
             sku: item.item?.seller_sku ?? item.item?.id ?? null,
             title: item.item?.title ?? null,
             quantity: item.quantity ?? 0,

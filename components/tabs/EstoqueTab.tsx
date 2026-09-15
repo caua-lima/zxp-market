@@ -1450,6 +1450,19 @@ function VincularSkuModal({ uid, produtos, onClose }: { uid: string; produtos: P
         if (vivo) setCarregando(false);
       }
     })();
+
+    /**
+     * A limpeza que não existia.
+     *
+     * `let vivo = true` estava aqui em cima e NUNCA virava false — não
+     * havia return nenhum neste efeito. Os quatro `if (vivo)` abaixo eram
+     * decoração: se a pessoa trocasse de aba no meio da busca, todos os
+     * setState disparavam mesmo assim, num componente já desmontado.
+     *
+     * Quem achou foi o `prefer-const` do lint, reclamando que `vivo` nunca
+     * é reatribuído. Era a única pista de que a guarda estava morta.
+     */
+    return () => { vivo = false; };
   }, []);
 
   const alterna = (chave: string) => setMarcados((s) => {

@@ -2,6 +2,18 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
 
+/**
+ * O motivo, de qualquer coisa que tenha sido lançada.
+ *
+ * Era `catch (error: any)` com `error?.message`. Em `any` esse `?.` não é
+ * checagem nenhuma — só desliga o compilador. Aqui a checagem é de verdade.
+ */
+function motivoDoErro(e: unknown): string {
+  if (e instanceof Error && e.message) return e.message;
+  if (typeof e === "string" && e) return e;
+  return String(e);
+}
+
 export async function POST(req: Request) {
   const gate = await requireAccess(req, { adminOnly: true });
   if (gate instanceof NextResponse) return gate;
@@ -32,9 +44,9 @@ export async function POST(req: Request) {
     });
     
     return response;
-  } catch (error: any) {
+  } catch (error: unknown) {
     return NextResponse.json(
-      { error: "force_logout_failed", details: error?.message || String(error) },
+      { error: "force_logout_failed", details: motivoDoErro(error) },
       { status: 500 }
     );
   }

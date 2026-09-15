@@ -3,6 +3,21 @@ import { getAdminDb } from "../../../../lib/firebase/admin";
 import { getMlAccessToken } from "../token";
 import { requireAccess } from "@/lib/api-auth";
 
+/**
+ * O motivo, de qualquer coisa que tenha sido lançada.
+ *
+ * Era `catch (error: any)` com `error?.message || String(error)`. Em `any`
+ * o `?.` não é checagem nenhuma: se o lançado for uma string — e
+ * `throw "x"` acontece — `.message` é undefined, `||` cai no String() e
+ * sai certo por acidente. Se for um objeto com `message: null`, sai
+ * `details: "null"`. Aqui a checagem é de verdade.
+ */
+function motivoDoErro(e: unknown): string {
+  if (e instanceof Error && e.message) return e.message;
+  if (typeof e === "string" && e) return e;
+  return String(e);
+}
+
 async function getSellerId() {
   const envSellerId = process.env.ML_SELLER_ID;
   if (envSellerId) return envSellerId;
@@ -56,11 +71,28 @@ export async function GET(req: Request) {
       );
     }
 
-    const data = await response.json();
+    /**
+     * O formato do que o ML devolve, só nos campos que a gente lê.
+     *
+     * Era `any`, e `any` aqui não é preguiça inofensiva: `order.total_amount`
+     * digitado errado compilaria e gravaria `undefined` no Firestore — que a
+     * regra de escrita hoje recusa, mas em silêncio, no meio de um batch.
+     */
+    type DevolucaoML = {
+      id: string | number;
+      date_created?: string;
+      status?: string;
+      total_amount?: number;
+      currency_id?: string;
+      buyer?: unknown;
+      shipping?: unknown;
+    };
+
+    const data = (await response.json()) as { results?: DevolucaoML[] };
     const orders = data.results ?? [];
     const db = getAdminDb();
 
-    const returns = orders.map((order: any) => ({
+    const returns = orders.map((order) => ({
       id: String(order.id),
       date_created: order.date_created ?? null,
       status: order.status ?? null,
@@ -74,7 +106,7 @@ export async function GET(req: Request) {
 
     const batch = db.batch();
 
-    returns.forEach((item: any) => {
+    returns.forEach((item) => {
       const ref = db.collection("ml_returns").doc(item.id);
       batch.set(ref, item, { merge: true });
     });
@@ -86,11 +118,11 @@ export async function GET(req: Request) {
       count: returns.length,
       data: returns,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return NextResponse.json(
       {
         error: "Unexpected error syncing returns",
-        details: error?.message || String(error),
+        details: motivoDoErro(error),
       },
       { status: 500 }
     );

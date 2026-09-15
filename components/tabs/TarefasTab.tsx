@@ -75,15 +75,42 @@ export default function TarefasTab({ openTaskId }: { openTaskId?: string } = {})
     return () => { u1(); u2(); };
   }, []);
 
+  /**
+   * O DIA DE HOJE COMO ESTADO, E NÃO COMO LEITURA DO RELÓGIO.
+   *
+   * `isAtrasada` chama `new Date()` lá dentro pra comparar com o prazo. Num
+   * `useMemo`, isso é ler algo que muda sem estar nas dependências: o memo
+   * guarda o resultado de quando rodou, e a lista de atrasadas passa a
+   * responder à última mudança de filtro em vez de responder ao relógio.
+   *
+   * Numa aba de tarefas que costuma ficar aberta o dia inteiro isso é
+   * visível: a tarefa que venceu à meia-noite continua fora do filtro
+   * "atrasadas" até alguém recarregar a página.
+   *
+   * Com o dia num estado que vira à meia-noite, a impureza sai do render e
+   * a lista recalcula quando o dia muda — que é quando ela deveria mudar.
+   */
+  const [hoje, setHoje] = useState(() => new Date().toISOString().slice(0, 10));
+
+  useEffect(() => {
+    // Confere de minuto em minuto. A alternativa — um timeout calculado até
+    // a meia-noite — erra quando a máquina dorme e acorda no dia seguinte.
+    const t = setInterval(() => {
+      const d = new Date().toISOString().slice(0, 10);
+      setHoje((atual) => (atual === d ? atual : d));
+    }, 60_000);
+    return () => clearInterval(t);
+  }, []);
+
   const visiveis = useMemo(() => {
     let lista = tasks;
     if (filtro === "pra-mim") lista = lista.filter((t) => t.assignedTo === email);
     else if (filtro === "criei-eu") lista = lista.filter((t) => t.createdBy === email);
     if (responsavelFiltro) lista = lista.filter((t) => t.assignedTo === responsavelFiltro);
     if (prioridadeFiltro) lista = lista.filter((t) => prioridadeDe(t) === prioridadeFiltro);
-    if (somenteAtrasadas) lista = lista.filter((t) => isAtrasada(t));
+    if (somenteAtrasadas) lista = lista.filter((t) => !!t.dueDate && t.status !== "done" && t.dueDate < hoje);
     return lista;
-  }, [tasks, filtro, email, responsavelFiltro, prioridadeFiltro, somenteAtrasadas]);
+  }, [tasks, filtro, email, responsavelFiltro, prioridadeFiltro, somenteAtrasadas, hoje]);
 
   const porColuna = (status: TaskStatus) => visiveis.filter((t) => t.status === status);
 
