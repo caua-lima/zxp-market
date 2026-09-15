@@ -60,6 +60,12 @@ export type LinhaAds = {
   v: number; un: number; r: number; a: number; ctr: number; cpc: number; pctAds: number;
   breakEven: number | null; abaixoDoBreakEven: boolean;
   /**
+   * Por que não há equilíbrio — pro "—" da coluna não significar três coisas
+   * diferentes. "Custo não cadastrado", "sem venda no período" e "o produto
+   * não cobre o próprio custo" pedem ações opostas.
+   */
+  motivoSemBreakEven: string | null;
+  /**
    * ROAS ideal: o mínimo pra sobrar a margem alvo, não só pra empatar
    * (ver calculateTargetRoas). null = o produto não alcança essa margem nem
    * gastando zero em ads — não existe alvo possível.
@@ -88,6 +94,15 @@ export type LinhaAds = {
 };
 
 export const num = (n: number, d = 0): string => n.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+/**
+ * @deprecated Cortes fixos (3x / 1,5x) pra todo anuncio. O ROAS que faz um
+ * anuncio empatar depende da margem do PRODUTO: com margem fina, 3,2x ja
+ * queima dinheiro e isto pinta verde. Use corDoRoas (lib/domain/ads-cores),
+ * que compara contra o equilibrio da propria linha.
+ *
+ * Sobrevive so na lista por CAMPANHA, onde nao ha equilibrio por linha pra
+ * comparar — e la o proprio texto avisa que a referencia e generica.
+ */
 export const corRoas = (r: number): string => (r >= 3 ? "var(--green)" : r >= 1.5 ? "var(--yellow)" : "var(--red)");
 export const corAcos = (a: number, tem: boolean): string => (!tem ? "var(--muted)" : a <= 25 ? "var(--green)" : a <= 45 ? "var(--yellow)" : "var(--red)");
 // Margem de lucro líquido final: verde a partir de 15% (bom pra e-commerce

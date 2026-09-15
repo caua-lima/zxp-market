@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fmtBRL } from "@/lib/domain/calc";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import DateRangePicker from "@/components/dashboard/DateRangePicker";
-import { calculateBreakEvenRoas, calculateTargetRoas, getAdRecommendation, lucroNoRoas, motivoSemRoasIdeal } from "@/lib/domain/ads";
+import { calculateBreakEvenRoas, calculateTargetRoas, getAdRecommendation, lucroNoRoas, motivoSemBreakEven, motivoSemRoasIdeal } from "@/lib/domain/ads";
 import { calculateAdsReconciliation } from "@/lib/domain/ads-reconciliation";
 import { derivarPeriodoAnterior, periodoAnteriorTemDadosSuficientes } from "@/lib/domain/ads-comparison";
 import { formatarResumoAlteracao } from "@/lib/domain/ads-changelog";
@@ -235,6 +235,15 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
     const lucroAntes = i.custoDisponivel ? (pub ? i.lucroDiretoAntesAds : i.lucroAntesAds) : 0;
     const breakEven = calculateBreakEvenRoas(v, lucroAntes);
     const abaixoDoBreakEven = breakEven != null && i.cost > 0 && r < breakEven;
+    /**
+     * O "—" da coluna de equilíbrio significava três coisas: custo não
+     * cadastrado, sem venda no período, e produto que não cobre o próprio
+     * custo. A última é uma conclusão FORTE (nenhum ROAS salva este anúncio) e
+     * some junto com as outras duas.
+     */
+    const semBreakEven = breakEven == null
+      ? motivoSemBreakEven(v, lucroAntes, i.custoDisponivel)
+      : null;
     // ROAS ideal = o que sobra a margem ALVO, não só o que empata.
     const roasIdeal = calculateTargetRoas(v, lucroAntes, metaMargem);
     const abaixoDoIdeal = roasIdeal != null && i.cost > 0 && r < roasIdeal;
@@ -256,7 +265,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
     const ganhoNoIdeal = lucroNoIdeal != null && lucroAtual != null ? lucroNoIdeal - lucroAtual : null;
     // O mesmo ROAS que aparece no painel do Mercado Ads (receita atribuída total).
     const roasMlAds = i.cost > 0 ? i.adSales / i.cost : null;
-    return { i, v, un, r, a, ctr, cpc, pctAds, breakEven, abaixoDoBreakEven, roasIdeal, abaixoDoIdeal, lucroNoIdeal, ganhoNoIdeal, motivoSemIdeal, roasMlAds, lucroAtual, margemAtual, reco };
+    return { i, v, un, r, a, ctr, cpc, pctAds, breakEven, abaixoDoBreakEven, motivoSemBreakEven: semBreakEven, roasIdeal, abaixoDoIdeal, lucroNoIdeal, ganhoNoIdeal, motivoSemIdeal, roasMlAds, lucroAtual, margemAtual, reco };
   }), [items, pub, metaMargem]);
 
   const linhasFiltradas = useMemo(() => {

@@ -17,6 +17,52 @@ export function calculateBreakEvenRoas(vendas: number, lucroAntesAds: number): n
 }
 
 /**
+ * Os três estados do lucro antes do ads — que não cabem num número só.
+ *
+ * "Custo não informado", "custo zero confirmado" e "custo positivo" pedem
+ * ações diferentes, mas a tela colapsava os dois primeiros: sem produto
+ * vinculado, `lucroAntes` era FORÇADO a 0 — e 0 também é o valor de um
+ * produto que genuinamente não sobra nada. Os dois caíam no mesmo "—" na
+ * coluna de equilíbrio.
+ *
+ * Margem exatamente zero é um RESULTADO, não ausência de resultado: o
+ * anúncio nunca se paga, e essa é uma conclusão forte. Sumir com ela junto
+ * com "não sei" tira da tela justamente o caso que exige ação imediata.
+ */
+export type EstadoLucroAntesAds = "custo_desconhecido" | "nao_cobre_o_proprio_custo" | "positivo";
+
+export function estadoDoLucroAntesAds(
+  custoConhecido: boolean,
+  lucroAntesAds: number,
+): EstadoLucroAntesAds {
+  if (!custoConhecido) return "custo_desconhecido";
+  return lucroAntesAds > 0 ? "positivo" : "nao_cobre_o_proprio_custo";
+}
+
+/**
+ * Por que não há ROAS de equilíbrio — o texto que substitui o "—" mudo.
+ *
+ * Espelha `motivoSemRoasIdeal`, que já fazia isso pra a coluna do ideal. A do
+ * equilíbrio não tinha equivalente, então as três situações abaixo apareciam
+ * idênticas na tela.
+ */
+export function motivoSemBreakEven(
+  vendas: number,
+  lucroAntesAds: number,
+  custoConhecido: boolean = true,
+): string | null {
+  if (!custoConhecido) {
+    return "Sem produto vinculado no Estoque, o custo é desconhecido — não dá pra dizer a partir de que ROAS este anúncio se paga.";
+  }
+  if (vendas <= 0) {
+    return "Sem venda atribuída no período — sem receita não há equilíbrio a calcular.";
+  }
+  if (lucroAntesAds > 0) return null; // tem break-even
+  return "O produto não cobre o próprio custo antes do ads: a margem antes da publicidade é zero ou negativa. "
+    + "Nenhum ROAS torna este anúncio lucrativo — cada real investido aqui é perda direta.";
+}
+
+/**
  * ROAS IDEAL — o mínimo pra sobrar a margem que você quer, não só pra empatar.
  *
  * Break-even responde "a partir de quanto eu paro de perder"; este responde

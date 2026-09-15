@@ -4,7 +4,8 @@ import { useEffect } from "react";
 import { fmtBRL } from "@/lib/domain/calc";
 import type { AdsAlteracao } from "@/lib/domain/types";
 import { diasDesde, formatarResumoAlteracao } from "@/lib/domain/ads-changelog";
-import { corAcos, corMargem, corRoas, num, STATUS_META, type LinhaAds } from "./ads-types";
+import { corAcos, corMargem, num, STATUS_META, type LinhaAds } from "./ads-types";
+import { corDoRoas } from "@/lib/domain/ads-cores";
 
 function linkAnuncio(itemId: string): string | null {
   return /^MLB\d+$/i.test(itemId) ? `https://produto.mercadolivre.com.br/${itemId.replace(/^MLB/, "MLB-")}` : null;
@@ -81,7 +82,14 @@ export default function AdDetailDrawer({
           <Linha label="Lucro antes de Ads" valor={fmtBRL(pub ? l.i.lucroDiretoAntesAds : l.i.lucroAntesAds)} />
           <Linha label="Lucro após Ads" valor={l.lucroAtual != null ? fmtBRL(l.lucroAtual) : "sem dado — não é prejuízo, é falta de dado"} cor={l.lucroAtual == null ? "var(--muted)" : l.lucroAtual >= 0 ? "var(--green)" : "var(--red)"} forte />
           <Linha label="Margem" valor={l.margemAtual != null ? `${num(l.margemAtual, 1)}%` : "—"} cor={l.margemAtual != null ? corMargem(l.margemAtual) : "var(--muted)"} />
-          <Linha label="ROAS" valor={l.i.cost > 0 ? `${num(l.r, 2)}x` : "—"} cor={corRoas(l.r)} />
+          {/* Cor pelo equilibrio DESTE anuncio, nao por corte fixo: o ROAS que
+              empata depende da margem do produto, e 3x podia estar queimando
+              dinheiro num item de margem fina. */}
+          <Linha
+            label="ROAS"
+            valor={l.i.cost > 0 ? `${num(l.r, 2)}x` : "—"}
+            cor={corDoRoas(l.i.cost > 0 ? l.r : null, l.breakEven, l.roasIdeal).cor}
+          />
           <Linha label="Break-even ROAS" valor={l.breakEven != null ? `${num(l.breakEven, 2)}x` : "sem lucro antes de Ads pra calcular"} />
           <Linha
             label="ROAS ideal (margem alvo)"

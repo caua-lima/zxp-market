@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateBreakEvenRoas, calculateTargetRoas, getAdRecommendation, lucroNoRoas, motivoSemRoasIdeal } from "./ads";
+import { calculateBreakEvenRoas, calculateTargetRoas, getAdRecommendation, lucroNoRoas, motivoSemRoasIdeal, estadoDoLucroAntesAds, motivoSemBreakEven } from "./ads";
 
 describe("calculateBreakEvenRoas", () => {
   it("lucroAntesAds <= 0 nunca tem ROAS que salve — retorna null, nao 0/Infinity", () => {
@@ -259,5 +259,64 @@ describe("anúncio de produto sem custo cadastrado", () => {
 
   it("com custo conhecido, o motivo volta a ser o de produto que não fecha conta", () => {
     expect(motivoSemRoasIdeal(500, 0, 10, true)).toMatch(/não cobre o próprio custo/);
+  });
+});
+
+describe("estadoDoLucroAntesAds — zero nao e ausencia", () => {
+  it("custo nao cadastrado e um estado proprio", () => {
+    /**
+     * Sem produto vinculado, `lucroAntes` era FORCADO a 0 na tela — e 0
+     * tambem e o valor de um produto que genuinamente nao sobra nada. Os dois
+     * caiam no mesmo "—" na coluna de equilibrio, pedindo acoes opostas:
+     * cadastrar o custo, ou parar a campanha.
+     */
+    expect(estadoDoLucroAntesAds(false, 0)).toBe("custo_desconhecido");
+    expect(estadoDoLucroAntesAds(false, 50)).toBe("custo_desconhecido");
+  });
+
+  it("zero CONFIRMADO e um resultado, nao falta de dado", () => {
+    expect(estadoDoLucroAntesAds(true, 0)).toBe("nao_cobre_o_proprio_custo");
+  });
+
+  it("negativo tambem nao cobre o proprio custo", () => {
+    expect(estadoDoLucroAntesAds(true, -12)).toBe("nao_cobre_o_proprio_custo");
+  });
+
+  it("positivo e positivo", () => {
+    expect(estadoDoLucroAntesAds(true, 0.01)).toBe("positivo");
+  });
+});
+
+describe("motivoSemBreakEven — as tres causas do mesmo traco", () => {
+  it("custo desconhecido manda cadastrar o custo", () => {
+    expect(motivoSemBreakEven(100, 0, false)).toContain("custo é desconhecido");
+  });
+
+  it("sem venda no periodo nao e culpa do produto", () => {
+    expect(motivoSemBreakEven(0, 50, true)).toContain("Sem venda atribuída");
+  });
+
+  it("margem zero com gasto e conclusao forte, nao silencio", () => {
+    /**
+     * "Se a margem antes de Ads for zero e houver R$ 10 de gasto, o gasto nao
+     * pode desaparecer do resultado." O equilibrio some (nao existe ROAS que
+     * salve), mas o motivo tem que aparecer — cada real ali e perda direta.
+     */
+    const m = motivoSemBreakEven(100, 0, true);
+    expect(m).toContain("perda direta");
+  });
+
+  it("margem negativa cai no mesmo diagnostico", () => {
+    expect(motivoSemBreakEven(100, -20, true)).toContain("perda direta");
+  });
+
+  it("com equilibrio calculavel, nao ha motivo a dar", () => {
+    expect(motivoSemBreakEven(100, 30, true)).toBeNull();
+  });
+
+  it("custo desconhecido vence as outras causas", () => {
+    // Ordem importa: mandar "cadastre o custo" antes de diagnosticar o produto
+    // com um numero que nao existe.
+    expect(motivoSemBreakEven(0, 0, false)).toContain("custo é desconhecido");
   });
 });

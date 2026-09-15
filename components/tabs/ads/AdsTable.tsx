@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { fmtBRL } from "@/lib/domain/calc";
 import { rotuloCampanha } from "@/lib/domain/ads-campaigns";
-import { corAcos, corMargem, corRoas, num, STATUS_META, type LinhaAds, type Modo } from "./ads-types";
+import { corAcos, corMargem, num, STATUS_META, type LinhaAds, type Modo } from "./ads-types";
+import { chaveOrdenacao, corDoRoas } from "@/lib/domain/ads-cores";
 
 /**
  * Visão analítica — uma linha por ANÚNCIO, com tudo que a decisão pede.
@@ -129,18 +130,34 @@ export default function AdsTable({
         || y.i.cost - x.i.cost);
       return arr;
     }
+    /**
+     * A chave de ordenação tem que ser o número que está NA TELA.
+     *
+     * A coluna ROAS ordenava por `l.r` — o ROAS do modo escolhido — enquanto a
+     * célula exibe `l.roasMlAds`, o do painel do Mercado Ads. São duas
+     * definições diferentes, as duas corretas, e o próprio código registra um
+     * caso real de 4,71x aqui contra 10,77x lá no MESMO anúncio.
+     *
+     * Ou seja: clicar em ROAS pra achar o pior anúncio ordenava por um número
+     * invisível que podia diferir do visível por mais de 2x. É erro de decisão,
+     * não de exibição — corta-se a campanha errada.
+     *
+     * "Sem dado" vai pro fim nos DOIS sentidos (ver chaveOrdenacao): com
+     * -Infinity fixo, inverter a ordem trazia os vazios pro topo e eles
+     * ocupavam o lugar dos piores de verdade.
+     */
     const chave = (l: LinhaAds): number => {
       switch (ordem.col) {
         case "investido": return l.i.cost;
-        case "lucro": return l.lucroAtual ?? -Infinity;
-        case "roas": return l.r;
+        case "lucro": return chaveOrdenacao(l.lucroAtual, ordem.dir);
+        case "roas": return chaveOrdenacao(l.roasMlAds, ordem.dir);
         // Campanha sem meta configurada vai pro fim: "sem meta" não é meta
         // baixa, e ordenar como zero misturaria as duas coisas.
-        case "roasobj": return l.i.roasTarget > 0 ? l.i.roasTarget : -Infinity;
-        case "margem": return l.margemAtual ?? -Infinity;
+        case "roasobj": return chaveOrdenacao(l.i.roasTarget > 0 ? l.i.roasTarget : null, ordem.dir);
+        case "margem": return chaveOrdenacao(l.margemAtual, ordem.dir);
         // Sem venda no anúncio não há dependência a medir — vai pro fim em
         // vez de posar de 0%, que leria como "não depende de verba".
-        case "viaads": return l.i.totalSales > 0 ? l.pctAds : -Infinity;
+        case "viaads": return chaveOrdenacao(l.i.totalSales > 0 ? l.pctAds : null, ordem.dir);
         // "impacto negativo primeiro" — usa o próprio lucro (menor = pior) como ordenação de impacto.
         case "decisao": return l.lucroAtual ?? -l.i.cost;
         default: return 0;
@@ -279,13 +296,27 @@ export default function AdsTable({
                     data-label="ROAS"
                     title={`Do painel do Mercado Ads: receita atribuída TOTAL (${fmtBRL(l.i.adSales)}) ÷ investido. `
                       + `No modo "${pub ? "Publicidade direta" : "Geral"}", sobre ${fmtBRL(l.v)}, dá ${num(l.r, 2)}x. `
-                      + (l.breakEven != null ? `Equilíbrio (não perder dinheiro): ${num(l.breakEven, 2)}x. ` : "")
+                      + (l.breakEven != null
+                        ? `Equilíbrio (não perder dinheiro): ${num(l.breakEven, 2)}x. `
+                        // Sem equilíbrio, DIZER por quê: as três causas pedem ações opostas.
+                        : (l.motivoSemBreakEven ? `${l.motivoSemBreakEven} ` : ""))
                       + (l.roasIdeal != null
-                        ? `Ideal (fechar a margem alvo): ${num(l.roasIdeal, 2)}x.`
-                        : (l.motivoSemIdeal ?? ""))}
+                        ? `Ideal (fechar a margem alvo): ${num(l.roasIdeal, 2)}x. `
+                        : (l.motivoSemIdeal ? `${l.motivoSemIdeal} ` : ""))
+                      // A cor precisa se explicar: sem isso ela vira enigma.
+                      + corDoRoas(l.roasMlAds, l.breakEven, l.roasIdeal).motivo}
                     style={{
                       fontWeight: 700, whiteSpace: "nowrap", cursor: "help",
-                      color: corRoas(l.roasMlAds ?? l.r),
+                      /*
+                        A cor sai do EQUILÍBRIO deste anúncio, não de um corte
+                        fixo (era 3x verde / 1,5x amarelo pra todo mundo).
+                        O ROAS que empata depende da margem do produto: com
+                        margem fina, 3,2x já queima dinheiro — e aparecia verde.
+
+                        E a cor caía num valor ALTERNATIVO (roasMlAds ?? r):
+                        uma célula mostrando "—" saía pintada de verde.
+                      */
+                      color: corDoRoas(l.roasMlAds, l.breakEven, l.roasIdeal).cor,
                     }}
                   >
                     {l.roasMlAds != null ? `${num(l.roasMlAds, 2)}x` : "—"}
