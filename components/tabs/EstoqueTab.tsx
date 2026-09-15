@@ -5,7 +5,7 @@ import { explicarFonte } from "@/lib/domain/estado-fonte";
 import { CUSTO_FAIXA_SENTINELA, custoNaData, impostoNaData, TIPO_MOVIMENTO_LABEL, type EstoqueMovimento, type MovimentoTipo, type Product } from "@/lib/domain/types";
 import { addMovimento, deleteMovimento, deleteProduct, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas , recalcularProduto } from "@/lib/firebase/data";
 import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas";
-import { fmtBRL } from "@/lib/domain/calc";
+import { fmtBRL, parseBRNumber } from "@/lib/domain/calc";
 import { getCoverageStatus, COVERAGE_STATUS_LABEL, consolidarEstoqueAnuncios, ehFullLogistic, estoqueForaDoFull, type CoverageStatus } from "@/lib/domain/estoque";
 import { calcularEntradaMassa, custoMedioAposEntrada, type LinhaEntrada, type ProdutoParaEntrada } from "@/lib/domain/entrada-massa";
 import { fimDaSemanaQueVem, mediaDiariaAjustada, montarPlanoReposicao, planoEnvioAteData, planoEnvioParaFull, situacaoDoEstoque } from "@/lib/domain/reposicao";
@@ -56,10 +56,34 @@ function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-function parseNum(s: string): number {
-  const n = parseFloat(String(s).replace(",", "."));
-  return Number.isFinite(n) ? n : 0;
-}
+/**
+ * Lê número em formato brasileiro — delegando pra a definição compartilhada.
+ *
+ * ─── O ERRO DE MIL VEZES ─────────────────────────────────────────────────
+ *
+ * Esta função era:
+ *
+ *   parseFloat(String(s).replace(",", "."))
+ *
+ * Uma troca só, da PRIMEIRA vírgula. Com "1.234,56" isso vira "1.234.56",
+ * e `parseFloat` para no segundo ponto: **1,234**. Mil vezes menos.
+ *
+ * E ela alimentava `custoMedioDe`, que é o custo do produto — que vira valor
+ * de estoque, valor em risco e custo unitário do plano de reposição. O mesmo
+ * texto lido por `parseBRNumber` (em lib/domain/calc, usado pelo resto do
+ * app) dava 1234,56. Duas telas, dois custos, pro mesmo produto.
+ *
+ * ─── POR QUE NÃO UNIFICAR COM `lerValorEmReais` TAMBÉM ───────────────────
+ *
+ * Parece a mesma coisa e não é. `lerValorEmReais` lê o que a PESSOA DIGITA:
+ * ali "1.234" quase certamente significa mil duzentos e trinta e quatro, e
+ * ela aplica essa heurística. `parseBRNumber` lê o que está GRAVADO — e
+ * `custoDe` grava com `toFixed(2)`, onde o ponto é decimal de verdade ("1234.56").
+ *
+ * Fundir as duas faria uma delas mentir. São trabalhos diferentes, e o
+ * comentário existe pra ninguém juntar depois achando que é duplicação.
+ */
+const parseNum = parseBRNumber;
 
 function mlbsDe(p: Product): string[] {
   if (p.mlbs && p.mlbs.length) return p.mlbs;
