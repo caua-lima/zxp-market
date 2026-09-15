@@ -180,7 +180,7 @@ export const TOPICOS_ADS: TopicoAds[] = [
       "Depende de quanto da venda daquele produto vem do Ads — e essa é a pergunta que quase ninguém faz.\n\n"
       + "· Pouca dependência (abaixo de ~30%) e no vermelho → DESLIGUE. A venda é orgânica; você perde "
       + "pouco volume e recupera o que estava saindo em anúncio.\n\n"
-      + "· Muita dependência (acima de ~60%) e no vermelho → NÃO desligue de primeira. Cortar derruba a "
+      + "· Muita dependência (acima de ~60%) e no vermelho → NÃO desligue de primeira. Cortar pode derrubar a "
       + "maior parte do faturamento daquele produto. Corrija preço/custo ou suba o ROAS alvo, e só corte "
       + "se não fechar.\n\n"
       + "Mesma margem negativa, decisões opostas. É por isso que \"pausar tudo que está no vermelho\" "

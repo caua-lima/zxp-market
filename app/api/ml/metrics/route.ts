@@ -3,6 +3,9 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
 import { redigirFinanceiro } from "@/lib/domain/redacao-financeira";
 import { mesesCompletosNoPeriodo } from "@/lib/domain/competencia";
+// A regra de "devolução concluída" morava aqui, local. A rota de Ads repetia a
+// condição à mão SEM olhar o status, e as duas divergiam no mesmo pedido.
+import { devolucaoConcluida } from "@/lib/domain/devolucao-estado";
 import { getAdsGastoEDireto, getAdsSpendByItem, probeAds } from "@/lib/ml/ads";
 import { completarFretesFaltantes, fetchOrdersLive, loadOrders, readShippingCosts } from "@/lib/ml/orders";
 import { getMlAccessToken } from "../token";
@@ -89,18 +92,6 @@ function parseDateParam(p: string | null) {
 
 function normalizeSku(s: string) {
   return s.trim().toLowerCase();
-}
-
-/**
- * Devolução concluída? Só reverte a venda quando a disputa fechou. Um claim
- * ainda "opened"/"in_process" pode terminar sem devolução (você ganha a
- * disputa), então segura. Status desconhecido/vazio conta como concluída para
- * não parar de descontar devolução real por causa de um vocabulário novo do ML.
- */
-function devolucaoConcluida(r: Record<string, unknown>): boolean {
-  const txt = `${String(r.status ?? "")} ${String(r.stage ?? "")}`.toLowerCase();
-  const emAberto = /open|process|pending|progress|review|recontact|dispute|in_?mediation/.test(txt);
-  return !emAberto;
 }
 
 // Remove prefixo "MLB" e retorna apenas o número, em maiúsculas

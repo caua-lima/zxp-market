@@ -9,10 +9,26 @@
  *
  * Dois anúncios com margem −2% pedem ações OPOSTAS:
  *
- *   · 8% das vendas vêm do Ads  → desligar. Perde-se quase nada de
- *     faturamento e o prejuízo some. A venda é orgânica.
- *   · 75% das vendas vêm do Ads → desligar derruba 3/4 do faturamento
- *     daquele produto. Aqui o certo é corrigir preço/custo/ROAS, não cortar.
+ *   · 8% das vendas são ATRIBUÍDAS ao Ads  → desligar tende a custar pouco
+ *     faturamento; a venda se sustenta majoritariamente sozinha.
+ *   · 75% atribuídas ao Ads → cortar é uma aposta grande. Aqui o caminho
+ *     costuma ser corrigir preço/custo/ROAS antes de desligar.
+ *
+ * ─── O QUE ATRIBUIÇÃO NÃO PROVA ─────────────────────────────────────────
+ *
+ * Uma venda "atribuída ao Ads" é uma venda em que o comprador passou por um
+ * anúncio pago dentro da janela de atribuição do Mercado Livre. Isso NÃO
+ * significa que ela só aconteceu por causa do anúncio: parte desses
+ * compradores encontraria o produto de qualquer jeito, pela busca orgânica ou
+ * pela vitrine.
+ *
+ * Ou seja, a receita atribuída é o TETO do que se perde ao desligar, não a
+ * previsão. Medir o que de fato se perderia exige desligar e comparar — um
+ * teste, não uma conta.
+ *
+ * Este módulo dizia "desligar derruba 3/4 do faturamento" e "cortar tudo
+ * derrubaria R$ X". Eram afirmações categóricas sobre um número que só dá um
+ * limite superior. Os textos passaram a dizer o que o dado realmente sustenta.
  *
  * Sem a dependência, os dois recebiam o mesmo "pausar" — e num deles isso
  * seria um erro caro. É essa combinação que este módulo resolve.
@@ -26,8 +42,9 @@
  */
 
 /**
- * Abaixo disto, o Ads é complemento: desligar não derruba o faturamento do
- * produto de forma relevante.
+ * Abaixo disto, o Ads é complemento: a maior parte da venda não passa por
+ * anúncio pago, então desligar dificilmente move o faturamento de forma
+ * relevante.
  *
  * 30% é o corte que o próprio operador usa na prática, e tem lógica:
  * abaixo de um terço, a venda se sustenta sozinha. Não é uma constante
@@ -53,7 +70,13 @@ export type VeredictoAds = {
   /** O porquê, citando os números que sustentam a decisão. */
   motivo: string;
   tone: "pos" | "warn" | "critical" | "info";
-  /** Quanto se perde de faturamento ao desligar (só quando faz sentido estimar). */
+  /**
+   * Receita ATRIBUÍDA ao Ads no período — o TETO do que se perderia ao
+   * desligar, não a previsão.
+   *
+   * Parte desses compradores encontraria o produto de qualquer jeito. Saber
+   * quanto exige desligar e comparar; a atribuição sozinha não responde.
+   */
   riscoAoDesligar: number | null;
 };
 
@@ -214,7 +237,7 @@ export function analisarAnuncio(d: DadosAnuncio): VeredictoAds {
       titulo: "Corrigir antes de desligar — o Ads sustenta a venda",
       motivo:
         `Está em ${brl(d.lucro)} (margem ${pct(d.margem)}) com ROAS ${x(d.roas)}, mas ${depTxt} das vendas `
-        + `deste produto vêm do Ads. Desligar agora tiraria cerca de ${risco != null ? brl(risco) : "boa parte"} `
+        + `deste produto são atribuídas ao Ads — até ${risco != null ? brl(risco) : "boa parte"} `
         + `de faturamento. Suba o ROAS alvo ou corrija preço/custo primeiro, e só corte se não fechar.`,
       tone: "critical",
       riscoAoDesligar: risco,
@@ -228,8 +251,9 @@ export function analisarAnuncio(d: DadosAnuncio): VeredictoAds {
       titulo: "Ajustar o ROAS alvo",
       motivo:
         `Fecha em ${brl(d.lucro)} (margem ${pct(d.margem)}) com ROAS ${x(d.roas)}. `
-        + `Com ${depTxt} das vendas vindo do Ads, cortar tudo derrubaria ${risco != null ? brl(risco) : "parte"} `
-        + `de faturamento — o caminho é subir o ROAS alvo e reduzir o desperdício, não desligar.`,
+        + `Com ${depTxt} das vendas atribuídas ao Ads, cortar tudo pode custar até ${risco != null ? brl(risco) : "parte"} `
+        + `de faturamento (teto: parte dessas vendas aconteceria sem anúncio). `
+        + `O caminho costuma ser subir o ROAS alvo e reduzir o desperdício antes de desligar.`,
       tone: "warn",
       riscoAoDesligar: risco,
     };

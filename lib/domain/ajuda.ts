@@ -158,7 +158,8 @@ export const TOPICOS: Topico[] = [
       "Na aba Ads existe o Consultor: pergunte em português (“o que fazer com o Menta Stronger?”) e ele responde "
       + "com os números daquele anúncio e o que fazer.\n\n"
       + "Ele cruza margem com dependência do Ads: um anúncio no vermelho com 8% das vendas vindas de Ads pede "
-      + "desligar; o mesmo vermelho com 75% pede corrigir preço antes, porque cortar derrubaria o faturamento.",
+      + "desligar; o mesmo vermelho com 75% pede corrigir preço antes, porque cortar pode levar junto boa parte do faturamento. "
+      + "Atenção: essa porcentagem é de vendas ATRIBUÍDAS ao anúncio, e é o teto do que se perde — parte desses compradores acharia o produto de qualquer jeito.",
   },
   {
     id: "notificacoes",

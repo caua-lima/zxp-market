@@ -42,7 +42,29 @@ describe("analisarAnuncio — a dependência do Ads muda a decisão", () => {
     const alta = analisarAnuncio(anuncio({ pctAds: 75, lucro: -50, margem: -5 }));
     expect(baixa.acao).toBe("desligar");
     expect(alta.acao).toBe("ajustar-roas");
-    expect(alta.motivo).toMatch(/derrubaria|tiraria/i);
+    // A conclusao continua; o que mudou e a forca da afirmacao (ver abaixo).
+    expect(alta.motivo).toMatch(/atribuídas/i);
+  });
+
+  it("nao afirma que desligar DERRUBA o faturamento — atribuicao nao prova isso", () => {
+    /**
+     * Uma venda "atribuida ao Ads" e uma venda em que o comprador passou por
+     * um anuncio pago dentro da janela de atribuicao. Isso NAO significa que
+     * ela so aconteceu por causa do anuncio: parte desses compradores acharia
+     * o produto pela busca organica de qualquer jeito.
+     *
+     * A receita atribuida e o TETO do que se perde ao desligar, nao a
+     * previsao. Os textos diziam "desligar derruba 3/4 do faturamento" e
+     * "cortar tudo derrubaria R$ X" — afirmacoes categoricas sobre um numero
+     * que so da um limite superior.
+     */
+    const alta = analisarAnuncio(anuncio({ pctAds: 75, lucro: -50, margem: -5 }));
+    expect(alta.motivo).not.toMatch(/derrubaria|tiraria|vai perder|perderá/i);
+  });
+
+  it("enquadra o valor como teto, nao como previsao", () => {
+    const alta = analisarAnuncio(anuncio({ vendas: 1000, pctAds: 80, lucro: -30, margem: -3 }));
+    expect(alta.motivo).toMatch(/até|teto/i);
   });
 
   it("dependência alta + prejuízo avisa QUANTO de faturamento está em risco", () => {

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { devolucaoConcluida, ehDevolucao } from "@/lib/domain/devolucao-estado";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
 import { getAdsFullByItem, getAdsSettingsByItem, getItemStatusByItem, probeAds, type AdSettings } from "@/lib/ml/ads";
@@ -246,8 +247,23 @@ export async function GET(req: Request) {
     const devolIds = new Set<string>();
     for (const snap of [retUTC, retBR]) for (const doc of snap.docs) {
       const r = doc.data();
-      if (String(r.tipo ?? "") === "devolucao") devolIds.add(doc.id);
-      else cancelIds.add(doc.id);
+      /**
+       * Só o TIPO era olhado aqui — `status` e `stage` eram ignorados. Bastava
+       * o comprador ABRIR a solicitação pra a venda sair do faturamento e do
+       * lucro NESTA rota, enquanto o Dashboard, que checava o status, seguia
+       * contando a mesma venda.
+       *
+       * Aqui essa receita é o DENOMINADOR do ROAS: a campanha aparecia pior do
+       * que é enquanto a disputa corria, e o ajuste seria feito em cima de um
+       * número que voltaria ao normal sozinho.
+       */
+      if (ehDevolucao(r)) {
+        if (devolucaoConcluida(r)) devolIds.add(doc.id);
+        // Em andamento: a venda continua valendo. Não entra em devolvidos nem
+        // em cancelados — é uma pendência, não uma baixa.
+        continue;
+      }
+      cancelIds.add(doc.id);
     }
 
     const { porItem: vendas, porProduto: vendasProduto } = vendasPorItem(orders, porMlb, porSku, cancelIds, devolIds);
