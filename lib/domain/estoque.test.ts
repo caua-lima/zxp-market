@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { consolidarEstoqueAnuncios, estoqueForaDoFull, type AnuncioEstoque } from "./estoque";
+import { mediaDiariaAjustada } from "./reposicao";
+import { calculateStockCoverage, consolidarEstoqueAnuncios, estoqueForaDoFull, type AnuncioEstoque } from "./estoque";
 
 function full(available: number, inventoryId?: string): AnuncioEstoque {
   return { available, logistic: "fulfillment", inventoryId };
@@ -148,5 +149,44 @@ describe("dois anuncios PROPRIOS dividem o mesmo galpao", () => {
     expect(r.proprio).toBe(0);
     expect(r.proprioCompartilhado).toBe(false);
     expect(r.temDado).toBe(false);
+  });
+});
+
+describe("calculateStockCoverage — dias ativos", () => {
+  it("anuncio pausado metade do mes tem cobertura MENOR, nao maior", () => {
+    /**
+     * O Dashboard descartava `diasAtivos` e dividia pela janela cheia; a aba
+     * Estoque dividia pelos dias em que o anuncio esteve no ar. Dividir pela
+     * janela cheia da um ritmo menor, logo uma cobertura maior — o painel
+     * "Produtos em risco" era o que subestimava o risco.
+     *
+     * 30 vendas em 30 dias de janela, mas so 15 dias no ar:
+     *   janela cheia: 1/dia  -> 60 unidades duram 60 dias
+     *   dias ativos:  2/dia  -> 60 unidades duram 30 dias
+     */
+    expect(calculateStockCoverage(60, 30, 30)).toBe(60);
+    expect(calculateStockCoverage(60, 30, 30, 15)).toBe(30);
+  });
+
+  it("sem diasAtivos, continua igual ao comportamento anterior", () => {
+    expect(calculateStockCoverage(60, 30, 30, null)).toBe(60);
+    expect(calculateStockCoverage(60, 30, 30, undefined)).toBe(60);
+    expect(calculateStockCoverage(60, 30, 30, 0)).toBe(60);
+  });
+
+  it("diasAtivos maior que a janela nao dilui a media", () => {
+    // Dado inconsistente; aceitar espalharia as vendas por dias que nao existiram.
+    expect(calculateStockCoverage(60, 30, 30, 90)).toBe(60);
+  });
+
+  it("sem venda no periodo nao ha cobertura calculavel", () => {
+    expect(calculateStockCoverage(60, 0, 30, 15)).toBeNull();
+  });
+
+  it("a cobertura concorda com mediaDiariaAjustada, que a aba Estoque usa", () => {
+    // As duas telas tem que dar a MESMA resposta pro mesmo produto.
+    const estoque = 100, vendas = 45, dias = 30, ativos = 18;
+    const ritmo = mediaDiariaAjustada(vendas, dias, ativos);
+    expect(calculateStockCoverage(estoque, vendas, dias, ativos)).toBeCloseTo(estoque / ritmo, 6);
   });
 });

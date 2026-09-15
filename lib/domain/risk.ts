@@ -51,7 +51,11 @@ export function findProdutosEmRisco(
   produtos: RiskProduto[],
   anuncios: RiskAnuncio[],
   metaMargem: number,
-  forecast?: { vendas: Record<string, number>; dias: number } | null,
+  /**
+   * `diasAtivos` faz parte do contrato: sem ele a cobertura sai otimista, e
+   * este painel existe justamente pra apontar risco. Ver calculateStockCoverage.
+   */
+  forecast?: { vendas: Record<string, number>; dias: number; diasAtivos?: Record<string, number> } | null,
 ): ProdutoEmRisco[] {
   const margemPorMlb = new Map<string, { margem: number; vendas: number }>();
   for (const a of anuncios) {
@@ -69,7 +73,7 @@ export function findProdutosEmRisco(
     let coberturaDias: number | null = null;
     if (forecast) {
       const vendasPeriodo = forecast.vendas[p.id] ?? 0;
-      coberturaDias = calculateStockCoverage(qtd, vendasPeriodo, forecast.dias);
+      coberturaDias = calculateStockCoverage(qtd, vendasPeriodo, forecast.dias, forecast.diasAtivos?.[p.id]);
       const status = getCoverageStatus(coberturaDias, qtd, vendasPeriodo);
       if (status === "critico") motivos.push("estoque-baixo");
     } else if (qtd > 0 && qtd <= ESTOQUE_BAIXO_LIMIAR) {

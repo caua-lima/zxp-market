@@ -1613,7 +1613,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
   // "média mais forte" balançava muito; 30 dias fixos garante ~4 semanas
   // completas sempre, não importa que dia do mês seja hoje.
   const [melhoresDiasMetrics, setMelhoresDiasMetrics] = useState<MlMetrics | null>(null);
-  const [estoqueForecast, setEstoqueForecast] = useState<{ vendas: Record<string, number>; dias: number } | null>(null);
+  const [estoqueForecast, setEstoqueForecast] = useState<{ vendas: Record<string, number>; dias: number; diasAtivos?: Record<string, number> } | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   useEffect(() => watchTasks(setTasks), []);
   const tarefasVencidas = useMemo(() => tasks.filter(isTaskAtrasada), [tasks]);
@@ -1735,7 +1735,16 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
   useEffect(() => {
     authedFetch("/api/ml/estoque-forecast?dias=30", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (mountedRef.current && j) setEstoqueForecast({ vendas: j.vendas ?? {}, dias: j.dias ?? 30 }); })
+      .then((j) => {
+        if (!mountedRef.current || !j) return;
+        /**
+         * `diasAtivos` era DESCARTADO aqui — lia-se só vendas e dias. Com
+         * isso "Produtos em risco" dividia pela janela cheia enquanto a aba
+         * Estoque dividia pelos dias em que o anúncio esteve no ar: ritmo
+         * menor, cobertura maior, risco subestimado na tela inicial.
+         */
+        setEstoqueForecast({ vendas: j.vendas ?? {}, dias: j.dias ?? 30, diasAtivos: j.diasAtivos ?? {} });
+      })
       .catch(() => {});
   }, []);
 

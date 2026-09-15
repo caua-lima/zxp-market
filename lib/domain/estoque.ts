@@ -1,3 +1,5 @@
+import { mediaDiariaAjustada } from "@/lib/domain/reposicao";
+
 // Helpers puros de cobertura/reposição de estoque — Fase 5. Não mexem no
 // livro de movimentações nem no custo médio ponderado (isso continua
 // intacto em lib/firebase/data.ts); só decidem como LER o que já existe:
@@ -10,13 +12,35 @@
  * numa previsão — sem venda no período, qualquer número aqui seria
  * inventado, não calculado.
  */
+/**
+ * Quantos dias o estoque cobre, no ritmo medido.
+ *
+ * @param diasAtivos dias em que o produto esteve DE FATO à venda na janela.
+ *
+ * ─── POR QUE ESTE PARÂMETRO PRECISOU EXISTIR ────────────────────────────
+ *
+ * A rota /api/ml/estoque-forecast já calculava `diasAtivos`, e a aba Estoque
+ * já o usava (via mediaDiariaAjustada). Mas o Dashboard fazia:
+ *
+ *   setEstoqueForecast({ vendas: j.vendas ?? {}, dias: j.dias ?? 30 })
+ *
+ * — lia `vendas` e `dias` e DESCARTAVA `diasAtivos`. Então "Produtos em
+ * risco", na tela inicial, dividia as vendas pela janela CHEIA enquanto a aba
+ * Estoque dividia pelos dias em que o anúncio esteve no ar.
+ *
+ * Dividir pela janela cheia dá um ritmo MENOR, logo uma cobertura MAIOR: o
+ * painel que existe pra alertar era o que subestimava o risco. Um produto
+ * pausado metade do mês vende o dobro por dia ativo do que a divisão simples
+ * sugere.
+ */
 export function calculateStockCoverage(
   estoqueDisponivel: number,
   vendasNoPeriodo: number,
   diasNoPeriodo: number,
+  diasAtivos?: number | null,
 ): number | null {
   if (diasNoPeriodo <= 0 || vendasNoPeriodo <= 0) return null;
-  const mediaDiaria = vendasNoPeriodo / diasNoPeriodo;
+  const mediaDiaria = mediaDiariaAjustada(vendasNoPeriodo, diasNoPeriodo, diasAtivos);
   if (mediaDiaria <= 0) return null;
   return estoqueDisponivel / mediaDiaria;
 }
