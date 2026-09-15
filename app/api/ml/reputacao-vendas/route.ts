@@ -4,6 +4,7 @@ import { getMlAccessToken } from "../token";
 import { fetchOrdersLive } from "@/lib/ml/orders";
 import { montarBlocoVendas, serieDiariaDeVendas } from "@/lib/domain/reputacao-vendas";
 import { diasNaJanela, janelaDeDias } from "@/lib/domain/janela-dias";
+import { lerPeriodo } from "@/lib/domain/periodo";
 
 export const maxDuration = 60;
 
@@ -63,8 +64,24 @@ export async function GET(req: Request) {
      * A definicao agora e uma so, em lib/domain/janela-dias.
      */
     const padrao = janelaDeDias(dias);
-    const de = url.searchParams.get("from") || padrao.de;
-    const ate = url.searchParams.get("to") || padrao.ate;
+    /**
+     * SEG-07: valida antes de buscar.
+     *
+     * Esta rota é a mais cara do app — até dezesseis páginas de pedidos ao
+     * vivo no Mercado Livre por chamada. Aceitar `from`/`to` sem conferir
+     * deixava qualquer pessoa autorizada pedir trinta anos pela URL e derrubar
+     * a função, ou mandar um intervalo invertido e receber vazio, que aqui se
+     * lê como "não vendeu nada".
+     */
+    const periodo = lerPeriodo(
+      { from: url.searchParams.get("from"), to: url.searchParams.get("to") },
+      padrao.ate,
+    );
+    if (!periodo.ok) {
+      return NextResponse.json({ error: periodo.erro, details: periodo.detalhe, bloco: null }, { status: 400 });
+    }
+    const de = url.searchParams.get("from") ? periodo.de : padrao.de;
+    const ate = url.searchParams.get("to") ? periodo.ate : padrao.ate;
 
     /**
      * Quantas datas a janela cobre DE FATO. Quando a tela manda from/to

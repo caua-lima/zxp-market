@@ -6,6 +6,7 @@ import { redigirFinanceiro } from "@/lib/domain/redacao-financeira";
 // condição à mão SEM olhar o status, e as duas divergiam no mesmo pedido.
 import { devolucaoConcluida } from "@/lib/domain/devolucao-estado";
 import { contribuicaoNoPeriodo } from "@/lib/domain/vigencia-custo";
+import { lerPeriodo } from "@/lib/domain/periodo";
 import { getAdsGastoEDireto, getAdsSpendByItem, probeAds } from "@/lib/ml/ads";
 import { completarFretesFaltantes, fetchOrdersLive, loadOrders, readShippingCosts } from "@/lib/ml/orders";
 import { getMlAccessToken } from "../token";
@@ -85,10 +86,6 @@ type Aggregates = {
   substituidasUnidades: number;
   reconc: { count: number; nosso: number; real: number };
 };
-
-function parseDateParam(p: string | null) {
-  return p?.trim() || undefined;
-}
 
 function normalizeSku(s: string) {
   return s.trim().toLowerCase();
@@ -463,10 +460,35 @@ export async function GET(req: Request) {
 
   try {
     const url = new URL(req.url);
-    const from = parseDateParam(url.searchParams.get("from"));
-    const to = parseDateParam(url.searchParams.get("to"));
-    const month = parseDateParam(url.searchParams.get("month"));
-    const { start, end, startBR, endBR, fromStr, toStr } = buildRange(from, to, month);
+
+    /**
+     * SEG-07: o período é validado ANTES de qualquer consulta.
+     *
+     * `buildRange` interpolava `from`/`to` direto na string ISO, sem conferir
+     * nada. Saíam daí quatro coisas:
+     *
+     *   · `?from=abc` virava "abcT00:00:00.000Z" e a consulta ia com lixo;
+     *   · intervalo invertido devolvia vazio, que se lê como "não vendeu nada";
+     *   · `?month=abc` produzia "NaN-NaN-01";
+     *   · e não havia TETO — `?from=2000-01-01&to=2030-12-31` fazia a rota
+     *     paginar trinta anos de pedidos no ML até a função morrer.
+     *
+     * Recusar aqui custa microssegundos e evita dezenas de chamadas pagas.
+     */
+    const brAgora = new Date(Date.now() - 3 * 3600 * 1000);
+    const hojeBR = `${brAgora.getUTCFullYear()}-${String(brAgora.getUTCMonth() + 1).padStart(2, "0")}-${String(brAgora.getUTCDate()).padStart(2, "0")}`;
+
+    const periodo = lerPeriodo({
+      from: url.searchParams.get("from"),
+      to: url.searchParams.get("to"),
+      month: url.searchParams.get("month"),
+    }, hojeBR);
+
+    if (!periodo.ok) {
+      return NextResponse.json({ error: periodo.erro, details: periodo.detalhe }, { status: 400 });
+    }
+
+    const { start, end, startBR, endBR, fromStr, toStr } = buildRange(periodo.de, periodo.ate, undefined);
 
     /**
      * ── Cache curto (bypass com ?fresh=1, usado no "Atualizar ML") ──
