@@ -38,9 +38,21 @@ const normId = (s: string) => String(s ?? "").replace(/[^A-Za-z0-9]/g, "").toUpp
 
 type Row = { available: number; logistic: string; inventoryId: string };
 
-/** Busca disponível + logística dos MLBs, de 20 em 20 (limite do multi-get). */
-async function buscarEstoqueML(ids: string[], token: string): Promise<Map<string, Row>> {
+/**
+ * Busca disponível + logística dos MLBs, de 20 em 20 (limite do multi-get).
+ *
+ * Devolve TAMBÉM quais ids não foram lidos. O `continue` silencioso de antes
+ * fazia o lote que falhava sumir do mapa, e lá na frente o produto chegava com
+ * `full: 0` — indistinguível de "acabou o estoque". Um aviso disparado daí
+ * manda push pro celular de todo mundo dizendo que um produto abastecido está
+ * acabando.
+ */
+async function buscarEstoqueML(
+  ids: string[],
+  token: string,
+): Promise<{ mapa: Map<string, Row>; naoLidos: Set<string> }> {
   const mapa = new Map<string, Row>();
+  const naoLidos = new Set<string>();
   for (let i = 0; i < ids.length; i += 20) {
     const chunk = ids.slice(i, i + 20);
     try {
@@ -48,7 +60,7 @@ async function buscarEstoqueML(ids: string[], token: string): Promise<Map<string
         `${ML_API}/items?ids=${chunk.join(",")}&attributes=id,available_quantity,status,shipping,inventory_id`,
         { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store" },
       );
-      if (!res.ok) continue;
+      if (!res.ok) { chunk.forEach((id) => naoLidos.add(id)); continue; }
       const rows = (await res.json()) as { code?: number; body?: Record<string, unknown> }[];
       for (const row of rows) {
         const b = row?.body;
@@ -61,10 +73,18 @@ async function buscarEstoqueML(ids: string[], token: string): Promise<Map<string
         });
       }
     } catch {
-      // Um lote que falha não pode impedir os outros de serem verificados.
+      // Um lote que falha não pode impedir os outros de serem verificados —
+      // mas também não pode passar por "verificado e zerado".
+      chunk.forEach((id) => naoLidos.add(id));
     }
   }
-  return mapa;
+  /**
+   * Id que o ML aceitou responder mas não devolveu corpo (item apagado,
+   * pertence a outra conta) também não foi lido. Sem isto, o multi-get
+   * "ok" com corpo faltando cairia no mesmo zero fabricado.
+   */
+  for (const id of ids) if (!mapa.has(normId(id))) naoLidos.add(id);
+  return { mapa, naoLidos };
 }
 
 /**
@@ -132,19 +152,37 @@ async function lerJaAvisados(): Promise<Set<string>> {
 export type ResultadoEstoqueAlerta = {
   avisados: string[];
   rearmados: string[];
+  /** Produtos efetivamente conferidos — não o total de produtos cadastrados. */
   verificados: number;
+  /**
+   * A verificação foi COMPLETA?
+   *
+   * Um lote do multi-get que falha não pode fazer o resultado parecer inteiro.
+   * "Conferi tudo e está ok" e "não consegui conferir 40 produtos" levam a
+   * decisões opostas sobre comprar ou não.
+   */
+  completo: boolean;
+  /** Produtos que o ML não respondeu — não foram verificados, nem avisados. */
+  naoVerificados: string[];
+  /** Anúncios (MLB) que não puderam ser lidos, pra diagnóstico. */
+  anunciosNaoLidos: number;
   erro?: string;
 };
 
 export async function verificarEstoqueBaixo(): Promise<ResultadoEstoqueAlerta> {
-  const vazio: ResultadoEstoqueAlerta = { avisados: [], rearmados: [], verificados: 0 };
+  const vazio: ResultadoEstoqueAlerta = {
+    avisados: [], rearmados: [], verificados: 0,
+    // Falhar antes de começar não é uma verificação completa.
+    completo: false, naoVerificados: [], anunciosNaoLidos: 0,
+  };
   try {
     const token = await getMlAccessToken();
     if (!token) return { ...vazio, erro: "sem_token" };
 
     const db = getAdminDb();
     const prodSnap = await db.collection("estoque").get();
-    if (prodSnap.empty) return vazio;
+    // Nenhum produto cadastrado é um resultado completo e legítimo.
+    if (prodSnap.empty) return { ...vazio, completo: true };
 
     // Todos os MLBs de todos os produtos, pra uma busca só no ML.
     const todosIds = new Set<string>();
@@ -153,7 +191,7 @@ export async function verificarEstoqueBaixo(): Promise<ResultadoEstoqueAlerta> {
       const list: string[] = Array.isArray(d.mlbs) && d.mlbs.length ? d.mlbs : d.mlb ? [String(d.mlb)] : [];
       for (const m of list) { const n = normId(m); if (n) todosIds.add(n); }
     }
-    const estoqueML = await buscarEstoqueML([...todosIds], token);
+    const { mapa: estoqueML, naoLidos } = await buscarEstoqueML([...todosIds], token);
 
     /**
      * MLB → produto, pra cruzar as vendas com o cadastro. Mesmo `normId` do
@@ -178,6 +216,15 @@ export async function verificarEstoqueBaixo(): Promise<ResultadoEstoqueAlerta> {
 
       // Consolida pools do Full: dois anúncios no mesmo pool não somam.
       const c = consolidarEstoqueAnuncios(anuncios);
+
+      /**
+       * Tem dado quando o ML respondeu sobre TODOS os anúncios do produto.
+       *
+       * Exigir todos, e não algum: um produto com dois anúncios em que só um
+       * foi lido tem o Full subestimado, e subestimar o Full é exatamente o
+       * que dispara um aviso de ruptura falso.
+       */
+      const temDado = list.length > 0 && list.every((m) => estoqueML.has(normId(m)));
       return {
         id: doc.id,
         nome: String(d.name ?? d.nome ?? doc.id),
@@ -186,6 +233,8 @@ export async function verificarEstoqueBaixo(): Promise<ResultadoEstoqueAlerta> {
         // Não entra no limite; diz se dá pra coletar hoje ou se falta comprar.
         casa: Math.max(Number(d.qtdLocal ?? 0), 0),
         ehFull: c.ehFull,
+        // Ausência de dado NÃO é estoque zero — ver detectarEstoqueBaixo.
+        temDado,
         // Limite por produto, quando o operador tiver definido um.
         minimo: d.estoqueMinimo != null ? Number(d.estoqueMinimo) : null,
         /**
@@ -205,7 +254,7 @@ export async function verificarEstoqueBaixo(): Promise<ResultadoEstoqueAlerta> {
       return { ...vazio, verificados: produtos.length, erro: "estado_indisponivel" };
     }
 
-    const { avisar, rearmar } = detectarEstoqueBaixo(produtos, jaAvisados);
+    const { avisar, rearmar, semDado } = detectarEstoqueBaixo(produtos, jaAvisados);
 
     const avisados: string[] = [];
     for (const aviso of avisar) {
@@ -236,7 +285,14 @@ export async function verificarEstoqueBaixo(): Promise<ResultadoEstoqueAlerta> {
       } catch { /* tenta de novo na próxima rodada */ }
     }
 
-    return { avisados, rearmados, verificados: produtos.length };
+    return {
+      avisados, rearmados,
+      // Só conta como verificado quem o ML respondeu.
+      verificados: produtos.length - semDado.length,
+      completo: semDado.length === 0 && naoLidos.size === 0,
+      naoVerificados: semDado,
+      anunciosNaoLidos: naoLidos.size,
+    };
   } catch (err) {
     console.error("[estoque-alerta] falhou", err);
     return { ...vazio, erro: err instanceof Error ? err.message : String(err) };

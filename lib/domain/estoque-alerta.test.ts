@@ -209,3 +209,62 @@ describe("cobertura em dias substitui o limite de unidades", () => {
     expect(r.rearmar).toEqual(["p1"]);
   });
 });
+
+describe("temDado — ausencia de dado NAO e estoque zero", () => {
+  const base = { casa: 0, ehFull: true, minimo: 25 };
+
+  it("produto sem resposta do ML nao gera aviso", () => {
+    /**
+     * Um lote do multi-get que falha fazia o produto sumir do mapa, e ele
+     * chegava aqui com full 0 — indistinguivel de "acabou o estoque". O aviso
+     * disparado dai manda push pro celular de todo mundo dizendo que um
+     * produto abastecido esta acabando.
+     */
+    const r = detectarEstoqueBaixo(
+      [{ id: "p1", nome: "Menta", full: 0, temDado: false, ...base }],
+      new Set(),
+    );
+    expect(r.avisar).toHaveLength(0);
+    expect(r.semDado).toEqual(["p1"]);
+  });
+
+  it("produto sem resposta tambem nao e REARMADO", () => {
+    // Rearmar a partir de zero desconhecido faria o aviso real ser mandado de
+    // novo depois, como se o estoque tivesse subido e caido.
+    const r = detectarEstoqueBaixo(
+      [{ id: "p1", nome: "Menta", full: 0, temDado: false, ...base }],
+      new Set(["p1"]),
+    );
+    expect(r.rearmar).toHaveLength(0);
+  });
+
+  it("zero CONFIRMADO continua avisando — e o caso que o aviso existe pra pegar", () => {
+    const r = detectarEstoqueBaixo(
+      [{ id: "p1", nome: "Menta", full: 0, temDado: true, ...base }],
+      new Set(),
+    );
+    expect(r.avisar).toHaveLength(1);
+  });
+
+  it("sem o campo, assume que perguntou — nao quebra chamada antiga", () => {
+    const r = detectarEstoqueBaixo(
+      [{ id: "p1", nome: "Menta", full: 0, ...base }],
+      new Set(),
+    );
+    expect(r.avisar).toHaveLength(1);
+    expect(r.semDado).toHaveLength(0);
+  });
+
+  it("lista mista: avisa quem deu, reporta quem nao deu", () => {
+    const r = detectarEstoqueBaixo(
+      [
+        { id: "ok", nome: "Lido", full: 2, temDado: true, ...base },
+        { id: "cego", nome: "Nao lido", full: 0, temDado: false, ...base },
+        { id: "cheio", nome: "Abastecido", full: 500, temDado: true, ...base },
+      ],
+      new Set(),
+    );
+    expect(r.avisar.map((a) => a.produtoId)).toEqual(["ok"]);
+    expect(r.semDado).toEqual(["cego"]);
+  });
+});

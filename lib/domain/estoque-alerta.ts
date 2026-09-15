@@ -73,6 +73,20 @@ export type ProdutoEstoque = {
   mediaDiaria?: number | null;
   /** Limite próprio deste produto. Ausente = usa o padrão. */
   minimo?: number | null;
+  /**
+   * O Mercado Livre respondeu sobre este produto?
+   *
+   * Ausência de dado NÃO é estoque zero. Quando um lote do multi-get falha (o
+   * `continue` silencioso em buscarEstoqueML), o produto simplesmente some do
+   * mapa e chegava aqui com `full: 0` — indistinguível de "acabou o estoque".
+   * Um aviso disparado a partir disso manda push pro celular de todo mundo
+   * dizendo que um produto abastecido está acabando.
+   *
+   * Sem `temDado`, o produto é CONTADO como não verificado e nenhum aviso
+   * sai. Ausente (undefined) assume `true` pra não quebrar chamadas antigas —
+   * quem constrói o produto é que sabe se perguntou.
+   */
+  temDado?: boolean;
 };
 
 export type AvisoEstoque = {
@@ -97,6 +111,15 @@ export type ResultadoDeteccao = {
   avisar: AvisoEstoque[];
   /** Ids que voltaram a ficar acima do limite — liberar pra avisar de novo. */
   rearmar: string[];
+  /**
+   * Ids que o Mercado Livre nao respondeu, e por isso nao foram verificados.
+   *
+   * Existe pra a verificacao poder se declarar PARCIAL. Antes um lote que
+   * falhava sumia em silencio: o produto chegava com full 0 e ficava
+   * indistinguivel de "acabou". Reportar e o que separa "conferi e esta ok"
+   * de "nao consegui conferir".
+   */
+  semDado: string[];
 };
 
 /**
@@ -118,9 +141,18 @@ export function detectarEstoqueBaixo(
 ): ResultadoDeteccao {
   const avisar: AvisoEstoque[] = [];
   const rearmar: string[] = [];
+  const semDado: string[] = [];
 
   for (const p of produtos) {
     if (!p.id) continue;
+
+    /**
+     * Sem resposta do ML, não se sabe nada — e "não sei" nunca pode virar
+     * "zero". O produto sai da verificação e é reportado, em vez de gerar um
+     * aviso de ruptura a partir de um zero fabricado.
+     */
+    if (p.temDado === false) { semDado.push(p.id); continue; }
+
     // Sem Full não há coleta a agendar — o aviso não se aplica.
     if (!p.ehFull) continue;
 
@@ -183,5 +215,5 @@ export function detectarEstoqueBaixo(
 
   // Mais crítico primeiro: quem zerou antes de quem está perto do limite.
   avisar.sort((a, b) => a.full - b.full);
-  return { avisar, rearmar };
+  return { avisar, rearmar, semDado };
 }

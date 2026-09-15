@@ -35,6 +35,7 @@ import type { NotificationEvent } from "@/lib/domain/notifications";
 import { getFirebase } from "./client";
 import { assinarComCache, invalidar } from "./cache";
 import { faixasAlteradas, reconstruirCusto } from "@/lib/domain/custo-medio";
+import { patchCusto, patchIgnorar, patchReabrir } from "@/lib/domain/remessa-full";
 
 function sanitizeUndefined<T extends Record<string, unknown>>(obj: T): T {
   return Object.fromEntries(
@@ -329,16 +330,44 @@ const REMESSA_COL = "full_remessas";
  * já foram lançadas à mão antes desta tela existir: sem isso, elas ficariam
  * para sempre pedindo uma baixa que geraria contagem dobrada.
  */
+/**
+ * Marca a remessa como resolvida a mao.
+ *
+ * O `setDoc` aqui era SEM `{ merge: true }` — e no Firestore isso SUBSTITUI o
+ * documento inteiro. O mesmo documento guarda o `custoManual` da coleta Full,
+ * entao marcar uma remessa como resolvida APAGAVA esse custo. O codigo ate
+ * dizia, num comentario logo abaixo, que os dois sao independentes e que "um
+ * nao pode apagar o outro".
+ *
+ * O custo da coleta nao vem da API do ML (a doc de Fulfillment diz que so da
+ * pra consultar estoque e operacoes): e lido no Seller Center e digitado a
+ * mao. Perder esse numero nao e um campo vazio que se recalcula — e alguem
+ * tendo que reabrir o painel do ML e digitar de novo, com o custo do Full
+ * saindo menor do que e ate la.
+ */
 export async function ignorarRemessaFull(remessa: string, motivo = "baixa já lançada à mão"): Promise<void> {
-  await setDoc(sDoc(REMESSA_COL, remessa), {
-    remessa, ignorada: true, motivo,
-    createdBy: getCurrentUserEmail(), createdAt: Date.now(),
-  });
+  await setDoc(
+    sDoc(REMESSA_COL, remessa),
+    { remessa, ...patchIgnorar(getCurrentUserEmail(), motivo) },
+    { merge: true },
+  );
   invalidar(CHAVE_REMESSAS);
 }
 
+/**
+ * Devolve a remessa pra lista de pendentes.
+ *
+ * Era `deleteDoc` — reabrir e uma acao OPERACIONAL, e destruia o documento
+ * inteiro, custo junto. Agora so desliga o estado. Apagar custo continua
+ * existindo, como operacao propria e registrada (salvarCustoRemessaFull com
+ * null).
+ */
 export async function reabrirRemessaFull(remessa: string): Promise<void> {
-  await deleteDoc(sDoc(REMESSA_COL, remessa));
+  await setDoc(
+    sDoc(REMESSA_COL, remessa),
+    { remessa, ...patchReabrir() },
+    { merge: true },
+  );
   invalidar(CHAVE_REMESSAS);
 }
 
@@ -359,14 +388,10 @@ export async function reabrirRemessaFull(remessa: string): Promise<void> {
 export async function salvarCustoRemessaFull(remessa: string, custo: number | null): Promise<void> {
   await setDoc(
     sDoc(REMESSA_COL, remessa),
-    sanitizeUndefined({
-      remessa,
-      // null limpa o valor: quem digitou errado precisa conseguir voltar pro
-      // estado "sem custo informado", que e diferente de "custou zero".
-      custoManual: custo == null || !Number.isFinite(custo) ? null : custo,
-      custoInformadoPor: getCurrentUserEmail(),
-      custoInformadoEm: Date.now(),
-    }),
+    // null limpa o valor: quem digitou errado precisa conseguir voltar pro
+    // estado "sem custo informado", que e diferente de "custou zero". Fica
+    // registrado quem apagou e quando, igual a informar.
+    sanitizeUndefined({ remessa, ...patchCusto(getCurrentUserEmail(), custo) }),
     { merge: true },
   );
   invalidar(CHAVE_REMESSAS);
