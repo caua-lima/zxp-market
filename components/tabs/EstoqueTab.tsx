@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { explicarFonte } from "@/lib/domain/estado-fonte";
 import { CUSTO_FAIXA_SENTINELA, custoNaData, impostoNaData, TIPO_MOVIMENTO_LABEL, type EstoqueMovimento, type MovimentoTipo, type Product } from "@/lib/domain/types";
 import { addMovimento, deleteMovimento, deleteProduct, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas , recalcularProduto } from "@/lib/firebase/data";
 import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas";
@@ -475,7 +476,15 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
         {filtered.length === 0 ? (
           <div className="empty-state">
             <span className="empty-ico">📦</span>
-            {search ? "Nenhum produto encontrado." : (<>Nenhum produto cadastrado.<br />Clique em <strong>＋ Novo Produto</strong>.</>)}
+            {/*
+              Lista vazia só pode AFIRMAR que não há produto quando a fonte de
+              fato respondeu. Antes, uma assinatura negada (member) ou um
+              estouro de cota apareciam como "nenhum produto cadastrado".
+            */}
+            {search
+              ? "Nenhum produto encontrado."
+              : explicarFonte(data.fontes.produtos, "produtos")
+                ?? (<>Nenhum produto cadastrado.<br />Clique em <strong>＋ Novo Produto</strong>.</>)}
           </div>
         ) : (
           <div className="table-wrapper" style={{ border: "none" }}>

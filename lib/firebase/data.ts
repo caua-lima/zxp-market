@@ -94,13 +94,21 @@ export async function clearDraft(_uid: string) {
   await deleteDoc(sDoc("rascunho", "hoje"));
 }
 
+/**
+ * @param onError chamado quando a assinatura é recusada ou falha.
+ *
+ * Sem isto, uma assinatura negada ficava indistinguível de uma que respondeu
+ * vazio — e a tela dizia "nenhum dado" pra quem simplesmente não tem acesso
+ * àquela coleção. Ver lib/domain/estado-fonte.
+ */
 export function watchDraft(
   _uid: string,
   cb: (d: DraftToday | null) => void,
+  onError?: (e: unknown) => void,
 ): () => void {
   return onSnapshot(sDoc("rascunho", "hoje"), (snap) => {
     cb(snap.exists() ? (snap.data() as DraftToday) : null);
-  });
+  }, (e) => onError?.(e));
 }
 
 // ── Goals (legacy single-doc) ─────────────────────────────────
@@ -111,10 +119,11 @@ export async function saveGoals(_uid: string, g: Goals) {
 export function watchGoals(
   _uid: string,
   cb: (g: Goals | null) => void,
+  onError?: (e: unknown) => void,
 ): () => void {
   return onSnapshot(sDoc("metas", "config"), (snap) => {
     cb(snap.exists() ? (snap.data() as Goals) : null);
-  });
+  }, (e) => onError?.(e));
 }
 
 // ── Goal Entries (history) ────────────────────────────────────
@@ -122,6 +131,7 @@ const CHAVE_METAS = "metasHistorico";
 export function watchGoalEntries(
   _uid: string,
   cb: (entries: GoalEntry[]) => void,
+  onError?: (e: unknown) => void,
 ): () => void {
   // limit(60) = 5 anos de metas mensais — nunca deveria ser o gargalo, mas
   // sem teto nenhum um listener global fica mais caro pra sempre conforme o
@@ -130,7 +140,7 @@ export function watchGoalEntries(
   return assinarComCache(CHAVE_METAS, async () => {
     const snap = await getDocs(query(sCol("metasHistorico"), orderBy("createdAt", "desc"), limit(60)));
     return snap.docs.map((d) => d.data() as GoalEntry);
-  }, cb);
+  }, cb, { onError: (msg) => onError?.(msg) });
 }
 
 export async function saveGoalEntry(_uid: string, entry: GoalEntry) {
@@ -167,11 +177,12 @@ const CHAVE_CUSTOS = "custos";
 export function watchCosts(
   _uid: string,
   cb: (costs: Cost[]) => void,
+  onError?: (e: unknown) => void,
 ): () => void {
   return assinarComCache(CHAVE_CUSTOS, async () => {
     const snap = await getDocs(sCol("custos"));
     return snap.docs.map((d) => d.data() as Cost);
-  }, cb);
+  }, cb, { onError: (msg) => onError?.(msg) });
 }
 
 export async function upsertCost(_uid: string, cost: Cost) {
@@ -192,11 +203,12 @@ const CHAVE_PRODUTOS = "estoque";
 export function watchProducts(
   _uid: string,
   cb: (ps: Product[]) => void,
+  onError?: (e: unknown) => void,
 ): () => void {
   return assinarComCache(CHAVE_PRODUTOS, async () => {
     const snap = await getDocs(query(sCol("estoque"), orderBy("name", "asc")));
     return snap.docs.map((d) => d.data() as Product).sort((a, b) => a.name.localeCompare(b.name));
-  }, cb);
+  }, cb, { onError: (msg) => onError?.(msg) });
 }
 
 export async function upsertProduct(_uid: string, product: Product) {

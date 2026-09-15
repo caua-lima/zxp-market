@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { explicarFonte } from "@/lib/domain/estado-fonte";
 import { patchArquivar, patchReativar, vigenteHoje } from "@/lib/domain/vigencia-custo";
 import Modal from "@/components/Modal";
 import CustoForm from "@/components/custos/CustoForm";
@@ -228,7 +229,16 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
         <div className="panel">
           <div className="empty-state">
             <span className="empty-ico">💸</span>
-            Nenhum custo cadastrado ainda.
+            {/*
+              "Não carregou" não pode aparecer como "nenhum custo cadastrado".
+
+              A rede de segurança do useUserData destrava a tela depois de seis
+              segundos com a lista no valor inicial — vazia. Pro papel member,
+              que por regra do Firestore não lê a coleção de custos, essa
+              assinatura é negada SEMPRE, e a tela afirmava que não havia custo
+              nenhum.
+            */}
+            {explicarFonte(data.fontes.custos, "custos") ?? "Nenhum custo cadastrado ainda."}
             {canEdit && (
               <div style={{ marginTop: 10 }}>
                 <button type="button" className="btn btn-primary btn-sm" onClick={() => abrirNovo("dash")}>
