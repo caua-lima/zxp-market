@@ -1,4 +1,5 @@
 import { estoqueForaDoFull } from "./estoque";
+import { misturar } from "@/lib/domain/custo-medio";
 
 /**
  * Entrada de compra em VÁRIOS produtos de uma vez.
@@ -87,10 +88,14 @@ export function custoMedioAposEntrada(
   quantidade: number,
   custoUnitario: number,
 ): number {
-  if (quantidade <= 0) return custoMedioAtual;
-  const denominador = estoqueAtual + quantidade;
-  if (denominador <= 0) return custoMedioAtual;
-  return (estoqueAtual * custoMedioAtual + quantidade * custoUnitario) / denominador;
+  /**
+   * Delega pra `misturar`, que é a definição usada pelo RECÁLCULO do custo
+   * médio (lib/domain/custo-medio.ts). Esta função é a PRÉVIA que a tela
+   * mostra antes de salvar; se as duas contas divergirem, a prévia mente — e
+   * duas definições do mesmo número é a origem de quase todo valor errado que
+   * já apareceu nesta base.
+   */
+  return misturar(estoqueAtual, custoMedioAtual, quantidade, custoUnitario);
 }
 
 /** O estoque que entra no blend: Full + o que está fora dele. */

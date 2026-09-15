@@ -17,7 +17,6 @@ import {
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import {
-  CUSTO_FAIXA_SENTINELA,
   type AccessEntry,
   type AdsAlteracao,
   type AuditAction,
@@ -35,6 +34,7 @@ import {
 import type { NotificationEvent } from "@/lib/domain/notifications";
 import { getFirebase } from "./client";
 import { assinarComCache, invalidar } from "./cache";
+import { faixasAlteradas, reconstruirCusto } from "@/lib/domain/custo-medio";
 
 function sanitizeUndefined<T extends Record<string, unknown>>(obj: T): T {
   return Object.fromEntries(
@@ -212,57 +212,71 @@ export async function deleteProduct(_uid: string, id: string) {
 // ── Movimentações de estoque (galpão) ──────────────────────────
 const MOV_COL = "estoque_movimentos";
 
-// Guarda o custo médio com 4 casas (o display mostra 2). Assim o CMV não
-// acumula erro de centavos em volumes grandes (ex.: 300 un a R$10,3333).
-function round4(n: number): number {
-  return Math.round((n + Number.EPSILON) * 10000) / 10000;
-}
-
 /**
- * Recalcula o `qtdLocal` (estoque no galpão) a partir do livro e, se informado,
- * grava também o `custoMedio` já calculado pela entrada (blend contra o estoque
- * atual — feito no cliente, que conhece o estoque do Full) e uma FAIXA de
- * vigência dele (ver custoNaData em lib/domain/types.ts): a entrada nova só
- * vale a partir de `dataMovimento` pra frente. Sem isso, dar entrada em
- * estoque hoje mudava a margem de vendas já feitas há meses — reportado como
- * bug: "+100 unidades" e o custo médio novo retroagia pra vendas passadas.
+ * Reconstrói quantidade, custo médio e faixas de vigência a partir do LIVRO.
+ *
+ * ─── O QUE ESTA FUNÇÃO NÃO FAZIA ────────────────────────────────────────
+ *
+ * Ela recebia `custoMedio` já calculado pelo cliente e começava assim:
+ *
+ *   if (custoMedio != null && Number.isFinite(custoMedio)) { ...custo... }
+ *
+ * Quem chamava pra CORRIGIR ou EXCLUIR passava `undefined` — e aí o bloco
+ * inteiro do custo era pulado. A função varria todas as movimentações, sim,
+ * mas só pra somar QUANTIDADE. O `updateMovimento` até documentava o
+ * contrário ("recomputeProduto varre TODAS as movimentações [...] então
+ * corrigir uma entrada antiga conserta a média sozinho"), e não era verdade.
+ *
+ * Resultado reproduzido na auditoria: entrada corrigida de R$ 10 pra R$ 20,
+ * custo médio parado em R$ 10. Excluir uma entrada deixava a média como se
+ * ela ainda existisse. E como o custo médio vira CMV em todo pedido do
+ * produto, o erro não fica no estoque — sai na margem, na DRE e no lucro
+ * por anúncio.
+ *
+ * ─── E O CÁLCULO NO CLIENTE ─────────────────────────────────────────────
+ *
+ * O custo vinha pronto do navegador (o MovimentoModal fazia o blend). Dois
+ * problemas: um cliente com dados velhos misturava contra uma média
+ * desatualizada, e duas pessoas lançando ao mesmo tempo escreviam médias
+ * calculadas do mesmo ponto de partida. Agora o número sai SEMPRE do livro,
+ * aqui, depois da gravação — o parâmetro `custoMedio` continua aceito só por
+ * compatibilidade de chamada, e é ignorado.
+ *
+ * Reconstruir a cada mudança é o que torna correção e exclusão corretas por
+ * construção: não sobra estado acumulado pra ficar defasado. A política de
+ * cada tipo de movimento está em lib/domain/custo-medio.ts.
  */
-async function recomputeProduto(productId: string, custoMedio?: number, dataMovimento?: string): Promise<void> {
+async function recomputeProduto(
+  productId: string,
+): Promise<{ faixasAlteradas: { desde: string; de: number; para: number }[] }> {
   const snap = await getDocs(query(sCol(MOV_COL), where("productId", "==", productId)));
   const movs = snap.docs.map((d) => d.data() as EstoqueMovimento);
 
-  let qty = 0; // estoque no galpão (em casa)
-  for (const m of movs) {
-    const q = Number(m.quantidade) || 0;
-    if (m.tipo === "entrada") qty += Math.abs(q);
-    else if (m.tipo === "saida_full") qty -= Math.abs(q);
-    else if (m.tipo === "saldo_inicial") { /* já está fora do galpão (ex.: Full) */ }
-    else qty += q; // ajuste: com sinal
-  }
+  const prodSnap = await getDoc(sDoc("estoque", productId));
+  const prodData = prodSnap.data() as
+    | { custo?: string | number; custoMedioFaixas?: CustoFaixa[] }
+    | undefined;
 
-  const patch: Record<string, unknown> = { qtdLocal: qty };
-  if (custoMedio != null && Number.isFinite(custoMedio)) {
-    const novo = round4(custoMedio);
-    patch.custoMedio = novo;
+  /**
+   * O custo ANTERIOR ao livro é o `custo` manual do cadastro — nunca o
+   * `custoMedio` atual, que é derivado do próprio livro. Usar o derivado como
+   * ponto de partida faria a média se realimentar e subir sozinha a cada
+   * recálculo.
+   */
+  const custoInicial = Number(String(prodData?.custo ?? "").replace(",", ".")) || 0;
 
-    const prodSnap = await getDoc(sDoc("estoque", productId));
-    const prodData = prodSnap.data() as { custoMedio?: number; custo?: string; custoMedioFaixas?: CustoFaixa[] } | undefined;
-    const faixas: CustoFaixa[] = Array.isArray(prodData?.custoMedioFaixas) ? [...prodData!.custoMedioFaixas!] : [];
-    // Primeira vez que este produto passa por aqui: grava o custo ANTERIOR
-    // como faixa retroativa (sentinela bem no passado) antes de acrescentar a
-    // faixa nova — sem isso, todo pedido já sincronizado (sem faixa própria)
-    // cairia direto no custo novo, o mesmo bug que estamos corrigindo.
-    if (faixas.length === 0) {
-      const custoAnterior = Number(prodData?.custoMedio ?? prodData?.custo ?? 0) || 0;
-      faixas.push({ desde: CUSTO_FAIXA_SENTINELA, custo: custoAnterior });
-    }
-    const dia = (dataMovimento || new Date().toISOString().slice(0, 10)).slice(0, 10);
-    const idx = faixas.findIndex((f) => f.desde === dia);
-    if (idx >= 0) faixas[idx] = { desde: dia, custo: novo };
-    else faixas.push({ desde: dia, custo: novo });
-    patch.custoMedioFaixas = faixas;
-  }
-  await updateDoc(sDoc("estoque", productId), patch);
+  const { qtdLocal, custoMedio, faixas } = reconstruirCusto(movs, custoInicial);
+  const mudancas = faixasAlteradas(prodData?.custoMedioFaixas, faixas);
+
+  await updateDoc(sDoc("estoque", productId), {
+    qtdLocal,
+    custoMedio,
+    custoMedioFaixas: faixas,
+  });
+
+  // Quem chamou decide o que fazer com isso — corrigir movimento antigo muda
+  // a margem de vendas já apuradas, e isso não pode acontecer em silêncio.
+  return { faixasAlteradas: mudancas };
 }
 
 /**
@@ -369,16 +383,24 @@ export function watchRemessasIgnoradas(cb: (ids: Set<string>) => void): () => vo
   }, cb);
 }
 
+/**
+ * O segundo parâmetro (`custoMedio`) deixou de existir.
+ *
+ * O blend era feito no NAVEGADOR e mandado pronto pra cá. Um cliente com
+ * dados velhos misturava contra uma média desatualizada, e duas pessoas
+ * lançando ao mesmo tempo escreviam médias calculadas do mesmo ponto de
+ * partida. Agora o número sai do livro, no servidor de dados, depois da
+ * gravação — ver recomputeProduto.
+ */
 export async function addMovimento(
   mov: Omit<EstoqueMovimento, "createdBy" | "createdAt">,
-  custoMedio?: number,
 ): Promise<void> {
   const email = getCurrentUserEmail();
   await setDoc(
     sDoc(MOV_COL, mov.id),
     sanitizeUndefined({ ...mov, createdBy: email, createdAt: Date.now() }),
   );
-  await recomputeProduto(mov.productId, custoMedio, mov.data);
+  await recomputeProduto(mov.productId);
   invalidar(CHAVE_MOV);
   invalidar("estoque_movimentos:recentes");
   invalidar(CHAVE_PRODUTOS); // recomputeProduto mexe em qtdLocal/custoMedio
@@ -390,13 +412,10 @@ export async function addMovimento(
  * registrada em `updatedBy`/`updatedAt`, separado, pra não parecer que a
  * movimentação sempre teve o valor novo.
  *
- * NÃO aceita mudar `custoUnit` aqui de propósito. `entrada`/`saldo_inicial`
- * blendam o custo digitado contra o custo médio DO MOMENTO em que foram
- * criadas (ver MovimentoModal em EstoqueTab.tsx) — mudar o custo depois não
- * refaz esse blend, só sobrescreveria o número sem recalcular o que já foi
- * apurado a partir dele (faixas de vigência inclusive). Corrigir custo errado
- * continua sendo excluir e lançar de novo, que É a forma correta: gera um
- * blend novo, na data certa.
+ * Mudar `custoUnit` aqui é seguro AGORA. Antes não era: o blend acontecia no
+ * navegador, no momento do lançamento, e trocar o custo depois só sobrescrevia
+ * o número sem refazer conta nenhuma. Com o custo reconstruído do livro a cada
+ * mudança, corrigir a entrada refaz a média e as faixas por construção.
  */
 export async function updateMovimento(
   id: string,
@@ -412,7 +431,7 @@ export async function updateMovimento(
    * conserta a média sozinho.
    */
   patch: { data?: string; quantidade?: number; obs?: string; custoUnit?: number },
-): Promise<void> {
+): Promise<{ faixasAlteradas: { desde: string; de: number; para: number }[] }> {
   const email = getCurrentUserEmail();
   const snap = await getDoc(sDoc(MOV_COL, id));
   if (!snap.exists()) throw new Error("Movimentação não encontrada — pode já ter sido excluída.");
@@ -422,18 +441,28 @@ export async function updateMovimento(
     updatedBy: email, updatedAt: Date.now(),
   };
   await setDoc(sDoc(MOV_COL, id), sanitizeUndefined(proxima));
-  await recomputeProduto(productId, undefined, proxima.data);
+  const { faixasAlteradas: mudancas } = await recomputeProduto(productId);
   invalidar(CHAVE_MOV);
   invalidar("estoque_movimentos:recentes");
   invalidar(CHAVE_PRODUTOS);
+  // Corrigir um movimento antigo muda o custo que valia naquela época, e com
+  // ele a margem de vendas já apuradas. Devolvido pra tela avisar — não pode
+  // acontecer em silêncio.
+  return { faixasAlteradas: mudancas };
 }
 
-export async function deleteMovimento(id: string, productId: string): Promise<void> {
+export async function deleteMovimento(
+  id: string,
+  productId: string,
+): Promise<{ faixasAlteradas: { desde: string; de: number; para: number }[] }> {
   await deleteDoc(sDoc(MOV_COL, id));
-  await recomputeProduto(productId);
+  const { faixasAlteradas: mudancas } = await recomputeProduto(productId);
   invalidar(CHAVE_MOV);
   invalidar("estoque_movimentos:recentes");
   invalidar(CHAVE_PRODUTOS);
+  // Excluir uma entrada antiga desfaz o custo que ela criou — mesma conversa
+  // do updateMovimento: a margem de vendas passadas muda junto.
+  return { faixasAlteradas: mudancas };
 }
 
 // ── Financeiro: cofrinho semi-automático ──────────────────────

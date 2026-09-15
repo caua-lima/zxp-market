@@ -229,6 +229,24 @@ export type EstoqueMovimento = {
   /** Presentes só quando a movimentação foi CORRIGIDA depois de criada (ver updateMovimento em lib/firebase/data.ts) — createdBy/createdAt originais nunca são sobrescritos. */
   updatedBy?: string;
   updatedAt?: number;
+  /**
+   * Quanto havia de estoque NO INSTANTE do lançamento, somando Full e o que
+   * está fora dele.
+   *
+   * Existe porque **venda não é movimentação**: o livro registra entrada,
+   * saída pro Full, saldo inicial e ajuste, e nada mais. As unidades vendidas
+   * somem do estoque sem deixar linha aqui. Então a quantidade derivada do
+   * livro nunca é o estoque que existia quando a entrada foi feita — é sempre
+   * maior, e usá-la no blend dá peso demais às compras antigas.
+   *
+   * Gravando o estoque real do momento, o custo médio pode ser refeito do
+   * livro sem depender de um número que o próprio livro não sabe. Movimentos
+   * anteriores a este campo nao o tem, e nesses o recalculo cai numa
+   * aproximacao — sinalizada em reconstruirCusto.
+   */
+  estoqueAntes?: number;
+  /** A média que valia no instante do lançamento. Só pra auditoria: o recálculo usa a média que o replay acumulou, não esta. */
+  custoMedioAntes?: number;
 };
 
 // Tipo do que foi alterado — estruturado (Fase 6 da reforma de Ads) pra dar

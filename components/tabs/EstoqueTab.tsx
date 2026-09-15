@@ -898,8 +898,16 @@ function MovimentoModal({ product, tipo, estoqueML, onClose, onSaved }: { produc
         custoUnit: precisaCusto ? cNum : undefined,
         data,
         obs: obs.trim() || undefined,
-        // Entrada e saldo do Full gravam o custo médio recalculado.
-      }, precisaCusto ? novoAvg : undefined);
+        /**
+         * O estoque real NO INSTANTE do lançamento — sem isto o custo médio
+         * não pode ser refeito depois, porque venda não é movimentação e o
+         * livro sozinho não sabe quanto havia aqui. Saldo inicial custeia o
+         * Full misturando contra o que está fora dele; entrada e ajuste
+         * misturam contra o total.
+         */
+        estoqueAntes: isSaldo ? foraDoFull : estoqueAtual,
+        custoMedioAntes: avgAtual,
+      });
       // Entrada muda o custo médio a partir desta data (ver custoNaData) —
       // registra na trilha o custo informado e o novo médio resultante.
       logAudit({
@@ -2160,7 +2168,10 @@ function EntradaMassaModal({ produtos, estoqueML, onClose, onSaved }: {
           custoUnit: l.custoUnitario,
           data,
           obs: obs.trim(),
-        }, l.custoMedioNovo);
+          // Mesma razão do lançamento avulso: é o denominador que o livro não sabe.
+          estoqueAntes: l.estoqueAntes,
+          custoMedioAntes: l.custoMedioAtual,
+        });
       } catch (e) {
         errosAoSalvar.push(`${l.nome}: ${e instanceof Error ? e.message : String(e)}`);
       }

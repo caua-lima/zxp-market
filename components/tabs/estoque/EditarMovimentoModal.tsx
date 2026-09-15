@@ -73,12 +73,31 @@ export default function EditarMovimentoModal({
     setSalvando(true);
     setErro("");
     try {
-      await updateMovimento(mov.id, product.id, {
+      const { faixasAlteradas } = await updateMovimento(mov.id, product.id, {
         data,
         quantidade: qNum,
         obs: obs.trim() || undefined,
         ...(temCusto && cNum != null ? { custoUnit: cNum } : {}),
       });
+
+      /**
+       * Corrigir um movimento antigo refaz o custo medio de TODAS as datas
+       * dali pra frente — e o custo medio vira CMV em cada pedido do produto.
+       * Ou seja: a margem de vendas ja apuradas muda junto.
+       *
+       * Isso costuma ser exatamente o que se quer (foi por isso que a correcao
+       * existe), mas nao pode acontecer em silencio. Ate a auditoria nem a
+       * correcao funcionava — o custo medio simplesmente nao era recalculado.
+       */
+      if (faixasAlteradas.length > 0) {
+        const datas = faixasAlteradas
+          .map((f) => f.desde.split("-").reverse().join("/"))
+          .join(", ");
+        alert(
+          "Custo medio recalculado.\n\nO custo que valia em " + datas +
+          " mudou, entao a margem das vendas dessas datas foi reapurada.",
+        );
+      }
       await logAudit({
         acao: "editar", entidade: "movimento", entidadeId: mov.id,
         entidadeLabel: `${product.name || "(sem nome)"} · ${TIPO_MOVIMENTO_LABEL[mov.tipo]}`,
