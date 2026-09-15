@@ -63,10 +63,10 @@ export default function AdDetailDrawer({
         {/* A. Cabeçalho */}
         <div style={{ marginBottom: 16 }}>
           <h3 style={{ fontSize: "1.05rem", fontWeight: 800, marginBottom: 4, paddingRight: 60 }}>{l.i.title || l.i.itemId}</h3>
-          <div style={{ fontSize: ".76rem", color: "var(--muted)", fontFamily: "monospace" }}>{l.i.itemId}</div>
+          <div style={{ fontSize: ".8rem", color: "var(--muted)", fontFamily: "monospace" }}>{l.i.itemId}</div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-            <span style={{ fontSize: ".68rem", fontWeight: 700, color: m.cor, background: m.bg, padding: "2px 8px", borderRadius: 5 }}>{m.label}</span>
-            <span style={{ fontSize: ".72rem", color: "var(--muted)" }}>{l.i.campaignName || "sem campanha"}</span>
+            <span style={{ fontSize: ".75rem", fontWeight: 700, color: m.cor, background: m.bg, padding: "2px 8px", borderRadius: 5 }}>{m.label}</span>
+            <span style={{ fontSize: ".75rem", color: "var(--muted)" }}>{l.i.campaignName || "sem campanha"}</span>
           </div>
           {url && (
             <a href={url} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-xs" style={{ display: "inline-block", marginTop: 8 }}>
@@ -99,7 +99,7 @@ export default function AdDetailDrawer({
           />
           <Linha label={pub ? "ACOS" : "TACOS"} valor={l.v > 0 ? `${num(l.a, 1)}%` : "—"} cor={corAcos(l.a, l.v > 0)} />
           {!l.i.diretoDisponivel && pub && (
-            <div style={{ marginTop: 6, fontSize: ".72rem", color: "var(--warning)" }}>
+            <div style={{ marginTop: 6, fontSize: ".75rem", color: "var(--warning)" }}>
               Estimado/incompleto: sem venda vinculada no período pra calcular a margem do lucro direto.
             </div>
           )}
@@ -119,7 +119,7 @@ export default function AdDetailDrawer({
         <Secao titulo="Diagnóstico">
           <div style={{ fontSize: ".82rem", lineHeight: 1.5 }}>{l.reco.label}</div>
           {l.reco.acao === "sem-dados" && (
-            <div style={{ fontSize: ".76rem", color: "var(--muted)", marginTop: 4 }}>
+            <div style={{ fontSize: ".8rem", color: "var(--muted)", marginTop: 4 }}>
               {!l.i.diretoDisponivel ? "Sem venda vinculada no período." : l.i.clicks < 20 && l.un === 0 ? "Volume de cliques/vendas baixo demais pra confiar numa recomendação." : "Dado insuficiente pra concluir."}
             </div>
           )}
@@ -127,20 +127,20 @@ export default function AdDetailDrawer({
 
         {/* E. Histórico de mudanças */}
         <Secao titulo="Histórico de mudanças">
-          <div style={{ fontSize: ".7rem", color: "var(--muted)", marginBottom: 8, fontStyle: "italic" }}>Alterações registradas pela equipe — não vem do Mercado Livre.</div>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)", marginBottom: 8, fontStyle: "italic" }}>Alterações registradas pela equipe — não vem do Mercado Livre.</div>
           {ultima && (
-            <div style={{ fontSize: ".76rem", color: "var(--muted)", marginBottom: 8 }}>
+            <div style={{ fontSize: ".8rem", color: "var(--muted)", marginBottom: 8 }}>
               Última alteração há {diasDesde(ultima.createdAt, agora)} dia(s).
             </div>
           )}
           {historico.length === 0 ? (
-            <div style={{ fontSize: ".78rem", color: "var(--muted)" }}>Nenhuma alteração registrada pra esta campanha ainda.</div>
+            <div style={{ fontSize: ".82rem", color: "var(--muted)" }}>Nenhuma alteração registrada pra esta campanha ainda.</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {historico.map((e) => (
                 <div key={e.id} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px" }}>
-                  <div style={{ fontSize: ".78rem", fontWeight: 600 }}>{formatarResumoAlteracao(e)}</div>
-                  <div style={{ fontSize: ".68rem", color: "var(--muted)", marginTop: 2 }}>
+                  <div style={{ fontSize: ".82rem", fontWeight: 600 }}>{formatarResumoAlteracao(e)}</div>
+                  <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 2 }}>
                     {new Date(e.createdAt).toLocaleDateString("pt-BR")} · {e.createdByName || e.createdBy}
                   </div>
                 </div>
@@ -162,7 +162,7 @@ export default function AdDetailDrawer({
 function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
   return (
     <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-      <div style={{ fontSize: ".72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted)", marginBottom: 8 }}>{titulo}</div>
+      <div style={{ fontSize: ".75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted)", marginBottom: 8 }}>{titulo}</div>
       {children}
     </div>
   );

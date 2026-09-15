@@ -434,7 +434,7 @@ export default function AdsChat({ linhas, metaMargem }: { linhas: LinhaAds[]; me
                       {b.seguintes.map((q) => (
                         <button
                           key={q} type="button" className="btn btn-ghost btn-xs"
-                          style={{ fontSize: ".68rem", whiteSpace: "normal", textAlign: "left", lineHeight: 1.35 }}
+                          style={{ fontSize: ".75rem", whiteSpace: "normal", textAlign: "left", lineHeight: 1.35 }}
                           onClick={() => enviar(q)}
                         >
                           {q}
@@ -445,7 +445,7 @@ export default function AdsChat({ linhas, metaMargem }: { linhas: LinhaAds[]; me
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                     {b.metricas.map((met) => (
                       <div key={met.rotulo} style={{ minWidth: 92 }}>
-                        <div style={{ fontSize: ".62rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 700 }}>
+                        <div style={{ fontSize: ".75rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 700 }}>
                           {met.rotulo}
                         </div>
                         <div style={{ fontSize: ".84rem", fontWeight: met.destaque ? 700 : 500, color: met.destaque ? "var(--text)" : "var(--muted)" }}>

@@ -22,12 +22,12 @@ export type OverviewTotais = {
 };
 
 function DeltaTag({ c, positivoEhBom }: { c: ComparacaoMetrica; positivoEhBom: boolean }) {
-  if (c.deltaPercentual == null) return <span style={{ fontSize: ".68rem", color: "var(--muted)" }}>sem período anterior comparável</span>;
+  if (c.deltaPercentual == null) return <span style={{ fontSize: ".75rem", color: "var(--muted)" }}>sem período anterior comparável</span>;
   const subiu = c.deltaPercentual > 0;
   const bom = subiu === positivoEhBom;
   const cor = c.deltaPercentual === 0 ? "var(--muted)" : bom ? "var(--green)" : "var(--red)";
   const seta = c.deltaPercentual === 0 ? "→" : subiu ? "↑" : "↓";
-  return <span style={{ fontSize: ".7rem", color: cor, fontWeight: 700 }}>{seta} {num(Math.abs(c.deltaPercentual), 1)}% vs. período anterior</span>;
+  return <span style={{ fontSize: ".75rem", color: cor, fontWeight: 700 }}>{seta} {num(Math.abs(c.deltaPercentual), 1)}% vs. período anterior</span>;
 }
 
 function Kpi({
@@ -47,7 +47,7 @@ function Kpi({
         <div style={{ marginTop: 4 }}><DeltaTag c={comparacao} positivoEhBom={positivoEhBom} /></div>
       )}
       {confiabilidade && confiabilidade !== "confirmado" && (
-        <div style={{ marginTop: 3, fontSize: ".64rem", color: "var(--warning)", fontWeight: 600 }}>
+        <div style={{ marginTop: 3, fontSize: ".75rem", color: "var(--warning)", fontWeight: 600 }}>
           {confiabilidade === "estimado" ? "estimado" : "dado incompleto"}
         </div>
       )}
@@ -137,7 +137,7 @@ export default function AdsOverview({
 function Detalhe({ label, valor }: { label: string; valor: string }) {
   return (
     <div>
-      <div style={{ fontSize: ".66rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".03em" }}>{label}</div>
+      <div style={{ fontSize: ".75rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".03em" }}>{label}</div>
       <div style={{ fontSize: ".92rem", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{valor}</div>
     </div>
   );

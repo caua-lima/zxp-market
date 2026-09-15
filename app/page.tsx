@@ -417,12 +417,12 @@ function AppShell() {
                 >
                   ZXP MARKET
                 </div>
-                <div style={{ fontSize: ".68rem", color: "var(--muted)", marginTop: 1 }}>
+                <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 1 }}>
                   VAZXPRESS · Mercado Livre
                 </div>
               </div>
             </div>
-            <div style={{ fontSize: ".72rem", color: "var(--muted)", marginTop: 8, textTransform: "capitalize" }}>
+            <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 8, textTransform: "capitalize" }}>
               {dateLabel}
             </div>
           </div>

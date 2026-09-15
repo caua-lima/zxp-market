@@ -133,7 +133,7 @@ export default function CustosColetaFull({
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
           {alteracoes.length > 0 && (
             <span style={{
-              fontSize: ".7rem", fontWeight: 700, color: "var(--brand)",
+              fontSize: ".75rem", fontWeight: 700, color: "var(--brand)",
               background: "var(--warning-soft)", borderRadius: 999, padding: "2px 8px",
             }}>
               {alteracoes.length} não salva(s)
@@ -145,7 +145,7 @@ export default function CustosColetaFull({
 
       {aberto && (
         <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: ".74rem", color: "var(--muted)", lineHeight: 1.6, marginBottom: 12 }}>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)", lineHeight: 1.6, marginBottom: 12 }}>
             O Mercado Livre não expõe esse valor pela API. Pegue em{" "}
             <b style={{ color: "var(--text)" }}>Envios › detalhe do envio › Tarifas › Custo da coleta Full</b>{" "}
             (o valor marcado como <i>estimado</i> serve). Preencha quantas quiser e salve de uma vez —
@@ -179,11 +179,11 @@ export default function CustosColetaFull({
                     transition: "background .15s, border-color .15s",
                   }}
                 >
-                  <span style={{ fontFamily: "ui-monospace,monospace", fontSize: ".78rem", fontWeight: 700 }}>
+                  <span style={{ fontFamily: "ui-monospace,monospace", fontSize: ".82rem", fontWeight: 700 }}>
                     #{r.remessa}
                   </span>
 
-                  <span style={{ fontSize: ".74rem", color: "var(--muted)" }}>
+                  <span style={{ fontSize: ".75rem", color: "var(--muted)" }}>
                     {r.data.split("-").reverse().join("/")} · {r.recebido} un
                     {r.custo != null && !tocada && r.custoEstimado && (
                       <span title="Valor informado por você — o ML mostra como estimado."> · estimado</span>
@@ -191,7 +191,7 @@ export default function CustosColetaFull({
                   </span>
 
                   <span style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end", minWidth: 0 }}>
-                    <span style={{ fontSize: ".72rem", color: "var(--muted)" }}>R$</span>
+                    <span style={{ fontSize: ".75rem", color: "var(--muted)" }}>R$</span>
                     <input
                       type="text" inputMode="decimal"
                       aria-label={`Custo da coleta da remessa ${r.remessa}`}
@@ -236,7 +236,7 @@ export default function CustosColetaFull({
               <button type="button" className="btn btn-ghost btn-sm" disabled={salvando} onClick={descartar}>
                 Descartar
               </button>
-              <span style={{ fontSize: ".76rem", color: "var(--muted)" }}>
+              <span style={{ fontSize: ".8rem", color: "var(--muted)" }}>
                 Total ficará em <b style={{ color: "var(--text)" }}>{fmtBRL(totalPrevisto)}</b>
               </span>
             </div>
@@ -244,13 +244,13 @@ export default function CustosColetaFull({
 
           {erro && <div className="note note-warn" style={{ marginTop: 10 }}>{erro}</div>}
           {salvos > 0 && !erro && (
-            <div style={{ marginTop: 10, fontSize: ".78rem", color: "var(--green)", fontWeight: 600 }}>
+            <div style={{ marginTop: 10, fontSize: ".82rem", color: "var(--green)", fontWeight: 600 }}>
               ✓ {salvos} custo(s) salvo(s).
             </div>
           )}
 
           {semCusto.length > 0 && (
-            <div style={{ marginTop: 10, fontSize: ".73rem", color: "var(--muted)", lineHeight: 1.6 }}>
+            <div style={{ marginTop: 10, fontSize: ".75rem", color: "var(--muted)", lineHeight: 1.6 }}>
               As {semCusto.length} coleta(s) sem custo <b>não entram</b> no total nem na DRE — ficam de fora
               em vez de contar como R$ 0,00, que subestimaria o custo e inflaria o lucro. Deixar o campo
               vazio numa que já tem custo <b>apaga</b> o valor.

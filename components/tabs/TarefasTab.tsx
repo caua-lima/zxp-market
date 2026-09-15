@@ -185,7 +185,7 @@ export default function TarefasTab({ openTaskId }: { openTaskId?: string } = {})
         <button
           type="button" onClick={() => setSomenteAtrasadas((v) => !v)}
           style={{
-            fontSize: ".78rem", fontWeight: 600, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
+            fontSize: ".82rem", fontWeight: 600, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
             background: somenteAtrasadas ? "var(--red)" : "var(--surface2)", color: somenteAtrasadas ? "#fff" : "var(--muted)",
             border: `1px solid ${somenteAtrasadas ? "var(--red)" : "var(--border)"}`,
           }}
@@ -317,7 +317,7 @@ function TaskCard({ task, onMover, onEditar, onExcluir, arrastavel, arrastando }
         {task.dueDate && <span className={`chip ${atrasada ? "chip-red" : "chip-muted"}`}>{atrasada ? "atrasada · " : ""}{fmtData(task.dueDate)}</span>}
       </div>
       <div className="kanban-card-foot">
-        <span style={{ fontSize: ".68rem", color: "var(--muted)" }}>
+        <span style={{ fontSize: ".75rem", color: "var(--muted)" }}>
           {task.createdByName ? `por ${task.createdByName}` : ""}
         </span>
         <div className="row-actions">
@@ -459,10 +459,10 @@ function TaskModal({ pessoas, minhaEmail, task, onClose }: {
 
       {task?.atividade && task.atividade.length > 0 && (
         <details style={{ marginTop: 4, marginBottom: 10 }}>
-          <summary style={{ cursor: "pointer", fontSize: ".78rem", color: "var(--text-secondary,var(--muted))" }}>Atividade ({task.atividade.length})</summary>
+          <summary style={{ cursor: "pointer", fontSize: ".82rem", color: "var(--text-secondary,var(--muted))" }}>Atividade ({task.atividade.length})</summary>
           <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>
             {[...task.atividade].reverse().map((ev, i) => (
-              <div key={i} style={{ fontSize: ".76rem", color: "var(--text-secondary,var(--muted))" }}>
+              <div key={i} style={{ fontSize: ".8rem", color: "var(--text-secondary,var(--muted))" }}>
                 <b style={{ color: "var(--text-primary,var(--text))" }}>{ATIVIDADE_LABEL[ev.tipo]}</b>
                 {ev.detalhe ? ` — ${ev.detalhe}` : ""} · {ev.por} · {new Date(ev.em).toLocaleString("pt-BR")}
               </div>

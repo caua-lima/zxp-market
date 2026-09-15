@@ -54,20 +54,20 @@ export default function CompradoresPanel({
                 background: `conic-gradient(var(--accent) 0% ${pctFrequentes}%, var(--surface2) ${pctFrequentes}% 100%)`,
               }} />
               <div>
-                <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Total de compradores</div>
+                <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Total de compradores</div>
                 <div style={{ fontSize: "1.3rem", fontWeight: 800 }}>{compradores.total}</div>
               </div>
             </div>
             <div>
-              <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Frequentes</div>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Frequentes</div>
               <div style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--accent)" }}>{compradores.frequentes}</div>
             </div>
             <div>
-              <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Novos</div>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Novos</div>
               <div style={{ fontSize: "1.1rem", fontWeight: 700 }}>{compradores.novos}</div>
             </div>
             <div>
-              <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Taxa de recompra</div>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Taxa de recompra</div>
               <div style={{ fontSize: "1.3rem", fontWeight: 800, color: compradores.taxaRecompra != null ? cor(compradores.taxaRecompra) : "var(--muted)" }}>
                 {compradores.taxaRecompra != null ? `${compradores.taxaRecompra.toFixed(1)}%` : "—"}
               </div>
@@ -75,7 +75,7 @@ export default function CompradoresPanel({
           </div>
           {(semComprador ?? 0) > 0 && (
             <div style={{
-              marginBottom: 10, padding: "8px 12px", borderRadius: 8, fontSize: ".76rem", lineHeight: 1.5,
+              marginBottom: 10, padding: "8px 12px", borderRadius: 8, fontSize: ".8rem", lineHeight: 1.5,
               background: "var(--warning-soft)", border: "1px solid rgba(255,138,31,.35)", color: "var(--warning)",
             }}>
               <b>{semComprador} pedido(s) do período sem comprador identificado</b> — eles ficam de fora da conta
@@ -86,7 +86,7 @@ export default function CompradoresPanel({
           )}
           {historicoIncompleto && (
             <div style={{
-              marginBottom: 10, padding: "8px 12px", borderRadius: 8, fontSize: ".76rem", lineHeight: 1.5,
+              marginBottom: 10, padding: "8px 12px", borderRadius: 8, fontSize: ".8rem", lineHeight: 1.5,
               background: "var(--warning-soft)", border: "1px solid rgba(255,138,31,.35)", color: "var(--warning)",
             }}>
               O pedido mais antigo que temos sincronizado é de {historicoDesde ? fmtDataBR(historicoDesde) : "—"},
@@ -103,19 +103,19 @@ export default function CompradoresPanel({
                   >
                     Usar janela de {janelaViavel} {janelaViavel === 1 ? "mês" : "meses"}
                   </button>
-                  <span style={{ marginLeft: 8, fontSize: ".72rem" }}>
+                  <span style={{ marginLeft: 8, fontSize: ".75rem" }}>
                     deixa o histórico anterior livre pra servir de comparação
                   </span>
                 </div>
               ) : (
-                <div style={{ marginTop: 6, fontSize: ".72rem" }}>
+                <div style={{ marginTop: 6, fontSize: ".75rem" }}>
                   Ainda não há histórico suficiente pra nenhuma janela honesta — são necessários pelo menos
                   ~2 meses de pedidos sincronizados.
                 </div>
               )}
             </div>
           )}
-          <div style={{ fontSize: ".72rem", color: "var(--muted)", lineHeight: 1.5 }}>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)", lineHeight: 1.5 }}>
             Frequente = já tinha comprado de você ANTES do período. Novo = primeira compra dentro do período.
             Taxa de recompra = frequentes ÷ total de compradores do período — mesmo critério do painel
             &quot;Detalhe dos compradores&quot; do próprio Mercado Livre.

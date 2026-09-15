@@ -119,7 +119,7 @@ export default function AjudaChat({ abaAtual }: { abaAtual?: string }) {
                     {relacionadosDe(t).map((r) => (
                       <button
                         key={r.id} type="button" className="btn btn-ghost btn-xs"
-                        style={{ fontSize: ".68rem", whiteSpace: "normal", textAlign: "left", lineHeight: 1.35 }}
+                        style={{ fontSize: ".75rem", whiteSpace: "normal", textAlign: "left", lineHeight: 1.35 }}
                         onClick={() => perguntar(r.pergunta)}
                       >
                         {r.pergunta}

@@ -118,7 +118,7 @@ export default function EditarMovimentoModal({
         <h3 style={{ fontSize: "1rem", fontWeight: 700, color: "var(--text)" }}>
           Editar {TIPO_MOVIMENTO_LABEL[mov.tipo]}
         </h3>
-        <div style={{ fontSize: ".78rem", color: "var(--muted)", lineHeight: 1.6 }}>
+        <div style={{ fontSize: ".82rem", color: "var(--muted)", lineHeight: 1.6 }}>
           {product.name || "(sem nome)"}
           {temCusto && (
             <>
@@ -141,7 +141,7 @@ export default function EditarMovimentoModal({
               value={qtd} onChange={(e) => setQtd(e.target.value)}
             />
             {!qtdValida && qtd.trim() !== "" && (
-              <span style={{ fontSize: ".7rem", color: "var(--red)" }}>
+              <span style={{ fontSize: ".75rem", color: "var(--red)" }}>
                 {aceitaNegativo ? "Informe um número diferente de zero." : "Informe um número maior que zero."}
               </span>
             )}
@@ -158,7 +158,7 @@ export default function EditarMovimentoModal({
                 />
               </div>
               {temCusto && cNum != null && Number.isFinite(cNum) && qtdValida && (
-                <span style={{ fontSize: ".7rem", color: "var(--muted)" }}>
+                <span style={{ fontSize: ".75rem", color: "var(--muted)" }}>
                   total desta entrada: {fmtBRL(cNum * Math.abs(qNum))}
                 </span>
               )}
@@ -176,7 +176,7 @@ export default function EditarMovimentoModal({
 
         {mudancas.length > 0 && (
           <div style={{
-            fontSize: ".76rem", lineHeight: 1.6, padding: "8px 10px", borderRadius: 8,
+            fontSize: ".8rem", lineHeight: 1.6, padding: "8px 10px", borderRadius: 8,
             background: "var(--warning-soft)", border: "1px solid rgba(255,138,31,.35)", color: "var(--text)",
           }}>
             <b>Vai mudar:</b> {mudancas.join(" · ")}

@@ -44,7 +44,7 @@ export default function AdsParticipacao({
               <div style={{ fontSize: "2.2rem", fontWeight: 800, lineHeight: 1, color: leitura.cor }}>
                 {num(p.direta, 1)}%
               </div>
-              <div style={{ fontSize: ".74rem", color: "var(--muted)", marginTop: 4 }}>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 4 }}>
                 da receita veio de <b>clique direto</b> no anúncio pago
               </div>
             </div>
@@ -67,31 +67,31 @@ export default function AdsParticipacao({
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, fontSize: ".82rem" }}>
             <div>
-              <div style={{ fontSize: ".7rem", color: "var(--muted)" }}>Receita por clique direto</div>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Receita por clique direto</div>
               <div style={{ fontWeight: 700 }}>{fmtBRL(receitaDireta)}</div>
             </div>
             <div>
-              <div style={{ fontSize: ".7rem", color: "var(--muted)" }}>Atribuída à campanha</div>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Atribuída à campanha</div>
               <div style={{ fontWeight: 700 }}>
                 {fmtBRL(receitaAtribuida)}
                 {p.comAssistidas != null && <span style={{ color: "var(--muted)", fontWeight: 400 }}> · {num(p.comAssistidas, 1)}%</span>}
               </div>
             </div>
             <div>
-              <div style={{ fontSize: ".7rem", color: "var(--muted)" }}>Sem passar por anúncio</div>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Sem passar por anúncio</div>
               <div style={{ fontWeight: 700, color: organica != null && organica > 0 ? "var(--green)" : "var(--muted)" }}>
                 {organica != null ? fmtBRL(organica) : "—"}
               </div>
             </div>
             <div>
-              <div style={{ fontSize: ".7rem", color: "var(--muted)" }}>Investido no período</div>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Investido no período</div>
               <div style={{ fontWeight: 700, color: "var(--red)" }}>{fmtBRL(investimento)}</div>
             </div>
           </div>
 
           {p.acimaDe100 && (
             <div style={{
-              marginTop: 10, padding: "8px 12px", borderRadius: 8, fontSize: ".76rem", lineHeight: 1.5,
+              marginTop: 10, padding: "8px 12px", borderRadius: 8, fontSize: ".8rem", lineHeight: 1.5,
               background: "var(--warning-soft)", border: "1px solid rgba(255,138,31,.35)", color: "var(--warning)",
             }}>
               A venda atribuída ao Ads ficou <b>acima</b> da venda total do período. Não é erro de conta: o
@@ -100,7 +100,7 @@ export default function AdsParticipacao({
             </div>
           )}
 
-          <div style={{ marginTop: 10, fontSize: ".7rem", color: "var(--muted)", lineHeight: 1.5 }}>
+          <div style={{ marginTop: 10, fontSize: ".75rem", color: "var(--muted)", lineHeight: 1.5 }}>
             <b>Clique direto</b> = o comprador clicou no anúncio pago e comprou. <b>Atribuída</b> inclui
             também a venda assistida (viu o anúncio e comprou depois por outro caminho) — é o número mais
             generoso, e o que o Mercado Ads usa como mérito da campanha.

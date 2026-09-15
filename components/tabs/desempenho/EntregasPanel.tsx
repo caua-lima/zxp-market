@@ -27,7 +27,7 @@ export default function EntregasPanel({ entregas }: { entregas: ResultadoEntrega
         </>
       )}
 
-      <div style={{ marginTop: 10, fontSize: ".7rem", color: "var(--muted)", lineHeight: 1.5 }}>
+      <div style={{ marginTop: 10, fontSize: ".75rem", color: "var(--muted)", lineHeight: 1.5 }}>
         O painel &quot;Desempenho em envios&quot; do Mercado Livre (exposição, restrição de catálogo) usa uma
         fórmula própria que a API não expõe — o número acima é só a comparação entre a data de entrega estimada
         e a data em que o pedido foi realmente entregue, nos pedidos já sincronizados.

@@ -59,7 +59,7 @@ function StatusTag({ l }: { l: LinhaAds }) {
       : `Não achamos a campanha deste anúncio na busca do Mercado Ads.${detalheCampanhas}`;
 
   return (
-    <span title={tooltip} style={{ fontSize: ".6rem", fontWeight: 700, color: m.cor, background: m.bg, padding: "1px 6px", borderRadius: 5, whiteSpace: "nowrap", cursor: "help" }}>
+    <span title={tooltip} style={{ fontSize: ".75rem", fontWeight: 700, color: m.cor, background: m.bg, padding: "1px 6px", borderRadius: 5, whiteSpace: "nowrap", cursor: "help" }}>
       {m.label}{varias ? " ⧉" : ""}
     </span>
   );
@@ -102,7 +102,7 @@ function Identidade({ l }: { l: LinhaAds }) {
   return (
     <span
       title={`${l.i.title || l.i.itemId} · ${l.i.itemId}`}
-      style={{ display: "block", fontSize: ".64rem", fontWeight: 400, color: "var(--muted)", cursor: "help" }}
+      style={{ display: "block", fontSize: ".75rem", fontWeight: 400, color: "var(--muted)", cursor: "help" }}
     >
       {l.i.title || l.i.itemId} · {l.i.itemId}
     </span>
@@ -234,7 +234,7 @@ export default function AdsTable({
 
   return (
     <div>
-      <div style={{ fontSize: ".72rem", color: "var(--muted)", marginBottom: 6 }}>
+      <div style={{ fontSize: ".75rem", color: "var(--muted)", marginBottom: 6 }}>
         Clique no cabeçalho pra ordenar — <b>Campanha</b> agrupa os anúncios da mesma verba.
         Passe o mouse em qualquer número pra ver a conta por trás.
       </div>
@@ -394,7 +394,7 @@ export default function AdsTable({
 
                   <td
                     data-label="Decisão"
-                    style={{ textAlign: "left", color: corDaDecisao(l), fontSize: ".74rem", width: 250, whiteSpace: "normal", wordBreak: "break-word", lineHeight: 1.4 }}
+                    style={{ textAlign: "left", color: corDaDecisao(l), fontSize: ".75rem", width: 250, whiteSpace: "normal", wordBreak: "break-word", lineHeight: 1.4 }}
                   >
                     {textoDecisao(l)}
                   </td>
@@ -414,7 +414,7 @@ export default function AdsTable({
         </table>
       </div>
 
-      <div style={{ marginTop: 8, fontSize: ".7rem", color: "var(--muted)" }}>
+      <div style={{ marginTop: 8, fontSize: ".75rem", color: "var(--muted)" }}>
         Impressões, CTR, CPC, ACOS, break-even e o histórico de cada anúncio estão no
         tooltip de cada número e em &quot;Ver detalhes&quot;.
         Em <b>Via Ads</b>, verde é abaixo de 40% e vermelho a partir de 70% — quanto

@@ -161,7 +161,7 @@ export default function RemessasFull({ movimentos }: { movimentos: EstoqueMovime
         <div style={{
           marginTop: 10, padding: 8, borderRadius: 6,
           background: "rgba(214,90,74,.12)", border: "1px solid rgba(214,90,74,.4)",
-          fontFamily: "ui-monospace, monospace", fontSize: ".7rem", whiteSpace: "pre-wrap",
+          fontFamily: "ui-monospace, monospace", fontSize: ".75rem", whiteSpace: "pre-wrap",
         }}>{erro}</div>
       )}
 
@@ -225,7 +225,7 @@ export default function RemessasFull({ movimentos }: { movimentos: EstoqueMovime
           )}
 
           {!!dados?.janela && (
-            <div style={{ fontSize: ".74rem", color: "var(--muted)", marginBottom: 10 }}>
+            <div style={{ fontSize: ".75rem", color: "var(--muted)", marginBottom: 10 }}>
               Buscando de {dados.janela.from.split("-").reverse().join("/")} a{" "}
               {dados.janela.to.split("-").reverse().join("/")}. Uma remessa só aparece
               depois que o ML processa o recebimento — o que leva alguns dias depois da coleta.
@@ -324,7 +324,7 @@ export default function RemessasFull({ movimentos }: { movimentos: EstoqueMovime
                         <div style={{ fontSize: ".84rem", fontWeight: 500 }}>
                           {p.nome || p.inventory}
                         </div>
-                        <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>
+                        <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>
                           {movExistente
                             ? <span style={{ color: "var(--green)" }}>✓ já baixado: {movExistente.quantidade} un</span>
                             : p.productId
@@ -403,7 +403,7 @@ export default function RemessasFull({ movimentos }: { movimentos: EstoqueMovime
                   display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center",
                   padding: "8px 12px", marginTop: 8, borderRadius: 8,
                   background: "var(--surface2)", border: "1px solid var(--border)",
-                  fontSize: ".78rem", color: "var(--muted)",
+                  fontSize: ".82rem", color: "var(--muted)",
                 }}>
                   <b style={{ fontFamily: "monospace", color: "var(--text)" }}>#{r.remessa}</b>
                   <span>{r.data.split("-").reverse().join("/")} · {r.recebido} un</span>
@@ -424,7 +424,7 @@ export default function RemessasFull({ movimentos }: { movimentos: EstoqueMovime
           )}
 
           {!!transferencias.length && (
-            <div style={{ marginTop: 6, fontSize: ".76rem", color: "var(--muted)", lineHeight: 1.5 }}>
+            <div style={{ marginTop: 6, fontSize: ".8rem", color: "var(--muted)", lineHeight: 1.5 }}>
               <b style={{ color: "var(--text)" }}>+{transferencias.reduce((s, t) => s + t.recebido, 0)} unidades</b>{" "}
               chegaram em {transferencias.length} transferência{transferencias.length === 1 ? "" : "s"} entre centros
               do ML. São unidades de remessas anteriores que o ML redirecionou — já saíram da sua casa,
@@ -499,7 +499,7 @@ function CustoColeta({
 
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      <span style={{ fontSize: ".72rem", color: "var(--muted)" }}>R$</span>
+      <span style={{ fontSize: ".75rem", color: "var(--muted)" }}>R$</span>
       <input
         type="number" min="0" step="0.01" inputMode="decimal" autoFocus
         aria-label={`Custo da coleta da remessa ${remessa.remessa}`}

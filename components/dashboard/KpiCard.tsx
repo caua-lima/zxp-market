@@ -55,7 +55,7 @@ export default function KpiCard({
     >
       <div
         style={{
-          fontSize: ".7rem",
+          fontSize: ".75rem",
           color: "var(--muted)",
           textTransform: "uppercase",
           letterSpacing: ".06em",

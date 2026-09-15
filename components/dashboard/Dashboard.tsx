@@ -228,7 +228,7 @@ function LastUpdated({ at, falhou = false }: { at: number | null; falhou?: boole
   if (!at) {
     // Nunca deu certo — dizer isso é melhor que não dizer nada.
     return falhou ? (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: ".72rem", color: "var(--warning)", whiteSpace: "nowrap" }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: ".75rem", color: "var(--warning)", whiteSpace: "nowrap" }}>
         <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--warning)" }} />
         Não consegui buscar os números
       </span>
@@ -239,7 +239,7 @@ function LastUpdated({ at, falhou = false }: { at: number | null; falhou?: boole
   return (
     <span
       title={falhou ? "A última tentativa de atualizar falhou. O número na tela é do horário indicado." : undefined}
-      style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: ".72rem", color: falhou ? "var(--warning)" : "var(--muted)", whiteSpace: "nowrap" }}
+      style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: ".75rem", color: falhou ? "var(--warning)" : "var(--muted)", whiteSpace: "nowrap" }}
     >
       <span style={{ width: 7, height: 7, borderRadius: "50%", background: falhou ? "var(--warning)" : "var(--green)", boxShadow: falhou ? "none" : "0 0 0 3px rgba(54,179,126,.15)" }} />
       {falhou ? `Desatualizado — dado de ${txt}` : `Atualizado ${txt} · auto 15min`}
@@ -283,7 +283,7 @@ function CurvaABC({ anuncios }: { anuncios: AnuncioResult[] }) {
                     <div style={{ width: 60, height: 6, borderRadius: 99, background: "var(--surface2)", overflow: "hidden" }}>
                       <div style={{ width: `${Math.min(cum, 100)}%`, height: "100%", background: cor(classe) }} />
                     </div>
-                    <span style={{ color: "var(--muted)", fontSize: ".78rem" }}>{cum.toFixed(0)}%</span>
+                    <span style={{ color: "var(--muted)", fontSize: ".82rem" }}>{cum.toFixed(0)}%</span>
                   </div>
                 </td>
               </tr>
@@ -345,21 +345,21 @@ function ConferenciaMP({ reconc, total }: { reconc?: { count: number; nosso: num
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Repasse estimado (nossa conta)</div>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Repasse estimado (nossa conta)</div>
           <div style={{ fontSize: "1.05rem", fontWeight: 800 }}>{fmtBRL(reconc.nosso)}</div>
-          <div style={{ fontSize: ".68rem", color: "var(--muted)" }}>total − taxa ML − frete · o que deveria cair</div>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>total − taxa ML − frete · o que deveria cair</div>
         </div>
         <div>
-          <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Recebido de verdade (MP)</div>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Recebido de verdade (MP)</div>
           <div style={{ fontSize: "1.05rem", fontWeight: 800 }}>{fmtBRL(reconc.real)}</div>
-          <div style={{ fontSize: ".68rem", color: "var(--muted)" }}>net_received_amount</div>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>net_received_amount</div>
         </div>
         <div>
-          <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Diferença</div>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Diferença</div>
           <div style={{ fontSize: "1.05rem", fontWeight: 800, color: cor }}>
             {gap >= 0 ? "−" : "+"}{fmtBRL(Math.abs(gap))}
           </div>
-          <div style={{ fontSize: ".68rem", color: "var(--muted)" }}>{pctAbs.toFixed(1)}% do líquido</div>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>{pctAbs.toFixed(1)}% do líquido</div>
         </div>
       </div>
 
@@ -496,7 +496,7 @@ function MelhoresDias({ serie, from, to }: { serie: { data: string; faturamento:
         })}
       </div>
 
-      <div style={{ marginTop: 10, fontSize: ".72rem", color: "var(--muted)", lineHeight: 1.5 }}>
+      <div style={{ marginTop: 10, fontSize: ".75rem", color: "var(--muted)", lineHeight: 1.5 }}>
         Média por dia, não o total — assim compara justo mesmo quando um dia da semana
         aparece mais vezes no período. Sempre os últimos 30 dias corridos, independente
         do período selecionado no topo do Dashboard.
@@ -540,7 +540,7 @@ function DevolucoesPanel({ total, emAndamento, detalhe }: { total: number; emAnd
                     {d.emAndamento
                       ? <span style={{ color: "var(--warning)", fontWeight: 600 }}>em disputa</span>
                       : <span style={{ color: "var(--muted)" }}>{tipoLabel(d.tipo)} · concluída</span>}
-                    {d.status && <span style={{ display: "block", fontSize: ".64rem", color: "var(--muted)" }}>{d.status}</span>}
+                    {d.status && <span style={{ display: "block", fontSize: ".75rem", color: "var(--muted)" }}>{d.status}</span>}
                   </td>
                   <td data-label="Valor" style={{ color: d.emAndamento ? "var(--warning)" : "var(--red)", fontWeight: 700 }}>{fmtBRL(d.valor)}</td>
                 </tr>
@@ -782,7 +782,7 @@ function VendasDoDiaHero({ hoje, ontem, rotulo, rotuloAnterior }: {
                 const bom = v.subiu !== Boolean(s.subirEhRuim);
                 const cor = semMudanca ? "var(--muted)" : bom ? "var(--green)" : "var(--red)";
                 return (
-                  <div style={{ fontSize: ".65rem", fontWeight: 700, color: cor }}>
+                  <div style={{ fontSize: ".75rem", fontWeight: 700, color: cor }}>
                     {v.vindoDoZero
                       ? `novo vs ${rotuloAnterior.toLowerCase()}`
                       : semMudanca
@@ -797,7 +797,7 @@ function VendasDoDiaHero({ hoje, ontem, rotulo, rotuloAnterior }: {
       </div>
 
       {foraDaConta > 5 && (
-        <div style={{ marginTop: 10, fontSize: ".76rem", color: "var(--warning)", lineHeight: 1.55 }}>
+        <div style={{ marginTop: 10, fontSize: ".8rem", color: "var(--warning)", lineHeight: 1.55 }}>
           {fmtBRL(foraDaConta)} do faturamento ficou fora do cálculo de margem — venda
           cancelada ou item sem produto vinculado no Estoque. A margem acima é a dos{" "}
           {fmtBRL(d.retorno)} que têm custo apurado.
@@ -805,7 +805,7 @@ function VendasDoDiaHero({ hoje, ontem, rotulo, rotuloAnterior }: {
       )}
 
       {top && (
-        <div style={{ marginTop: 10, fontSize: ".78rem", color: "var(--muted)" }}>
+        <div style={{ marginTop: 10, fontSize: ".82rem", color: "var(--muted)" }}>
           Mais faturou hoje: <b style={{ color: "var(--text)" }}>{top.titulo}</b>{" "}
           — {fmtBRL(top.receita)} em {top.unidades} un
         </div>
@@ -899,7 +899,7 @@ function ConversaoVisitas({ from, to, vendas, receita }: {
             </div>
           </div>
 
-          <div style={{ marginTop: 10, fontSize: ".72rem", color: "var(--muted)", lineHeight: 1.6 }}>
+          <div style={{ marginTop: 10, fontSize: ".75rem", color: "var(--muted)", lineHeight: 1.6 }}>
             O Seller Center mostra um degrau a mais no meio (“intenção de compra”). Ele vem de
             sinais internos do Mercado Livre e <b>nenhum endpoint público devolve</b> — em vez de
             estimar, ele fica de fora. {dados.observacao}
@@ -990,7 +990,7 @@ function ConferenciaML({ c, periodo }: { c: Conciliacao; periodo: string }) {
               >
                 <span style={{ fontSize: ".82rem", fontWeight: 600 }}>
                   {l.rotulo}
-                  <span style={{ display: "block", fontSize: ".66rem", fontWeight: 400, color: "var(--muted)" }}>
+                  <span style={{ display: "block", fontSize: ".75rem", fontWeight: 400, color: "var(--muted)" }}>
                     no ML: “{l.noML}”
                   </span>
                 </span>
@@ -1004,10 +1004,10 @@ function ConferenciaML({ c, periodo }: { c: Conciliacao; periodo: string }) {
               e saber na hora se é cancelamento real ou separação de envio. */}
           {(c.canceladasDetalhe?.length ?? 0) > 0 && (
             <details style={{ marginTop: 12 }}>
-              <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: ".78rem" }}>
+              <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: ".82rem" }}>
                 Ver os {c.canceladasDetalhe!.length} pedido(s) que estamos contando como cancelados
               </summary>
-              <div style={{ fontSize: ".72rem", color: "var(--muted)", margin: "8px 0", lineHeight: 1.5 }}>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)", margin: "8px 0", lineHeight: 1.5 }}>
                 Abra um ou dois destes no Mercado Livre. Se lá aparecerem como venda válida,
                 é separação de envio (ou cancelamento revertido) e o número daqui está alto.
               </div>
@@ -1020,7 +1020,7 @@ function ConferenciaML({ c, periodo }: { c: Conciliacao; periodo: string }) {
                       padding: "6px 10px", borderRadius: 6, background: "var(--surface-raised,var(--surface2))",
                     }}
                   >
-                    <span style={{ fontFamily: "ui-monospace, monospace", fontSize: ".72rem" }}>
+                    <span style={{ fontFamily: "ui-monospace, monospace", fontSize: ".75rem" }}>
                       #{p.orderId}
                       <span style={{ color: "var(--muted)", fontFamily: "inherit" }}>
                         {" "}· {formatDateBR(p.dia)} · {p.origem}{p.packId ? ` · pacote ${p.packId}` : ""}
@@ -1037,7 +1037,7 @@ function ConferenciaML({ c, periodo }: { c: Conciliacao; periodo: string }) {
             <div style={{
               marginTop: 10, padding: "10px 12px", borderRadius: 8,
               background: "var(--surface-raised,var(--surface2))", borderLeft: "3px solid var(--accent)",
-              fontSize: ".78rem", lineHeight: 1.6,
+              fontSize: ".82rem", lineHeight: 1.6,
             }}>
               <b>Por que o “Vendas brutas” do ML vem um pouco maior</b>
               <div style={{ marginTop: 6, color: "var(--muted)" }}>
@@ -1072,7 +1072,7 @@ function ConferenciaML({ c, periodo }: { c: Conciliacao; periodo: string }) {
             </div>
           )}
 
-          <div style={{ marginTop: 10, fontSize: ".72rem", color: "var(--muted)", lineHeight: 1.6 }}>
+          <div style={{ marginTop: 10, fontSize: ".75rem", color: "var(--muted)", lineHeight: 1.6 }}>
             <b>Se “Vendas brutas” bater e o card acima não</b>, está tudo certo: o
             “Faturamento bruto” do card inclui os cancelados de propósito, e o ML não.
             {c.descartadosForaDaJanela > 0 && (
@@ -1178,7 +1178,7 @@ function MetaDiariaCard({
           />
           {/* Por que a meta de hoje não é a meta plana */}
           {!mesBatido && metaPlana != null && diasRestantes != null && (
-            <div style={{ marginTop: 10, textAlign: "center", fontSize: ".72rem", lineHeight: 1.5 }}>
+            <div style={{ marginTop: 10, textAlign: "center", fontSize: ".75rem", lineHeight: 1.5 }}>
               {atrasado && (
                 <span style={{ color: "var(--warning)" }}>
                   ↑ subiu de <b>{fmtBRL(metaPlana)}</b> — você está atrás do ritmo
@@ -1355,8 +1355,8 @@ function TabelaAnuncios({ anuncios }: { anuncios: AnuncioResult[] }) {
               <tr key={a.item_id} style={a.semVenda ? { opacity: 0.72 } : undefined}>
                 <td>
                   <span title={a.title} style={{ fontWeight: 600 }}>{a.title}</span>
-                  {a.semVenda && <span title="Anúncio gastou em ADS mas não vendeu neste período. Se você excluiu o anúncio, o gasto anterior continua aqui porque foi dinheiro real pago ao ML." style={{ marginLeft: 6, fontSize: ".64rem", fontWeight: 700, color: "var(--warning)", background: "var(--warning-soft)", padding: "1px 6px", borderRadius: 5, cursor: "help" }}>SÓ ADS</span>}
-                  {a.item_id && <span style={{ display: "block", fontSize: ".7rem", color: "var(--muted)" }}>{a.item_id}</span>}
+                  {a.semVenda && <span title="Anúncio gastou em ADS mas não vendeu neste período. Se você excluiu o anúncio, o gasto anterior continua aqui porque foi dinheiro real pago ao ML." style={{ marginLeft: 6, fontSize: ".75rem", fontWeight: 700, color: "var(--warning)", background: "var(--warning-soft)", padding: "1px 6px", borderRadius: 5, cursor: "help" }}>SÓ ADS</span>}
+                  {a.item_id && <span style={{ display: "block", fontSize: ".75rem", color: "var(--muted)" }}>{a.item_id}</span>}
                 </td>
                 <td data-label="Vendas" style={{ fontWeight: 700 }}>{a.vendas || "—"}</td>
                 <td data-label="Un" style={{ color: "var(--muted)" }}>{a.qty}</td>
@@ -1446,7 +1446,7 @@ function LucroPorAnuncioPanel({ anuncios, from, to }: { anuncios: AnuncioResult[
           <DateRangePicker from={range.from} to={range.to} onApply={aplicar} />
         </div>
       </div>
-      <div style={{ fontSize: ".76rem", color: "var(--muted)", marginBottom: 14 }}>
+      <div style={{ fontSize: ".8rem", color: "var(--muted)", marginBottom: 14 }}>
         {indep
           ? <>Filtro próprio: <b style={{ color: "var(--text)" }}>{formatDateBR(range.from)} a {formatDateBR(range.to)}</b> — independente do dashboard.</>
           : "Lucro líq. = Retorno − CMV − Frete − Taxa ML − Imposto − ADS · o frete é o que você paga no envio (Full ou próprio)"}
@@ -1622,7 +1622,7 @@ function MediaVendasDia({ anuncios, from, to }: { anuncios: AnuncioResult[]; fro
                     {l.title}
                     {l.anuncios > 1 && (
                       <span
-                        style={{ display: "block", fontSize: ".66rem", fontWeight: 400, color: "var(--muted)" }}
+                        style={{ display: "block", fontSize: ".75rem", fontWeight: 400, color: "var(--muted)" }}
                         title="Este produto vende por mais de um anúncio; as vendas dos dois estão somadas aqui."
                       >
                         {l.anuncios} anúncios somados
@@ -2022,7 +2022,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
       {diag && (
         <pre style={{
           position: "relative", background: "var(--surface)", border: "1px solid var(--border)",
-          borderRadius: 8, padding: "12px 14px", fontSize: ".72rem", maxHeight: 300, overflow: "auto",
+          borderRadius: 8, padding: "12px 14px", fontSize: ".75rem", maxHeight: 300, overflow: "auto",
           whiteSpace: "pre-wrap", wordBreak: "break-word", color: "var(--text)",
         }}>
           <button type="button" className="btn btn-xs btn-ghost" onClick={() => setDiag(null)} style={{ position: "absolute", right: 8, top: 8 }}>Fechar</button>
@@ -2106,7 +2106,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
           {/* Acompanhamento das metas (topo, modo mês) */}
           {isMesAtual && (
             <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ fontSize: ".78rem", color: "var(--text-secondary)" }}>{formatMesBR(mes)}</div>
+              <div style={{ fontSize: ".82rem", color: "var(--text-secondary)" }}>{formatMesBR(mes)}</div>
               {goals?.meta1 ? (
                 <MetasOverviewCard
                   fatBruto={fatLiquido}
@@ -2245,7 +2245,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
                 {tarefasVencidas.slice(0, 5).map((t) => (
                   <div key={t.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "6px 10px", background: "var(--surface-raised,var(--surface2))", borderRadius: 8, flexWrap: "wrap" }}>
                     <span style={{ fontWeight: 600, fontSize: ".85rem", color: "var(--text-primary,var(--text))" }}>{t.title}</span>
-                    <span style={{ fontSize: ".72rem", color: "var(--danger,var(--red))" }}>
+                    <span style={{ fontSize: ".75rem", color: "var(--danger,var(--red))" }}>
                       prazo {t.dueDate ? t.dueDate.split("-").reverse().join("/") : "—"}{t.assignedToName ? ` · ${t.assignedToName}` : ""}
                     </span>
                   </div>
@@ -2268,7 +2268,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
           />
 
           {(mlMetrics?.pedidosSemVinculo ?? 0) > 0 && (
-            <div style={{ padding: "8px 12px", background: "var(--warning-soft)", border: "1px solid rgba(255,138,31,.3)", borderRadius: 8, fontSize: ".78rem", color: "var(--warning)" }}>
+            <div style={{ padding: "8px 12px", background: "var(--warning-soft)", border: "1px solid rgba(255,138,31,.3)", borderRadius: 8, fontSize: ".82rem", color: "var(--warning)" }}>
               {mlMetrics?.pedidosSemVinculo} pedido(s) sem produto vinculado — cadastre o SKU/MLB no Estoque para o lucro ficar completo.
             </div>
           )}
@@ -2287,7 +2287,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
                       : (
                         <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
                           <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                            <span style={{ fontSize: ".72rem", color: "var(--text-muted,var(--muted))", fontWeight: 600 }}>{participacao.toFixed(0)}%</span>
+                            <span style={{ fontSize: ".75rem", color: "var(--text-muted,var(--muted))", fontWeight: 600 }}>{participacao.toFixed(0)}%</span>
                             <span style={{ color: "var(--red)", fontWeight: 700 }}>{fmtBRL(r.value)}</span>
                           </span>
                           <Delta current={r.value} previous={r.prevValue} mode="pct" invert />
@@ -2297,7 +2297,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
                 );
               })}
               <div className="cost-total">
-                <span>Total de custos{adsFalhou && <span style={{ color: "var(--warning)", fontWeight: 400, fontSize: ".72rem" }}> (sem ADS)</span>}</span>
+                <span>Total de custos{adsFalhou && <span style={{ color: "var(--warning)", fontWeight: 400, fontSize: ".75rem" }}> (sem ADS)</span>}</span>
                 <span style={{ color: "var(--red)" }}>{fmtBRL(totalCustos)}</span>
               </div>
             </div>

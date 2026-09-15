@@ -129,11 +129,11 @@ export default function BaixasPorRemessa({
           </div>
 
           <div style={{ padding: "10px 14px", borderRadius: 10, background: "var(--surface2)", marginBottom: 12 }}>
-            <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Baixado do estoque em {dataBR(aberta.data)}</div>
+            <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Baixado do estoque em {dataBR(aberta.data)}</div>
             <div style={{ fontSize: "1.1rem", fontWeight: 800 }}>
               {aberta.totalUnidades} un em {aberta.produtos.length} produto(s)
             </div>
-            <div style={{ fontSize: ".74rem", color: "var(--muted)", marginTop: 4 }}>
+            <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 4 }}>
               Compare com &quot;Declaradas / Processadas&quot; do envio #{aberta.remessa} no painel do
               Mercado Livre. Diferença aqui significa baixa lançada errada — corrija na linha.
             </div>

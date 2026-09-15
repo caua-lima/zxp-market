@@ -717,13 +717,13 @@ function ProductRow({
               <div style={{ fontWeight: 600 }}>{product.name || <em style={{ color: "var(--muted)" }}>Sem nome</em>}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3 }}>
                 {product.sku
-                  ? <span style={{ background: "rgba(233,169,45,.12)", color: "#E9A92D", padding: "1px 7px", borderRadius: 6, fontWeight: 700, fontSize: ".7rem" }}>SKU {product.sku}</span>
-                  : <span style={{ color: "var(--red)", fontSize: ".7rem" }}>sem SKU</span>}
+                  ? <span style={{ background: "rgba(233,169,45,.12)", color: "#E9A92D", padding: "1px 7px", borderRadius: 6, fontWeight: 700, fontSize: ".75rem" }}>SKU {product.sku}</span>
+                  : <span style={{ color: "var(--red)", fontSize: ".75rem" }}>sem SKU</span>}
                 {anuncios.map(({ mlb, item }) => (
-                  <span key={mlb} style={{ fontSize: ".7rem", background: "var(--surface2)", border: "1px solid var(--border)", padding: "1px 6px", borderRadius: 5, color: "var(--muted)" }}>
+                  <span key={mlb} style={{ fontSize: ".75rem", background: "var(--surface2)", border: "1px solid var(--border)", padding: "1px 6px", borderRadius: 5, color: "var(--muted)" }}>
                     {mlb}
                     {item && item.price > 0 && <b style={{ color: "var(--green)", marginLeft: 4 }}>{fmtBRL(item.price)}</b>}
-                    {item && item.hasPromo && <span style={{ marginLeft: 4, fontSize: ".62rem", color: "var(--accent)", fontWeight: 700 }}>promo</span>}
+                    {item && item.hasPromo && <span style={{ marginLeft: 4, fontSize: ".75rem", color: "var(--accent)", fontWeight: 700 }}>promo</span>}
                     {item && <span style={{ marginLeft: 4, color: ehFullLogistic(item.logistic) ? "#E9A92D" : "var(--muted)" }}>{ehFullLogistic(item.logistic) ? "Full" : "próprio"}</span>}
                   </span>
                 ))}
@@ -744,7 +744,7 @@ function ProductRow({
           {duplicadas > 0 && (
             <span
               title={`${duplicadas} unidade(s) já chegaram no Full mas a baixa não foi lançada, então continuam contadas aqui TAMBÉM. O total deste produto está inflado nessas unidades. Resolva na aba Full › Remessas pro Full.`}
-              style={{ display: "block", fontSize: ".62rem", color: "var(--warning)", fontWeight: 700, cursor: "help" }}
+              style={{ display: "block", fontSize: ".75rem", color: "var(--warning)", fontWeight: 700, cursor: "help" }}
             >
               ⚠ {duplicadas} un já no Full
             </span>
@@ -752,7 +752,7 @@ function ProductRow({
           {proprioCompartilhado && !ehFull && (
             <span
               title="Este produto está em mais de um anúncio fora do Full, e os dois vendem do MESMO estoque de casa. O total usa o maior declarado, não a soma: anunciar 18 e 18 é a mesma pilha de 18 unidades, não 36."
-              style={{ display: "block", fontSize: ".62rem", color: "var(--muted)", fontWeight: 400, cursor: "help" }}
+              style={{ display: "block", fontSize: ".75rem", color: "var(--muted)", fontWeight: 400, cursor: "help" }}
             >
               mesmo estoque em {anuncios.filter(({ item }) => item && !ehFullLogistic(item.logistic)).length} anúncios
             </span>
@@ -760,18 +760,18 @@ function ProductRow({
         </td>
         <td data-label="Full (ML)" style={{ textAlign: "right", fontWeight: 700, whiteSpace: "nowrap", color: !ehFull ? "var(--muted)" : fullBaixo ? "var(--red)" : "var(--green)" }}>
           {ehFull ? `${full} un` : "—"}
-          {fullBaixo && casa > 0 && <span title="Envie de casa pro Full" style={{ display: "block", fontSize: ".62rem", color: "var(--warning)" }}>reabastecer</span>}
-          {fullCompartilhado && <span title="Mais de um anúncio compartilha o mesmo estoque no Full. As unidades são contadas UMA vez — cada anúncio sozinho mostra o pool inteiro, e somá-los dobraria o número." style={{ display: "block", fontSize: ".62rem", color: "var(--muted)", fontWeight: 400 }}>pool compartilhado</span>}
-          {proprio > 0 && <span title="Unidades expostas no(s) anúncio(s) fora do Full (envio por sua conta/agência). Saem do MESMO estoque de casa, então NÃO somam no Total — já estão contadas em 'Em casa'." style={{ display: "block", fontSize: ".62rem", color: "var(--muted)", fontWeight: 400 }}>{proprio} no anúncio</span>}
+          {fullBaixo && casa > 0 && <span title="Envie de casa pro Full" style={{ display: "block", fontSize: ".75rem", color: "var(--warning)" }}>reabastecer</span>}
+          {fullCompartilhado && <span title="Mais de um anúncio compartilha o mesmo estoque no Full. As unidades são contadas UMA vez — cada anúncio sozinho mostra o pool inteiro, e somá-los dobraria o número." style={{ display: "block", fontSize: ".75rem", color: "var(--muted)", fontWeight: 400 }}>pool compartilhado</span>}
+          {proprio > 0 && <span title="Unidades expostas no(s) anúncio(s) fora do Full (envio por sua conta/agência). Saem do MESMO estoque de casa, então NÃO somam no Total — já estão contadas em 'Em casa'." style={{ display: "block", fontSize: ".75rem", color: "var(--muted)", fontWeight: 400 }}>{proprio} no anúncio</span>}
         </td>
         <td data-label="Total" style={{ textAlign: "right", fontWeight: 700, whiteSpace: "nowrap" }}>{totalUn} un</td>
         <td data-label="Custo médio" style={{ textAlign: "right", whiteSpace: "nowrap", color: custoMedio > 0 ? "var(--text)" : "var(--muted)", fontWeight: 600 }}>
           {custoMedio > 0 ? fmtBRL(custoMedio) : "—"}
-          {product.custoMedio == null && custoMedio > 0 && <span style={{ display: "block", fontSize: ".62rem", color: "var(--muted)" }}>manual</span>}
+          {product.custoMedio == null && custoMedio > 0 && <span style={{ display: "block", fontSize: ".75rem", color: "var(--muted)" }}>manual</span>}
         </td>
         <td data-label="Preço venda" style={{ textAlign: "right", color: precoMax > 0 ? "var(--green)" : "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }}>
           {precoMax > 0 ? (precoMin === precoMax ? fmtBRL(precoMax) : `${fmtBRL(precoMin)}–${fmtBRL(precoMax)}`) : "—"}
-          {temPromo && <span style={{ display: "block", fontSize: ".62rem", color: "var(--accent)" }}>promoção</span>}
+          {temPromo && <span style={{ display: "block", fontSize: ".75rem", color: "var(--accent)" }}>promoção</span>}
         </td>
         <td data-label="Imposto" style={{ textAlign: "right", whiteSpace: "nowrap", color: imposto > 0 ? "var(--red)" : "var(--muted)" }}>{imposto > 0 ? `${imposto.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : "—"}</td>
         <td data-label="Movimentar" data-cell="acoes">
@@ -834,7 +834,7 @@ function AgenciasModal({ product, estoqueML, onClose }: { product: Product; esto
               <div>
                 <div style={{ fontFamily: "ui-monospace, monospace", fontSize: ".8rem", fontWeight: 700 }}>{mlb}</div>
                 {!!item?.price && (
-                  <div style={{ fontSize: ".76rem", color: "var(--green)" }}>
+                  <div style={{ fontSize: ".8rem", color: "var(--green)" }}>
                     {fmtBRL(item.price)}{item.hasPromo && <span style={{ color: "var(--accent)" }}> · promoção</span>}
                   </div>
                 )}
@@ -849,7 +849,7 @@ function AgenciasModal({ product, estoqueML, onClose }: { product: Product; esto
         </div>
       )}
 
-      <div style={{ fontSize: ".72rem", color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
+      <div style={{ fontSize: ".75rem", color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
         Atualize a quantidade direto no anúncio do Mercado Livre — este número acompanha sozinho, sem
         controle manual pra manter.
       </div>
@@ -877,7 +877,7 @@ function MovimentosHistorico({ product, movs, onMov }: { product: Product; movs:
         />
       )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8, flexWrap: "wrap" }}>
-        <span style={{ fontSize: ".74rem", fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".05em" }}>Movimentações</span>
+        <span style={{ fontSize: ".75rem", fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".05em" }}>Movimentações</span>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button type="button" className="btn btn-ghost btn-xs" onClick={() => onMov("saldo_inicial")}>Custo do Full</button>
           <button type="button" className="btn btn-ghost btn-xs" onClick={() => onMov("ajuste")}>Ajuste / perda</button>
@@ -1075,7 +1075,7 @@ function MovimentoModal({ product, tipo, estoqueML, onClose, onSaved }: { produc
       )}
 
       {isSaldo && (
-        <div style={{ margin: "4px 0 12px", padding: "8px 12px", borderRadius: 8, background: "rgba(233,169,45,.08)", border: "1px solid rgba(233,169,45,.2)", fontSize: ".78rem", color: "var(--muted)" }}>
+        <div style={{ margin: "4px 0 12px", padding: "8px 12px", borderRadius: 8, background: "rgba(233,169,45,.08)", border: "1px solid rgba(233,169,45,.2)", fontSize: ".82rem", color: "var(--muted)" }}>
           {full > 0
             ? <>O ML mostra <b>{full} un</b> deste produto no Full sem custo lançado. Informe quanto você pagou por unidade — isso <b>entra no custo médio</b> pra o lucro sair certo quando elas venderem. Não soma no “em casa” (já estão fora).</>
             : <>Use pra custear unidades que <b>já estavam no estoque</b> antes de você começar a lançar (ex.: o que está no Full). Entra na média do custo, mas <b>não soma no “em casa”</b>.</>}
@@ -1083,7 +1083,7 @@ function MovimentoModal({ product, tipo, estoqueML, onClose, onSaved }: { produc
       )}
 
       {tipo === "saida_full" && (
-        <div style={{ margin: "4px 0 12px", padding: "8px 12px", borderRadius: 8, background: "rgba(var(--brand-rgb),.08)", border: "1px solid rgba(var(--brand-rgb),.25)", fontSize: ".78rem", color: "var(--muted)" }}>
+        <div style={{ margin: "4px 0 12px", padding: "8px 12px", borderRadius: 8, background: "rgba(var(--brand-rgb),.08)", border: "1px solid rgba(var(--brand-rgb),.25)", fontSize: ".82rem", color: "var(--muted)" }}>
           Baixa por <b>envio ao Full</b> — sai de casa e vai pro Full, mas <b>não é venda</b>. Não afeta o lucro; o custo só entra quando o produto vende.
         </div>
       )}
@@ -1207,11 +1207,11 @@ function PrevisaoPanel({ products, estoqueML, forecast }: { products: Product[];
                     <td style={{ textAlign: "left", fontWeight: 600 }}>
                       {p.name || "Sem nome"}
                       {mlbsDe(p).length === 0 ? (
-                        <span style={{ display: "block", fontSize: ".66rem", fontWeight: 400, color: "var(--warning)" }}>
+                        <span style={{ display: "block", fontSize: ".75rem", fontWeight: 400, color: "var(--warning)" }}>
                           sem anúncio vinculado — use “Vincular por SKU”
                         </span>
                       ) : f.total === 0 && f.mediaDiaria === 0 ? (
-                        <span style={{ display: "block", fontSize: ".66rem", fontWeight: 400, color: "var(--muted)" }}>
+                        <span style={{ display: "block", fontSize: ".75rem", fontWeight: 400, color: "var(--muted)" }}>
                           sem estoque nem venda ainda
                         </span>
                       ) : null}
@@ -1230,7 +1230,7 @@ function PrevisaoPanel({ products, estoqueML, forecast }: { products: Product[];
                         <span style={{ color: "var(--yellow)", fontWeight: 700 }}>
                           {f.reporQtd} un
                           {emCasa > 0 && (
-                            <span style={{ display: "block", fontSize: ".64rem", color: "var(--muted)", fontWeight: 400 }}>
+                            <span style={{ display: "block", fontSize: ".75rem", color: "var(--muted)", fontWeight: 400 }}>
                               {emCasa} em casa{comprar > 0 ? ` · comprar ${comprar}` : ""}
                             </span>
                           )}
@@ -1259,7 +1259,7 @@ function PrevisaoPanel({ products, estoqueML, forecast }: { products: Product[];
                       {f.lucro == null ? "—" : (
                         <>
                           {fmtBRL(f.lucro.lucroTotal)}
-                          <span style={{ display: "block", fontSize: ".64rem", fontWeight: 400, color: "var(--muted)" }}>
+                          <span style={{ display: "block", fontSize: ".75rem", fontWeight: 400, color: "var(--muted)" }}>
                             {fmtBRL(f.lucro.lucroUnitario)}/un · {f.lucro.margem.toFixed(1)}%
                           </span>
                         </>
@@ -1405,7 +1405,7 @@ export function ProductModal({ product: initial, isNew, onClose, onSave }: { pro
         </div>
       </div>
 
-      <div style={{ margin: "4px 0 12px", padding: "8px 12px", borderRadius: 8, background: "rgba(233,169,45,.08)", border: "1px solid rgba(233,169,45,.2)", fontSize: ".78rem", color: "var(--muted)" }}>
+      <div style={{ margin: "4px 0 12px", padding: "8px 12px", borderRadius: 8, background: "rgba(233,169,45,.08)", border: "1px solid rgba(233,169,45,.2)", fontSize: ".82rem", color: "var(--muted)" }}>
         <strong>Preço de venda</strong> e <strong>retorno</strong>, além de ADS e Envio Full, são puxados automaticamente do Mercado Livre — não precisa cadastrar.
       </div>
 
@@ -1547,7 +1547,7 @@ function VincularSkuModal({ uid, produtos, onClose }: { uid: string; produtos: P
         <div style={{
           margin: "12px 0", padding: 10, borderRadius: 8,
           background: "rgba(214,90,74,.12)", border: "1px solid rgba(214,90,74,.4)",
-          fontFamily: "ui-monospace, monospace", fontSize: ".72rem", whiteSpace: "pre-wrap",
+          fontFamily: "ui-monospace, monospace", fontSize: ".75rem", whiteSpace: "pre-wrap",
         }}>{erro}</div>
       ) : concluido ? (
         <div style={{
@@ -1563,7 +1563,7 @@ function VincularSkuModal({ uid, produtos, onClose }: { uid: string; produtos: P
           {resumo && (
             <div style={{
               display: "flex", flexWrap: "wrap", gap: 8, margin: "12px 0",
-              fontSize: ".76rem", color: "var(--muted)",
+              fontSize: ".8rem", color: "var(--muted)",
             }}>
               <span style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 9px" }}>
                 {resumo.anunciosLidos} anúncios lidos
@@ -1600,11 +1600,11 @@ function VincularSkuModal({ uid, produtos, onClose }: { uid: string; produtos: P
                 <div key={item.productId} style={{ padding: "10px 0", borderTop: "1px solid var(--border)" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
                     <span style={{ fontWeight: 600, fontSize: ".86rem" }}>{item.name || "—"}</span>
-                    <span style={{ fontSize: ".72rem", color: "var(--muted)", fontFamily: "monospace" }}>SKU {item.sku}</span>
+                    <span style={{ fontSize: ".75rem", color: "var(--muted)", fontFamily: "monospace" }}>SKU {item.sku}</span>
                   </div>
 
                   {item.atuais.length > 0 && (
-                    <div style={{ fontSize: ".72rem", color: "var(--muted)", marginTop: 3 }}>
+                    <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 3 }}>
                       já vinculado: {item.atuais.map((a) => a.mlb).join(", ")}
                     </div>
                   )}
@@ -1624,16 +1624,16 @@ function VincularSkuModal({ uid, produtos, onClose }: { uid: string; produtos: P
                           style={{ marginTop: 3, flexShrink: 0 }}
                         />
                         <span style={{ minWidth: 0 }}>
-                          <span style={{ fontFamily: "monospace", fontSize: ".76rem", color: "var(--text)" }}>{n.mlb}</span>
+                          <span style={{ fontFamily: "monospace", fontSize: ".8rem", color: "var(--text)" }}>{n.mlb}</span>
                           {!n.exato && (
-                            <span style={{ marginLeft: 6, fontSize: ".64rem", fontWeight: 700, color: "var(--warning)", background: "var(--warning-soft)", padding: "1px 5px", borderRadius: 4 }}>
+                            <span style={{ marginLeft: 6, fontSize: ".75rem", fontWeight: 700, color: "var(--warning)", background: "var(--warning-soft)", padding: "1px 5px", borderRadius: 4 }}>
                               APROXIMADO
                             </span>
                           )}
                           {n.titulo && (
-                            <span style={{ display: "block", fontSize: ".73rem", color: "var(--muted)" }}>{n.titulo.slice(0, 52)}</span>
+                            <span style={{ display: "block", fontSize: ".75rem", color: "var(--muted)" }}>{n.titulo.slice(0, 52)}</span>
                           )}
-                          <span style={{ display: "block", fontSize: ".68rem", color: "var(--muted)", fontFamily: "monospace" }}>
+                          <span style={{ display: "block", fontSize: ".75rem", color: "var(--muted)", fontFamily: "monospace" }}>
                             SKU no ML: {n.skuAnuncio || "—"}
                           </span>
                         </span>
@@ -1969,7 +1969,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
 
       {/* Legenda da cor: a coluna "dura" e a informacao central das tres
           abas, e cor sem legenda vira adivinhacao. */}
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: ".7rem", color: "var(--muted)", marginBottom: 10 }}>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: ".75rem", color: "var(--muted)", marginBottom: 10 }}>
         <span>Dias de cobertura:</span>
         <span><b style={{ color: "var(--red)" }}>ate 3d</b> critico</span>
         <span><b style={{ color: "var(--warning)" }}>4 a 10d</b> repor agora</span>
@@ -2014,7 +2014,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
                       {/* A base explica a média: 12 dias em vez de 30 significa
                           anúncio pausado parte do período. */}
                       <td
-                        style={{ textAlign: "right", color: b?.parcial ? "var(--warning)" : "var(--muted)", fontSize: ".78rem" }}
+                        style={{ textAlign: "right", color: b?.parcial ? "var(--warning)" : "var(--muted)", fontSize: ".82rem" }}
                         title={b?.parcial
                           ? `Esteve à venda ${b.diasBase} dos ${forecast.dias} dias. A média usa só esses dias — dividir pela janela inteira trataria a pausa como venda fraca.`
                           : `À venda nos ${forecast.dias} dias do período.`}
@@ -2093,7 +2093,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
                           </span>
                         )}
                         {i.nome}
-                        <span style={{ color: "var(--muted)", fontSize: ".72rem" }}>
+                        <span style={{ color: "var(--muted)", fontSize: ".75rem" }}>
                           {" "}· {i.noFull} no Full · {i.mediaDiaria.toFixed(1)}/dia
                         </span>
                       </span>
@@ -2243,7 +2243,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
                       {i.nome}
                       {i.jaTemEmCasa > 0 && (
                         <span
-                          style={{ color: "var(--muted)", fontSize: ".72rem" }}
+                          style={{ color: "var(--muted)", fontSize: ".75rem" }}
                           title="Já está no galpão: mandar pro Full resolve essa parte sem esperar o fornecedor."
                         >
                           {" "}· {i.jaTemEmCasa} un já em casa
@@ -2442,7 +2442,7 @@ function EntradaMassaModal({ produtos, estoqueML, onClose, onSaved }: {
                 <tr key={p.id}>
                   <td style={{ textAlign: "left" }}>
                     {p.name || p.id}
-                    {p.sku && <span style={{ color: "var(--muted)", fontSize: ".72rem" }}> · {p.sku}</span>}
+                    {p.sku && <span style={{ color: "var(--muted)", fontSize: ".75rem" }}> · {p.sku}</span>}
                   </td>
                   <td>
                     <input
@@ -2612,7 +2612,7 @@ function ImpostoMassaModal({ uid, produtos, escopoBusca, onClose }: {
                 <span style={{ flex: 1, minWidth: 0, fontSize: ".84rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {p.name || "Sem nome"}
                 </span>
-                <span style={{ fontSize: ".74rem", color: atual > 0 ? "var(--accent)" : "var(--muted)", whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: ".75rem", color: atual > 0 ? "var(--accent)" : "var(--muted)", whiteSpace: "nowrap" }}>
                   {atual > 0 ? `hoje ${atual}%` : "sem imposto"}
                 </span>
               </label>

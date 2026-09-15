@@ -109,7 +109,7 @@ export default function BackfillHistorico({ onConcluir }: { onConcluir?: () => v
                   background: "var(--brand)", transition: "width .3s",
                 }} />
               </div>
-              <div style={{ fontSize: ".76rem", color: "var(--muted)", marginTop: 6 }}>
+              <div style={{ fontSize: ".8rem", color: "var(--muted)", marginTop: 6 }}>
                 {feitos.length} de {meses} meses · <b style={{ color: "var(--text)" }}>{totalPedidos}</b> pedidos
                 sincronizados{rodando ? " · puxando…" : ""}
               </div>
@@ -129,7 +129,7 @@ export default function BackfillHistorico({ onConcluir }: { onConcluir?: () => v
           {erro && (
             <div className="note note-danger" style={{ marginTop: 10 }}>
               {erro}
-              <div style={{ marginTop: 4, fontSize: ".72rem" }}>
+              <div style={{ marginTop: 4, fontSize: ".75rem" }}>
                 O que já foi puxado continua salvo — dá pra rodar de novo depois que resolver.
               </div>
             </div>

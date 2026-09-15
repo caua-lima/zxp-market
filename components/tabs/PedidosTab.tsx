@@ -105,7 +105,7 @@ function CancelDevolBadge({ pedido: p }: { pedido: Pedido }) {
   if (!p.cancelado && !p.devolvido) return null;
   const texto = p.devolvido ? "DEVOLVIDO" : "CANCELADO";
   return (
-    <span style={{ marginLeft: 6, fontSize: ".6rem", fontWeight: 700, color: "var(--danger,var(--red))", background: "var(--danger-soft,rgba(214,90,74,.12))", padding: "1px 6px", borderRadius: 5, verticalAlign: "middle" }}>
+    <span style={{ marginLeft: 6, fontSize: ".75rem", fontWeight: 700, color: "var(--danger,var(--red))", background: "var(--danger-soft,rgba(214,90,74,.12))", padding: "1px 6px", borderRadius: 5, verticalAlign: "middle" }}>
       {texto}
     </span>
   );
@@ -141,7 +141,7 @@ function DetalhePedido({ pedido: p }: { pedido: Pedido }) {
     }}>
       <span style={{ fontSize: ".8rem", color: opts.forte ? "var(--text)" : "var(--muted)", fontWeight: opts.forte ? 700 : 400 }}>
         {rotulo}
-        {opts.nota && <span style={{ display: "block", fontSize: ".68rem", color: "var(--muted)", fontWeight: 400 }}>{opts.nota}</span>}
+        {opts.nota && <span style={{ display: "block", fontSize: ".75rem", color: "var(--muted)", fontWeight: 400 }}>{opts.nota}</span>}
       </span>
       <span style={{
         fontSize: ".84rem", whiteSpace: "nowrap", fontWeight: opts.forte ? 800 : 600,
@@ -174,7 +174,7 @@ function DetalhePedido({ pedido: p }: { pedido: Pedido }) {
   return (
     <div style={{ padding: "12px 16px", display: "grid", gap: 18, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
       <div>
-        <div style={{ fontSize: ".72rem", textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted)", marginBottom: 4 }}>
+        <div style={{ fontSize: ".75rem", textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted)", marginBottom: 4 }}>
           Da venda até o seu bolso
         </div>
         {linha("Valor da venda", p.valor)}
@@ -207,7 +207,7 @@ function DetalhePedido({ pedido: p }: { pedido: Pedido }) {
           nota: `margem de ${p.margem.toFixed(1)}% sobre a venda`,
         })}
         {!p.vinculado && (
-          <div style={{ marginTop: 8, fontSize: ".74rem", color: "var(--warning)", lineHeight: 1.5 }}>
+          <div style={{ marginTop: 8, fontSize: ".75rem", color: "var(--warning)", lineHeight: 1.5 }}>
             Produto sem cadastro no Estoque: o custo entra como zero, então esse
             lucro está <b>maior do que o real</b>.
           </div>
@@ -216,7 +216,7 @@ function DetalhePedido({ pedido: p }: { pedido: Pedido }) {
 
       {itens.length > 1 && (
         <div>
-          <div style={{ fontSize: ".72rem", textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted)", marginBottom: 4 }}>
+          <div style={{ fontSize: ".75rem", textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted)", marginBottom: 4 }}>
             {itens.length} produtos nesta venda
             {(p.pedidosNoPacote ?? 1) > 1 && ` · pacote de ${p.pedidosNoPacote} pedidos do ML`}
           </div>
@@ -235,15 +235,15 @@ function DetalhePedido({ pedido: p }: { pedido: Pedido }) {
                     <span style={{ display: "block", fontSize: ".8rem", fontWeight: 700, whiteSpace: "nowrap", color: it.lucro >= 0 ? "var(--green)" : "var(--red)" }}>
                       {fmtBRL(it.lucro)}
                     </span>
-                    <span style={{ display: "block", fontSize: ".68rem", fontWeight: 600, whiteSpace: "nowrap", color: it.lucro >= 0 ? "var(--green)" : "var(--red)" }}>
+                    <span style={{ display: "block", fontSize: ".75rem", fontWeight: 600, whiteSpace: "nowrap", color: it.lucro >= 0 ? "var(--green)" : "var(--red)" }}>
                       {margemItem.toFixed(1)}% margem
                     </span>
                   </span>
                 </div>
                 {!it.vinculado && (
-                  <div style={{ fontSize: ".68rem", color: "var(--warning)" }}>sem cadastro no Estoque — custo entra como zero, margem real é menor</div>
+                  <div style={{ fontSize: ".75rem", color: "var(--warning)" }}>sem cadastro no Estoque — custo entra como zero, margem real é menor</div>
                 )}
-                <div style={{ fontSize: ".7rem", color: "var(--muted)" }}>
+                <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>
                   venda {fmtBRL(it.valor)} · taxa {fmtBRL(it.taxaML)} · frete {fmtBRL(it.envio)} ·
                   custo {fmtBRL(it.cmv)} · imposto {fmtBRL(it.imposto)}
                 </div>
@@ -254,7 +254,7 @@ function DetalhePedido({ pedido: p }: { pedido: Pedido }) {
       )}
 
       <div>
-        <div style={{ fontSize: ".72rem", textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted)", marginBottom: 4 }}>
+        <div style={{ fontSize: ".75rem", textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted)", marginBottom: 4 }}>
           Logística e repasse
         </div>
 
@@ -288,7 +288,7 @@ function DetalhePedido({ pedido: p }: { pedido: Pedido }) {
                 )}
               </div>
               {e.prazo && (
-                <div style={{ fontSize: ".76rem", color: "var(--muted)", marginTop: 2 }}>{e.prazo}</div>
+                <div style={{ fontSize: ".8rem", color: "var(--muted)", marginTop: 2 }}>{e.prazo}</div>
               )}
             </div>
           );
@@ -296,10 +296,10 @@ function DetalhePedido({ pedido: p }: { pedido: Pedido }) {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 10 }}>
           {marcos.map((m) => (
-            <div key={m.label} style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: ".78rem" }}>
+            <div key={m.label} style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: ".82rem" }}>
               <span style={{ width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: m.feito ? "var(--success,var(--green))" : "var(--border)" }} />
               <span style={{ color: m.feito ? "var(--text-primary,var(--text))" : "var(--text-muted,var(--muted))", fontWeight: m.feito ? 600 : 400 }}>{m.label}</span>
-              {m.nota && <span style={{ color: "var(--text-muted,var(--muted))", fontSize: ".72rem" }}>· {m.nota}</span>}
+              {m.nota && <span style={{ color: "var(--text-muted,var(--muted))", fontSize: ".75rem" }}>· {m.nota}</span>}
             </div>
           ))}
         </div>
@@ -309,7 +309,7 @@ function DetalhePedido({ pedido: p }: { pedido: Pedido }) {
             Repasse do Mercado Pago
             <span
               style={{
-                display: "block", marginTop: 2, fontSize: ".64rem", fontWeight: 700,
+                display: "block", marginTop: 2, fontSize: ".75rem", fontWeight: 700,
                 color: p.netReceived ? "var(--success,var(--green))" : "var(--warning)",
               }}
             >
@@ -571,7 +571,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
           <button
             key={id} type="button" onClick={() => setFiltro(id)}
             style={{
-              fontSize: ".78rem", fontWeight: 600, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
+              fontSize: ".82rem", fontWeight: 600, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
               background: filtro === id ? cor : "var(--surface2)", color: filtro === id ? "#fff" : "var(--muted)",
               border: `1px solid ${filtro === id ? cor : "var(--border)"}`,
             }}
@@ -581,7 +581,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
 
       {/* Filtros avançados */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <span style={{ fontSize: ".74rem", color: "var(--text-muted,var(--muted))", fontWeight: 600 }}>Valor:</span>
+        <span style={{ fontSize: ".75rem", color: "var(--text-muted,var(--muted))", fontWeight: 600 }}>Valor:</span>
         <input
           type="number" inputMode="decimal" placeholder="mín." value={valorMin}
           onChange={(e) => setValorMin(e.target.value)}
@@ -597,7 +597,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
           <button type="button" className="btn btn-xs btn-ghost" onClick={() => { setValorMin(""); setValorMax(""); }}>Limpar valor</button>
         )}
 
-        <span style={{ fontSize: ".74rem", color: "var(--text-muted,var(--muted))", fontWeight: 600, marginLeft: 6 }}>Margem %:</span>
+        <span style={{ fontSize: ".75rem", color: "var(--text-muted,var(--muted))", fontWeight: 600, marginLeft: 6 }}>Margem %:</span>
         <input
           type="number" inputMode="decimal" placeholder="mín." value={margemMin}
           onChange={(e) => setMargemMin(e.target.value)}
@@ -615,7 +615,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
 
         {statusOptions.length > 1 && (
           <>
-            <span style={{ fontSize: ".74rem", color: "var(--text-muted,var(--muted))", fontWeight: 600, marginLeft: 6 }}>Status:</span>
+            <span style={{ fontSize: ".75rem", color: "var(--text-muted,var(--muted))", fontWeight: 600, marginLeft: 6 }}>Status:</span>
             <select
               value={statusFiltro}
               onChange={(e) => setStatusFiltro(e.target.value)}
@@ -630,7 +630,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
 
         {produtoOptions.length > 1 && (
           <>
-            <span style={{ fontSize: ".74rem", color: "var(--text-muted,var(--muted))", fontWeight: 600, marginLeft: 6 }}>Produto:</span>
+            <span style={{ fontSize: ".75rem", color: "var(--text-muted,var(--muted))", fontWeight: 600, marginLeft: 6 }}>Produto:</span>
             <select
               value={produtoFiltro}
               onChange={(e) => setProdutoFiltro(e.target.value)}
@@ -643,7 +643,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
           </>
         )}
 
-        <span style={{ fontSize: ".74rem", color: "var(--text-muted,var(--muted))", fontWeight: 600, marginLeft: 6 }}>Ads:</span>
+        <span style={{ fontSize: ".75rem", color: "var(--text-muted,var(--muted))", fontWeight: 600, marginLeft: 6 }}>Ads:</span>
         <select
           value={adsFiltro}
           onChange={(e) => setAdsFiltro(e.target.value as "" | "com" | "sem")}
@@ -657,7 +657,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
 
         {logisticaOptions.length > 1 && (
           <>
-            <span style={{ fontSize: ".74rem", color: "var(--text-muted,var(--muted))", fontWeight: 600, marginLeft: 6 }}>Logística:</span>
+            <span style={{ fontSize: ".75rem", color: "var(--text-muted,var(--muted))", fontWeight: 600, marginLeft: 6 }}>Logística:</span>
             <select
               value={logisticaFiltro}
               onChange={(e) => setLogisticaFiltro(e.target.value)}
@@ -677,7 +677,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
 
       {filtrosSalvos.length > 0 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontSize: ".72rem", color: "var(--text-muted,var(--muted))" }}>Filtros salvos:</span>
+          <span style={{ fontSize: ".75rem", color: "var(--text-muted,var(--muted))" }}>Filtros salvos:</span>
           {filtrosSalvos.map((f) => (
             <span key={f.nome} className="severity-chip severity-info" style={{ cursor: "pointer" }}>
               <button type="button" onClick={() => aplicarFiltroSalvo(f)} style={{ background: "none", border: "none", color: "inherit", font: "inherit", cursor: "pointer", padding: 0 }}>
@@ -701,7 +701,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
           </button>
         </div>
 
-        <div style={{ fontSize: ".76rem", color: "var(--muted)", marginBottom: 12 }}>
+        <div style={{ fontSize: ".8rem", color: "var(--muted)", marginBottom: 12 }}>
           {modo === "produto"
             ? <><b>Vendas</b> = nº de pedidos · <b>Un</b> = unidades vendidas · um pedido com 3 unidades conta como 1 venda e 3 unidades</>
             : <>
@@ -764,8 +764,8 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
                   <tr key={r.mlb || r.produto} style={{ boxShadow: `inset 3px 0 0 ${r.lucro >= 0 ? "var(--green)" : "var(--red)"}` }}>
                     <td style={{ textAlign: "left", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       <span style={{ fontWeight: 600 }} title={r.produto}>{r.produto}</span>
-                      {r.semCadastro && <span style={{ marginLeft: 6, fontSize: ".6rem", fontWeight: 700, color: "var(--warning)", background: "var(--warning-soft)", padding: "1px 6px", borderRadius: 5, verticalAlign: "middle" }}>SEM CADASTRO</span>}
-                      {r.mlb && <span style={{ display: "block", fontSize: ".66rem", color: "var(--muted)" }}>{r.mlb}</span>}
+                      {r.semCadastro && <span style={{ marginLeft: 6, fontSize: ".75rem", fontWeight: 700, color: "var(--warning)", background: "var(--warning-soft)", padding: "1px 6px", borderRadius: 5, verticalAlign: "middle" }}>SEM CADASTRO</span>}
+                      {r.mlb && <span style={{ display: "block", fontSize: ".75rem", color: "var(--muted)" }}>{r.mlb}</span>}
                     </td>
                     <td style={{ textAlign: "right", fontWeight: 700, whiteSpace: "nowrap" }}>{r.nVendas}</td>
                     <td style={{ textAlign: "right", fontWeight: 700, color: "var(--accent)", whiteSpace: "nowrap" }}>{r.qtd}</td>
@@ -855,25 +855,25 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
                       }}
                     >
                       <td style={{ textAlign: "left", color: "var(--muted)", whiteSpace: "nowrap", fontSize: ".82rem" }}>
-                        {p.data.split("-").reverse().join("/")}<span style={{ fontSize: ".68rem", display: "block", opacity: .7 }}>{p.hora}</span>
+                        {p.data.split("-").reverse().join("/")}<span style={{ fontSize: ".75rem", display: "block", opacity: .7 }}>{p.hora}</span>
                       </td>
                       <td style={{ textAlign: "left", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         <span style={{ fontWeight: 600 }} title={p.produto}>{p.produto || "—"}</span>
-                        {!p.vinculado && <span style={{ marginLeft: 6, fontSize: ".6rem", fontWeight: 700, color: "var(--warning)", background: "var(--warning-soft)", padding: "1px 6px", borderRadius: 5, verticalAlign: "middle" }}>SEM CADASTRO</span>}
+                        {!p.vinculado && <span style={{ marginLeft: 6, fontSize: ".75rem", fontWeight: 700, color: "var(--warning)", background: "var(--warning-soft)", padding: "1px 6px", borderRadius: 5, verticalAlign: "middle" }}>SEM CADASTRO</span>}
                         {(p.itens?.length ?? 0) > 1 && (
-                          <span style={{ marginLeft: 6, fontSize: ".6rem", fontWeight: 700, color: "var(--accent)", background: "rgba(233,169,45,.14)", padding: "1px 6px", borderRadius: 5, verticalAlign: "middle" }}>
+                          <span style={{ marginLeft: 6, fontSize: ".75rem", fontWeight: 700, color: "var(--accent)", background: "rgba(233,169,45,.14)", padding: "1px 6px", borderRadius: 5, verticalAlign: "middle" }}>
                             {p.itens?.length} PRODUTOS
                           </span>
                         )}
                         <CancelDevolBadge pedido={p} />
-                        <span style={{ display: "block", fontSize: ".66rem", color: "var(--muted)" }}>#{p.order_id}</span>
+                        <span style={{ display: "block", fontSize: ".75rem", color: "var(--muted)" }}>#{p.order_id}</span>
                       </td>
                       <td style={{ color: "var(--muted)" }}>{p.qtd}</td>
                       <td style={{ textAlign: "right", color: "var(--text)", whiteSpace: "nowrap" }}>{fmtBRL(p.valor)}</td>
                       <td style={{ textAlign: "right", color: "var(--text)", fontWeight: 600, whiteSpace: "nowrap" }}>{fmtBRL(p.retorno)}</td>
                       <td style={{ textAlign: "right", color: "var(--red)", whiteSpace: "nowrap" }}>
                         −{fmtBRL(custos)}
-                        <span style={{ marginLeft: 5, color: "var(--muted)", fontSize: ".7rem" }}>▾</span>
+                        <span style={{ marginLeft: 5, color: "var(--muted)", fontSize: ".75rem" }}>▾</span>
                       </td>
                       <td style={{ textAlign: "right", fontWeight: 800, whiteSpace: "nowrap", color: p.lucro >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(p.lucro)}</td>
                       <td><span className={`tag ${margemTag(p.margem)}`}>{p.margem.toFixed(1)}%</span></td>

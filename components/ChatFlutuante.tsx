@@ -83,7 +83,7 @@ export default function ChatFlutuante({
       }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: ".88rem", color: "var(--text)" }}>{titulo}</div>
-          <div style={{ fontSize: ".7rem", color: "var(--muted)" }}>{subtitulo}</div>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>{subtitulo}</div>
         </div>
         <button
           type="button" onClick={() => definir(false)} aria-label="Fechar"

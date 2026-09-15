@@ -84,9 +84,9 @@ export default function AdsDecisionPanel({
 function Cartao({ titulo, cor, vazio, children }: { titulo: string; cor: string; vazio: boolean; children: React.ReactNode }) {
   return (
     <div style={{ border: `1px solid ${cor}44`, borderRadius: 10, padding: "10px 12px", background: "var(--surface2)" }}>
-      <div style={{ fontSize: ".78rem", fontWeight: 800, color: cor, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".03em" }}>{titulo}</div>
+      <div style={{ fontSize: ".82rem", fontWeight: 800, color: cor, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".03em" }}>{titulo}</div>
       {vazio ? (
-        <div style={{ fontSize: ".78rem", color: "var(--muted)" }}>Nenhum anúncio exige ação crítica neste período.</div>
+        <div style={{ fontSize: ".82rem", color: "var(--muted)" }}>Nenhum anúncio exige ação crítica neste período.</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{children}</div>
       )}
@@ -105,7 +105,7 @@ function LinhaBase({ l, onAbrir, children }: { l: LinhaAds; onAbrir: (itemId: st
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
         <span style={{ fontWeight: 700, fontSize: ".82rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.i.title || l.i.itemId}</span>
-        <span style={{ fontSize: ".68rem", color: "var(--muted)", whiteSpace: "nowrap" }}>{l.i.campaignName || "sem campanha"}</span>
+        <span style={{ fontSize: ".75rem", color: "var(--muted)", whiteSpace: "nowrap" }}>{l.i.campaignName || "sem campanha"}</span>
       </div>
       {children}
     </button>
@@ -117,10 +117,10 @@ function GrupoEscalar({ itens, onAbrir }: { itens: LinhaAds[]; onAbrir: (itemId:
     <Cartao titulo="Escalar com cautela" cor="var(--green)" vazio={itens.length === 0}>
       {itens.map((l) => (
         <LinhaBase key={l.i.itemId} l={l} onAbrir={onAbrir}>
-          <div style={{ fontSize: ".72rem", color: "var(--muted)", marginTop: 4 }}>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 4 }}>
             Investido {fmtBRL(l.i.cost)} · ROAS {num(l.r, 2)}x · lucro {fmtBRL(l.lucroAtual ?? 0)} · margem {num(l.margemAtual ?? 0, 1)}%
           </div>
-          <div style={{ fontSize: ".74rem", color: "var(--green)", marginTop: 4 }}>
+          <div style={{ fontSize: ".75rem", color: "var(--green)", marginTop: 4 }}>
             {l.breakEven != null
               ? `ROAS ${num(l.r, 2)}x está ${num(l.r / l.breakEven, 1)}x acima do ponto de equilíbrio (${num(l.breakEven, 2)}x) e a margem final é ${num(l.margemAtual ?? 0, 1)}%.`
               : `Margem final de ${num(l.margemAtual ?? 0, 1)}% com ROAS ${num(l.r, 2)}x.`}
@@ -136,10 +136,10 @@ function GrupoRevisar({ itens, onAbrir }: { itens: LinhaAds[]; onAbrir: (itemId:
     <Cartao titulo="Revisar ou reduzir" cor="var(--red)" vazio={itens.length === 0}>
       {itens.map((l) => (
         <LinhaBase key={l.i.itemId} l={l} onAbrir={onAbrir}>
-          <div style={{ fontSize: ".72rem", color: "var(--muted)", marginTop: 4 }}>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 4 }}>
             Impacto {fmtBRL(l.lucroAtual ?? -l.i.cost)} · ROAS {l.i.cost > 0 ? `${num(l.r, 2)}x` : "—"}{l.breakEven != null ? ` · break-even ${num(l.breakEven, 2)}x` : ""}
           </div>
-          <div style={{ fontSize: ".74rem", color: "var(--red)", marginTop: 4 }}>
+          <div style={{ fontSize: ".75rem", color: "var(--red)", marginTop: 4 }}>
             {l.breakEven != null && l.abaixoDoBreakEven
               ? `ROAS ${num(l.r, 2)}x abaixo do break-even de ${num(l.breakEven, 2)}x. Verificar preço, criativo, segmentação ou orçamento.`
               : l.lucroAtual != null && l.lucroAtual < 0
@@ -159,10 +159,10 @@ function GrupoSemRetorno({ itens, changelog, onAbrir }: { itens: LinhaAds[]; cha
         const ultima = ultimaAlteracao(changelog, l.i.campaignId);
         return (
           <LinhaBase key={l.i.itemId} l={l} onAbrir={onAbrir}>
-            <div style={{ fontSize: ".72rem", color: "var(--muted)", marginTop: 4 }}>
+            <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 4 }}>
               Gasto {fmtBRL(l.i.cost)} · {num(l.i.clicks)} clique(s) · CPC {fmtBRL(l.cpc)} · zero vendas atribuídas
             </div>
-            <div style={{ fontSize: ".72rem", color: "var(--warning)", marginTop: 4 }}>
+            <div style={{ fontSize: ".75rem", color: "var(--warning)", marginTop: 4 }}>
               {ultima ? `Último ajuste registrado: ${formatarResumoAlteracao(ultima)}` : "Nenhum ajuste manual registrado nesta campanha ainda."}
             </div>
           </LinhaBase>
@@ -177,7 +177,7 @@ function GrupoIncompleto({ itens, onAbrir }: { itens: LinhaAds[]; onAbrir: (item
     <Cartao titulo="Dados incompletos" cor="var(--muted)" vazio={itens.length === 0}>
       {itens.map((l) => (
         <LinhaBase key={l.i.itemId} l={l} onAbrir={onAbrir}>
-          <div style={{ fontSize: ".72rem", color: "var(--muted)", marginTop: 4 }}>{motivoIncompletoTexto(l)}</div>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 4 }}>{motivoIncompletoTexto(l)}</div>
         </LinhaBase>
       ))}
     </Cartao>

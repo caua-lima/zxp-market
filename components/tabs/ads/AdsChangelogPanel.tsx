@@ -239,19 +239,19 @@ export default function AdsChangelogPanel({
                 <div style={{ minWidth: 0 }}>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 4 }}>
                     <span style={{ fontWeight: 700, fontSize: ".86rem" }}>{e.productName}</span>
-                    <span style={{ fontSize: ".7rem", color: "var(--muted)", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "1px 7px" }}>
+                    <span style={{ fontSize: ".75rem", color: "var(--muted)", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "1px 7px" }}>
                       {e.campaignName}
                     </span>
                     {e.tipo && (
-                      <span style={{ fontSize: ".64rem", fontWeight: 700, color: "var(--brand)", background: "var(--brand-soft)", borderRadius: 6, padding: "1px 7px" }}>
+                      <span style={{ fontSize: ".75rem", fontWeight: 700, color: "var(--brand)", background: "var(--brand-soft)", borderRadius: 6, padding: "1px 7px" }}>
                         {ADS_ALTERACAO_TIPO_LABEL[e.tipo]}
                       </span>
                     )}
                   </div>
                   <div style={{ fontSize: ".84rem", color: "var(--text)" }}>{formatarResumoAlteracao(e)}</div>
-                  {e.motivo && <div style={{ fontSize: ".76rem", color: "var(--muted)", marginTop: 2 }}>Motivo: {e.motivo}</div>}
-                  {e.tipo && e.nota && e.nota !== formatarResumoAlteracao(e) && <div style={{ fontSize: ".76rem", color: "var(--muted)", marginTop: 2 }}>{e.nota}</div>}
-                  <div style={{ fontSize: ".7rem", color: "var(--muted)", marginTop: 4 }}>
+                  {e.motivo && <div style={{ fontSize: ".8rem", color: "var(--muted)", marginTop: 2 }}>Motivo: {e.motivo}</div>}
+                  {e.tipo && e.nota && e.nota !== formatarResumoAlteracao(e) && <div style={{ fontSize: ".8rem", color: "var(--muted)", marginTop: 2 }}>{e.nota}</div>}
+                  <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 4 }}>
                     {fmtQuando(e.createdAt)} · {e.createdByName || e.createdBy}
                   </div>
                 </div>

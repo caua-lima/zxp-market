@@ -69,7 +69,7 @@ export default function DayDetailModal({ date, onClose }: { date: string; onClos
 
             {dados.anuncios && dados.anuncios.length > 0 && (
               <div style={{ marginTop: 8 }}>
-                <div style={{ fontSize: ".78rem", color: "var(--text-secondary)", marginBottom: 6 }}>
+                <div style={{ fontSize: ".82rem", color: "var(--text-secondary)", marginBottom: 6 }}>
                   Anúncios do dia (pior lucro primeiro)
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 260, overflowY: "auto" }}>
@@ -91,7 +91,7 @@ export default function DayDetailModal({ date, onClose }: { date: string; onClos
                             {fmtBRL(a.lucro)}
                           </span>
                         </div>
-                        <div style={{ fontSize: ".72rem", color: "var(--text-secondary)" }}>
+                        <div style={{ fontSize: ".75rem", color: "var(--text-secondary)" }}>
                           {a.semVenda
                             ? "sem venda hoje — só ADS"
                             : `${a.qty} un · retorno ${fmtBRL(a.retorno)} · CMV ${fmtBRL(a.custoProduto)} · frete ${fmtBRL(a.envioFull)} · taxa ML ${fmtBRL(a.taxaML)} · imposto ${fmtBRL(a.imposto)} · ads ${fmtBRL(a.ads)} · margem ${a.margem.toFixed(1)}%`}

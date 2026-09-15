@@ -50,7 +50,7 @@ function BlocoUltimos60Dias() {
 
   if (!d.bloco) {
     return (
-      <div style={{ marginBottom: 12, fontSize: ".76rem", color: "var(--muted)" }}>
+      <div style={{ marginBottom: 12, fontSize: ".8rem", color: "var(--muted)" }}>
         Não consegui buscar as vendas dos últimos 60 dias agora. Os números não aparecem
         zerados de propósito — “não vendeu nada” e “não consegui perguntar” dizem coisas opostas
         sobre a reputação.
@@ -68,16 +68,16 @@ function BlocoUltimos60Dias() {
 
   return (
     <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 10, background: "var(--surface2)" }}>
-      <div style={{ fontSize: ".72rem", color: "var(--muted)", marginBottom: 8 }}>
+      <div style={{ fontSize: ".75rem", color: "var(--muted)", marginBottom: 8 }}>
         Vendas dos últimos 60 dias{d.de ? ` · de ${d.de.split("-").reverse().join("/")} até hoje` : ""} —
         é a janela que o Mercado Livre usa pra julgar sua reputação
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 10 }}>
         {itens.map((i) => (
           <div key={i.rotulo}>
-            <div style={{ fontSize: ".7rem", color: "var(--muted)" }}>{i.rotulo}</div>
+            <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>{i.rotulo}</div>
             <div style={{ fontSize: "1.05rem", fontWeight: 800 }}>{i.valor}</div>
-            {i.nota && <div style={{ fontSize: ".62rem", color: "var(--muted)" }}>{i.nota}</div>}
+            {i.nota && <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>{i.nota}</div>}
           </div>
         ))}
       </div>
@@ -158,14 +158,14 @@ export default function ReputacaoPanel({
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14, padding: "10px 14px", borderRadius: 10, background: "var(--surface2)" }}>
         <div>
-          <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Selo atual</div>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Selo atual</div>
           <div style={{ fontSize: "1.15rem", fontWeight: 800 }}>{selo}</div>
         </div>
         {proximo && (
           <>
             <span style={{ color: "var(--muted)" }}>→</span>
             <div>
-              <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Próximo degrau</div>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Próximo degrau</div>
               <div style={{ fontSize: ".95rem", fontWeight: 700, color: "var(--accent)" }}>{proximo}</div>
             </div>
           </>
@@ -174,16 +174,16 @@ export default function ReputacaoPanel({
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Vendas concluídas</div>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Vendas concluídas</div>
           <div style={{ fontSize: "1.05rem", fontWeight: 800 }}>{t?.completed ?? "—"}</div>
         </div>
         <div>
-          <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Vendas canceladas</div>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Vendas canceladas</div>
           <div style={{ fontSize: "1.05rem", fontWeight: 800, color: (t?.canceled ?? 0) > 0 ? "var(--red)" : undefined }}>{t?.canceled ?? "—"}</div>
         </div>
         {(positivas || negativas || neutras) && (
           <div>
-            <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Avaliações</div>
+            <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Avaliações</div>
             <div style={{ fontSize: ".85rem", fontWeight: 700 }}>
               {positivas && <span style={{ color: "var(--green)" }}>{positivas} pos</span>}
               {negativas && <span style={{ color: "var(--red)", marginLeft: 8 }}>{negativas} neg</span>}
@@ -195,7 +195,7 @@ export default function ReputacaoPanel({
 
       {linhasMetricas.length > 0 && (
         <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: ".76rem", color: "var(--muted)", marginBottom: 6 }}>
+          <div style={{ fontSize: ".8rem", color: "var(--muted)", marginBottom: 6 }}>
             Métricas que o Mercado Livre usa pra calcular seu nível:
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -216,7 +216,7 @@ export default function ReputacaoPanel({
                     {/* O teto é o que dá sentido à taxa: "0%" sozinho não diz
                         se 0,5% seria tranquilo ou já problema. */}
                     {lim && (
-                      <span style={{ display: "block", fontSize: ".68rem", color: "var(--muted)", fontWeight: 400 }}>
+                      <span style={{ display: "block", fontSize: ".75rem", color: "var(--muted)", fontWeight: 400 }}>
                         permitido até {lim.permitido}% · MercadoLíder exige até {lim.mercadoLider}%
                       </span>
                     )}
@@ -224,7 +224,7 @@ export default function ReputacaoPanel({
                   <span style={{ fontWeight: 700, whiteSpace: "nowrap", color: SITUACAO_COR[sit] }}>
                     {fmtPct01(entry?.rate) ?? "—"}
                     {sit === "atencao" && (
-                      <span style={{ display: "block", fontSize: ".64rem", fontWeight: 400 }}>
+                      <span style={{ display: "block", fontSize: ".75rem", fontWeight: 400 }}>
                         trava o MercadoLíder
                       </span>
                     )}
@@ -236,7 +236,7 @@ export default function ReputacaoPanel({
         </div>
       )}
 
-      <div style={{ fontSize: ".7rem", color: "var(--muted)", lineHeight: 1.5 }}>
+      <div style={{ fontSize: ".75rem", color: "var(--muted)", lineHeight: 1.5 }}>
         Ver o checklist completo de requisitos no painel &quot;O que falta pra ser MercadoLíder&quot; ao lado.
       </div>
     </div>

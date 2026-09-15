@@ -120,7 +120,7 @@ function Linha({ rotulo, valor, nota, tipo, base, tooltip, indisponivel }: Linha
               <span role="tooltip" className="pg-tooltip">{tooltip}</span>
             </span>
           )}
-          {nota && <div style={{ fontSize: ".7rem", color: "var(--muted)", marginTop: 1 }}>{nota}</div>}
+          {nota && <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 1 }}>{nota}</div>}
         </div>
       </div>
 
@@ -135,7 +135,7 @@ function Linha({ rotulo, valor, nota, tipo, base, tooltip, indisponivel }: Linha
       {/* % sobre a receita, com mini-barra para leitura rápida */}
       <div className="dre-pct" style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
         <span style={{
-          fontSize: ".72rem", color: ehSub ? "var(--text)" : "var(--muted)",
+          fontSize: ".75rem", color: ehSub ? "var(--text)" : "var(--muted)",
           whiteSpace: "nowrap", textAlign: "right", fontVariantNumeric: "tabular-nums",
           fontWeight: ehSub ? 700 : 400,
         }}>
@@ -158,7 +158,7 @@ function Linha({ rotulo, valor, nota, tipo, base, tooltip, indisponivel }: Linha
 function GrupoDre({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
-      fontSize: ".68rem", fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase",
+      fontSize: ".75rem", fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase",
       color: "var(--muted)", padding: "16px 12px 4px",
     }}>
       {children}
@@ -529,7 +529,7 @@ export default function DreTab() {
           <span className="panel-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
             Estado da apuração
             <span style={{
-              fontSize: ".7rem", fontWeight: 700, letterSpacing: ".03em", textTransform: "uppercase",
+              fontSize: ".75rem", fontWeight: 700, letterSpacing: ".03em", textTransform: "uppercase",
               color: corDoEstado(estado), border: `1px solid ${corDoEstado(estado)}`,
               borderRadius: 999, padding: "1px 8px",
             }}>
@@ -556,13 +556,13 @@ export default function DreTab() {
                     uma pendência" não dá.
                   */}
                   <span style={{
-                    fontSize: ".66rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em",
+                    fontSize: ".75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em",
                     color: p.efeito === "otimista" ? "var(--red)" : p.efeito === "pessimista" ? "var(--green)" : "var(--muted)",
                   }}>
                     {p.efeito === "indefinido" ? "efeito desconhecido" : `resultado ${p.efeito}`}
                   </span>
                 </div>
-                <div style={{ fontSize: ".76rem", color: "var(--muted)", lineHeight: 1.55, marginTop: 2 }}>
+                <div style={{ fontSize: ".8rem", color: "var(--muted)", lineHeight: 1.55, marginTop: 2 }}>
                   {p.detalhe}
                 </div>
               </li>
@@ -587,24 +587,24 @@ export default function DreTab() {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
             <div>
-              <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Repasse estimado</div>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Repasse estimado</div>
               <div style={{ fontSize: "1.05rem", fontWeight: 800 }}>{fmtBRL(metrics.reconc.nosso)}</div>
-              <div style={{ fontSize: ".68rem", color: "var(--muted)" }}>nossa conta: total − taxa ML − frete</div>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>nossa conta: total − taxa ML − frete</div>
             </div>
             <div>
-              <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Valor efetivamente recebido</div>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Valor efetivamente recebido</div>
               <div style={{ fontSize: "1.05rem", fontWeight: 800 }}>{fmtBRL(metrics.reconc.real)}</div>
-              <div style={{ fontSize: ".68rem", color: "var(--muted)" }}>o que o Mercado Pago liberou</div>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>o que o Mercado Pago liberou</div>
             </div>
             <div>
-              <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Diferença</div>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Diferença</div>
               <div style={{
                 fontSize: "1.05rem", fontWeight: 800,
                 color: conferencia.dentroDaTolerancia ? "var(--green)" : "var(--red)",
               }}>
                 {fmtBRL(Math.abs(conferencia.diferenca))}
               </div>
-              <div style={{ fontSize: ".68rem", color: "var(--muted)" }}>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>
                 {conferencia.podeAfirmarQueBate ? "confere no período" : "vale só nos pedidos já liberados"}
               </div>
             </div>
@@ -783,7 +783,7 @@ export default function DreTab() {
             Nenhuma despesa marcada como <b>Só na DRE</b> neste período. {podeCadastrarCusto
               ? <>Use <b>＋ Adicionar custo</b> aqui em cima — pró-labore, contador, retirada — e ele entra na DRE sem mexer no lucro que aparece no Dashboard.</>
               : <>Quem administra os custos pode cadastrar a despesa como <b>Despesa da empresa</b>, e ela passa a aparecer aqui.</>}
-            <div style={{ marginTop: 6, fontSize: ".78rem" }}>
+            <div style={{ marginTop: 6, fontSize: ".82rem" }}>
               Lembre que custo <b>mensal</b> só entra quando o período é um mês inteiro.
             </div>
           </div>

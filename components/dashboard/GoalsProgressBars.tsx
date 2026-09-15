@@ -30,7 +30,7 @@ function ProgressBar({
         style={{
           display: "flex",
           justifyContent: "space-between",
-          fontSize: ".78rem",
+          fontSize: ".82rem",
           marginBottom: 5,
         }}
       >

@@ -43,11 +43,11 @@ export default function AdsDataQuality({
           Qualidade dos dados: {getAdsDataQualityLabel(r.status)}
           {r.coveragePercent != null && <span style={{ fontWeight: 400, color: "var(--muted)" }}> · {num1(r.coveragePercent)}% do investimento conciliado</span>}
         </span>
-        <span style={{ fontSize: ".72rem", color: "var(--muted)" }}>{aberto ? "ocultar detalhes ▲" : "ver detalhes ▼"}</span>
+        <span style={{ fontSize: ".75rem", color: "var(--muted)" }}>{aberto ? "ocultar detalhes ▲" : "ver detalhes ▼"}</span>
       </button>
 
       {aberto && (
-        <div style={{ padding: "0 14px 12px", fontSize: ".78rem", color: "var(--text)", display: "grid", gap: 6 }}>
+        <div style={{ padding: "0 14px 12px", fontSize: ".82rem", color: "var(--text)", display: "grid", gap: 6 }}>
           <Item label="Investimento total coletado" valor={fmtBRL(r.investimentoTotal)} />
           <Item label="Investimento vinculado a anúncios/campanhas" valor={fmtBRL(r.investimentoVinculado)} />
           <Item

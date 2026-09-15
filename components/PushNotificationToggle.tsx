@@ -243,7 +243,7 @@ export function PushNotificationToggle() {
           )}
         </button>
         {error && (
-          <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, fontSize: ".68rem", color: "var(--red)", width: 220, textAlign: "right", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px", zIndex: 20 }}>
+          <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, fontSize: ".75rem", color: "var(--red)", width: 220, textAlign: "right", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px", zIndex: 20 }}>
             {error}
           </div>
         )}
@@ -284,13 +284,13 @@ export function PushNotificationToggle() {
               {enviando === "sale_paid" ? "Enviando…" : "🔔 Testar agora"}
             </button>
             {status !== "on" && (
-              <div style={{ fontSize: ".76rem", color: "var(--warning)", lineHeight: 1.4 }}>
+              <div style={{ fontSize: ".8rem", color: "var(--warning)", lineHeight: 1.4 }}>
                 Este aparelho ainda não está com notificações ativas — o teste roda mesmo assim
                 e mostra o motivo exato se não chegar.
               </div>
             )}
 
-            <div style={{ fontSize: ".7rem", fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase", color: "var(--muted)", marginTop: 8 }}>
+            <div style={{ fontSize: ".75rem", fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase", color: "var(--muted)", marginTop: 8 }}>
               Outros cenários
             </div>
             {CENARIOS.map((c) => (
@@ -371,7 +371,7 @@ export function PushNotificationToggle() {
                   Depois repita o teste.
                 </div>
               )}
-              {resultado.horario && <div style={{ color: "var(--muted)", fontSize: ".76rem", marginTop: 8 }}>{new Date(resultado.horario).toLocaleTimeString("pt-BR")}</div>}
+              {resultado.horario && <div style={{ color: "var(--muted)", fontSize: ".8rem", marginTop: 8 }}>{new Date(resultado.horario).toLocaleTimeString("pt-BR")}</div>}
             </div>
           ) : (
             <div style={{ fontSize: ".88rem", color: "var(--red)", lineHeight: 1.6 }}>Falha ao enviar: {resultado.error}</div>
@@ -401,11 +401,11 @@ export function PushNotificationToggle() {
           </div>
           {diagnostico.bruto != null && (
             <details style={{ marginTop: 12 }}>
-              <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: ".78rem" }}>
+              <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: ".82rem" }}>
                 Dados completos (pra copiar num relato)
               </summary>
               <pre style={{
-                marginTop: 8, maxHeight: 260, overflow: "auto", fontSize: ".68rem",
+                marginTop: 8, maxHeight: 260, overflow: "auto", fontSize: ".75rem",
                 background: "var(--surface)", padding: 10, borderRadius: 8, whiteSpace: "pre-wrap", wordBreak: "break-word",
               }}>
                 {JSON.stringify(diagnostico.bruto, null, 2)}

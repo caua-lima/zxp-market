@@ -75,7 +75,7 @@ export function MLConnectButton({ aviso }: { aviso?: string | null } = {}) {
           background: "var(--surface2)",
           border: "1px solid var(--border)",
           color: "var(--muted)",
-          fontSize: ".78rem",
+          fontSize: ".82rem",
         }}
       >
         ⏳ Verificando ML...
@@ -95,7 +95,7 @@ export function MLConnectButton({ aviso }: { aviso?: string | null } = {}) {
           background: "var(--green)",
           color: "#fff",
           fontWeight: 600,
-          fontSize: ".78rem",
+          fontSize: ".82rem",
         }}
       >
         ✅ ML conectado
@@ -116,7 +116,7 @@ export function MLConnectButton({ aviso }: { aviso?: string | null } = {}) {
         background: connecting ? "var(--surface2)" : "var(--brand)",
         color: connecting ? "var(--muted)" : "#10100E",
         fontWeight: 700,
-        fontSize: ".78rem",
+        fontSize: ".82rem",
         padding: "5px 12px",
         borderRadius: 8,
         border: connecting ? "1px solid var(--border)" : "none",
@@ -128,7 +128,7 @@ export function MLConnectButton({ aviso }: { aviso?: string | null } = {}) {
       {connecting ? '⏳ Conectando...' : '🛒 Conectar ML'}
     </button>
     {error && (
-      <span style={{ color: "var(--red)", fontSize: ".72rem", maxWidth: 220 }}>{error}</span>
+      <span style={{ color: "var(--red)", fontSize: ".75rem", maxWidth: 220 }}>{error}</span>
     )}
     </span>
   );

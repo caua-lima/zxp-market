@@ -211,7 +211,7 @@ export default function ApresentacaoDre({ dados, anterior, periodo, geradoEm, on
           <Marca tamanho={26} />
           <div>
             <div style={{ fontWeight: 700, fontSize: ".9rem" }}>Fechamento de {periodo}</div>
-            <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>
+            <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>
               4 páginas · A4 deitado · no diálogo, escolha <b>Salvar como PDF</b>
             </div>
           </div>

@@ -105,7 +105,7 @@ export default function EstoqueRetidoFull({
               >
                 <span style={{ fontSize: ".84rem", fontWeight: 600 }}>
                   {t.label}
-                  <span style={{ display: "block", fontSize: ".7rem", fontWeight: 400, color: "var(--muted)" }}>
+                  <span style={{ display: "block", fontSize: ".75rem", fontWeight: 400, color: "var(--muted)" }}>
                     {t.acao}
                   </span>
                 </span>
@@ -118,7 +118,7 @@ export default function EstoqueRetidoFull({
 
       {dados.porProduto.length > 0 && (
         <details>
-          <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: ".78rem" }}>
+          <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: ".82rem" }}>
             Ver por produto ({dados.porProduto.length})
           </summary>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
@@ -128,7 +128,7 @@ export default function EstoqueRetidoFull({
                   <span>{p.nome || `Pool ${p.inventory}`}</span>
                   <span style={{ whiteSpace: "nowrap" }}>{p.indisponivel} un retida(s)</span>
                 </div>
-                <div style={{ fontSize: ".7rem", color: "var(--muted)", marginTop: 2 }}>
+                <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 2 }}>
                   {p.disponivel} un à venda ·{" "}
                   {p.porStatus.map((s) => `${traduzirStatusIndisponivel(s.status).label}: ${s.qtd}`).join(" · ")}
                 </div>
@@ -141,7 +141,7 @@ export default function EstoqueRetidoFull({
       {/* Cobertura parcial precisa aparecer: sem isto, "0 retido" seria
           indistinguível de "não consegui perguntar ao ML". */}
       {incompleto && (
-        <div style={{ marginTop: 10, fontSize: ".72rem", color: "var(--warning)", lineHeight: 1.5 }}>
+        <div style={{ marginTop: 10, fontSize: ".75rem", color: "var(--warning)", lineHeight: 1.5 }}>
           Leitura parcial: {dados.poolsConsultados} pool(s) consultado(s)
           {dados.poolsFalharam > 0 && `, ${dados.poolsFalharam} não respondeu(ram)`}
           {dados.poolsForaDoTeto > 0 && `, ${dados.poolsForaDoTeto} fora do teto de consultas`}.

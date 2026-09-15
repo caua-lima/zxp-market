@@ -41,7 +41,7 @@ export function AdsStatusQuickFilters({
             key={s} type="button" title={`Filtrar: só ${m.label.toLowerCase()}`}
             onClick={() => setStatusFiltro(ativo ? "" : s)}
             style={{
-              fontSize: ".68rem", fontWeight: 700, color: m.cor, background: m.bg, padding: "1px 7px",
+              fontSize: ".75rem", fontWeight: 700, color: m.cor, background: m.bg, padding: "1px 7px",
               borderRadius: 5, border: ativo ? `1px solid ${m.cor}` : "1px solid transparent", cursor: "pointer",
             }}
           >
@@ -56,7 +56,7 @@ export function AdsStatusQuickFilters({
           <button
             key={f} type="button" onClick={() => setLucroFiltro(ativo ? "" : f)}
             style={{
-              fontSize: ".68rem", fontWeight: 700, color: cor, background: "transparent", padding: "1px 7px",
+              fontSize: ".75rem", fontWeight: 700, color: cor, background: "transparent", padding: "1px 7px",
               borderRadius: 5, border: `1px solid ${ativo ? cor : "var(--border)"}`, cursor: "pointer",
             }}
           >
@@ -65,7 +65,7 @@ export function AdsStatusQuickFilters({
         );
       })}
       {(statusFiltro || lucroFiltro) && (
-        <button type="button" onClick={() => { setStatusFiltro(""); setLucroFiltro(""); }} style={{ fontSize: ".68rem", color: "var(--muted)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
+        <button type="button" onClick={() => { setStatusFiltro(""); setLucroFiltro(""); }} style={{ fontSize: ".75rem", color: "var(--muted)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
           limpar filtro
         </button>
       )}
@@ -74,24 +74,24 @@ export function AdsStatusQuickFilters({
 }
 
 export default function AdsFilters({ modo, f }: { modo: Modo; f: FiltrosAdsState }) {
-  const inputStyle = { background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "5px 8px", color: "var(--text)", fontSize: ".78rem", outline: "none" };
+  const inputStyle = { background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "5px 8px", color: "var(--text)", fontSize: ".82rem", outline: "none" };
   return (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
       <input
         type="text" placeholder="Buscar produto…" value={f.busca} onChange={(e) => f.setBusca(e.target.value)}
         style={{ ...inputStyle, minWidth: 160, padding: "5px 10px" }}
       />
-      <span style={{ fontSize: ".72rem", color: "var(--muted)", fontWeight: 600 }}>ROAS:</span>
+      <span style={{ fontSize: ".75rem", color: "var(--muted)", fontWeight: 600 }}>ROAS:</span>
       <input type="number" inputMode="decimal" placeholder="mín." value={f.roasMin} onChange={(e) => f.setRoasMin(e.target.value)} style={{ ...inputStyle, width: 64 }} />
       <span style={{ color: "var(--muted)" }}>–</span>
       <input type="number" inputMode="decimal" placeholder="máx." value={f.roasMax} onChange={(e) => f.setRoasMax(e.target.value)} style={{ ...inputStyle, width: 64 }} />
 
-      <span style={{ fontSize: ".72rem", color: "var(--muted)", fontWeight: 600, marginLeft: 6 }}>{modo === "pub" ? "ACOS" : "TACOS"} %:</span>
+      <span style={{ fontSize: ".75rem", color: "var(--muted)", fontWeight: 600, marginLeft: 6 }}>{modo === "pub" ? "ACOS" : "TACOS"} %:</span>
       <input type="number" inputMode="decimal" placeholder="mín." value={f.acosMin} onChange={(e) => f.setAcosMin(e.target.value)} style={{ ...inputStyle, width: 64 }} />
       <span style={{ color: "var(--muted)" }}>–</span>
       <input type="number" inputMode="decimal" placeholder="máx." value={f.acosMax} onChange={(e) => f.setAcosMax(e.target.value)} style={{ ...inputStyle, width: 64 }} />
 
-      <span style={{ fontSize: ".72rem", color: "var(--muted)", fontWeight: 600, marginLeft: 6 }}>Investido R$:</span>
+      <span style={{ fontSize: ".75rem", color: "var(--muted)", fontWeight: 600, marginLeft: 6 }}>Investido R$:</span>
       <input type="number" inputMode="decimal" placeholder="mín." value={f.investMin} onChange={(e) => f.setInvestMin(e.target.value)} style={{ ...inputStyle, width: 74 }} />
       <span style={{ color: "var(--muted)" }}>–</span>
       <input type="number" inputMode="decimal" placeholder="máx." value={f.investMax} onChange={(e) => f.setInvestMax(e.target.value)} style={{ ...inputStyle, width: 74 }} />

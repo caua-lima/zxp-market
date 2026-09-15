@@ -82,7 +82,7 @@ export default function MudancasPanel() {
           {carregando ? "carregando…" : `${resumo.total.toLocaleString("pt-BR")} publicadas`}
         </span>
       </div>
-      <div style={{ fontSize: ".78rem", color: "var(--muted)", marginBottom: 14 }}>
+      <div style={{ fontSize: ".82rem", color: "var(--muted)", marginBottom: 14 }}>
         Cada linha é uma mudança que entrou no ar, com data e hora. Enquanto a trilha
         de auditoria registra o que se mexe nos <b>dados</b>, esta lista registra o que
         se mexe no <b>sistema</b> — a correção de um número, uma tela nova, um teste que
@@ -101,7 +101,7 @@ export default function MudancasPanel() {
             : <>Verifique se o repositório <code>{dados.repo ?? "—"}</code> existe e está
               acessível.</>}
           {dados.detalhe && (
-            <div style={{ marginTop: 6, fontFamily: "ui-monospace, monospace", fontSize: ".7rem", overflowWrap: "anywhere" }}>
+            <div style={{ marginTop: 6, fontFamily: "ui-monospace, monospace", fontSize: ".75rem", overflowWrap: "anywhere" }}>
               {dados.detalhe}
             </div>
           )}
@@ -176,10 +176,10 @@ export default function MudancasPanel() {
                   display: "flex", justifyContent: "space-between", alignItems: "baseline",
                   gap: 8, marginBottom: 5, paddingBottom: 4, borderBottom: "1px solid var(--border)",
                 }}>
-                  <span style={{ fontSize: ".78rem", fontWeight: 700, textTransform: "capitalize" }}>
+                  <span style={{ fontSize: ".82rem", fontWeight: 700, textTransform: "capitalize" }}>
                     {diaPorExtenso(d.dia)}
                   </span>
-                  <span style={{ fontSize: ".7rem", color: "var(--muted)", whiteSpace: "nowrap" }}>
+                  <span style={{ fontSize: ".75rem", color: "var(--muted)", whiteSpace: "nowrap" }}>
                     {d.mudancas.length} mudança(s)
                   </span>
                 </div>
@@ -196,7 +196,7 @@ export default function MudancasPanel() {
                         </span>
                         <span style={{ fontSize: ".85rem", flex: 1, minWidth: 200 }}>{m.descricao}</span>
                       </div>
-                      <div style={{ marginTop: 3, fontSize: ".74rem", color: "var(--muted)" }}>
+                      <div style={{ marginTop: 3, fontSize: ".75rem", color: "var(--muted)" }}>
                         {m.hora || "—"}
                         {m.escopo ? ` · ${m.escopo}` : ""}
                         {` · ${m.autor}`}
@@ -226,7 +226,7 @@ export default function MudancasPanel() {
           )}
 
           {dados?.truncado && (
-            <div style={{ marginTop: 10, fontSize: ".72rem", color: "var(--muted)" }}>
+            <div style={{ marginTop: 10, fontSize: ".75rem", color: "var(--muted)" }}>
               A lista mostra as mudanças mais recentes. Há outras, mais antigas, além do que
               a consulta alcança de uma vez.
             </div>

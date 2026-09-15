@@ -58,14 +58,14 @@ export default function HeatmapVendas({ heatmap, from, to }: { heatmap: Resultad
             <tr>
               <th></th>
               {Array.from({ length: 24 }, (_, h) => (
-                <th key={h} style={{ fontSize: ".6rem", color: "var(--muted)", fontWeight: 400, padding: "0 2px" }}>{h}</th>
+                <th key={h} style={{ fontSize: ".75rem", color: "var(--muted)", fontWeight: 400, padding: "0 2px" }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {ORDEM_DIAS.map((wd) => (
               <tr key={wd}>
-                <td style={{ fontSize: ".72rem", color: "var(--muted)", paddingRight: 8, whiteSpace: "nowrap", textAlign: "right" }}>{DIAS_SEMANA[wd].slice(0, 3)}</td>
+                <td style={{ fontSize: ".75rem", color: "var(--muted)", paddingRight: 8, whiteSpace: "nowrap", textAlign: "right" }}>{DIAS_SEMANA[wd].slice(0, 3)}</td>
                 {heatmap.grid[wd].map((v, h) => {
                   const { cor, tamanho } = intensidade(v, maxCelula);
                   return (

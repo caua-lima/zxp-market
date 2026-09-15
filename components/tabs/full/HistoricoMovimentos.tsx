@@ -133,7 +133,7 @@ export default function HistoricoMovimentos({ movimentos, products }: { moviment
                     <td data-label="Obs" style={{ textAlign: "left", color: "var(--muted)", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {m.obs || "—"}
                       {m.updatedAt && (
-                        <span title={`Corrigido${m.updatedBy ? ` por ${m.updatedBy}` : ""}`} style={{ marginLeft: 6, fontSize: ".65rem", color: "var(--warning)", fontWeight: 700 }}>
+                        <span title={`Corrigido${m.updatedBy ? ` por ${m.updatedBy}` : ""}`} style={{ marginLeft: 6, fontSize: ".75rem", color: "var(--warning)", fontWeight: 700 }}>
                           · editado
                         </span>
                       )}
@@ -219,7 +219,7 @@ function EditarMovimentoModal({
           <input type="number" inputMode="numeric" value={qtd} onChange={(e) => setQtd(e.target.value)} />
         </div>
       ) : (
-        <div className="note" style={{ fontSize: ".78rem", lineHeight: 1.5, marginBottom: 12 }}>
+        <div className="note" style={{ fontSize: ".82rem", lineHeight: 1.5, marginBottom: 12 }}>
           Quantidade e custo de <b>{TIPO_MOVIMENTO_LABEL[mov.tipo]}</b> não são editáveis aqui: eles já entraram no
           cálculo do custo médio no momento em que foram lançados, e mudar o número agora não refaz essa conta —
           só sobrescreveria o valor sem corrigir o que já foi apurado com ele. Pra corrigir de verdade,{" "}

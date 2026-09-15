@@ -72,7 +72,7 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
               <tr key={c.campaignId}>
                 <td style={{ textAlign: "left", fontWeight: 600 }}>
                   {rotuloCampanha(c.campaignName)}
-                  <span style={{ display: "block", fontSize: ".68rem", color: "var(--muted)", fontWeight: 400 }}>
+                  <span style={{ display: "block", fontSize: ".75rem", color: "var(--muted)", fontWeight: 400 }}>
                     {c.anuncios} anúncio(s) · {num(c.clicks)} cliques
                     {/* Um anúncio desta campanha roda em outra também. A marca
                         fica no nome, junto do "≈" das colunas de lucro e margem —
@@ -103,7 +103,7 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
                   {c.roas != null ? `${num(c.roas, 2)}x` : "—"}
                   {c.roasMlAds != null && c.roas != null && Math.abs(c.roasMlAds - c.roas) > 0.01 && (
                     <span
-                      style={{ display: "block", fontSize: ".66rem", fontWeight: 400, color: "var(--muted)" }}
+                      style={{ display: "block", fontSize: ".75rem", fontWeight: 400, color: "var(--muted)" }}
                       title={`No Mercado Ads esta campanha aparece com ROAS ${num(c.roasMlAds, 2)}x, porque lá a conta usa a receita atribuída TOTAL (${fmtBRL(c.receitaAtribuida)}: clique direto + venda assistida). Aqui a base é ${fmtBRL(c.receita)}. Os dois estão certos e respondem perguntas diferentes.`}
                     >
                       ML: {num(c.roasMlAds, 2)}x
@@ -127,7 +127,7 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
                       {fmtBRL(c.lucroAposAds)}
                     </span>
                   ) : (
-                    <span style={{ fontWeight: 400, fontSize: ".7rem", whiteSpace: "normal", display: "inline-block", maxWidth: 190 }}>
+                    <span style={{ fontWeight: 400, fontSize: ".75rem", whiteSpace: "normal", display: "inline-block", maxWidth: 190 }}>
                       {c.motivoSemLucro ?? "—"}
                     </span>
                   )}
@@ -147,7 +147,7 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
                        gastou e nao vendeu —, por isso motivo proprio. */
                     <span
                       title={c.motivoSemMargem ?? undefined}
-                      style={{ fontWeight: 400, fontSize: ".7rem", whiteSpace: "normal", display: "inline-block", maxWidth: 190 }}
+                      style={{ fontWeight: 400, fontSize: ".75rem", whiteSpace: "normal", display: "inline-block", maxWidth: 190 }}
                     >
                       {c.motivoSemMargem ?? "—"}
                     </span>

@@ -51,7 +51,7 @@ export default function ManutencaoPanel() {
   return (
     <div className="card" style={{ marginTop: 16 }}>
       <h3 style={{ margin: "0 0 4px", fontSize: ".95rem" }}>Manutenção</h3>
-      <p style={{ margin: "0 0 12px", fontSize: ".78rem", color: "var(--muted)" }}>
+      <p style={{ margin: "0 0 12px", fontSize: ".82rem", color: "var(--muted)" }}>
         Rotinas que rodam uma vez, sob demanda. Nenhuma apaga nada.
       </p>
 
@@ -72,13 +72,13 @@ export default function ManutencaoPanel() {
         </button>
 
         {espelho.tipo === "fim" && (
-          <span style={{ fontSize: ".78rem", color: espelho.erro ? "var(--red)" : "var(--green)" }}>
+          <span style={{ fontSize: ".82rem", color: espelho.erro ? "var(--red)" : "var(--green)" }}>
             {espelho.erro ? "✕" : "✓"} {espelho.texto}
           </span>
         )}
       </div>
 
-      <p style={{ margin: "8px 0 0", fontSize: ".72rem", color: "var(--muted)", maxWidth: 620 }}>
+      <p style={{ margin: "8px 0 0", fontSize: ".75rem", color: "var(--muted)", maxWidth: 620 }}>
         {/*
           As regras do Firestore são por DOCUMENTO: não dá pra liberar um aviso
           e esconder lucro e margem dentro dele. Por isso cada aviso novo passa

@@ -72,12 +72,12 @@ export default function AdsFunnel({
                 opacity: e.indisponivel ? 0.55 : 1,
               }}
             >
-              <div style={{ fontSize: ".68rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".03em" }}>{e.label}</div>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".03em" }}>{e.label}</div>
               <div style={{ fontSize: "1.05rem", fontWeight: 800, color: e.indisponivel ? "var(--muted)" : "var(--text)", marginTop: 2 }}>
                 {e.indisponivel ? "não disponível" : e.valor}
               </div>
               {e.taxa && !e.indisponivel && (
-                <div style={{ fontSize: ".7rem", color: "var(--accent,#5b9bd5)", fontWeight: 600, marginTop: 2 }}>{e.taxa}</div>
+                <div style={{ fontSize: ".75rem", color: "var(--accent,#5b9bd5)", fontWeight: 600, marginTop: 2 }}>{e.taxa}</div>
               )}
             </div>
             {idx < etapas.length - 1 && (

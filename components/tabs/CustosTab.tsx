@@ -314,7 +314,7 @@ function GrupoCustos({ escopo, custos, total, canEdit, onNovo, onEditar, onArqui
         <span className="panel-title">{escopo === "dash" ? "Custos da operação" : "Despesas da empresa"}</span>
         <span className="panel-sub">{fmtBRL(total)} no mês</span>
       </div>
-      <div style={{ fontSize: ".78rem", color: "var(--muted)", marginBottom: 12 }}>{meta.explica}</div>
+      <div style={{ fontSize: ".82rem", color: "var(--muted)", marginBottom: 12 }}>{meta.explica}</div>
 
       {custos.length === 0 ? (
         <div style={{ fontSize: ".84rem", color: "var(--muted)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -353,7 +353,7 @@ function LinhaCusto({ custo: c, canEdit, onEditar, onArquivar, onExcluir }: {
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
         <div style={{ minWidth: 0, flex: "1 1 220px" }}>
           <div style={{ fontWeight: 700, overflowWrap: "anywhere" }}>{c.nome || "(sem nome)"}</div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4, fontSize: ".72rem", color: "var(--muted)" }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4, fontSize: ".75rem", color: "var(--muted)" }}>
             <span className="chip">{FREQUENCIA_META[c.freq]?.rotulo ?? c.freq}</span>
             {c.categoria && <span className="chip">{COST_CATEGORIA_LABEL[c.categoria]}</span>}
             {c.centroCusto && <span>{c.centroCusto}</span>}
@@ -363,9 +363,9 @@ function LinhaCusto({ custo: c, canEdit, onEditar, onArquivar, onExcluir }: {
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           <div style={{ fontWeight: 800, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
             {fmtBRL(parseBRNumber(c.valor))}{" "}
-            <span style={{ fontWeight: 400, fontSize: ".74rem", color: "var(--muted)" }}>{sufixoDaFrequencia(c)}</span>
+            <span style={{ fontWeight: 400, fontSize: ".75rem", color: "var(--muted)" }}>{sufixoDaFrequencia(c)}</span>
           </div>
-          <div style={{ fontSize: ".74rem", color: arquivado ? "var(--muted)" : "var(--red)", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: ".75rem", color: arquivado ? "var(--muted)" : "var(--red)", whiteSpace: "nowrap" }}>
             {arquivado ? "arquivado — não conta" : `pesa ${fmtBRL(peso)} no mês`}
           </div>
         </div>

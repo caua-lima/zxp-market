@@ -175,7 +175,7 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
         nao veio.
       */}
       {falhou && !carregando && (
-        <div className="note note-accent" style={{ marginBottom: 10, fontSize: ".78rem" }}>
+        <div className="note note-accent" style={{ marginBottom: 10, fontSize: ".82rem" }}>
           Nao consegui buscar as vendas da janela agora. Os numeros abaixo estao
           vazios por falta de resposta, nao por falta de venda — recarregue em instantes.
         </div>
@@ -188,7 +188,7 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
           oposta (girar volume × subir margem). */}
       {p && (
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: ".72rem", color: "var(--muted)", marginBottom: 8 }}>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)", marginBottom: 8 }}>
             O Mercado Livre mede os 3 meses mais os dias do mês vigente —{" "}
             <b>{dataBR(janela.de)} a {dataBR(janela.ate)}</b> ({janela.dias} dias).
             {carregando && " Carregando…"}
@@ -224,7 +224,7 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
                     : fmtBRL(p.faturamento.falta)}
                 </b>{" "}
                 no que está mais atrasado.
-<div style={{ color: "var(--muted)", fontSize: ".76rem", marginTop: 2 }}>
+<div style={{ color: "var(--muted)", fontSize: ".8rem", marginTop: 2 }}>
                   Ritmo de {p.vendasPorDia.toFixed(1)} venda(s)/dia e {fmtBRL(p.faturamentoPorDia)}/dia.
                   {/*
                     A data vem da SIMULAÇÃO da janela móvel, não de uma divisão.
@@ -251,7 +251,7 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
                     ingênua — dizer o número evita a pergunta "por que demorou
                     mais do que eu calculei?". */}
                 {projecao?.tipo === "chega" && projecao.atravessaViradaDeMes && (
-                  <div style={{ color: "var(--muted)", fontSize: ".72rem", marginTop: 4 }}>
+                  <div style={{ color: "var(--muted)", fontSize: ".75rem", marginTop: 4 }}>
                     Considera que {projecao.vendasQueSaem.toLocaleString("pt-BR")} venda(s) e{" "}
                     {fmtBRL(projecao.faturamentoQueSai)} saem da janela até lá — a janela anda com o mês.
                   </div>
@@ -259,7 +259,7 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
                 {/* Os dois eixos avançam juntos, mas a projeção segue o pior:
                     prometer a data do eixo adiantado erraria sempre pra menos. */}
                 {p.vendas.ok !== p.faturamento.ok && (
-                  <div style={{ color: "var(--muted)", fontSize: ".72rem", marginTop: 4 }}>
+                  <div style={{ color: "var(--muted)", fontSize: ".75rem", marginTop: 4 }}>
                     {p.gargalo === "vendas"
                       ? "O faturamento já fechou — o que trava é a contagem de vendas. Girar volume vale mais aqui que subir preço."
                       : "As vendas já fecharam — o que trava é o faturamento. Aqui ticket e mix pesam mais que volume."}
@@ -281,7 +281,7 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
         vem com o proprio `period` na resposta, e e ele que a tela mostra.
       */}
       <div style={{ borderTop: p ? "1px solid var(--border)" : "none", paddingTop: p ? 12 : 0 }}>
-        <div style={{ fontSize: ".72rem", color: "var(--muted)", marginBottom: 6 }}>
+        <div style={{ fontSize: ".75rem", color: "var(--muted)", marginBottom: 6 }}>
           Qualidade — {janelaDaQualidade} · base de {vendasReputacao} vendas concluídas
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -292,7 +292,7 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
                   {q.ok === false ? "✕" : q.ok ? "✓" : "—"}
                 </span>{" "}
                 {q.label}
-                <span style={{ color: "var(--muted)", fontSize: ".72rem" }}>
+                <span style={{ color: "var(--muted)", fontSize: ".75rem" }}>
                   {" "}· limite {(q.limite * 100).toFixed(q.limite < 0.01 ? 1 : 0)}%
                 </span>
               </span>
@@ -302,7 +302,7 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
                     `excluded`. A tela mostra o real — a protecao acaba numa
                     data, e o zero so adia a noticia. */}
                 {q.protegida && (
-                  <span style={{ color: "var(--warning)", fontSize: ".68rem" }} title="Valor real; a proteção de reputação está escondendo este número no painel do ML">
+                  <span style={{ color: "var(--warning)", fontSize: ".75rem" }} title="Valor real; a proteção de reputação está escondendo este número no painel do ML">
                     {" "}(protegida)
                   </span>
                 )}
@@ -310,7 +310,7 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
                 {/* A folga em CASOS é o que dá pra agir: "0,22%" não diz se
                     está perto do limite; "cabem mais 54" diz. */}
                 {q.folgaEmCasos != null ? (
-                  <div style={{ fontSize: ".68rem", color: "var(--muted)" }}>
+                  <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>
                     cabem mais {q.folgaEmCasos}
                   </div>
                 ) : q.taxa != null && (
@@ -322,7 +322,7 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
                     algum caso. Antes a tela usava o total pras tres metricas e
                     mostrava um numero que nao correspondia a nada.
                   */
-                  <div style={{ fontSize: ".68rem", color: "var(--muted)" }} title="A base desta métrica não vem na resposta do ML">
+                  <div style={{ fontSize: ".75rem", color: "var(--muted)" }} title="A base desta métrica não vem na resposta do ML">
                     sem base pra converter em casos
                   </div>
                 )}
@@ -337,18 +337,18 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
           faturamento, por que não subi?". Sem eles a tela responderia só
           metade da pergunta. */}
       <details style={{ marginTop: 12 }}>
-        <summary style={{ cursor: "pointer", fontSize: ".78rem", color: "var(--muted)" }}>
+        <summary style={{ cursor: "pointer", fontSize: ".82rem", color: "var(--muted)" }}>
           Requisitos que valem pra qualquer medalha ({REQUISITOS_COMUNS.length})
         </summary>
         <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
           {REQUISITOS_COMUNS.map((r) => (
-            <div key={r.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: ".78rem" }}>
+            <div key={r.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: ".82rem" }}>
               <span>{r.label}</span>
               <span style={{ color: "var(--muted)", textAlign: "right", whiteSpace: "nowrap" }}>{r.exigencia}</span>
             </div>
           ))}
         </div>
-        <div style={{ fontSize: ".7rem", color: "var(--muted)", marginTop: 8 }}>
+        <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 8 }}>
           Fonte: página oficial &quot;Tudo sobre ser MercadoLíder&quot; do Mercado Livre, lida em 07/09/2026.
           O faturamento do critério não conta vendas vindas de anúncios Grátis.
         </div>
@@ -377,7 +377,7 @@ function BarraEixo({ titulo, eixo, formato, gargalo }: {
           {titulo}
           {gargalo && (
             <span
-              className="chip chip-muted" style={{ marginLeft: 6, fontSize: ".62rem" }}
+              className="chip chip-muted" style={{ marginLeft: 6, fontSize: ".75rem" }}
               title="É o eixo mais atrasado — é ele que está segurando a medalha."
             >
               trava aqui
@@ -395,7 +395,7 @@ function BarraEixo({ titulo, eixo, formato, gargalo }: {
           background: eixo.ok ? "var(--green)" : gargalo ? "var(--warning)" : "var(--accent)",
         }} />
       </div>
-      <div style={{ fontSize: ".7rem", color: "var(--muted)" }}>
+      <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>
         {eixo.ok ? "critério fechado" : `${eixo.pct.toFixed(0)}% · faltam ${formato(eixo.falta)}`}
       </div>
     </div>

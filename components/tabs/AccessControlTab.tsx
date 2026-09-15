@@ -289,7 +289,7 @@ export default function AccessControlTab({
               <button type="button" className="btn btn-ghost btn-sm" onClick={resetForm}>Cancelar edição</button>
             ) : null}
           </div>
-          <div style={{ fontSize: ".78rem", color: "var(--muted)", marginBottom: 14 }}>
+          <div style={{ fontSize: ".82rem", color: "var(--muted)", marginBottom: 14 }}>
             Autorize por e-mail. A pessoa entra por Google ou, se definir uma senha, por e-mail/senha.
           </div>
 
@@ -335,7 +335,7 @@ export default function AccessControlTab({
                   style={{
                     position: "absolute", right: 6, background: "none", border: "none",
                     color: password ? "var(--accent, #6aa9ff)" : "var(--muted)",
-                    cursor: password ? "pointer" : "default", fontSize: ".72rem",
+                    cursor: password ? "pointer" : "default", fontSize: ".75rem",
                     fontWeight: 700, padding: "4px 6px", textTransform: "uppercase", letterSpacing: ".04em",
                   }}
                 >
@@ -410,7 +410,7 @@ export default function AccessControlTab({
                 {editingEmail ? "Salvar alterações" : "＋ Adicionar e-mail"}
               </button>
               <button type="button" className="btn btn-ghost" onClick={resetForm}>Limpar</button>
-              {!canEdit && <span style={{ fontSize: ".78rem", color: "var(--muted)", alignSelf: "center" }}>somente leitura</span>}
+              {!canEdit && <span style={{ fontSize: ".82rem", color: "var(--muted)", alignSelf: "center" }}>somente leitura</span>}
             </div>
           </div>
         </div>
@@ -442,7 +442,7 @@ export default function AccessControlTab({
                       <div style={{ fontSize: ".82rem", color: "var(--text)", overflowWrap: "anywhere", marginTop: 2 }}>
                         {entry.email}
                       </div>
-                      <div style={{ marginTop: 3, fontSize: ".76rem", color: "var(--muted)" }}>
+                      <div style={{ marginTop: 3, fontSize: ".8rem", color: "var(--muted)" }}>
                         {alcanceDoPapel(entry.role)}
                         {papelDe(entry.role) === "partner" && entry.permissoesEdicao?.length
                           ? ` · edita ${entry.permissoesEdicao.map((t) => PERMISSION_TAB_LABEL[t]).join(", ")}`
@@ -476,7 +476,7 @@ export default function AccessControlTab({
             <span className="panel-title">Trilha de auditoria</span>
             <span className="panel-sub">últimas {auditLog.length} ações</span>
           </div>
-          <div style={{ fontSize: ".78rem", color: "var(--muted)", marginBottom: 14 }}>
+          <div style={{ fontSize: ".82rem", color: "var(--muted)", marginBottom: 14 }}>
             Registro imutável de quem criou, editou, arquivou ou excluiu custos, metas e acessos. Não cobre edição campo a campo (ex.: digitar num valor de custo) — só ações discretas, pra não virar ruído.
           </div>
           <div className="list-stack">
@@ -485,7 +485,7 @@ export default function AccessControlTab({
                 <b>Não consegui ler a trilha de auditoria.</b> Se a mensagem abaixo fala em permissão,
                 as regras do Firestore precisam ser republicadas com a coleção <b>auditLog</b>{" "}
                 (<code>firebase deploy --only firestore:rules</code>).
-                <div style={{ marginTop: 6, fontFamily: "ui-monospace, monospace", fontSize: ".7rem", overflowWrap: "anywhere" }}>{auditErro}</div>
+                <div style={{ marginTop: 6, fontFamily: "ui-monospace, monospace", fontSize: ".75rem", overflowWrap: "anywhere" }}>{auditErro}</div>
               </div>
             ) : auditLoading ? (
               <div style={{ color: "var(--muted)", fontSize: ".9rem" }}>Carregando…</div>
@@ -505,7 +505,7 @@ export default function AccessControlTab({
                       {AUDIT_ENTIDADE_LABEL[evt.entidade]} <b style={{ overflowWrap: "anywhere" }}>{evt.entidadeLabel}</b>
                     </span>
                   </div>
-                  <div style={{ marginTop: 3, fontSize: ".76rem", color: "var(--muted)" }}>
+                  <div style={{ marginTop: 3, fontSize: ".8rem", color: "var(--muted)" }}>
                     {evt.por} · {new Date(evt.em).toLocaleString("pt-BR")}
                     {evt.detalhe ? ` · ${evt.detalhe}` : ""}
                   </div>

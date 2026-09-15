@@ -204,7 +204,7 @@ export default function MetasTab({
                     <div style={{ height: 8, borderRadius: 4, background: "var(--surface-raised,var(--surface2))", overflow: "hidden" }}>
                       <div style={{ height: "100%", width: `${Math.min(100, Math.max(0, m.pctReal))}%`, background: TONE_COLOR[m.tone], transition: "width .3s ease" }} />
                     </div>
-                    <div style={{ fontSize: ".76rem", color: "var(--text-secondary,var(--muted))", marginTop: 5 }}>
+                    <div style={{ fontSize: ".8rem", color: "var(--text-secondary,var(--muted))", marginTop: 5 }}>
                       {m.pctReal.toFixed(0)}% de {fmtBRL(m.valor)}
                       {m.falta > 0 ? (
                         <> · faltam <b style={{ color: "var(--text-primary,var(--text))" }}>{fmtBRL(m.falta)}</b>
@@ -224,7 +224,7 @@ export default function MetasTab({
                     <div style={{ height: 8, borderRadius: 4, background: "var(--surface-raised,var(--surface2))", overflow: "hidden" }}>
                       <div style={{ height: "100%", width: `${Math.min(100, Math.max(0, lucroProgresso.pctReal))}%`, background: TONE_COLOR[lucroProgresso.tone], transition: "width .3s ease" }} />
                     </div>
-                    <div style={{ fontSize: ".76rem", color: "var(--text-secondary,var(--muted))", marginTop: 5 }}>
+                    <div style={{ fontSize: ".8rem", color: "var(--text-secondary,var(--muted))", marginTop: 5 }}>
                       {fmtBRL(lucroProgresso.lucro)} de {fmtBRL(lucroProgresso.meta)}
                       {lucroProgresso.falta > 0 && <> · faltam <b style={{ color: "var(--text-primary,var(--text))" }}>{fmtBRL(lucroProgresso.falta)}</b></>}
                     </div>
@@ -282,7 +282,7 @@ export default function MetasTab({
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 5, flexWrap: "wrap" }}>
                       <span style={{ fontWeight: 700, fontSize: ".85rem", textTransform: "capitalize" }}>{formatMesBR(entry.mes)}</span>
                       {realizado == null ? (
-                        <span style={{ fontSize: ".76rem", color: "var(--muted)" }}>carregando…</span>
+                        <span style={{ fontSize: ".8rem", color: "var(--muted)" }}>carregando…</span>
                       ) : (
                         <span
                           className="severity-chip"
@@ -306,7 +306,7 @@ export default function MetasTab({
                         }}
                       />
                     </div>
-                    <div style={{ fontSize: ".76rem", color: "var(--text-secondary,var(--muted))", marginTop: 5 }}>
+                    <div style={{ fontSize: ".8rem", color: "var(--text-secondary,var(--muted))", marginTop: 5 }}>
                       {realizado == null
                         ? `meta ${fmtBRL(meta)}`
                         : `${fmtBRL(realizado.faturamentoLiquido)} de ${fmtBRL(meta)} (${(pct ?? 0).toFixed(0)}%)`}
@@ -376,8 +376,8 @@ function GoalEntryRow({
       <div className="list-row-main">
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontWeight: 800, fontSize: ".95rem", textTransform: "capitalize" }}>{formatMesBR(entry.mes)}</span>
-          {isActive && <span className="chip" style={{ background: "var(--accent)", borderColor: "var(--accent)", color: "#fff", fontSize: ".66rem" }}>ATIVA</span>}
-          {entry.label && <span style={{ fontSize: ".78rem", color: "var(--muted)" }}>· {entry.label}</span>}
+          {isActive && <span className="chip" style={{ background: "var(--accent)", borderColor: "var(--accent)", color: "#fff", fontSize: ".75rem" }}>ATIVA</span>}
+          {entry.label && <span style={{ fontSize: ".82rem", color: "var(--muted)" }}>· {entry.label}</span>}
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
           {chip("Meta 1", entry.meta1, "#E9A92D")}

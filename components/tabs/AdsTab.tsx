@@ -369,7 +369,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
         </div>
         <DateRangePicker from={range.from} to={range.to} onApply={(from, to) => setRange({ from, to })} />
       </div>
-      <div style={{ fontSize: ".72rem", color: desatualizado ? "var(--warning)" : "var(--muted)", marginTop: -6 }}>
+      <div style={{ fontSize: ".75rem", color: desatualizado ? "var(--warning)" : "var(--muted)", marginTop: -6 }}>
         {statusAtualizacaoTxt}{desatualizado ? " · dados desatualizados, considere atualizar" : ""}
       </div>
 
@@ -389,7 +389,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
       ) : (
         <>
           {!pub && conta && conta.receita > 0 && (
-            <div style={{ fontSize: ".72rem", color: "var(--muted)", marginTop: -2 }}>
+            <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: -2 }}>
               Esta aba cobre <b>só os {items.length} item(ns) anunciados</b>: {fmtBRL(t.total)} dos {fmtBRL(conta.receita)} que a
               conta faturou no período ({num((t.total / conta.receita) * 100, 0)}% do total, {conta.itens} item(ns) vendidos ao todo).
               Por isso o número aqui é menor que o faturamento do dashboard — não é divergência, é recorte.
@@ -418,7 +418,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
                         <tr key={tt.tentativa}>
                           <td style={{ textAlign: "left", fontWeight: 600, whiteSpace: "nowrap" }}>{tt.tentativa}</td>
                           <td data-label="Status" style={{ fontWeight: 800, color: tt.status && tt.status < 300 ? "var(--green)" : "var(--red)" }}>{tt.status ?? "erro"}</td>
-                          <td data-label="Resposta do ML" style={{ textAlign: "left", fontFamily: "monospace", fontSize: ".66rem", color: "var(--muted)", wordBreak: "break-all" }}>{tt.body || tt.erro || "—"}</td>
+                          <td data-label="Resposta do ML" style={{ textAlign: "left", fontFamily: "monospace", fontSize: ".75rem", color: "var(--muted)", wordBreak: "break-all" }}>{tt.body || tt.erro || "—"}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -426,8 +426,8 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
                 </div>
               ) : null}
               <details style={{ marginTop: 8 }}>
-                <summary style={{ cursor: "pointer", fontSize: ".72rem", color: "var(--muted)" }}>Diagnóstico completo (JSON)</summary>
-                <pre style={{ marginTop: 6, whiteSpace: "pre-wrap", color: "var(--muted)", fontSize: ".7rem", maxHeight: 300, overflow: "auto" }}>{erro}</pre>
+                <summary style={{ cursor: "pointer", fontSize: ".75rem", color: "var(--muted)" }}>Diagnóstico completo (JSON)</summary>
+                <pre style={{ marginTop: 6, whiteSpace: "pre-wrap", color: "var(--muted)", fontSize: ".75rem", maxHeight: 300, overflow: "auto" }}>{erro}</pre>
               </details>
             </div>
           ) : (
@@ -485,7 +485,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
                   </span>
                   <span className="panel-sub" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     {semGastoNoPeriodo > 0 && (
-                      <span title="Anúncios sem nenhum investimento no período — ocultados de propósito pra não poluir a tela" style={{ fontSize: ".68rem", color: "var(--muted)", cursor: "help" }}>
+                      <span title="Anúncios sem nenhum investimento no período — ocultados de propósito pra não poluir a tela" style={{ fontSize: ".75rem", color: "var(--muted)", cursor: "help" }}>
                         ({semGastoNoPeriodo} sem gasto ocultado{semGastoNoPeriodo === 1 ? "" : "s"})
                       </span>
                     )}
@@ -514,7 +514,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
                   <AdsTable modo={modo} linhas={linhasFiltradas} onAbrirAnuncio={abrirAnuncio} />
                 )}
 
-                <div style={{ marginTop: 10, fontSize: ".72rem", color: "var(--muted)", lineHeight: 1.6 }}>
+                <div style={{ marginTop: 10, fontSize: ".75rem", color: "var(--muted)", lineHeight: 1.6 }}>
                   {pub
                     ? <>Vendas diretas = compras logo após clicar no anúncio · ACOS/ROAS medem só o ad. <b>Lucro</b> com &quot;—&quot; =
                         sem venda vinculada no período pra calcular a margem — não conta como prejuízo na soma do topo.</>
@@ -541,7 +541,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
                             <tbody>
                               {cfgDiag.map((tt, idx) => (
                                 <tr key={`${tt.url}-${idx}`}>
-                                  <td style={{ textAlign: "left", fontFamily: "monospace", fontSize: ".72rem", wordBreak: "break-all" }}>{tt.url}</td>
+                                  <td style={{ textAlign: "left", fontFamily: "monospace", fontSize: ".75rem", wordBreak: "break-all" }}>{tt.url}</td>
                                   <td data-label="Status" style={{ textAlign: "right", color: tt.status === 200 ? "var(--green)" : "var(--red)", fontWeight: 700 }}>{tt.status}</td>
                                 </tr>
                               ))}
@@ -550,15 +550,15 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
                         </div>
                       )}
                       {!!cfgAmostra?.campanhaOrfa && (
-                        <div style={{ marginTop: 8, fontSize: ".7rem", color: "var(--warning)" }}>
+                        <div style={{ marginTop: 8, fontSize: ".75rem", color: "var(--warning)" }}>
                           Campanha que faltava na lista, recuperada pelo id:
-                          <pre style={{ marginTop: 4, whiteSpace: "pre-wrap", color: "var(--muted)", fontSize: ".7rem", maxHeight: 240, overflow: "auto" }}>
+                          <pre style={{ marginTop: 4, whiteSpace: "pre-wrap", color: "var(--muted)", fontSize: ".75rem", maxHeight: 240, overflow: "auto" }}>
                             {JSON.stringify(cfgAmostra.campanhaOrfa, null, 2)}
                           </pre>
                         </div>
                       )}
                       {!!cfgAmostra && (
-                        <pre style={{ marginTop: 6, whiteSpace: "pre-wrap", color: "var(--muted)", fontSize: ".7rem", maxHeight: 240, overflow: "auto" }}>
+                        <pre style={{ marginTop: 6, whiteSpace: "pre-wrap", color: "var(--muted)", fontSize: ".75rem", maxHeight: 240, overflow: "auto" }}>
                           {JSON.stringify(cfgAmostra.campanha ?? cfgAmostra, null, 2)}
                         </pre>
                       )}
@@ -570,12 +570,12 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
                         Todas as campanhas da conta ({campanhasTotal}{anunciosContagemFalhou ? "" : `, ${anunciosTotal} anúncio(s) cadastrado(s)`}) — conferir se nada sumiu da tabela
                       </summary>
                       {anunciosContagemFalhou ? (
-                        <div style={{ marginTop: 6, fontSize: ".7rem", color: "var(--warning)" }}>
+                        <div style={{ marginTop: 6, fontSize: ".75rem", color: "var(--warning)" }}>
                           Não conseguimos contar os anúncios cadastrados por campanha. O gasto por campanha continua confiável,
                           só a contagem total de anúncios que falhou.
                         </div>
                       ) : (
-                        <div style={{ marginTop: 6, fontSize: ".7rem", color: "var(--muted)" }}>
+                        <div style={{ marginTop: 6, fontSize: ".75rem", color: "var(--muted)" }}>
                           A tabela acima só mostra anúncio com atividade neste período. <b>{anunciosNoPeriodo}</b> anúncio(s)
                           tiveram atividade (de {anunciosTotal} cadastrados no total).
                         </div>
@@ -605,7 +605,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
                         </table>
                       </div>
                       {(gastoOrfao > 0 || gastoSemVinculo > 0) && (
-                        <div style={{ marginTop: 6, fontSize: ".7rem", color: "var(--warning)" }}>
+                        <div style={{ marginTop: 6, fontSize: ".75rem", color: "var(--warning)" }}>
                           <b>{fmtBRL(gastoOrfao + gastoSemVinculo)} de investimento não caiu em nenhuma campanha desta lista</b> —
                           por isso a soma da coluna &quot;Gasto no período&quot; fica menor que o Investimento do topo ({fmtBRL(t.cost)}).
                           {gastoOrfao > 0 && <> {fmtBRL(gastoOrfao)} são de anúncios com campanha que o ML não devolveu

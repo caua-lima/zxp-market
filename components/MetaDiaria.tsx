@@ -135,7 +135,7 @@ function Bar({
           {pct.toFixed(0)}%
         </div>
       </div>
-      <div style={{ marginTop: 4, fontSize: ".78rem" }}>
+      <div style={{ marginTop: 4, fontSize: ".82rem" }}>
         {atingida ? (
           <span style={{ color: "var(--green)", fontWeight: 600 }}>
             ✅ Meta atingida!

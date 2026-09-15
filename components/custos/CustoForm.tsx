@@ -55,10 +55,10 @@ const ORDEM_FREQ: Frequencia[] = ["mensal", "diario", "avulso"];
 const ORDEM_ESCOPO: Escopo[] = ["dash", "dre"];
 
 const rotuloCampo: React.CSSProperties = {
-  fontSize: ".68rem", color: "var(--muted)", textTransform: "uppercase",
+  fontSize: ".75rem", color: "var(--muted)", textTransform: "uppercase",
   letterSpacing: ".05em", fontWeight: 700, marginBottom: 5, display: "block",
 };
-const textoErro: React.CSSProperties = { color: "var(--red)", fontSize: ".74rem", marginTop: 4 };
+const textoErro: React.CSSProperties = { color: "var(--red)", fontSize: ".75rem", marginTop: 4 };
 
 export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onCancelar }: {
   /** O custo a editar. `null` = cadastrar um novo. */
@@ -214,7 +214,7 @@ export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onC
               </button>
             ))}
           </div>
-          <div style={{ fontSize: ".76rem", color: "var(--muted)", marginTop: 6 }}>
+          <div style={{ fontSize: ".8rem", color: "var(--muted)", marginTop: 6 }}>
             {FREQUENCIA_META[r.freq].explica}
           </div>
         </div>
@@ -256,7 +256,7 @@ export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onC
                     <span style={{ color: ativo ? "var(--accent)" : "var(--muted)" }}>{ativo ? "●" : "○"}</span>
                     {ESCOPO_META[esc].rotulo}
                   </div>
-                  <div style={{ fontSize: ".74rem", color: "var(--muted)", marginTop: 3, lineHeight: 1.4 }}>
+                  <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 3, lineHeight: 1.4 }}>
                     {ESCOPO_META[esc].explica}
                   </div>
                 </button>
@@ -288,11 +288,11 @@ export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onC
                 numero que a DRE desmentiria.
               */}
               {impacto.mes !== mes && (
-                <div style={{ fontSize: ".76rem", color: "var(--warning)", marginTop: 3 }}>
+                <div style={{ fontSize: ".8rem", color: "var(--warning)", marginTop: 3 }}>
                   Nao entra em {nomeDoMes(mes)}: custo mensal conta por mes inteiro, e este mes ja comecou.
                 </div>
               )}
-              <div style={{ fontSize: ".76rem", color: "var(--muted)", marginTop: 3 }}>
+              <div style={{ fontSize: ".8rem", color: "var(--muted)", marginTop: 3 }}>
                 {r.escopo === "dash"
                   ? "Entra no lucro do Dashboard e na DRE."
                   : "Aparece só na DRE — o lucro do Dashboard não muda."}
@@ -348,7 +348,7 @@ export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onC
         {erroGravacao && (
           <div className="note note-danger" style={{ margin: 0 }} role="alert">
             <b>Não consegui salvar — nada foi gravado.</b> Seus dados continuam aqui; tente de novo.
-            <div style={{ marginTop: 4, fontFamily: "ui-monospace, monospace", fontSize: ".7rem", overflowWrap: "anywhere" }}>
+            <div style={{ marginTop: 4, fontFamily: "ui-monospace, monospace", fontSize: ".75rem", overflowWrap: "anywhere" }}>
               {erroGravacao}
             </div>
           </div>

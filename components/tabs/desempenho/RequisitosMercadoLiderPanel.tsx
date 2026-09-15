@@ -51,7 +51,7 @@ export default function RequisitosMercadoLiderPanel({
               <IconeStatus status={r.status} />
               <div style={{ flex: 1 }}>
                 <div>{r.label}</div>
-                <div style={{ fontSize: ".7rem", color: "var(--muted)" }}>{r.detalhe}</div>
+                <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>{r.detalhe}</div>
               </div>
             </div>
           ))}
@@ -60,24 +60,24 @@ export default function RequisitosMercadoLiderPanel({
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 12, fontSize: ".8rem" }}>
         <div>
-          <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Tempo de cadastro</div>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Tempo de cadastro</div>
           <div style={{ fontWeight: 700 }}>{dias != null ? `${dias} dia(s)` : "—"}</div>
-          <div style={{ fontSize: ".66rem", color: "var(--muted)" }}>referência não-oficial: ~90 a 120 dias</div>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>referência não-oficial: ~90 a 120 dias</div>
         </div>
         <div>
-          <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>Vendas concluídas (total)</div>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Vendas concluídas (total)</div>
           <div style={{ fontWeight: 700 }}>{vendasConcluidas ?? "—"}</div>
-          <div style={{ fontSize: ".66rem", color: "var(--muted)" }}>referência não-oficial nível básico: ~230 nos últimos 3 meses</div>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>referência não-oficial nível básico: ~230 nos últimos 3 meses</div>
         </div>
       </div>
 
       {semDado > 0 && (
-        <div style={{ fontSize: ".72rem", color: "var(--muted)", marginBottom: 8 }}>
+        <div style={{ fontSize: ".75rem", color: "var(--muted)", marginBottom: 8 }}>
           {semDado} critério(s) acima ({semDado === 1 ? "está" : "estão"} marcado(s) com &quot;?&quot;) a API não devolve ou ainda não tem dado suficiente calculado.
         </div>
       )}
 
-      <div style={{ fontSize: ".7rem", color: "var(--muted)", lineHeight: 1.5 }}>
+      <div style={{ fontSize: ".75rem", color: "var(--muted)", lineHeight: 1.5 }}>
         Os 5 critérios acima (reputação, reclamações, mediações, cancelamentos, envios com atraso) vêm de
         seller_reputation da própria API do ML. Tempo de cadastro, vendas concluídas e faturamento mínimo por
         nível <b>não têm fonte oficial acessível automaticamente</b> — o Mercado Livre bloqueia acesso

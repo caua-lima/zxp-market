@@ -282,7 +282,7 @@ export default function PrecoTab({ products }: { products: Product[] }) {
               </table>
             </div>
 
-            <div style={{ marginTop: 10, fontSize: ".74rem", color: "var(--muted)", lineHeight: 1.5 }}>
+            <div style={{ marginTop: 10, fontSize: ".75rem", color: "var(--muted)", lineHeight: 1.5 }}>
               Anúncio <b>{TIPO_LABEL[sim.anuncio.tipoAnuncio] ?? sim.anuncio.tipoAnuncio}</b> · categoria{" "}
               {sim.anuncio.categoria} · preço atual {fmtBRL(sim.anuncio.precoAtual)}
               {sim.produto.vinculado && <> · produto <b>{sim.produto.nome}</b></>}
@@ -302,7 +302,7 @@ export default function PrecoTab({ products }: { products: Product[] }) {
                   <div style={{ fontSize: "1.6rem", fontWeight: 800, color: "var(--brand)" }} className="tabular-nums">
                     {fmtBRL(sim.precoSugerido)}
                   </div>
-                  <div style={{ fontSize: ".78rem", color: "var(--muted)", marginTop: 4 }}>
+                  <div style={{ fontSize: ".82rem", color: "var(--muted)", marginTop: 4 }}>
                     É o <b>menor</b> preço que entrega {sim.margemAlvo}% com os custos informados.
                     {sim.precoSugerido > sim.anuncio.precoAtual
                       ? ` Hoje o anúncio está ${fmtBRL(sim.anuncio.precoAtual)} — ${fmtBRL(sim.precoSugerido - sim.anuncio.precoAtual)} abaixo disso.`

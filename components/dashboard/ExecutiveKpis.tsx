@@ -27,7 +27,7 @@ export function Delta({ current, previous, mode, invert, label = "vs período an
     text = `${pct >= 0 ? "+" : "-"}${Math.abs(pct).toFixed(1)}%`;
   }
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4, fontSize: ".74rem", fontWeight: 700, color }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4, fontSize: ".75rem", fontWeight: 700, color }}>
       <span aria-hidden="true">{arrow}</span><span>{text} {label}</span>
     </div>
   );
