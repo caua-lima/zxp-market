@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CUSTO_FAIXA_SENTINELA, custoNaData, impostoNaData, TIPO_MOVIMENTO_LABEL, type EstoqueMovimento, type MovimentoTipo, type Product } from "@/lib/domain/types";
-import { addMovimento, deleteMovimento, deleteProduct, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas } from "@/lib/firebase/data";
+import { addMovimento, deleteMovimento, deleteProduct, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas , recalcularProduto } from "@/lib/firebase/data";
 import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas";
 import { fmtBRL } from "@/lib/domain/calc";
 import { getCoverageStatus, COVERAGE_STATUS_LABEL, consolidarEstoqueAnuncios, ehFullLogistic, estoqueForaDoFull, type CoverageStatus } from "@/lib/domain/estoque";
@@ -314,8 +314,42 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
     setEditProduct({ id: newId(), name: "", custo: "", sku: "", imposto: "", mlbs: [""], ativo: true });
   }
 
+  /**
+   * Produtos cujo agregado ficou ATRÁS do livro.
+   *
+   * Acontece quando a gravação do movimento dá certo e o recálculo do produto
+   * não — duas escritas, e a segunda pode falhar. Antes isso ficava invisível,
+   * e um custo médio desatualizado vira CMV errado em toda venda do produto.
+   *
+   * O conserto é rodar o recálculo de novo: ele reexecuta o livro inteiro.
+   */
+  const [recalculando, setRecalculando] = useState(false);
+  const desatualizados = data.products.filter((p) => p.custoDesatualizado === true);
+
+  async function recalcularPendentes() {
+    setRecalculando(true);
+    try {
+      for (const p of desatualizados) await recalcularProduto(p.id);
+    } catch { /* o que não curou continua marcado — nada se perde */ }
+    finally { setRecalculando(false); }
+  }
+
   return (
     <div className="dash">
+      {desatualizados.length > 0 && (
+        <div className="note note-accent" style={{ marginBottom: 12, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: ".82rem" }}>
+            <b>{desatualizados.length}</b> produto(s) com custo médio atrás do histórico —
+            o lançamento entrou mas o recálculo não terminou. Enquanto isso, a margem desses produtos sai errada.
+          </span>
+          {canEdit && (
+            <button type="button" className="btn btn-sm btn-primary" onClick={recalcularPendentes} disabled={recalculando}>
+              {recalculando ? "Recalculando…" : "Recalcular agora"}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Header */}
       <div className="tab-head">
         <div className="tab-head-left">
@@ -878,6 +912,12 @@ function MovimentoModal({ product, tipo, estoqueML, onClose, onSaved }: { produc
 
   const novoAvg = isEntrada ? novoAvgEntrada : novoAvgSaldo;
 
+  /**
+   * Id do lançamento, estável enquanto este modal estiver aberto — é o que
+   * torna repetir o salvamento idempotente. Ver handleSave.
+   */
+  const idDoLancamento = useRef(newMovId());
+
   async function handleSave() {
     if (!qNum || (!isAjuste && qNum <= 0)) { alert("Informe a quantidade."); return; }
     if (precisaCusto && cNum <= 0) { alert("Informe o custo unitário."); return; }
@@ -888,7 +928,23 @@ function MovimentoModal({ product, tipo, estoqueML, onClose, onSaved }: { produc
       return;
     }
     setSaving(true);
-    const movId = newMovId();
+    /**
+     * EST-02: o id nasce quando o MODAL abre, não quando o botão é clicado.
+     *
+     * Era `const movId = newMovId()` aqui dentro. Dois cliques rápidos — ou um
+     * retry depois de um timeout, que é o caso comum: nada parece ter
+     * acontecido e a pessoa clica de novo — geravam ids DIFERENTES e criavam
+     * dois lançamentos. Duas entradas de 100 unidades em vez de uma, e a média
+     * ponderada misturando a mesma compra duas vezes.
+     *
+     * O `disabled={saving}` não protege disso: `setSaving` é assíncrono, então
+     * dois cliques rápidos passam os dois; e um retry depois do timeout é um
+     * clique novo, com o botão já liberado.
+     *
+     * Com o id fixo por abertura, gravar de novo é `setDoc` no MESMO documento:
+     * idempotente por construção.
+     */
+    const movId = idDoLancamento.current;
     try {
       await addMovimento({
         id: movId,

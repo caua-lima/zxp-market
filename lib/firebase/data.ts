@@ -273,6 +273,21 @@ async function recomputeProduto(
     qtdLocal,
     custoMedio,
     custoMedioFaixas: faixas,
+    /**
+     * EST-02: o agregado está em dia com o livro.
+     *
+     * Gravar a movimentação e recalcular o produto são duas escritas. Se a
+     * segunda falhar, o livro tem o movimento e o produto fica com o número
+     * antigo — em silêncio, e o custo médio desatualizado vira CMV errado em
+     * toda venda daquele produto.
+     *
+     * Não dá pra fazer as duas numa transação: o recálculo varre TODAS as
+     * movimentações do produto, e varredura ilimitada dentro de transação é
+     * justamente o que o Firestore não suporta bem. Então a saída é o
+     * contrário — deixar a inconsistência VISÍVEL e curável: qualquer
+     * recálculo posterior conserta, porque ele reexecuta o livro inteiro.
+     */
+    custoDesatualizado: false,
   });
 
   // Quem chamou decide o que fazer com isso — corrigir movimento antigo muda
@@ -425,7 +440,19 @@ export async function addMovimento(
     sDoc(MOV_COL, mov.id),
     sanitizeUndefined({ ...mov, createdBy: email, createdAt: Date.now() }),
   );
-  await recomputeProduto(mov.productId);
+  /**
+   * Se o recálculo falhar, o movimento JÁ está no livro e o produto fica com
+   * o número velho. Marca o produto pra a inconsistência não ficar invisível
+   * — e relança, pra quem chamou poder avisar em vez de dizer "lançado".
+   */
+  try {
+    await recomputeProduto(mov.productId);
+  } catch (err) {
+    await updateDoc(sDoc("estoque", mov.productId), { custoDesatualizado: true }).catch(() => {});
+    invalidar(CHAVE_MOV);
+    invalidar(CHAVE_PRODUTOS);
+    throw err;
+  }
   invalidar(CHAVE_MOV);
   invalidar("estoque_movimentos:recentes");
   invalidar(CHAVE_PRODUTOS); // recomputeProduto mexe em qtdLocal/custoMedio
@@ -835,4 +862,17 @@ export async function addAdsAlteracao(entry: Omit<AdsAlteracao, "id" | "createdB
 export async function deleteAdsAlteracao(id: string): Promise<void> {
   await deleteDoc(sDoc(ADS_LOG_COL, id));
   invalidarAdsLog();
+}
+
+/**
+ * Recalcula o agregado de um produto a partir do livro.
+ *
+ * Exportado pra a tela poder CURAR um produto marcado como
+ * `custoDesatualizado` — a inconsistência acontece quando a gravação do
+ * movimento dá certo e o recálculo não, e o conserto é simplesmente rodar o
+ * recálculo de novo, já que ele reexecuta o livro inteiro.
+ */
+export async function recalcularProduto(productId: string): Promise<void> {
+  await recomputeProduto(productId);
+  invalidar(CHAVE_PRODUTOS);
 }

@@ -210,6 +210,21 @@ export type Product = {
    * pular pro custo médio de hoje toda vez que o estoque é atualizado.
    */
   custoMedioFaixas?: CustoFaixa[];
+  /**
+   * O agregado (custoMedio, qtdLocal, faixas) esta ATRAS do livro.
+   *
+   * Gravar a movimentacao e recalcular o produto sao duas escritas. Quando a
+   * segunda falha, o livro tem o movimento e o produto fica com o numero
+   * antigo — e custo medio desatualizado vira CMV errado em toda venda daquele
+   * produto.
+   *
+   * Nao da pra fazer as duas numa transacao: o recalculo varre TODAS as
+   * movimentacoes, e varredura ilimitada dentro de transacao e justamente o
+   * que o Firestore nao suporta bem. A saida e o contrario — deixar a
+   * inconsistencia VISIVEL e curavel, ja que qualquer recalculo posterior
+   * conserta (ele reexecuta o livro inteiro).
+   */
+  custoDesatualizado?: boolean;
   qtdLocal?: number;         // estoque no galpão (entradas − envios Full − ajustes)
   // @deprecated — preço e retorno vêm automaticamente das vendas do ML
   preco?: string;
