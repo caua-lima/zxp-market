@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { patchArquivar, patchReativar, vigenteHoje } from "@/lib/domain/vigencia-custo";
 import Modal from "@/components/Modal";
 import CustoForm from "@/components/custos/CustoForm";
 import { fmtBRL, mesAtual, parseBRNumber, totalCustosMes } from "@/lib/domain/calc";
@@ -71,10 +72,22 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
   }
   useEffect(() => () => { if (timerAviso.current) clearTimeout(timerAviso.current); }, []);
 
-  // Arquivado (ativo:false) para de contar em tudo — mesmo filtro que a rota
-  // de métricas aplica, senão "Arquivar" não significaria nada.
-  const ativos = data.costs.filter((c) => c.ativo !== false);
-  const arquivados = data.costs.filter((c) => c.ativo === false);
+  /**
+   * Vigente HOJE é o que entra nas listas ativas.
+   *
+   * O comentário antigo aqui dizia que arquivado "para de contar em tudo —
+   * mesmo filtro que a rota de métricas aplica". Era verdade, e era o bug:
+   * arquivar o contador removia a despesa de todos os meses PASSADOS também,
+   * e a DRE de meses fechados mudava sozinha.
+   *
+   * Agora arquivar fecha a vigência na data de hoje. A lista continua sendo
+   * sobre o presente; o histórico deixa de ser reescrito.
+   */
+  const hojeISO = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+  const ativos = data.costs.filter((c) => vigenteHoje(c, hojeISO));
+  const arquivados = data.costs.filter((c) => !vigenteHoje(c, hojeISO));
   const daOperacao = ativos.filter((c) => (c.escopo ?? "dash") === "dash");
   const daEmpresa = ativos.filter((c) => c.escopo === "dre");
   const totalOperacao = totalCustosMes(daOperacao, mesAtual());
@@ -99,11 +112,26 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
 
   async function arquivar(c: Cost, ativo: boolean) {
     try {
-      await upsertCost(uid, { ...c, ativo });
+      /**
+       * Arquivar FECHA a vigência em hoje; reativar reabre a partir de hoje.
+       *
+       * Era `{ ...c, ativo }` e mais nada — sem data, o cálculo não tinha como
+       * saber até quando a despesa valeu, e a única leitura possível era
+       * "nunca valeu".
+       */
+      await upsertCost(uid, {
+        ...c,
+        ...(ativo ? patchReativar(hojeISO) : patchArquivar(hojeISO)),
+      } as Cost);
       logAudit({
         acao: ativo ? "reativar" : "arquivar", entidade: "custo", entidadeId: c.id, entidadeLabel: c.nome || "(sem nome)",
       }).catch(() => {});
-      avisar({ tipo: "ok", texto: ativo ? `"${c.nome}" voltou a contar.` : `"${c.nome}" arquivado — parou de contar.` });
+      avisar({
+        tipo: "ok",
+        texto: ativo
+          ? `"${c.nome}" volta a contar a partir de hoje.`
+          : `"${c.nome}" arquivado — para de contar a partir de amanhã. Os meses anteriores seguem como estavam.`,
+      });
     } catch (err) {
       avisar({ tipo: "erro", texto: `Não consegui ${ativo ? "reativar" : "arquivar"}: ${err instanceof Error ? err.message : String(err)}` });
     }

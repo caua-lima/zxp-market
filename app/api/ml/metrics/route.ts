@@ -2,10 +2,10 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
 import { redigirFinanceiro } from "@/lib/domain/redacao-financeira";
-import { mesesCompletosNoPeriodo } from "@/lib/domain/competencia";
 // A regra de "devolução concluída" morava aqui, local. A rota de Ads repetia a
 // condição à mão SEM olhar o status, e as duas divergiam no mesmo pedido.
 import { devolucaoConcluida } from "@/lib/domain/devolucao-estado";
+import { contribuicaoNoPeriodo } from "@/lib/domain/vigencia-custo";
 import { getAdsGastoEDireto, getAdsSpendByItem, probeAds } from "@/lib/ml/ads";
 import { completarFretesFaltantes, fetchOrdersLive, loadOrders, readShippingCosts } from "@/lib/ml/orders";
 import { getMlAccessToken } from "../token";
@@ -713,25 +713,14 @@ export async function GET(req: Request) {
       .sort((a, b) => b.valor - a.valor);
 
     // ── 6. Custos operacionais ────────────────────────────────
-    // Dias e meses cobertos pelo período selecionado
-    const dFrom = new Date(`${fromStr}T00:00:00Z`).getTime();
-    const dTo = new Date(`${toStr}T00:00:00Z`).getTime();
-    const daysInPeriod = Math.max(1, Math.round((dTo - dFrom) / 86400000) + 1);
-    // Custo MENSAL só entra em períodos que cobrem mês(es) completo(s).
-    // Assim ele NÃO polui o lucro de "Hoje"/dias avulsos (é um custo do mês).
     /**
-     * FIN-02: quantos meses INTEIROS cabem no periodo.
+     * A contagem de dias e de meses do periodo saiu daqui.
      *
-     * Era `isFullMonth`, que exigia fy===ty && fm===tm — o MESMO mes. Num
-     * intervalo de 01/07 a 31/08, dois meses fechados, ele dava falso e o
-     * custo mensal entrava como zero; e `monthsInPeriod`, que existia pra
-     * contar varios meses, so era lido no ramo onde sempre valia 1.
-     *
-     * Resultado: toda DRE de mais de um mes perdia pro-labore, contador e
-     * aluguel, e o resultado saia otimista. Ver lib/domain/competencia.ts.
+     * Ela agora acontece por DESPESA, dentro de contribuicaoNoPeriodo, porque
+     * cada uma tem a propria vigencia: uma despesa diaria encerrada no dia 10
+     * cobra 10 dias, nao o mes inteiro. Manter um "dias do periodo" global era
+     * justamente o que fazia toda despesa cobrar o periodo cheio.
      */
-    const mesesFechados = mesesCompletosNoPeriodo(fromStr, toStr);
-
     const custosSnap = await db.collection("custos").get();
     let custosOp = 0;
     // Custo marcado como "dre" fica fora do lucro do Dashboard de propósito:
@@ -740,24 +729,33 @@ export async function GET(req: Request) {
     const custosDreDetalhe: { nome: string; valor: number; freq: string }[] = [];
     for (const doc of custosSnap.docs) {
       const d = doc.data();
-      // Arquivado (ativo:false) para de contar — é o ponto de "Arquivar" em
-      // vez de excluir: sai do cálculo sem apagar o registro histórico.
-      if (d.ativo === false) continue;
       const valor = Number(d.valor ?? d.amount ?? 0);
-      const data = String(d.data ?? d.date ?? "");
       const freq = String(d.freq ?? d.frequency ?? "avulso");
       const soDre = String(d.escopo ?? "dash") === "dre";
 
-      let noPeriodo = 0;
-      if (freq === "diario" || freq === "daily") {
-        noPeriodo = valor * daysInPeriod;                     // desconta todo dia
-      } else if (freq === "mensal" || freq === "monthly") {
-        // Uma vez por mes INTEIRO dentro do periodo — zero em mes pela metade,
-        // pra custo mensal nao poluir o lucro de um dia avulso.
-        noPeriodo = valor * mesesFechados;
-      } else if (data >= fromStr && data <= toStr) {
-        noPeriodo = valor;                                    // avulso: só na data
-      }
+      /**
+       * FIN-01: a despesa conta enquanto esteve VIGENTE, não enquanto está
+       * ativa hoje.
+       *
+       * Aqui havia `if (d.ativo === false) continue;` — arquivado parava de
+       * contar em TODO período, passado incluído. Arquivar o contador hoje
+       * removia a despesa de todos os meses anteriores: a DRE de meses
+       * fechados mudava sozinha e o lucro histórico subia.
+       *
+       * O tipo em lib/domain/types.ts prometia o contrário, em texto —
+       * "arquivado some das listas ativas, mas CONTINUA CONTANDO no
+       * histórico". Quem estava certo era a promessa; o código é que não a
+       * cumpria.
+       *
+       * Agora arquivar fecha a vigência na data de hoje, e a contribuição sai
+       * da interseção entre o período consultado e essa vigência. Ver
+       * lib/domain/vigencia-custo.ts.
+       */
+      const noPeriodo = contribuicaoNoPeriodo(
+        { valor, freq, data: String(d.data ?? d.date ?? ""), vigenteDe: d.vigenteDe, vigenteAte: d.vigenteAte, ativo: d.ativo },
+        { de: fromStr, ate: toStr },
+        hoje,
+      );
       if (noPeriodo === 0) continue;
 
       if (soDre) {

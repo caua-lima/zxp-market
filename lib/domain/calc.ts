@@ -1,4 +1,5 @@
 import type { ComputedAd, Cost, DaySummary, Listing } from "./types";
+import { contribuicaoNoPeriodo } from "./vigencia-custo";
 
 function localDateStr(d: Date): string {
   const y = d.getFullYear();
@@ -228,16 +229,35 @@ export function scenariosDeProjecao(
   };
 }
 
-export function totalCustosMes(custos: Cost[], mes: string): number {
+/**
+ * @param hojeISO usado só pelo legado de `ativo: false` sem `vigenteAte`.
+ *   Ausente, assume o primeiro dia do mês consultado — assim a função continua
+ *   pura pra quem já a chamava com dois argumentos.
+ *
+ * A vigência entrou aqui porque esta conta e a da rota de métricas precisam
+ * concordar: era esta que alimentava os totais da aba de Custos e a prévia do
+ * formulário, e ela somava TODA despesa recorrente em TODO mês, tivesse ela
+ * existido naquele mês ou não. Consultar um mês antigo trazia despesas
+ * criadas depois dele.
+ */
+export function totalCustosMes(custos: Cost[], mes: string, hojeISO?: string): number {
+  const de = `${mes}-01`;
+  const ate = `${mes}-${String(diasNoMes(mes)).padStart(2, "0")}`;
+  const hoje = hojeISO ?? de;
+
   return custos.reduce((s, item) => {
-    const v = parseBRNumber(item.valor);
-    if (item.freq === "diario") return s + v * diasNoMes(mes);
-    if (item.freq === "mensal") return s + v;
-    if (item.freq === "avulso") {
-      const norm = normalizeCostDate(item.data);
-      if (norm?.startsWith(mes)) return s + v;
-    }
-    return s;
+    return s + contribuicaoNoPeriodo(
+      {
+        valor: parseBRNumber(item.valor),
+        freq: item.freq,
+        data: normalizeCostDate(item.data) ?? item.data,
+        vigenteDe: item.vigenteDe,
+        vigenteAte: item.vigenteAte,
+        ativo: item.ativo,
+      },
+      { de, ate },
+      hoje,
+    );
   }, 0);
 }
 

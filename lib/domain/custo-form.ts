@@ -235,20 +235,51 @@ export function mesDeReferencia(r: RascunhoCusto, hojeISO: string): string {
 }
 
 /**
- * Quanto o custo vai pesar no mês — a prévia antes de salvar.
+ * Quanto o custo vai pesar, e A PARTIR DE QUANDO — a prévia antes de salvar.
  *
  * Usa `totalCustosMes`, a MESMA conta dos totais da aba de Custos. Uma prévia
  * com conta própria poderia prometer um número e a tela mostrar outro depois
  * de salvo, que é a origem conhecida de quase todo número errado nesta base.
  *
+ * ─── POR QUE O MÊS ENTROU NA RESPOSTA ───────────────────────────────────
+ *
+ * A prévia dizia "vai pesar R$ 250 em setembro" pra um custo MENSAL cadastrado
+ * no dia 14. Não vai: custo mensal entra por competência, uma vez por mês de
+ * calendário inteiramente vigente — e setembro já estava pela metade quando a
+ * despesa nasceu. Na DRE ele aparece em outubro.
+ *
+ * Prometer o mês corrente era um número que a tela seguinte desmentia. Agora
+ * a prévia devolve o primeiro mês em que ele de fato pesa.
+ *
  * @returns `null` enquanto o valor não for legível.
  */
-export function impactoNoMes(r: RascunhoCusto, mes: string): number | null {
+export function impactoNoMes(
+  r: RascunhoCusto,
+  mes: string,
+): { valor: number; mes: string } | null {
   const valor = lerValorEmReais(r.valorTexto);
   if (valor == null || valor <= 0) return null;
   const provisorio: Cost = {
     id: "previa", nome: r.nome || "previa", valor: valor.toFixed(2),
     freq: r.freq, data: r.data, escopo: r.escopo,
+    // A vigência começa na data do lançamento — é o que o cálculo real usa.
+    vigenteDe: r.data,
   };
-  return totalCustosMes([provisorio], mes);
+
+  const noMes = totalCustosMes([provisorio], mes, r.data);
+  if (noMes > 0) return { valor: noMes, mes };
+
+  /**
+   * Não pesa no mês consultado. Procura o primeiro que pesa, olhando doze
+   * meses à frente — além disso não é mais uma prévia, é um problema de
+   * cadastro (data muito no futuro), e aí `null` é a resposta honesta.
+   */
+  const [ano, m] = mes.split("-").map(Number);
+  for (let i = 1; i <= 12; i++) {
+    const d = new Date(Date.UTC(ano, (m - 1) + i, 1));
+    const proximo = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    const v = totalCustosMes([provisorio], proximo, r.data);
+    if (v > 0) return { valor: v, mes: proximo };
+  }
+  return null;
 }

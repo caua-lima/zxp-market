@@ -157,21 +157,54 @@ describe("rascunhoDe e rascunhoVazio", () => {
 
 describe("impactoNoMes — a prévia antes de salvar", () => {
   it("é a MESMA conta dos totais da aba", () => {
+    /**
+     * Uma prévia com conta própria prometeria um número e a tela mostraria
+     * outro depois de salvo — a origem conhecida de quase todo valor errado
+     * nesta base.
+     */
     const r = rascunho({ valorTexto: "30", freq: "diario" });
-    const esperado = totalCustosMes([custoDe(r, "x")], "2026-09");
-    expect(impactoNoMes(r, "2026-09")).toBe(esperado);
-    // Setembro tem 30 dias.
-    expect(impactoNoMes(r, "2026-09")).toBe(900);
+    const esperado = totalCustosMes([custoDe(r, "x")], "2026-09", r.data);
+    expect(impactoNoMes(r, "2026-09")!.valor).toBe(esperado);
   });
 
-  it("mensal pesa o valor uma vez", () => {
-    expect(impactoNoMes(rascunho({ valorTexto: "250" }), "2026-09")).toBe(250);
+  it("diário criado hoje cobra só os dias que restam do mês", () => {
+    /**
+     * Antes multiplicava pelos 30 dias de setembro inteiro, mesmo sendo
+     * cadastrado no dia 14 — cobrava treze dias em que a despesa não existia.
+     */
+    // HOJE = 2026-09-10, entao restam os dias 10..30 = 21 dias.
+    const r = rascunho({ valorTexto: "30", freq: "diario" });
+    expect(impactoNoMes(r, "2026-09")).toEqual({ valor: 30 * 21, mes: "2026-09" });
+  });
+
+  it("mensal criado no meio do mês só pesa no mês SEGUINTE", () => {
+    /**
+     * A prévia dizia "vai pesar R$ 250 em setembro". Não vai: custo mensal
+     * entra por competência, uma vez por mês de calendário inteiramente
+     * vigente, e setembro já estava pela metade quando a despesa nasceu. Na
+     * DRE ele aparece em outubro — e a prévia prometia o que a tela seguinte
+     * desmentiria.
+     */
+    expect(impactoNoMes(rascunho({ valorTexto: "250" }), "2026-09"))
+      .toEqual({ valor: 250, mes: "2026-10" });
+  });
+
+  it("mensal criado no dia 1º pesa no próprio mês", () => {
+    const r = rascunho({ valorTexto: "250", data: "2026-09-01" });
+    expect(impactoNoMes(r, "2026-09")).toEqual({ valor: 250, mes: "2026-09" });
+  });
+
+  it("a virada de ano acha o mês certo", () => {
+    const r = rascunho({ valorTexto: "250", data: "2026-12-10" });
+    expect(impactoNoMes(r, "2026-12")).toEqual({ valor: 250, mes: "2027-01" });
   });
 
   it("avulso só pesa no mês da própria data", () => {
     const r = rascunho({ valorTexto: "400", freq: "avulso", data: "2026-08-15" });
-    expect(impactoNoMes(r, "2026-08")).toBe(400);
-    expect(impactoNoMes(r, "2026-09")).toBe(0);
+    expect(impactoNoMes(r, "2026-08")).toEqual({ valor: 400, mes: "2026-08" });
+    // Consultando setembro, o único mês em que pesa continua sendo agosto —
+    // e como ele está no PASSADO, a busca à frente não o encontra.
+    expect(impactoNoMes(r, "2026-09")).toBeNull();
   });
 
   it("sem valor legível não há prévia", () => {

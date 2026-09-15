@@ -94,8 +94,26 @@ export type Cost = {
   categoria?: CostCategoria;
   centroCusto?: string; // ex.: "Anúncios ML", "Galpão", "Financeiro" — livre, não é enum
   observacao?: string;
-  /** false = arquivado (some das listas ativas, mas continua contando no histórico — nunca apagado por engano). */
+  /**
+   * false = arquivado. Some das listas ativas e continua contando no
+   * historico — o que a rota de metricas NAO fazia: la havia
+   * `if (d.ativo === false) continue`, e arquivar o contador hoje removia a
+   * despesa de todos os meses passados.
+   *
+   * Hoje este campo e so o rotulo; quem decide o periodo e `vigenteAte`.
+   */
   ativo?: boolean;
+  /**
+   * Primeiro dia em que a despesa conta. Ausente = cai em `data`.
+   *
+   * Existe porque o custo guardava um `valor` unico: corrigir o aluguel de
+   * R$ 2.000 pra R$ 2.500 hoje reescrevia todo mes anterior com 2.500 — um
+   * valor que o passado nunca teve. Mudar "daqui pra frente" agora fecha a
+   * versao atual e abre outra, e as duas coexistem, cada uma no seu periodo.
+   */
+  vigenteDe?: string;
+  /** Ultimo dia em que a despesa conta. Ausente/null = ainda vigente. */
+  vigenteAte?: string | null;
   createdBy?: string;
 };
 

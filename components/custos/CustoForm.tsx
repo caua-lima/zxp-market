@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { patchNovaVersao } from "@/lib/domain/vigencia-custo";
 import { diasNoMes, fmtBRL, todayStr } from "@/lib/domain/calc";
 import { COST_CATEGORIA_LABEL, type Cost, type CostCategoria } from "@/lib/domain/types";
 import { logAudit, upsertCost } from "@/lib/firebase/data";
@@ -102,9 +103,55 @@ export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onC
     try {
       const id = r.id ?? novoIdDeCusto();
       const custo = custoDe(r, id, inicial ?? undefined);
+
+      /**
+       * FIN-01: mudar o valor de uma despesa RECORRENTE tem duas intenções
+       * possíveis, e elas fazem coisas opostas com o passado.
+       *
+       * "O aluguel subiu" → daqui pra frente. A versão atual fecha ontem, uma
+       * nova abre hoje, e os meses anteriores continuam com o valor que de
+       * fato tiveram.
+       *
+       * "Eu tinha digitado errado" → desde sempre. A versão existente é
+       * corrigida, e a mudança é retroativa de propósito.
+       *
+       * Antes havia só um caminho, e ele agia como o segundo sem perguntar:
+       * corrigir o aluguel de R$ 2.000 pra R$ 2.500 hoje reescrevia todo mês
+       * anterior com R$ 2.500 — um valor que o passado nunca teve.
+       */
+      const recorrente = custo.freq === "mensal" || custo.freq === "diario";
+      const valorMudou = !!inicial && inicial.valor !== custo.valor;
+
+      if (!novo && recorrente && valorMudou) {
+        const daquiPraFrente = confirm(
+          `O valor de "${custo.nome}" mudou de R$ ${inicial!.valor} para R$ ${custo.valor}.\n\n`
+          + "OK — vale DAQUI PRA FRENTE (os meses anteriores ficam como estão).\n"
+          + "Cancelar — CORRIGIR desde sempre (reescreve os meses anteriores).",
+        );
+
+        if (daquiPraFrente) {
+          const { fecharAnterior, novaVigencia } = patchNovaVersao(hoje);
+          // Fecha a versão anterior no dia de ontem, preservando o valor dela.
+          await upsertCost("", { ...inicial!, ...fecharAnterior } as Cost);
+          // E grava a nova como outro registro, vigente a partir de hoje.
+          const novoId = novoIdDeCusto();
+          const versaoNova = { ...custo, id: novoId, ...novaVigencia } as Cost;
+          await upsertCost("", versaoNova);
+          logAudit({
+            acao: "editar", entidade: "custo", entidadeId: id, entidadeLabel: custo.nome,
+            detalhe: `novo valor a partir de ${hoje}: R$ ${inicial!.valor} → R$ ${custo.valor}`,
+          }).catch(() => {});
+          onSalvo(versaoNova);
+          return;
+        }
+      }
+
       await upsertCost("", custo);
       logAudit({
         acao: novo ? "criar" : "editar", entidade: "custo", entidadeId: id, entidadeLabel: custo.nome,
+        detalhe: !novo && recorrente && valorMudou
+          ? `correcao retroativa: R$ ${inicial!.valor} → R$ ${custo.valor}`
+          : undefined,
       }).catch(() => {});
       onSalvo(custo);
     } catch (err) {
@@ -228,12 +275,23 @@ export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onC
           ) : (
             <>
               <div>
-                Vai pesar <b>{fmtBRL(impacto)}</b> em {nomeDoMes(mes)}
+                Vai pesar <b>{fmtBRL(impacto.valor)}</b> em {nomeDoMes(impacto.mes)}
                 {r.freq === "diario" && valorLido != null && (
-                  <span style={{ color: "var(--muted)" }}> — {fmtBRL(valorLido)} × {diasNoMes(mes)} dias</span>
+                  <span style={{ color: "var(--muted)" }}> — {fmtBRL(valorLido)} × {diasNoMes(impacto.mes)} dias</span>
                 )}
                 .
               </div>
+              {/*
+                Custo mensal entra por competencia: uma vez por mes de
+                calendario inteiramente vigente. Cadastrado no dia 14, ele so
+                pesa no mes seguinte — e a previa dizia "em setembro", um
+                numero que a DRE desmentiria.
+              */}
+              {impacto.mes !== mes && (
+                <div style={{ fontSize: ".76rem", color: "var(--warning)", marginTop: 3 }}>
+                  Nao entra em {nomeDoMes(mes)}: custo mensal conta por mes inteiro, e este mes ja comecou.
+                </div>
+              )}
               <div style={{ fontSize: ".76rem", color: "var(--muted)", marginTop: 3 }}>
                 {r.escopo === "dash"
                   ? "Entra no lucro do Dashboard e na DRE."
