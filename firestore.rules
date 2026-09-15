@@ -136,20 +136,110 @@ service cloud.firestore {
       allow write: if podeEditar('metas');
     }
 
+    /**
+     * SEG-07: as escritas passam a ter FORMATO, não só permissão.
+     *
+     * As três regras abaixo checavam apenas quem podia escrever. Qualquer
+     * pessoa com permissão de estoque conseguia gravar `quantidade: "abc"`,
+     * `custoUnit: -500` ou um movimento sem produto — e a regra aceitava.
+     *
+     * O estrago não fica onde nasce. Um NaN numa quantidade contamina toda
+     * soma daí pra frente: o total do estoque vira NaN, o CMV vira NaN, e a
+     * DRE mostra um campo vazio em vez de um número errado — o que é pior,
+     * porque não parece um erro, parece falta de dado.
+     *
+     * Não é só defesa contra abuso: um bug no cliente, ou um script futuro,
+     * grava lixo com a MESMA permissão legítima. A regra é o último ponto
+     * onde dá pra recusar.
+     */
+    /**
+     * Data aceitável numa escrita.
+     *
+     * Aceita as DUAS formas de propósito. `normalizeCostDate` (lib/domain/calc)
+     * converte dd/mm/aaaa, o que prova que existem documentos legados nesse
+     * formato — e uma regra que só aceitasse ISO recusaria a edição deles.
+     *
+     * O objetivo aqui é barrar LIXO ("ontem", "", "abc"), não barrar histórico.
+     * Recusar uma escrita legítima em produção é pior do que aceitar um
+     * formato antigo que a camada de leitura já sabe normalizar.
+     */
+    function dataAceitavel(v) {
+      return v is string && (
+        v.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        || v.matches('^[0-9]{2}/[0-9]{2}/[0-9]{4}$')
+      );
+    }
+
+    /**
+     * Valor monetário em texto, nas duas convenções.
+     *
+     * `parseBRNumber` existe justamente porque há valores gravados no formato
+     * brasileiro ("1.234,56"). Exigir só ponto decimal bloquearia a edição
+     * desses registros.
+     */
+    function valorAceitavel(v) {
+      return v is string && v.size() > 0 && v.matches('^[0-9.,]+$');
+    }
+
+    /** Número finito e não negativo. Dinheiro e quantidade nunca são negativos por digitação. */
+    function numeroNaoNegativo(v) {
+      return v is number && v >= 0;
+    }
+
+    function custoValido(d) {
+      return d.nome is string && d.nome.size() > 0 && d.nome.size() <= 200
+        // Impede "muitos reais" virar NaN na soma, sem exigir uma convenção
+        // só — ver valorAceitavel.
+        && valorAceitavel(d.valor)
+        && d.freq in ['diario', 'mensal', 'avulso']
+        && dataAceitavel(d.data)
+        && (!('escopo' in d) || d.escopo in ['dash', 'dre'])
+        && (!('ativo' in d) || d.ativo is bool)
+        && (!('vigenteDe' in d) || dataAceitavel(d.vigenteDe))
+        && (!('vigenteAte' in d) || d.vigenteAte == null || dataAceitavel(d.vigenteAte));
+    }
+
+    function produtoValido(d) {
+      // `name` opcional de propósito: um produto legado sem o campo não pode
+      // ficar impossível de atualizar por causa da regra.
+      return (!('name' in d) || (d.name is string && d.name.size() <= 300))
+        && (!('custo' in d) || d.custo is string)
+        && (!('custoMedio' in d) || numeroNaoNegativo(d.custoMedio))
+        && (!('qtdLocal' in d) || d.qtdLocal is number)
+        && (!('ativo' in d) || d.ativo is bool);
+    }
+
+    function movimentoValido(d) {
+      return d.productId is string && d.productId.size() > 0
+        && d.tipo in ['entrada', 'saldo_inicial', 'saida_full', 'ajuste']
+        // Ajuste é o ÚNICO que aceita sinal: ele existe pra corrigir pra
+        // baixa. Nos outros, negativo é erro de digitação e inverteria o
+        // sentido do lançamento em silêncio.
+        && d.quantidade is number
+        && (d.tipo == 'ajuste' || d.quantidade >= 0)
+        && (!('custoUnit' in d) || numeroNaoNegativo(d.custoUnit))
+        && (!('estoqueAntes' in d) || numeroNaoNegativo(d.estoqueAntes))
+        && dataAceitavel(d.data)
+        && (!('obs' in d) || (d.obs is string && d.obs.size() <= 500));
+    }
+
     match /custos/{docId} {
       allow read: if veOperacao();
-      allow write: if podeEditar('custos');
+      allow write: if podeEditar('custos') && custoValido(request.resource.data);
+      allow delete: if podeEditar('custos');
     }
 
     match /estoque/{docId} {
       allow read: if veOperacao();
-      allow write: if podeEditar('estoque');
+      allow write: if podeEditar('estoque') && produtoValido(request.resource.data);
+      allow delete: if podeEditar('estoque');
     }
 
     // Livro de movimentações do estoque (entradas/baixas/ajustes)
     match /estoque_movimentos/{docId} {
       allow read: if veOperacao();
-      allow write: if podeEditar('estoque');
+      allow write: if podeEditar('estoque') && movimentoValido(request.resource.data);
+      allow delete: if podeEditar('estoque');
     }
 
     // Registro manual de alterações de campanha de Ads ("subi o ROAS pra
