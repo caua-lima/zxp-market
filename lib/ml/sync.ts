@@ -1,6 +1,7 @@
 import "server-only";
 import { etapaOk, etapaParcial, type ResultadoEtapa } from "@/lib/domain/sync-resultado";
 import { escolherLote, precisaReconferir } from "@/lib/domain/reconciliacao";
+import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
 import {
   carregarProdutos,
@@ -126,7 +127,7 @@ async function fetchShipment(accessToken: string, shipmentId: string): Promise<S
   const headers = { Authorization: `Bearer ${accessToken}`, Accept: "application/json", "x-format-new": "true" };
   try {
     // detalhe do envio (status, logística, tracking, prazo, list_cost)
-    const rs = await fetch(`${ML_API}/shipments/${shipmentId}`, { headers, cache: "no-store" });
+    const rs = await fetchML(`${ML_API}/shipments/${shipmentId}`, { headers, cache: "no-store" });
     if (!rs.ok) return null;
     const j = (await rs.json()) as {
       status?: string; substatus?: string; logistic_type?: string; tracking_number?: string;
@@ -144,7 +145,7 @@ async function fetchShipment(accessToken: string, shipmentId: string): Promise<S
     // fallback: sub-recurso de prazo, quando o envio não trouxe lead_time
     if (!estimated) {
       try {
-        const rl = await fetch(`${ML_API}/shipments/${shipmentId}/lead_time`, { headers, cache: "no-store" });
+        const rl = await fetchML(`${ML_API}/shipments/${shipmentId}/lead_time`, { headers, cache: "no-store" });
         if (rl.ok) estimated = pickEstimate((await rl.json()) as LeadTime);
       } catch { /* segue */ }
     }
@@ -166,7 +167,7 @@ async function fetchShipment(accessToken: string, shipmentId: string): Promise<S
     let cost: number | null = null;
     let buyerPaidShipping: number | null = null;
     try {
-      const rc = await fetch(`${ML_API}/shipments/${shipmentId}/costs`, { headers: costHeaders, cache: "no-store" });
+      const rc = await fetchML(`${ML_API}/shipments/${shipmentId}/costs`, { headers: costHeaders, cache: "no-store" });
       if (rc.ok) {
         const jc = (await rc.json()) as {
           senders?: { cost?: number }[];
@@ -287,7 +288,7 @@ async function idsComCampo(db: FirebaseFirestore.Firestore, orderIds: string[], 
  */
 async function fetchPaymentInfo(accessToken: string, paymentId: string): Promise<{ net: number; release: string } | null> {
   try {
-    const r = await fetch(`${MP_API}/v1/payments/${paymentId}`, {
+    const r = await fetchML(`${MP_API}/v1/payments/${paymentId}`, {
       headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
       cache: "no-store",
     });
@@ -331,7 +332,7 @@ async function fetchAllOrders(
 
     let data: { results?: Record<string, unknown>[]; paging?: { total?: number } };
     try {
-      const res = await fetch(url, {
+      const res = await fetchML(url, {
         headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
         cache: "no-store",
       });
@@ -616,7 +617,7 @@ export async function syncClaimsRange(accessToken: string, range: SyncRange): Pr
   const claims: Record<string, unknown>[] = [];
   let offset = 0;
   while (offset <= 500) {
-    const res = await fetch(`${ML_API}/post-purchase/v1/claims/search?sort=date_created,desc&limit=50&offset=${offset}`, {
+    const res = await fetchML(`${ML_API}/post-purchase/v1/claims/search?sort=date_created,desc&limit=50&offset=${offset}`, {
       headers,
       cache: "no-store",
     });

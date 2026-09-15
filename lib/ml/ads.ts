@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchML } from "./fetch-ml";
 import { getValidMlAccessToken } from "@/lib/ml/getToken";
 
 const ML_API = "https://api.mercadolibre.com";
@@ -17,7 +18,7 @@ const ADV_TTL = 10 * 60 * 1000;
 async function getAdvertiser(token: string): Promise<Adv | null> {
   if (advCache && Date.now() - advCache.at < ADV_TTL) return advCache.adv;
 
-  const res = await fetch(`${ML_API}/advertising/advertisers?product_id=PADS`, {
+  const res = await fetchML(`${ML_API}/advertising/advertisers?product_id=PADS`, {
     headers: { Authorization: `Bearer ${token}`, "Api-Version": "1" },
     cache: "no-store",
   });
@@ -39,7 +40,7 @@ async function getAdvertiser(token: string): Promise<Adv | null> {
  * verdade, e o gasto deles não batia com nenhuma campanha da lista.
  */
 async function getAdvertisersAll(token: string): Promise<Adv[]> {
-  const res = await fetch(`${ML_API}/advertising/advertisers?product_id=PADS`, {
+  const res = await fetchML(`${ML_API}/advertising/advertisers?product_id=PADS`, {
     headers: { Authorization: `Bearer ${token}`, "Api-Version": "1" },
     cache: "no-store",
   });
@@ -54,10 +55,10 @@ async function getAdvertisersAll(token: string): Promise<Adv[]> {
 /** GET com retry em 429/5xx, tentando Api-Version 2 e caindo pra 1. */
 async function get(url: string, token: string): Promise<Response> {
   const call = async (v: string) => {
-    let res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, "Api-Version": v }, cache: "no-store" });
+    let res = await fetchML(url, { headers: { Authorization: `Bearer ${token}`, "Api-Version": v }, cache: "no-store" });
     for (let i = 1; i < 3 && (res.status === 429 || res.status >= 500); i++) {
       await new Promise((r) => setTimeout(r, 400 * i));
-      res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, "Api-Version": v }, cache: "no-store" });
+      res = await fetchML(url, { headers: { Authorization: `Bearer ${token}`, "Api-Version": v }, cache: "no-store" });
     }
     return res;
   };
@@ -521,7 +522,7 @@ export async function getItemStatusByItem(mlbs: string[]): Promise<Record<string
   for (let i = 0; i < uniq.length; i += 20) {
     const chunk = uniq.slice(i, i + 20);
     try {
-      const res = await fetch(`${ML_API}/items?ids=${chunk.join(",")}&attributes=id,status`, {
+      const res = await fetchML(`${ML_API}/items?ids=${chunk.join(",")}&attributes=id,status`, {
         headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
         cache: "no-store",
       });
@@ -957,7 +958,7 @@ export async function getAdsSettingsByItem(
 export async function probeAds(from: string, to: string): Promise<Record<string, unknown>> {
   try {
     const token = await getValidMlAccessToken();
-    const advRes = await fetch(`${ML_API}/advertising/advertisers?product_id=PADS`, {
+    const advRes = await fetchML(`${ML_API}/advertising/advertisers?product_id=PADS`, {
       headers: { Authorization: `Bearer ${token}`, "Api-Version": "1" },
       cache: "no-store",
     });

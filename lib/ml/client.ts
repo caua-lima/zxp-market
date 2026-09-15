@@ -1,5 +1,6 @@
 // lib/ml/client.ts
 import crypto from "crypto";
+import { fetchML } from "./fetch-ml";
 
 const ML_APP_ID = process.env.ML_APP_ID!;
 const ML_SECRET = process.env.ML_SECRET!;
@@ -42,7 +43,7 @@ export async function exchangeCodeForToken(code: string, codeVerifier: string) {
   };
   if (codeVerifier) body.code_verifier = codeVerifier;
 
-  const res = await fetch(`${ML_API}/oauth/token`, {
+  const res = await fetchML(`${ML_API}/oauth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(body),
@@ -52,7 +53,7 @@ export async function exchangeCodeForToken(code: string, codeVerifier: string) {
 }
 
 export async function refreshAccessToken(refreshToken: string) {
-  const res = await fetch(`${ML_API}/oauth/token`, {
+  const res = await fetchML(`${ML_API}/oauth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -70,7 +71,7 @@ export async function getOrdersForDay(accessToken: string, sellerId: string, dat
   const from = `${dateISO}T00:00:00.000-03:00`;
   const to   = `${dateISO}T23:59:59.999-03:00`;
   const url = `${ML_API}/orders/search?seller=${sellerId}&order.date_created.from=${encodeURIComponent(from)}&order.date_created.to=${encodeURIComponent(to)}&order.status=paid&limit=50`;
-  const res = await fetch(url, {
+  const res = await fetchML(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) throw new Error(await res.text());
@@ -78,7 +79,7 @@ export async function getOrdersForDay(accessToken: string, sellerId: string, dat
 }
 
 export async function getItemDetails(accessToken: string, itemId: string) {
-  const res = await fetch(`${ML_API}/items/${itemId}`, {
+  const res = await fetchML(`${ML_API}/items/${itemId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) return null;

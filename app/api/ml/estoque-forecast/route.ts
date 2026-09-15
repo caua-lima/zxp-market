@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
 import { getMlAccessToken } from "../token";
@@ -100,7 +101,7 @@ export async function GET(req: Request) {
         `&order.date_created.from=${encodeURIComponent(fromISO)}` +
         `&order.date_created.to=${encodeURIComponent(toISO)}` +
         `&limit=50&offset=${offset}`;
-      const res = await fetch(u, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store" });
+      const res = await fetchML(u, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store" });
       if (!res.ok) break;
       const data = (await res.json()) as { results?: Record<string, unknown>[]; paging?: { total?: number } };
       const results = data.results ?? [];
@@ -182,7 +183,7 @@ export async function GET(req: Request) {
         const pid = porMlb.get(mlbNum);
         if (!pid) continue;
         try {
-          const r = await fetch(
+          const r = await fetchML(
             `${ML_API}/items/MLB${mlbNum}/visits/time_window?last=${dias}&unit=day`,
             { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" },
           );

@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { estimateOrderFinance, type ProdutoCusto } from "@/lib/ml/order-finance";
 import { fetchShippingCost } from "@/lib/ml/orders";
@@ -277,7 +278,7 @@ async function apurarFrete(pedido: PedidoParaNotificar): Promise<number | null> 
  */
 async function fatiaDoEnvio(token: string, shippingId: string, orderId: string): Promise<number> {
   try {
-    const r = await fetch(`${ML_API}/shipments/${shippingId}/items`, {
+    const r = await fetchML(`${ML_API}/shipments/${shippingId}/items`, {
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
       cache: "no-store",
     });

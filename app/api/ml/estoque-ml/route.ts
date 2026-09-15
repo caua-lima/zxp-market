@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
 import { getMlAccessToken } from "../token";
@@ -43,7 +44,7 @@ export async function GET(req: Request) {
     // o número (ver consolidarEstoqueAnuncios em lib/domain/estoque.ts).
     for (let i = 0; i < arr.length; i += 20) {
       const chunk = arr.slice(i, i + 20);
-      const res = await fetch(
+      const res = await fetchML(
         `${ML_API}/items?ids=${chunk.join(",")}&attributes=id,available_quantity,sold_quantity,status,price,original_price,shipping,inventory_id`,
         { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store" },
       );
@@ -77,7 +78,7 @@ export async function GET(req: Request) {
     // 8 chamadas em paralelo por vez pra não estourar o rate limit.
     async function enrichPromo(id: string) {
       try {
-        const r = await fetch(`${ML_API}/items/${id}/sale_price?context=channel_marketplace`, {
+        const r = await fetchML(`${ML_API}/items/${id}/sale_price?context=channel_marketplace`, {
           headers: { Authorization: `Bearer ${token}`, Accept: "application/json", "x-format-new": "true" },
           cache: "no-store",
         });

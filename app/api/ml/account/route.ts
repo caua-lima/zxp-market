@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchML } from "@/lib/ml/fetch-ml";
 import { getMlTokenStatus, getMlAccessToken, getMlTokenData } from "../token";
 import { requireAccess } from "@/lib/api-auth";
 
@@ -17,7 +18,7 @@ export async function GET(req: Request) {
   if (!access) return NextResponse.json({ connected: false });
 
   try {
-    const res = await fetch(`https://api.mercadolibre.com/users/me`, {
+    const res = await fetchML(`https://api.mercadolibre.com/users/me`, {
       headers: { Authorization: `Bearer ${access}` },
       cache: "no-store",
     });

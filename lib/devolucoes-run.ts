@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchML } from "@/lib/ml/fetch-ml";
 import { getMlAccessToken } from "@/app/api/ml/token";
 import { avisosDeDevolucao, type Reclamacao } from "@/lib/domain/devolucoes";
 import { buildPayload, enviarEPersistirEntrega } from "@/lib/ml/notificar-venda";
@@ -34,7 +35,7 @@ export type ResultadoDevolucoes = {
 };
 
 async function buscarReclamacoes(token: string): Promise<Reclamacao[]> {
-  const r = await fetch(
+  const r = await fetchML(
     `${ML_API}/post-purchase/v1/claims/search?stage=claim&limit=50&sort=date_created,desc`,
     { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store" },
   );

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
 import { getMlAccessToken } from "../token";
@@ -87,7 +88,7 @@ export async function GET(req: Request) {
      */
     const ids = new Set<string>(cadastrados);
     for (let offset = 0; offset < 1000; offset += 100) {
-      const res = await fetch(`${ML_API}/users/${SELLER_ID}/items/search?limit=100&offset=${offset}`, { headers, cache: "no-store" });
+      const res = await fetchML(`${ML_API}/users/${SELLER_ID}/items/search?limit=100&offset=${offset}`, { headers, cache: "no-store" });
       if (!res.ok) break;
       const j = (await res.json()) as { results?: string[] };
       const lote = j.results ?? [];
@@ -101,7 +102,7 @@ export async function GET(req: Request) {
     const inventoryIds = new Set<string>();
     for (let i = 0; i < arr.length; i += 20) {
       const chunk = arr.slice(i, i + 20);
-      const res = await fetch(`${ML_API}/items?ids=${chunk.join(",")}&attributes=id,title,available_quantity,sold_quantity,status,inventory_id,shipping,variations`, { headers, cache: "no-store" });
+      const res = await fetchML(`${ML_API}/items?ids=${chunk.join(",")}&attributes=id,title,available_quantity,sold_quantity,status,inventory_id,shipping,variations`, { headers, cache: "no-store" });
       if (!res.ok) continue;
       const rows = (await res.json()) as { body?: Record<string, unknown> }[];
       for (const row of rows) {
@@ -166,7 +167,7 @@ export async function GET(req: Request) {
     let detalheFalhou = 0;
     await mapPool(invArr.slice(0, INV_DETALHE_MAX), 4, async (inv) => {
       try {
-        const r = await fetch(`${ML_API}/inventories/${inv}/stock/fulfillment`, { headers, cache: "no-store" });
+        const r = await fetchML(`${ML_API}/inventories/${inv}/stock/fulfillment`, { headers, cache: "no-store" });
         if (!r.ok) { detalheFalhou++; return; }
         const j = (await r.json()) as {
           available_quantity?: number;
@@ -313,7 +314,7 @@ export async function GET(req: Request) {
             `&inventory_id=${chunk.join(",")}&type=${tipoBusca}` +
             `&date_from=${from}&date_to=${to}&limit=${LIMITE}` +
             (scroll ? `&scroll=${encodeURIComponent(scroll)}` : "");
-          const res = await fetch(`${ML_API}${path}`, { headers, cache: "no-store" });
+          const res = await fetchML(`${ML_API}${path}`, { headers, cache: "no-store" });
           opStatus = res.status;
           if (!res.ok) {
             if (!opErro) {
@@ -490,7 +491,7 @@ export async function GET(req: Request) {
        * que ja funcionam pro frete de saida antes de exigir digitacao.
        */
       try {
-        const rc = await fetch(`${ML_API}/shipments/${r.remessa}/costs`, { headers, cache: "no-store" });
+        const rc = await fetchML(`${ML_API}/shipments/${r.remessa}/costs`, { headers, cache: "no-store" });
         if (rc.ok) {
           const jc = (await rc.json()) as { senders?: { cost?: number }[]; gross_amount?: number };
           const senders = Array.isArray(jc?.senders) ? jc.senders : [];
@@ -501,7 +502,7 @@ export async function GET(req: Request) {
       } catch { /* cai na 2a tentativa */ }
 
       try {
-        const rs = await fetch(`${ML_API}/shipments/${r.remessa}`, { headers, cache: "no-store" });
+        const rs = await fetchML(`${ML_API}/shipments/${r.remessa}`, { headers, cache: "no-store" });
         if (rs.ok) {
           const js = (await rs.json()) as {
             base_cost?: number;

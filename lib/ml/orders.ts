@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchML } from "./fetch-ml";
 
 export const ML_API = "https://api.mercadolibre.com";
 export const SELLER_ID = process.env.ML_SELLER_ID || "2420261535";
@@ -64,7 +65,7 @@ export async function fetchOrdersLive(
         `&order.date_created.from=${encodeURIComponent(fromISO)}` +
         `&order.date_created.to=${encodeURIComponent(toISO)}` +
         `&limit=50&offset=${offset}`;
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store" });
+      const res = await fetchML(url, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store" });
       if (!res.ok) return null;
       const data = (await res.json()) as { results?: Record<string, unknown>[]; paging?: { total?: number } };
       const results = data.results ?? [];
@@ -152,7 +153,7 @@ export async function fetchShippingCost(token: string, shipmentId: string): Prom
   const headers = { Authorization: `Bearer ${token}`, Accept: "application/json" };
   try {
     // `/costs` é o mais preciso: `senders` é literalmente o que VOCÊ paga.
-    const rc = await fetch(`${ML_API}/shipments/${shipmentId}/costs`, { headers, cache: "no-store" });
+    const rc = await fetchML(`${ML_API}/shipments/${shipmentId}/costs`, { headers, cache: "no-store" });
     if (rc.ok) {
       const jc = (await rc.json()) as { senders?: { cost?: number }[] };
       const soma = (Array.isArray(jc?.senders) ? jc.senders : []).reduce((s, x) => s + Number(x?.cost ?? 0), 0);
@@ -161,7 +162,7 @@ export async function fetchShippingCost(token: string, shipmentId: string): Prom
   } catch { /* cai no detalhe do envio */ }
 
   try {
-    const rs = await fetch(`${ML_API}/shipments/${shipmentId}`, { headers, cache: "no-store" });
+    const rs = await fetchML(`${ML_API}/shipments/${shipmentId}`, { headers, cache: "no-store" });
     if (!rs.ok) return null;
     const j = (await rs.json()) as {
       base_cost?: number;

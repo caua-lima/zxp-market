@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchML } from "./fetch-ml";
 import { getMlAccessToken } from "@/app/api/ml/token";
 
 export type MlUserProfile = {
@@ -21,7 +22,7 @@ export async function fetchMlUserProfileFresh(): Promise<MlUserProfile | null> {
   const access = await getMlAccessToken();
   if (!access) return null;
   try {
-    const res = await fetch("https://api.mercadolibre.com/users/me", {
+    const res = await fetchML("https://api.mercadolibre.com/users/me", {
       headers: { Authorization: `Bearer ${access}` },
       cache: "no-store",
     });

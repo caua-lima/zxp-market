@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { getMlAccessToken } from "@/app/api/ml/token";
 import { SELLER_ID } from "@/lib/ml/orders";
@@ -56,7 +57,7 @@ async function buscarEstoqueML(
   for (let i = 0; i < ids.length; i += 20) {
     const chunk = ids.slice(i, i + 20);
     try {
-      const res = await fetch(
+      const res = await fetchML(
         `${ML_API}/items?ids=${chunk.join(",")}&attributes=id,available_quantity,status,shipping,inventory_id`,
         { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store" },
       );
@@ -110,7 +111,7 @@ async function medirVendasPorProduto(
     const desde = new Date(Date.now() - dias * 86400000).toISOString();
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/json" };
     for (let offset = 0; offset < 1000; offset += 50) {
-      const r = await fetch(
+      const r = await fetchML(
         `${ML_API}/orders/search?seller=${SELLER_ID}&order.status=paid`
         + `&order.date_created.from=${desde}&offset=${offset}&limit=50`,
         { headers, cache: "no-store" },

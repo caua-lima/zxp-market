@@ -1,4 +1,5 @@
 import "server-only";
+import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { getMlAccessToken } from "@/app/api/ml/token";
 import { SELLER_ID } from "@/lib/ml/orders";
@@ -56,7 +57,7 @@ export async function lerNivelMercadoLider(): Promise<string | null> {
   try {
     const token = await getMlAccessToken();
     if (!token) return null;
-    const r = await fetch(`${ML_API}/users/${SELLER_ID}`, {
+    const r = await fetchML(`${ML_API}/users/${SELLER_ID}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
       cache: "no-store",
     });

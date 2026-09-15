@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchML } from "@/lib/ml/fetch-ml";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { getValidMlAccessToken } from "@/lib/ml/getToken";
@@ -152,7 +153,7 @@ export async function POST(req: Request) {
 
   try {
     const token = await getValidMlAccessToken();
-    const res = await fetch(`${ML_API}/orders/${orderId}`, {
+    const res = await fetchML(`${ML_API}/orders/${orderId}`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
     });

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { exchangeCodeForToken } from "@/lib/ml/client";
 import { consumirTransacao } from "@/lib/ml/oauth-transacao";
@@ -57,7 +58,7 @@ export async function GET(req: Request) {
     // Sem ele não dá pra validar, e gravar sem validar é o bug original.
     let perfil: { id?: number | string; nickname?: string } | null = null;
     try {
-      const res = await fetch("https://api.mercadolibre.com/users/me", {
+      const res = await fetchML("https://api.mercadolibre.com/users/me", {
         headers: { Authorization: `Bearer ${token.access_token}` },
         cache: "no-store",
       });
