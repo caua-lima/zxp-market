@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, useMemo, useRef, Fragment } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { initForegroundPush } from "@/lib/firebase/push";
@@ -28,6 +28,11 @@ import { AvatarUpload } from "@/components/AvatarUpload";
 import MyProfileModal from "@/components/MyProfileModal";
 import CommandPalette from "@/components/CommandPalette";
 import { SaleNotificationProvider } from "@/components/SaleNotificationProvider";
+import { marcarAberturaDeGrupo } from "@/lib/domain/nav-grupos";
+import {
+  lerContexto, sincronizarUrl, CONTEXTO_VAZIO,
+  type ContextoUrl,
+} from "@/lib/domain/contexto-url";
 
 type Tab = "dashboard" | "pedidos" | "ads" | "preco" | "metas" | "custos" | "estoque" | "full" | "desempenho" | "dre" | "tarefas" | "acesso";
 
@@ -35,19 +40,57 @@ type Tab = "dashboard" | "pedidos" | "ads" | "preco" | "metas" | "custos" | "est
 // nem aparece na navegação pra colaborador). Tarefas é a única aba em que o
 // colaborador também EDITA (ver isOwner mais abaixo) — as demais continuam
 // somente leitura pra ele, garantido pelas regras do Firestore.
-const NAV_ITEMS: { id: Tab; label: string }[] = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "pedidos", label: "Pedidos" },
-  { id: "ads", label: "Ads" },
-  { id: "preco", label: "Preço" },
-  { id: "metas", label: "Metas" },
-  { id: "custos", label: "Custos" },
-  { id: "estoque", label: "Estoque" },
-  { id: "full", label: "Full" },
-  { id: "desempenho", label: "Desempenho" },
-  { id: "dre", label: "DRE" },
-  { id: "tarefas", label: "Tarefas" },
-  { id: "acesso", label: "Acesso" },
+/**
+ * ─── POR QUE AGRUPAR ────────────────────────────────────────────────────
+ *
+ * Eram doze botões numa lista só, em ordem de quando cada aba foi escrita.
+ * Doze itens planos é mais do que se lê de relance: pra achar a DRE, a
+ * pessoa varre a lista inteira todas as vezes, porque nada na ordem ajuda
+ * a prever onde ela está.
+ *
+ * Os grupos são por PERGUNTA, não por parentesco de código:
+ *
+ *   Visão geral   — "como estamos?"
+ *   Comercial     — "o que está sendo vendido, e por quanto?"
+ *   Operação      — "o que precisa ser feito com o estoque?"
+ *   Financeiro    — "quanto sobrou?"
+ *   Desempenho    — "como o mercado nos vê?"
+ *   Administração — "quem pode o quê?"
+ *
+ * Metas fica em Visão geral e não em Financeiro de propósito: meta é
+ * acompanhamento do mês em curso, e quem abre Financeiro está atrás de
+ * número fechado.
+ */
+export const GRUPOS_NAV = ["visao", "comercial", "operacao", "financeiro", "desempenho", "admin"] as const;
+export type GrupoNav = (typeof GRUPOS_NAV)[number];
+
+const ROTULO_GRUPO: Record<GrupoNav, string> = {
+  visao: "Visão geral",
+  comercial: "Comercial",
+  operacao: "Operação",
+  financeiro: "Financeiro",
+  desempenho: "Desempenho",
+  admin: "Administração",
+};
+
+const NAV_ITEMS: { id: Tab; label: string; grupo: GrupoNav }[] = [
+  { id: "dashboard", label: "Dashboard", grupo: "visao" },
+  { id: "metas", label: "Metas", grupo: "visao" },
+
+  { id: "pedidos", label: "Pedidos", grupo: "comercial" },
+  { id: "ads", label: "Ads", grupo: "comercial" },
+  { id: "preco", label: "Preço", grupo: "comercial" },
+
+  { id: "estoque", label: "Estoque", grupo: "operacao" },
+  { id: "full", label: "Full", grupo: "operacao" },
+  { id: "tarefas", label: "Tarefas", grupo: "operacao" },
+
+  { id: "custos", label: "Custos", grupo: "financeiro" },
+  { id: "dre", label: "DRE", grupo: "financeiro" },
+
+  { id: "desempenho", label: "Desempenho", grupo: "desempenho" },
+
+  { id: "acesso", label: "Acesso", grupo: "admin" },
 ];
 
 // Ícones em linha (herdam a cor via currentColor) — visual limpo e profissional.
@@ -114,18 +157,96 @@ const VALID_TABS: readonly Tab[] = ["dashboard", "pedidos", "ads", "preco", "met
 function AppShell() {
   const { user, signOut, signInWithAccountSelection } = useAuth();
   const searchParams = useSearchParams();
-  // Deep link de notificação de venda (?tab=pedidos&order=...) — só lido na
-  // primeira montagem; depois disso a navegação é sempre por estado local
-  // (setTab/setOpenOrderId), igual ao resto do app, que não usa rota de URL.
-  const [tab, setTab] = useState<Tab>(() => {
-    const t = searchParams.get("tab");
-    return (VALID_TABS as readonly string[]).includes(t ?? "") ? (t as Tab) : "dashboard";
-  });
-  const [openOrderId, setOpenOrderId] = useState<string | undefined>(() => searchParams.get("order") ?? undefined);
-  const [openTaskId, setOpenTaskId] = useState<string | undefined>(() => searchParams.get("task") ?? undefined);
+
+  /**
+   * ─── A URL VOLTOU A SER O ENDEREÇO DA TELA ───────────────────────────
+   *
+   * Antes: a URL era lida UMA vez, na primeira montagem, e nunca escrita de
+   * volta. O comentário que estava aqui dizia isso com todas as letras —
+   * "depois disso a navegação é sempre por estado local". As três
+   * consequências apareciam no uso diário:
+   *
+   *   · recarregar jogava a pessoa no Dashboard, de qualquer aba;
+   *   · o botão Voltar SAÍA DO APP, porque navegação interna nenhuma
+   *     criava entrada no histórico;
+   *   · não dava pra mandar "olha a DRE de agosto" pra ninguém.
+   *
+   * Agora a aba e o item aberto vivem na URL, e `contexto-url` decide o que
+   * empilha no histórico e o que só substitui: trocar de aba empilha (Voltar
+   * volta pro Dashboard), mexer em filtro não (Voltar não é Desfazer).
+   */
+  const inicial = lerContexto(searchParams.toString(), VALID_TABS);
+
+  const [tab, setTab] = useState<Tab>(() => (inicial.aba as Tab) ?? "dashboard");
+  const [openOrderId, setOpenOrderId] = useState<string | undefined>(
+    () => (inicial.tipoDoItem === "pedido" ? inicial.item ?? undefined : undefined),
+  );
+  const [openTaskId, setOpenTaskId] = useState<string | undefined>(
+    () => (inicial.tipoDoItem === "tarefa" ? inicial.item ?? undefined : undefined),
+  );
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [swappingAccount, setSwappingAccount] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+
+  /**
+   * O contexto que a URL deve mostrar AGORA, derivado do estado.
+   *
+   * Derivado, e não um segundo estado guardado em paralelo: dois lugares
+   * guardando a mesma coisa é como as telas desta base passaram a mostrar
+   * números diferentes do mesmo mês.
+   */
+  const contextoAtual: ContextoUrl = useMemo(() => ({
+    ...CONTEXTO_VAZIO,
+    aba: tab,
+    item: openOrderId ?? openTaskId ?? null,
+    tipoDoItem: openOrderId ? "pedido" : openTaskId ? "tarefa" : null,
+  }), [tab, openOrderId, openTaskId]);
+
+  /**
+   * O que a barra de endereços mostrava na última sincronização.
+   *
+   * Guardado em ref e não em estado: ele só serve pra comparar na próxima
+   * sincronização. Em estado, cada escrita na URL agendaria outra pintura,
+   * e o efeito abaixo passaria a disparar a si mesmo.
+   */
+  const ultimoContexto = useRef<ContextoUrl>(contextoAtual);
+
+  useEffect(() => {
+    /**
+     * Uma linha, e ela é testável: a escolha entre empilhar e substituir mora
+     * em `sincronizarUrl`, com nove testes. Dentro deste efeito — num
+     * componente que só monta depois do login — ela seria impossível de
+     * exercitar, e foi por não dar pra testar que a URL passou tanto tempo
+     * sem ser escrita de volta.
+     */
+    const r = sincronizarUrl({
+      historico: window.history,
+      caminho: window.location.pathname,
+      anterior: ultimoContexto.current,
+      atual: contextoAtual,
+      abaPadrao: "dashboard",
+    });
+    if (r.acao !== "nada") ultimoContexto.current = contextoAtual;
+  }, [contextoAtual]);
+
+  /**
+   * Voltar e avançar do navegador.
+   *
+   * Sem este ouvinte, o `pushState` acima seria pior que não ter histórico
+   * nenhum: a URL mudaria ao apertar Voltar e a tela ficaria parada, e uma
+   * barra de endereços que mente é pior do que uma que não diz nada.
+   */
+  useEffect(() => {
+    function aoVoltar() {
+      const c = lerContexto(window.location.search, VALID_TABS);
+      ultimoContexto.current = c;
+      setTab((c.aba as Tab) ?? "dashboard");
+      setOpenOrderId(c.tipoDoItem === "pedido" ? c.item ?? undefined : undefined);
+      setOpenTaskId(c.tipoDoItem === "tarefa" ? c.item ?? undefined : undefined);
+    }
+    window.addEventListener("popstate", aoVoltar);
+    return () => window.removeEventListener("popstate", aoVoltar);
+  }, []);
 
   /** CTA de toast/central de notificações: pula direto pra aba Pedidos com o drawer do pedido já aberto. */
   function navigateToOrder(orderId: string) {
@@ -147,12 +268,12 @@ function AppShell() {
    */
   function abrirDeepLink(deepLink: string) {
     const url = new URL(deepLink, typeof window !== "undefined" ? window.location.origin : "http://localhost");
-    const orderId = url.searchParams.get("order");
-    const taskId = url.searchParams.get("task");
-    const t = url.searchParams.get("tab");
-    if (orderId) { navigateToOrder(orderId); return; }
-    if (taskId) { navigateToTask(taskId); return; }
-    if (t && (VALID_TABS as readonly string[]).includes(t)) setTab(t as Tab);
+    // Mesmo leitor da URL de entrada, então o formato antigo (?order=) e o
+    // novo (?item=&tipo=) funcionam aqui sem uma segunda regra pra manter.
+    const c = lerContexto(url.searchParams, VALID_TABS);
+    if (c.tipoDoItem === "pedido" && c.item) { navigateToOrder(c.item); return; }
+    if (c.tipoDoItem === "tarefa" && c.item) { navigateToTask(c.item); return; }
+    if (c.aba) setTab(c.aba as Tab);
   }
 
   // Ctrl/Cmd+K abre a busca rápida de qualquer lugar do app — atalho comum
@@ -308,11 +429,29 @@ function AppShell() {
 
           {/* Nav items */}
           <nav style={{ flex: 1, padding: "10px 10px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
-            {navItems.map((item) => {
+            {marcarAberturaDeGrupo(navItems).map((item, i) => {
+              // `abreGrupo` vem de marcarAberturaDeGrupo, com teste: o cabeçalho
+              // sai no PRIMEIRO item de cada grupo, e não num <section> fixo. O
+              // papel filtra os itens antes, e seção fixa deixaria título vazio
+              // — "Administração" sem nada embaixo diz pra pessoa que existe uma
+              // tela que ela não está achando.
+              const { abreGrupo } = item;
               const active = activeTab === item.id;
               return (
+                <Fragment key={item.id}>
+                {abreGrupo && (
+                  <div style={{
+                    // 12px é o piso pra metadado no padrão desta tela. Título
+                    // de grupo é orientação, não informação que se lê — mas
+                    // ainda precisa ser legível por quem enxerga pouco.
+                    fontSize: 12, fontWeight: 700, letterSpacing: ".07em",
+                    textTransform: "uppercase", color: "var(--muted)",
+                    padding: i === 0 ? "2px 12px 6px" : "14px 12px 6px",
+                  }}>
+                    {ROTULO_GRUPO[item.grupo]}
+                  </div>
+                )}
                 <button
-                  key={item.id}
                   type="button"
                   onClick={() => {
                     setTab(item.id);
@@ -353,6 +492,7 @@ function AppShell() {
                   </span>
                   <span>{item.label}</span>
                 </button>
+                </Fragment>
               );
             })}
           </nav>
