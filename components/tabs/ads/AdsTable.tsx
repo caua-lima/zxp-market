@@ -109,6 +109,62 @@ function Identidade({ l }: { l: LinhaAds }) {
   );
 }
 
+type OrdemAds = { col: ColunaOrdenavel; dir: 1 | -1 };
+
+/**
+ * Cabeçalho ordenável — acessível.
+ *
+ * ─── O QUE HAVIA ───────────────────────────────────────────────────────
+ *
+ * `<th style={{ cursor: "pointer" }} onClick={...}>`. Três problemas, e
+ * nenhum deles aparece pra quem usa mouse:
+ *
+ *   · `th` não é focável, então a ordenação era INALCANÇÁVEL por teclado;
+ *   · a seta ↑/↓ era a única indicação da ordem, e leitor de tela não lê
+ *     seta como estado — quem não enxerga não sabia por onde a tabela
+ *     estava ordenada;
+ *   · a única pista de que a coluna é clicável era o cursor, que não existe
+ *     em toque nem em teclado.
+ *
+ * `aria-sort` resolve o segundo. O botão interno resolve os outros dois: ele
+ * entra na ordem de tabulação e responde a Enter e Espaço de graça, sem
+ * handler de tecla próprio.
+ *
+ * Fica FORA do componente de propósito — declarado dentro do render, ele
+ * seria recriado a cada pintura e perderia estado (o lint pega isso).
+ */
+function ThOrdenavel({ col, asc = -1, titulo, children, alinhar, ordem, onOrdenar }: {
+  col: ColunaOrdenavel;
+  asc?: 1 | -1;
+  titulo: string;
+  children: React.ReactNode;
+  alinhar?: "left";
+  ordem: OrdemAds;
+  onOrdenar: (col: ColunaOrdenavel, asc: 1 | -1) => void;
+}) {
+  const ativa = ordem.col === col;
+  return (
+    <th
+      style={alinhar ? { textAlign: alinhar } : undefined}
+      // Diz a QUAL coluna a ordenação se aplica e em que sentido — a seta
+      // visual sozinha não tem equivalente sonoro.
+      aria-sort={ativa ? (ordem.dir === asc ? "ascending" : "descending") : "none"}
+    >
+      <button
+        type="button"
+        onClick={() => onOrdenar(col, asc)}
+        title={titulo}
+        style={{
+          background: "none", border: "none", padding: 0, font: "inherit",
+          color: "inherit", cursor: "pointer", display: "inline-flex",
+          alignItems: "center", gap: 2,
+        }}
+      >
+        {children}{ativa ? (ordem.dir === asc ? " ↓" : " ↑") : ""}
+      </button>
+    </th>
+  );
+}
 export default function AdsTable({
   modo, linhas, onAbrirAnuncio,
 }: {
@@ -171,9 +227,6 @@ export default function AdsTable({
     setOrdem((o) => (o.col === col ? { col, dir: (o.dir * -1) as 1 | -1 } : { col, dir: direcaoPadrao }));
   }
 
-  const seta = (col: ColunaOrdenavel, asc: 1 | -1 = -1) =>
-    (ordem.col === col ? (ordem.dir === asc ? " ↓" : " ↑") : "");
-
   /** Alguma campanha tem meta abaixo do ROAS ideal? Só então a legenda aparece. */
   const temMetaCurta = linhasOrdenadas.some(
     (l) => l.i.roasTarget > 0 && l.roasIdeal != null && l.i.roasTarget < l.roasIdeal,
@@ -190,37 +243,21 @@ export default function AdsTable({
         <table className="tbl-modern tbl-cards" style={{ fontVariantNumeric: "tabular-nums" }}>
           <thead>
             <tr>
-              <th style={{ textAlign: "left", cursor: "pointer" }} onClick={() => alternarOrdem("campanha", 1)} title="Ordenar por campanha — agrupa os anúncios da mesma verba">
-                Campanha{seta("campanha", 1)}
-              </th>
+              <ThOrdenavel ordem={ordem} onOrdenar={alternarOrdem} col="campanha" asc={1} alinhar="left" titulo="Ordenar por campanha — agrupa os anúncios da mesma verba">Campanha</ThOrdenavel>
               <th title="Orçamento diário configurado na campanha deste anúncio, no painel do Mercado Ads.">Orçamento</th>
               {/* ROAS objetivo em coluna propria, ao lado do orcamento: sao os
                   dois numeros que se ajusta no ML, e ve-los junto do ROAS real
                   e o que responde "a meta que eu pus esta sendo batida?". */}
-              <th style={{ cursor: "pointer" }} onClick={() => alternarOrdem("roasobj", -1)} title="ROAS Objetivo que VOCÊ configurou na campanha, no painel do Mercado Ads. É a meta; a coluna ROAS ao lado é o resultado.">
-                ROAS obj.{seta("roasobj")}
-              </th>
-              <th style={{ cursor: "pointer" }} onClick={() => alternarOrdem("investido", -1)} title="Quanto a campanha gastou com este anúncio no período. No tooltip de cada valor: impressões, cliques, CTR e CPC.">
-                Investido{seta("investido")}
-              </th>
+              <ThOrdenavel ordem={ordem} onOrdenar={alternarOrdem} col="roasobj" titulo="ROAS Objetivo que VOCÊ configurou na campanha, no painel do Mercado Ads. É a meta; a coluna ROAS ao lado é o resultado.">ROAS obj.</ThOrdenavel>
+              <ThOrdenavel ordem={ordem} onOrdenar={alternarOrdem} col="investido" titulo="Quanto a campanha gastou com este anúncio no período. No tooltip de cada valor: impressões, cliques, CTR e CPC.">Investido</ThOrdenavel>
               <th title="Receita atribuída pelo Mercado Ads (clique direto + venda assistida) — a mesma coluna 'Receita' do painel do ML. No tooltip: vendas atribuídas e ACOS.">
                 Receita
               </th>
-              <th style={{ cursor: "pointer" }} onClick={() => alternarOrdem("roas", -1)} title="ROAS do painel do Mercado Ads. No tooltip: o ROAS do modo escolhido e as metas de equilíbrio e ideal.">
-                ROAS{seta("roas")}
-              </th>
-              <th style={{ cursor: "pointer" }} onClick={() => alternarOrdem("lucro", -1)} title="Ordenar por lucratividade. No tooltip: quanto sobraria no ROAS ideal.">
-                Lucro após Ads{seta("lucro")}
-              </th>
-              <th style={{ cursor: "pointer" }} onClick={() => alternarOrdem("margem", -1)} title="Lucro ÷ receita.">
-                Margem{seta("margem")}
-              </th>
-              <th style={{ cursor: "pointer" }} onClick={() => alternarOrdem("viaads", -1)} title="Quanto da venda deste anúncio o Mercado Ads credita à campanha. Alto = a venda depende da verba, e pausar derruba o faturamento junto.">
-                Via Ads{seta("viaads")}
-              </th>
-              <th style={{ textAlign: "left", cursor: "pointer" }} onClick={() => alternarOrdem("decisao", 1)} title="Ordenar por impacto — pior impacto primeiro">
-                Decisão{seta("decisao", 1)}
-              </th>
+              <ThOrdenavel ordem={ordem} onOrdenar={alternarOrdem} col="roas" titulo="ROAS do painel do Mercado Ads. No tooltip: o ROAS do modo escolhido e as metas de equilíbrio e ideal.">ROAS</ThOrdenavel>
+              <ThOrdenavel ordem={ordem} onOrdenar={alternarOrdem} col="lucro" titulo="Ordenar por lucratividade. No tooltip: quanto sobraria no ROAS ideal.">Lucro após Ads</ThOrdenavel>
+              <ThOrdenavel ordem={ordem} onOrdenar={alternarOrdem} col="margem" titulo="Lucro ÷ receita.">Margem</ThOrdenavel>
+              <ThOrdenavel ordem={ordem} onOrdenar={alternarOrdem} col="viaads" titulo="Quanto da venda deste anúncio o Mercado Ads ATRIBUI à campanha. Alto significa que boa parte da venda passa por anúncio pago — é o teto do que se perde ao pausar, não a previsão.">Via Ads</ThOrdenavel>
+              <ThOrdenavel ordem={ordem} onOrdenar={alternarOrdem} col="decisao" asc={1} alinhar="left" titulo="Ordenar por impacto — pior impacto primeiro">Decisão</ThOrdenavel>
               <th></th>
             </tr>
           </thead>

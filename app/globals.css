@@ -670,6 +670,27 @@ canvas.chart-canvas{width:100%!important;height:100%!important}
 /* ---- Foco visível consistente (acessibilidade + teclado) ---- */
 .btn:focus-visible,.seg-btn:focus-visible,.tab-btn:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
+/*
+  FOCO VISIVEL EM TUDO QUE RECEBE FOCO.
+
+  Havia regra de foco pros inputs e pras tres classes de botao acima — e nada
+  pro resto: link, botao sem classe, elemento com tabindex. Quem navega por
+  teclado atravessava esses pontos as cegas, sem saber onde estava.
+
+  `:focus-visible` (e nao `:focus`) e o que mantem o contorno fora do caminho
+  de quem usa mouse: ele so aparece quando o navegador entende que a
+  navegacao e por teclado.
+
+  A regra generica vem DEPOIS das especificas, mas usa `:where` pra ter
+  especificidade ZERO — assim ela preenche o que falta sem sobrescrever
+  nenhum estilo de foco ja definido acima.
+*/
+:where(a, button, [tabindex], summary, [role="button"]):focus-visible{
+  outline:2px solid var(--focus);
+  outline-offset:2px;
+  border-radius:4px;
+}
+
 /* =========================================================================
    TABELA → CARTÕES no celular, sem duplicar JSX.
    Cada <td> carrega data-label e o CSS transforma a linha num cartão com
