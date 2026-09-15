@@ -1,5 +1,6 @@
 import "server-only";
 import { etapaOk, etapaParcial, type ResultadoEtapa } from "@/lib/domain/sync-resultado";
+import { escolherLote, precisaReconferir } from "@/lib/domain/reconciliacao";
 import { getAdminDb } from "@/lib/firebase/admin";
 import {
   carregarProdutos,
@@ -195,9 +196,29 @@ async function fetchShipment(accessToken: string, shipmentId: string): Promise<S
 }
 
 /** Ids de pedidos cujo envio já está em estado FINAL (não precisa re-buscar). */
+/**
+ * Ids que NÃO precisam ser re-buscados nesta rodada.
+ *
+ * Antes a regra era só o status: `delivered`, `not_delivered` ou `cancelled`
+ * entrava no conjunto e o pedido nunca mais era consultado.
+ *
+ * Mas o que congela ali é o STATUS, não o dinheiro. O Mercado Livre ajusta
+ * custo de frete DEPOIS da entrega — repesagem do pacote, sobretaxa, estorno,
+ * correção de tarifa — e o valor da primeira leitura ficava gravado pra
+ * sempre, com o CMV daquele pedido junto.
+ *
+ * Pior: um pedido cujo `/costs` falhou na hora ficava com o frete AUSENTE e
+ * com status terminal. Nunca mais era tentado, e frete ausente vira margem
+ * inflada — permanentemente.
+ *
+ * Agora quem decide é `precisaReconferir` (lib/domain/reconciliacao): sem o
+ * dado financeiro tenta sempre; dentro da janela de ajuste reconfere no máximo
+ * uma vez por dia; passada a janela, para — o ML não mexe mais, e continuar
+ * perguntando gastaria chamada à toa.
+ */
 async function terminalShipmentIds(db: FirebaseFirestore.Firestore, orderIds: string[]): Promise<Set<string>> {
   const set = new Set<string>();
-  const terminal = new Set(["delivered", "not_delivered", "cancelled"]);
+  const agora = Date.now();
   const CHUNK = 300;
   for (let i = 0; i < orderIds.length; i += CHUNK) {
     const refs = orderIds.slice(i, i + CHUNK).map((id) => db.collection("ml_orders").doc(id));
@@ -205,13 +226,46 @@ async function terminalShipmentIds(db: FirebaseFirestore.Firestore, orderIds: st
     const snaps = await db.getAll(...refs);
     for (const snap of snaps) {
       const st = String(snap.get("shipping_status") ?? "");
-      if (!terminal.has(st)) continue;
-      // Entregue mas ainda sem a data de entrega salva → re-busca uma vez pra capturá-la.
+      // Entregue mas ainda sem a data de entrega salva → re-busca pra capturá-la.
       if (st === "delivered" && !snap.get("date_delivered")) continue;
-      set.add(snap.id);
+
+      const reconferir = precisaReconferir({
+        orderId: snap.id,
+        statusEnvio: st,
+        // `shipping_cost` ausente é buraco, não zero: zero é frete grátis.
+        temDadoFinanceiro: typeof snap.get("shipping_cost") === "number",
+        finalizadoEm: String(snap.get("date_delivered") ?? snap.get("date_created") ?? ""),
+        ultimaTentativa: Number(snap.get("reconciliadoEm") ?? 0) || null,
+      }, agora);
+
+      if (!reconferir) set.add(snap.id);
     }
   }
   return set;
+}
+
+/**
+ * Quando cada pedido foi tentado pela última vez na busca do líquido.
+ *
+ * Sem este carimbo não há como girar a fila: a ordenação cairia de volta na
+ * ordem natural da lista, que é justamente o que causava a fome.
+ */
+async function carimbosDeTentativa(
+  db: FirebaseFirestore.Firestore,
+  orderIds: string[],
+): Promise<Map<string, number>> {
+  const mapa = new Map<string, number>();
+  const CHUNK = 300;
+  for (let i = 0; i < orderIds.length; i += CHUNK) {
+    const refs = orderIds.slice(i, i + CHUNK).map((id) => db.collection("ml_orders").doc(id));
+    if (refs.length === 0) continue;
+    const snaps = await db.getAll(...refs);
+    for (const snap of snaps) {
+      const t = Number(snap.get("netTentadoEm") ?? 0);
+      if (Number.isFinite(t) && t > 0) mapa.set(snap.id, t);
+    }
+  }
+  return mapa;
 }
 
 /** Ids de pedidos que já têm o campo salvo no Firestore (evita re-buscar). */
@@ -344,7 +398,24 @@ export async function syncOrdersRange(
     if (rel) releaseFromSearch.set(id, rel);
   }
   const jaTemNet = await idsComCampo(db, orderIds, "net_received");
-  const buscarMP = orderIds.filter((id) => !jaTemNet.has(id)).slice(0, 250);
+  /**
+   * O teto continua — ele protege a quota da API. O que mudou é que a fila
+   * GIRA.
+   *
+   * Era `.slice(0, 250)` sobre a lista na ordem natural: com mais de 250
+   * pendentes, a rodada pegava sempre os MESMOS primeiros 250, na mesma ordem,
+   * toda vez. Se alguns falhassem de forma persistente, os demais nunca eram
+   * alcançados — fome permanente, com o job reportando sucesso.
+   *
+   * Ordenando pela tentativa mais antiga (nunca tentado primeiro), todos
+   * entram eventualmente.
+   */
+  const tentativasMP = await carimbosDeTentativa(db, orderIds.filter((id) => !jaTemNet.has(id)));
+  const tentadoNestaRodada = new Set<string>();
+  const buscarMP = escolherLote(
+    orderIds.filter((id) => !jaTemNet.has(id)).map((id) => ({ orderId: id, ultimaTentativa: tentativasMP.get(id) ?? null })),
+    250,
+  ).map((c) => c.orderId);
   await mapPool(buscarMP, 8, async (id) => {
     let net = 0;
     let release = "";
@@ -356,6 +427,10 @@ export async function syncOrdersRange(
     }
     if (net > 0) netByOrder.set(id, net);
     if (release) releaseByOrder.set(id, release);
+    // Tentado — mesmo sem resultado. E o carimbo que faz a fila GIRAR: sem
+    // ele, um pedido que falha sempre seguraria a vaga pra sempre e os demais
+    // nunca chegariam a ser tentados.
+    tentadoNestaRodada.add(id);
   });
 
   // ── Gravação em lote ──
@@ -370,6 +445,7 @@ export async function syncOrdersRange(
       const netReceived = netByOrder.get(orderId);
       const doc: Record<string, unknown> = {
         order_id: orderId,
+        ...(tentadoNestaRodada.has(orderId) ? { netTentadoEm: Date.now() } : {}),
         status: o.status ?? null,
         date_created: String(o.date_created ?? ""),
         total_amount: Number(o.total_amount ?? 0),
@@ -397,6 +473,9 @@ export async function syncOrdersRange(
       if (typeof netReceived === "number" && netReceived > 0) doc.net_received = netReceived;
       const info = infoByOrder.get(orderId);
       if (info) {
+        // Quando reconferimos — é o que faz a janela de ajuste girar em vez de
+        // reconsultar o mesmo pedido a cada rodada.
+        doc.reconciliadoEm = Date.now();
         if (typeof info.cost === "number") doc.shipping_cost = info.cost;
         if (typeof info.buyerPaidShipping === "number") doc.shipping_cost_comprador = info.buyerPaidShipping;
         doc.shipping_status = info.status;
