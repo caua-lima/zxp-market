@@ -1,52 +1,133 @@
 import "server-only";
 import { getAdminDb } from "../../../lib/firebase/admin";
 import { refreshAccessToken } from "@/lib/ml/client";
+import {
+  LEASE_MS,
+  podeAssumirRenovacao,
+  precisaRenovar,
+  relogioDoToken,
+  resultadoAindaVale,
+  type DadosToken,
+} from "@/lib/domain/token-ml";
 
-export type MlTokenData = {
-  access_token?: string | null;
-  refresh_token?: string | null;
-  expires_in?: number | null;
+export type MlTokenData = DadosToken & {
   user_id?: string | number | null;
-  user_profile?: any | null;
-  updated_at?: string | null;
+  user_profile?: unknown;
 };
 
-export async function getMlTokenData(): Promise<MlTokenData | null> {
-  const db = getAdminDb();
-  const doc = await db.collection("ml_tokens").doc("main").get();
+const REF = () => getAdminDb().collection("ml_tokens").doc("main");
 
+export async function getMlTokenData(): Promise<MlTokenData | null> {
+  const doc = await REF().get();
   if (!doc.exists) return null;
   return doc.data() as MlTokenData;
 }
 
-function tokenExpired(tokenData: MlTokenData) {
-  if (!tokenData.expires_in || !tokenData.updated_at) return false;
+/**
+ * Renova o token, coordenando com quem mais estiver tentando.
+ *
+ * ─── POR QUE ISTO NÃO É SÓ UM `set` ─────────────────────────────────────
+ *
+ * Antes era: se venceu, chama o ML e grava. Sem coordenação nenhuma.
+ *
+ * Duas requisições que achassem o token vencido ao mesmo tempo — e num app com
+ * cron, webhook e telas abertas isso acontece — chamavam `refreshAccessToken`
+ * com o MESMO refresh_token. O Mercado Livre ROTACIONA esse token: a segunda
+ * chamada usa um valor já consumido e falha. Pior: a resposta que chegasse por
+ * último sobrescrevia a mais nova com a mais velha, deixando gravado um token
+ * que já não vale — e aí TODA chamada ao ML falhava até alguém reconectar.
+ *
+ * ─── A ORDEM, E POR QUE ELA É ASSIM ─────────────────────────────────────
+ *
+ *   1. transação: confere a geração e toma a concessão (nada de rede aqui);
+ *   2. FORA da transação: chama o ML;
+ *   3. transação: confere a geração de novo e grava.
+ *
+ * A chamada externa fica fora da transação de propósito: o Firestore REEXECUTA
+ * o callback de uma transação em caso de contenção, e isso dispararia vários
+ * refresh — exatamente o problema que estamos resolvendo.
+ *
+ * A dupla conferência de geração existe porque a conexão pode ser trocada
+ * ENQUANTO o ML responde. Gravar assim mesmo ressuscitaria a conexão anterior,
+ * com o token de uma conta que já não é a conectada.
+ */
+async function renovarCoordenado(atual: MlTokenData): Promise<string | null> {
+  if (!atual.refresh_token) return null;
 
-  const updatedAt = Date.parse(tokenData.updated_at);
-  if (Number.isNaN(updatedAt)) return false;
-
-  const expiresAt = updatedAt + tokenData.expires_in * 1000;
-  return Date.now() >= expiresAt - 60_000;
-}
-
-async function refreshMlTokens(tokenData: MlTokenData) {
-  if (!tokenData.refresh_token) return null;
-
-  const refreshed = await refreshAccessToken(tokenData.refresh_token);
   const db = getAdminDb();
+  const ref = REF();
 
-  await db.collection("ml_tokens").doc("main").set(
-    {
-      access_token: refreshed.access_token ?? null,
-      refresh_token: refreshed.refresh_token ?? tokenData.refresh_token,
-      expires_in: refreshed.expires_in ?? tokenData.expires_in,
-      user_id: refreshed.user_id ?? tokenData.user_id,
+  // 1. Toma a concessão — ou descobre que outro já está renovando.
+  const assumiu = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const d = (snap.data() ?? {}) as MlTokenData;
+
+    // Alguém já renovou enquanto chegávamos aqui: aproveita e não chama o ML.
+    if (!precisaRenovar(d, Date.now())) return { tipo: "ja_renovado" as const, token: d.access_token ?? null };
+    if (!podeAssumirRenovacao(d, Date.now())) return { tipo: "ocupado" as const };
+
+    tx.update(ref, { refreshLeaseAte: Date.now() + LEASE_MS });
+    return { tipo: "assumiu" as const, geracao: Number(d.geracao ?? 0), refresh: d.refresh_token ?? null };
+  });
+
+  if (assumiu.tipo === "ja_renovado") return assumiu.token;
+
+  if (assumiu.tipo === "ocupado") {
+    /**
+     * Outro processo está renovando. Espera a gravação dele em vez de disparar
+     * uma segunda chamada — é o refresh token rotacionado que está em jogo.
+     * Se não vier a tempo, devolve o que houver: melhor uma chamada que talvez
+     * falhe do que travar a requisição.
+     */
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      const d = await getMlTokenData();
+      if (d && !precisaRenovar(d, Date.now())) return d.access_token ?? null;
+    }
+    return (await getMlTokenData())?.access_token ?? null;
+  }
+
+  if (!assumiu.refresh) return null;
+
+  // 2. A chamada externa, FORA da transação.
+  let renovado;
+  try {
+    renovado = await refreshAccessToken(assumiu.refresh);
+  } catch (err) {
+    // Libera a concessão: segurar por 30s depois de falhar só atrasa a
+    // próxima tentativa sem proteger nada.
+    await ref.update({ refreshLeaseAte: null }).catch(() => {});
+    throw err;
+  }
+
+  // 3. Grava, se a conexão ainda for a mesma.
+  const gravou = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const d = (snap.data() ?? {}) as MlTokenData;
+
+    if (!resultadoAindaVale(assumiu.geracao, d.geracao)) {
+      // A conexão foi trocada no meio. Descarta o token: ele é de outra conta.
+      tx.update(ref, { refreshLeaseAte: null });
+      return null;
+    }
+
+    const relogio = relogioDoToken(renovado.expires_in ?? atual.expires_in, Date.now());
+    tx.set(ref, {
+      access_token: renovado.access_token ?? null,
+      refresh_token: renovado.refresh_token ?? assumiu.refresh,
+      expires_in: renovado.expires_in ?? atual.expires_in ?? null,
+      user_id: renovado.user_id ?? atual.user_id ?? null,
+      ...relogio,
+      // `updated_at` volta a ser o que o nome diz: quando o documento mudou.
+      // Ele NÃO é mais o relógio de expiração — ver lib/domain/token-ml.ts.
       updated_at: new Date().toISOString(),
-    },
-    { merge: true }
-  );
+      refreshLeaseAte: null,
+    }, { merge: true });
 
-  return refreshed.access_token ?? null;
+    return renovado.access_token ?? null;
+  });
+
+  return gravou;
 }
 
 export async function getMlTokenStatus() {
@@ -62,13 +143,11 @@ export async function getMlAccessToken() {
   const tokenData = await getMlTokenData();
   if (!tokenData) return null;
 
-  if (tokenData.access_token && !tokenExpired(tokenData)) {
-    return tokenData.access_token;
-  }
+  if (!precisaRenovar(tokenData, Date.now())) return tokenData.access_token ?? null;
 
-  if (!tokenData.refresh_token) {
-    return tokenData.access_token || null;
-  }
+  // Sem refresh token não há o que renovar. Devolve o que existe: pode estar
+  // vencido, e aí o ML responde 401 — que é uma informação melhor que `null`.
+  if (!tokenData.refresh_token) return tokenData.access_token ?? null;
 
-  return refreshMlTokens(tokenData);
+  return renovarCoordenado(tokenData);
 }

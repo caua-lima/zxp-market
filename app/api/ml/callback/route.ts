@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { exchangeCodeForToken } from "@/lib/ml/client";
 import { consumirTransacao } from "@/lib/ml/oauth-transacao";
+import { relogioDoToken } from "@/lib/domain/token-ml";
 import { SELLER_ID } from "@/lib/ml/orders";
 
 /**
@@ -90,6 +91,17 @@ export async function GET(req: Request) {
         access_token: token.access_token || null,
         refresh_token: token.refresh_token || null,
         expires_in: token.expires_in || null,
+        /**
+         * O relogio PROPRIO do token.
+         *
+         * A expiracao era calculada a partir de `updated_at`, que e "quando o
+         * documento foi tocado" — e este handler grava `updated_at` junto com
+         * o perfil. Atualizar o perfil empurrava a validade do token pra
+         * frente, e o app seguia usando um access token morto ate tomar 401.
+         */
+        ...relogioDoToken(token.expires_in, Date.now()),
+        // Renovacao anterior, se houver, perde a vez: esta e outra conexao.
+        refreshLeaseAte: null,
         user_id: token.user_id || perfil.id || null,
         user_profile: perfil,
         updated_at: new Date().toISOString(),
