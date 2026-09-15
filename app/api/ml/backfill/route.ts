@@ -68,7 +68,9 @@ export async function POST(req: Request) {
     const range = mesRange(ano, mes);
     const [orders, returns] = await Promise.all([
       syncOrdersRange(accessToken, range),
-      syncReturnsRange(accessToken, range).catch(() => 0),
+      // Sem `.catch(() => 0)`: falha aqui virava "zero cancelamentos no mes",
+      // e o backfill seguia declarando o mes coberto.
+      syncReturnsRange(accessToken, range),
     ]);
 
     // Quanto do histórico já existe — deixa a tela mostrar progresso real em
@@ -80,8 +82,12 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       mes: `${ano}-${String(mes).padStart(2, "0")}`,
-      orders,
-      returns,
+      // Quantos gravou E se a busca terminou — um backfill que parou no meio
+      // nao pode passar por mes completo.
+      orders: orders.gravados,
+      returns: returns.gravados,
+      completo: orders.completo && returns.completo,
+      etapas: [orders, returns],
       totalNoBanco: total?.data().count ?? null,
       // Próximo mês a puxar, pra quem chama encadear sem recalcular data.
       proximo: { ano: anterior.ano, mes: anterior.mes },

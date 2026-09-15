@@ -1,4 +1,5 @@
 import "server-only";
+import { etapaOk, etapaParcial, type ResultadoEtapa } from "@/lib/domain/sync-resultado";
 import { getAdminDb } from "@/lib/firebase/admin";
 import {
   carregarProdutos,
@@ -244,13 +245,27 @@ async function fetchPaymentInfo(accessToken: string, paymentId: string): Promise
   }
 }
 
+/**
+ * Pagina os pedidos do período, PRESERVANDO o que já veio.
+ *
+ * Antes fazia `throw` na primeira página que falhasse — e as páginas já
+ * buscadas iam junto. Setecentos pedidos lidos com sucesso viravam nada porque
+ * a página 15 deu erro, o erro subia até a rota, que respondia 500, e
+ * `savedOrders` nunca chegava a ser reportado.
+ *
+ * E não havia cursor: a rodada seguinte começava do offset 0, batia na mesma
+ * falha e descartava tudo de novo. O rabo do período nunca sincronizava.
+ *
+ * @param inicio offset de onde continuar — o cursor guardado da rodada anterior.
+ */
 async function fetchAllOrders(
   accessToken: string,
   range: SyncRange,
   extraQuery = "",
-): Promise<Record<string, unknown>[]> {
+  inicio = 0,
+): Promise<{ pedidos: Record<string, unknown>[]; completo: boolean; cursor: number; erro?: unknown }> {
   const all: Record<string, unknown>[] = [];
-  let offset = 0;
+  let offset = Math.max(0, Number(inicio) || 0);
   const limit = 50;
 
   while (true) {
@@ -260,26 +275,40 @@ async function fetchAllOrders(
       `&order.date_created.to=${encodeURIComponent(range.to)}` +
       `${extraQuery}&limit=${limit}&offset=${offset}`;
 
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
-      cache: "no-store",
-    });
-    if (!res.ok) throw new Error(`ML orders fetch failed: ${await res.text()}`);
+    let data: { results?: Record<string, unknown>[]; paging?: { total?: number } };
+    try {
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+        cache: "no-store",
+      });
+      // O corpo NÃO entra no erro: pode trazer identificadores, e este texto
+      // acaba gravado no estado da sincronização.
+      if (!res.ok) return { pedidos: all, completo: false, cursor: offset, erro: `ML orders ${res.status}` };
+      data = await res.json();
+    } catch (err) {
+      // Rede caiu no meio: devolve o que já veio, marcado como incompleto.
+      return { pedidos: all, completo: false, cursor: offset, erro: err };
+    }
 
-    const data = (await res.json()) as { results: Record<string, unknown>[]; paging: { total: number } };
     const results = data.results ?? [];
     all.push(...results);
     const total = data.paging?.total ?? 0;
     offset += results.length;
     if (offset >= total || results.length === 0) break;
   }
-  return all;
+  return { pedidos: all, completo: true, cursor: offset };
 }
 
 /** Busca pedidos do período no ML (com custo de frete real) e grava em `ml_orders`. */
-export async function syncOrdersRange(accessToken: string, range: SyncRange): Promise<number> {
+export async function syncOrdersRange(
+  accessToken: string,
+  range: SyncRange,
+  /** Offset de onde continuar, quando a rodada anterior não terminou. */
+  inicio = 0,
+): Promise<ResultadoEtapa> {
   const db = getAdminDb();
-  const all = await fetchAllOrders(accessToken, range);
+  const busca = await fetchAllOrders(accessToken, range, "", inicio);
+  const all = busca.pedidos;
 
   // ── Envio (Full): custo + status, via API de envios ──
   // Re-busca envios não-finais para o status ficar atualizado (a caminho→entregue)
@@ -385,7 +414,15 @@ export async function syncOrdersRange(accessToken: string, range: SyncRange): Pr
   }
 
   await notificarVendasPendentes(all);
-  return all.length;
+
+  /**
+   * O que veio é gravado mesmo quando a paginação não terminou — descartar
+   * seria repetir o bug. O que muda é o `completo`, e o cursor pra a próxima
+   * rodada continuar de onde parou em vez de recomeçar e falhar no mesmo ponto.
+   */
+  return busca.completo
+    ? etapaOk("pedidos", all.length)
+    : etapaParcial("pedidos", all.length, busca.cursor, busca.erro);
 }
 
 /**
@@ -438,11 +475,28 @@ async function notificarVendasPendentes(orders: unknown[]): Promise<void> {
   }
 }
 
-/** Busca pedidos cancelados do período e grava/atualiza em `ml_returns`. */
-export async function syncReturnsRange(accessToken: string, range: SyncRange): Promise<number> {
+/**
+ * Busca pedidos cancelados do período e grava/atualiza em `ml_returns`.
+ *
+ * Devolve `ResultadoEtapa` em vez de um número: zero por não ter cancelamento
+ * e zero por não ter conseguido buscar são coisas diferentes, e o número
+ * sozinho não distinguia as duas.
+ */
+export async function syncReturnsRange(
+  accessToken: string,
+  range: SyncRange,
+  inicio = 0,
+): Promise<ResultadoEtapa> {
   const db = getAdminDb();
-  const all = await fetchAllOrders(accessToken, range, "&order.status=cancelled");
-  if (all.length === 0) return 0;
+  const busca = await fetchAllOrders(accessToken, range, "&order.status=cancelled", inicio);
+  const all = busca.pedidos;
+  // Nada a gravar, mas o resultado carrega se a BUSCA terminou: "não houve
+  // cancelamento" e "não consegui perguntar" são respostas diferentes.
+  if (all.length === 0) {
+    return busca.completo
+      ? etapaOk("devolucoes", 0)
+      : etapaParcial("devolucoes", 0, busca.cursor, busca.erro);
+  }
 
   const BATCH_SIZE = 400;
   for (let i = 0; i < all.length; i += BATCH_SIZE) {
@@ -465,7 +519,9 @@ export async function syncReturnsRange(accessToken: string, range: SyncRange): P
     }
     await batch.commit();
   }
-  return all.length;
+  return busca.completo
+    ? etapaOk("devolucoes", all.length)
+    : etapaParcial("devolucoes", all.length, busca.cursor, busca.erro);
 }
 
 /**
@@ -473,7 +529,7 @@ export async function syncReturnsRange(accessToken: string, range: SyncRange): P
  * em `ml_returns` com motivo e produto. Best-effort: falha silenciosa (mantém
  * as devoluções baseadas em cancelamento como fallback).
  */
-export async function syncClaimsRange(accessToken: string, range: SyncRange): Promise<number> {
+export async function syncClaimsRange(accessToken: string, range: SyncRange): Promise<ResultadoEtapa> {
   const db = getAdminDb();
   const headers = { Authorization: `Bearer ${accessToken}`, Accept: "application/json", "x-format-new": "true" };
 
@@ -485,7 +541,14 @@ export async function syncClaimsRange(accessToken: string, range: SyncRange): Pr
       headers,
       cache: "no-store",
     });
-    if (!res.ok) return 0; // sem permissão/erro → mantém fallback
+    /**
+     * Isto era `return 0`. Falta de permissão devolvia ZERO RECLAMAÇÕES
+     * SINCRONIZADAS — exatamente o que o app devolve quando não houve
+     * reclamação nenhuma. A rota reportava `savedClaims: 0` com `ok: true`, e
+     * ninguém tinha como saber a diferença entre "está tudo em ordem" e "não
+     * consegui olhar".
+     */
+    if (!res.ok) return etapaParcial("reclamacoes", 0, offset, `claims ${res.status}`);
     const data = (await res.json()) as { data?: Record<string, unknown>[]; results?: Record<string, unknown>[]; paging?: { total?: number } };
     const results = data.data ?? data.results ?? [];
     claims.push(...results);
@@ -493,7 +556,9 @@ export async function syncClaimsRange(accessToken: string, range: SyncRange): Pr
     offset += results.length;
     if (offset >= total || results.length === 0) break;
   }
-  if (claims.length === 0) return 0;
+  // Buscou e não havia nada: isso é sucesso, e o fallback por cancelamento
+  // continua valendo.
+  if (claims.length === 0) return etapaOk("reclamacoes", 0);
 
   const fromDate = range.from.slice(0, 10);
   const toDate = range.to.slice(0, 10);
@@ -505,7 +570,7 @@ export async function syncClaimsRange(accessToken: string, range: SyncRange): Pr
     const dc = String(c.date_created ?? "").slice(0, 10);
     return isReturn && dc >= fromDate && dc <= toDate;
   });
-  if (devs.length === 0) return 0;
+  if (devs.length === 0) return etapaOk("reclamacoes", 0);
 
   // 3. Enriquecer com dados do pedido (valor + produto) do cache Firestore
   const orderIds = devs.map((c) => String(c.resource_id ?? c.resource ?? c.order_id ?? "")).filter(Boolean);
@@ -546,5 +611,5 @@ export async function syncClaimsRange(accessToken: string, range: SyncRange): Pr
     );
   }
   await batch.commit();
-  return devs.length;
+  return etapaOk("reclamacoes", devs.length);
 }

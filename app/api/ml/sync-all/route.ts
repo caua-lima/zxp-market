@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { etapaFalhou, resumir } from "@/lib/domain/sync-resultado";
 import { getMlAccessToken } from "../token";
 import { requireAccess } from "@/lib/api-auth";
 import { dispararMarcos } from "@/lib/marcos-gatilho";
@@ -40,11 +41,22 @@ export async function POST(req: Request) {
     }
 
     const range = rangeFromRequest(req);
-    const [savedOrders, savedReturns, savedClaims] = await Promise.all([
-      syncOrdersRange(accessToken, range),
-      syncReturnsRange(accessToken, range),
-      syncClaimsRange(accessToken, range).catch(() => 0), // best-effort
+
+    /**
+     * Cada etapa devolve se COMPLETOU, não só quantos registros gravou.
+     *
+     * Antes o `.catch(() => 0)` do claims transformava falta de permissão em
+     * "zero reclamações sincronizadas" — indistinguível de "não houve
+     * reclamação". A rota respondia `savedClaims: 0` com `ok: true`, e
+     * ninguém tinha como saber a diferença entre "está tudo em ordem" e "não
+     * consegui olhar".
+     */
+    const etapas = await Promise.all([
+      syncOrdersRange(accessToken, range).catch((e) => etapaFalhou("pedidos", e)),
+      syncReturnsRange(accessToken, range).catch((e) => etapaFalhou("devolucoes", e)),
+      syncClaimsRange(accessToken, range).catch((e) => etapaFalhou("reclamacoes", e)),
     ]);
+    const resumo = resumir(etapas);
 
     /**
      * Marcos, DEPOIS do sync: as vendas que acabaram de entrar ja contam.
@@ -61,7 +73,23 @@ export async function POST(req: Request) {
       req.headers.get("authorization"),
     ).catch(() => null);
 
-    return NextResponse.json({ ok: true, savedOrders, savedReturns, savedClaims, range, marcos });
+    /**
+     * `ok` deixa de significar "a requisição não explodiu" e passa a
+     * significar "sincronizou tudo". Quem consome precisa dessa diferença pra
+     * saber se o painel está completo.
+     */
+    return NextResponse.json({
+      ok: resumo.completo,
+      completo: resumo.completo,
+      incompletas: resumo.incompletas,
+      etapas: resumo.etapas,
+      // Nomes antigos preservados: outras telas leem estes campos.
+      savedOrders: etapas[0].gravados,
+      savedReturns: etapas[1].gravados,
+      savedClaims: etapas[2].gravados,
+      range,
+      marcos,
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: "sync_failed", details: msg }, { status: 500 });

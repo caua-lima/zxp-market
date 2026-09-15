@@ -81,13 +81,18 @@ export async function GET(req: Request) {
     const resultados = await Promise.allSettled([
       syncOrdersRange(accessToken, atual),
       syncReturnsRange(accessToken, atual),
-      // Reclamacoes/devolucoes ja rodavam no sync-all (botao manual) mas NAO
-      // no cron: sem alguem abrir o app, devolucao nunca era atualizada
-      // sozinha. Best-effort, igual la — nao pode derrubar o resto.
-      syncClaimsRange(accessToken, atual).catch(() => 0),
+      /*
+        Reclamacoes/devolucoes ja rodavam no sync-all (botao manual) mas NAO no
+        cron: sem alguem abrir o app, devolucao nunca era atualizada sozinha.
+
+        O `.catch(() => 0)` que havia aqui sumiu: ele transformava falha em
+        "zero sincronizadas", que se le como sucesso. O allSettled abaixo ja
+        garante que uma falha nao derruba o resto, e agora ela aparece.
+      */
+      syncClaimsRange(accessToken, atual),
       syncOrdersRange(accessToken, anterior),
       syncReturnsRange(accessToken, anterior),
-      syncClaimsRange(accessToken, anterior).catch(() => 0),
+      syncClaimsRange(accessToken, anterior),
     ]);
     /**
      * Falha vira `null`, não zero: "não sincronizou" e "sincronizou nada" são
@@ -104,6 +109,21 @@ export async function GET(req: Request) {
       return null;
     });
     const [ordensAtual, devAtual, claimsAtual, ordensAnterior, devAnterior, claimsAnterior] = valores;
+
+    /**
+     * A rodada completou?
+     *
+     * `ok: true` significava só "a função não explodiu". Com seis etapas
+     * independentes e `allSettled`, é perfeitamente possível a resposta dizer
+     * ok enquanto metade do período não sincronizou — e era o que acontecia,
+     * porque o número de registros de uma etapa que falhou era `null` ou zero,
+     * que se lê como "não havia nada".
+     */
+    const etapasSync = valores.filter((v): v is NonNullable<typeof v> => v != null);
+    const syncCompleto = syncFalhas.length === 0 && etapasSync.every((e) => e.completo);
+    const syncIncompletas = etapasSync
+      .map((e, i) => (e.completo ? null : nomes[i]))
+      .filter((n): n is string => n != null);
 
     // Lembrete de prazo das tarefas pega carona nesta execução diária em vez
     // de virar um cron próprio (ver o aviso do Hobby acima). Best-effort: um
@@ -187,7 +207,10 @@ export async function GET(req: Request) {
     });
 
     return NextResponse.json({
-      ok: true,
+      // "Não explodiu" e "sincronizou tudo" viraram campos diferentes.
+      ok: syncCompleto,
+      sincronizacaoCompleta: syncCompleto,
+      etapasIncompletas: syncIncompletas.length > 0 ? syncIncompletas : undefined,
       poda,
       marcos,
       devolucoes,
