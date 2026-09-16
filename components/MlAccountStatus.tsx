@@ -32,7 +32,9 @@ export function MlAccountStatus() {
         const json = await res.json();
         setData(json);
         if (json.connected) localStorage.removeItem('ml_disconnected');
-      } catch (e) {
+      } catch {
+        // Falha de rede aqui vira "desconectado" na tela, que e o efeito certo:
+        // sem resposta, nao da pra afirmar que a conta esta ligada.
         setData({ connected: false });
       } finally {
         setRecusa(motivo);

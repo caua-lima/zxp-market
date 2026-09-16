@@ -31,12 +31,16 @@ export async function GET(req: Request) {
     try {
       const db = (await import("@/lib/firebase/admin")).getAdminDb();
       await db.collection("ml_tokens").doc("main").set({ user_profile: user, updated_at: new Date().toISOString() }, { merge: true });
-    } catch (e) {
-      // ignore persistence errors
+    } catch {
+      // Persistir o perfil e um extra: se falhar, a resposta continua valida.
+      // `catch` sem binding porque o erro nao e lido - era `catch (e)` com o
+      // `e` morto, que a regra de variavel nao usada apontava com razao.
     }
 
     return NextResponse.json({ ...status, user });
-  } catch (err) {
+  } catch {
+    // Sem perfil: a rota ainda responde o status da conexao, que e o que a
+    // tela precisa pra decidir se mostra "conectado".
     return NextResponse.json({ ...status, user: null });
   }
 }
