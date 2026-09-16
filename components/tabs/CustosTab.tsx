@@ -5,7 +5,7 @@ import { explicarFonte } from "@/lib/domain/estado-fonte";
 import { patchArquivar, patchReativar, vigenteHoje } from "@/lib/domain/vigencia-custo";
 import Modal from "@/components/Modal";
 import CustoForm from "@/components/custos/CustoForm";
-import { diasNoMes, fmtBRL, mesAtual, parseBRNumber } from "@/lib/domain/calc";
+import { diasNoMes, fmtBRL, mesAtual, parseBRNumber, fmtPct } from "@/lib/domain/calc";
 import { COST_CATEGORIA_LABEL, type Cost } from "@/lib/domain/types";
 import { ESCOPO_META, FREQUENCIA_META, type Escopo } from "@/lib/domain/custo-form";
 import { deleteCost, logAudit, upsertCost } from "@/lib/firebase/data";
@@ -300,12 +300,12 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
         </div>
         <div className="kpi k-warn">
           <div className="k-lbl">% do faturamento</div>
-          <div className="k-val" style={{ color: "var(--yellow)" }}>{pctFaturamento != null ? `${pctFaturamento.toFixed(1)}%` : "—"}</div>
+          <div className="k-val" style={{ color: "var(--yellow)" }}>{pctFaturamento != null ? `${fmtPct(pctFaturamento, 1)}` : "—"}</div>
           <div className="k-sub">custos da operação ÷ faturamento do mês</div>
         </div>
         <div className="kpi k-neg">
           <div className="k-lbl">% do lucro</div>
-          <div className="k-val" style={{ color: "var(--red)" }}>{pctLucro != null ? `${pctLucro.toFixed(1)}%` : "—"}</div>
+          <div className="k-val" style={{ color: "var(--red)" }}>{pctLucro != null ? `${fmtPct(pctLucro, 1)}` : "—"}</div>
           <div className="k-sub">quanto do lucro, antes deles, eles consomem</div>
         </div>
       </div>

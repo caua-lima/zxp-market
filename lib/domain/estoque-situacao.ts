@@ -45,6 +45,14 @@ export type ProdutoNaLista = {
   anuncios: number;
   /** Unidades contadas duas vezes (remessa sem baixa lançada). */
   duplicadas: number;
+  /**
+   * O saldo do livro do galpão, COMO ESTÁ — inclusive negativo.
+   *
+   * Saldo negativo significa que se lançou mais saída pro Full do que
+   * entrada: o livro perdeu uma compra. É informação, não um número a
+   * esconder, e por isso chega aqui sem grampo.
+   */
+  saldoDoLivro: number;
 };
 
 /**
@@ -82,6 +90,19 @@ export function sinaisDoProduto(p: ProdutoNaLista): SinalDoProduto[] {
   if (!(p.custoUnitario > 0)) sinais.push("sem_custo");
   if (p.anuncios <= 0) sinais.push("sem_vinculo");
   if (p.duplicadas > 0) sinais.push("inconsistencia", "remessa_pendente");
+
+  /**
+   * Saldo negativo no livro é inconsistência, e o sinal não disparava.
+   *
+   * Um produto com -17 "em casa" aparecia com o total grampeado em 0 e a
+   * coluna mostrando o negativo — dois números contraditórios na mesma linha,
+   * e o filtro de Inconsistência marcando zero.
+   *
+   * Não é a mesma coisa que a remessa sem baixa: aquela conta a unidade DUAS
+   * vezes, esta PERDEU uma entrada. Por isso entra em `inconsistencia` e
+   * não em `remessa_pendente`.
+   */
+  if (p.saldoDoLivro < 0 && !sinais.includes("inconsistencia")) sinais.push("inconsistencia");
 
   return sinais;
 }
@@ -193,7 +214,9 @@ export function proximaAcao(p: ProdutoNaLista): ProximaAcao {
       acao: "conferir",
       urgencia: 20,
       rotulo: "Conferir",
-      porque: `${p.duplicadas} un contadas duas vezes: já no Full e ainda no livro do galpão. Lance a baixa da remessa.`,
+      porque: p.saldoDoLivro < 0
+        ? `O livro do galpão está em ${p.saldoDoLivro} un: saiu mais pro Full do que entrou. Falta lançar uma compra.`
+        : `${p.duplicadas} un contadas duas vezes: já no Full e ainda no livro do galpão. Lance a baixa da remessa.`,
     };
   }
 

@@ -286,6 +286,30 @@ export function getAdRecommendation(input: {
     return { acao: "sem-dados", label: `Volume baixo pra concluir (${clicks} clique(s) de ${CLIQUES_MIN})`, tone: "info" };
   }
 
+  /**
+   * ─── PEQUENO DEMAIS PRA CONCLUIR NÃO É "TUDO BEM" ──────────────────────
+   *
+   * Um anúncio com lucro NEGATIVO e gasto abaixo de INVESTIMENTO_RELEVANTE
+   * caía direto na frase final e aparecia como "Dentro do esperado — nada a
+   * ajustar agora". Medido na conta real: a Campanha Menta Ice, com R$ 6,68
+   * investidos, lucro de R$ -0,18 e margem -0,1%, dizia exatamente isso.
+   *
+   * O piso de R$ 20 existe por um bom motivo — alarmar por centavos gasta a
+   * atenção de quem lê. Mas o piso decide se vira ALARME, não se a frase pode
+   * afirmar que está tudo certo. São coisas diferentes, e a fall-through
+   * juntava as duas.
+   *
+   * É a mesma distinção de ADS-03: ausência de conclusão não é conclusão
+   * positiva.
+   */
+  if (lucro != null && lucro < 0) {
+    return {
+      acao: "sem-dados",
+      label: `Prejuízo de ${fmtReais(Math.abs(lucro))} — investimento baixo demais pra concluir`,
+      tone: "info",
+    };
+  }
+
   return { acao: "sem-dados", label: "Dentro do esperado — nada a ajustar agora", tone: "info" };
 }
 

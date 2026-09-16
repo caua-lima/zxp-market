@@ -1,7 +1,7 @@
 "use client";
 
 import type { Goals } from "@/lib/domain/types";
-import { clamp, fmtBRL } from "@/lib/domain/calc";
+import { clamp, fmtBRL, fmtPct } from "@/lib/domain/calc";
 
 export default function MetaDiaria({
   goals,
@@ -132,7 +132,7 @@ function Bar({
             paddingLeft: 5,
           }}
         >
-          {pct.toFixed(0)}%
+          {fmtPct(pct, 0)}
         </div>
       </div>
       <div style={{ marginTop: 4, fontSize: ".82rem" }}>

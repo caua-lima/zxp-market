@@ -5,7 +5,7 @@ import { explicarFonte } from "@/lib/domain/estado-fonte";
 import { CUSTO_FAIXA_SENTINELA, custoNaData, impostoNaData, TIPO_MOVIMENTO_LABEL, type EstoqueMovimento, type MovimentoTipo, type Product } from "@/lib/domain/types";
 import { addMovimento, deleteMovimento, deleteProduct, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas, recalcularProduto } from "@/lib/firebase/data";
 import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas";
-import { fmtBRL } from "@/lib/domain/calc";
+import { fmtBRL, fmtPct } from "@/lib/domain/calc";
 import { getCoverageStatus, COVERAGE_STATUS_LABEL, ehFullLogistic, estoqueForaDoFull, type CoverageStatus } from "@/lib/domain/estoque";
 import { custoMedioAposEntrada } from "@/lib/domain/entrada-massa";
 import { fimDaSemanaQueVem, mediaDiariaAjustada, montarPlanoReposicao, planoEnvioAteData, planoEnvioParaFull, situacaoDoEstoque } from "@/lib/domain/reposicao";
@@ -203,6 +203,9 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
       ativo: Boolean(p.ativo),
       anuncios: mlbsDe(p).filter(Boolean).length,
       duplicadas,
+      // O saldo do livro COMO ESTÁ, sem grampo: negativo e informação, e é o
+      // que faz o sinal de inconsistência disparar.
+      saldoDoLivro: Number(p.qtdLocal ?? 0),
     };
   }), [data.products, estoqueML, forecast, duplicadasPorProduto]);
 
@@ -983,7 +986,25 @@ function ProductRow({
             );
           })()}
         </td>
-        <td data-label="Em casa" style={{ textAlign: "right", fontWeight: 700, whiteSpace: "nowrap", color: casaExibida > 0 ? "var(--yellow)" : "var(--muted)" }}>
+        {/*
+          Saldo NEGATIVO no livro aparecia como "-17 un" em cinza, ao lado de
+          um total grampeado em 0 — dois números contraditórios na mesma linha,
+          sem nada dizendo qual acreditar.
+
+          Negativo não é quantidade, é sintoma: saiu mais pro Full do que
+          entrou, e falta lançar uma compra. Agora ele aparece em vermelho, com
+          o motivo no tooltip, e o filtro de Inconsistência o encontra.
+        */}
+        <td
+          data-label="Em casa"
+          title={casaExibida < 0
+            ? "Saldo negativo: saiu mais pro Full do que entrou no livro. Falta lançar uma compra."
+            : undefined}
+          style={{
+            textAlign: "right", fontWeight: 700, whiteSpace: "nowrap",
+            color: casaExibida < 0 ? "var(--red)" : casaExibida > 0 ? "var(--yellow)" : "var(--muted)",
+          }}
+        >
           {casaExibida} un
           {/* Sem Full, "Em casa" vem do maior anúncio próprio — e com dois
               anúncios sobre o mesmo galpão o número parece "faltar" se ninguém
@@ -1510,14 +1531,14 @@ function PrevisaoPanel({ products, estoqueML, forecast }: { products: Product[];
                       title={
                         f.lucro == null
                           ? "Sem venda no período (ou sem preço no anúncio): não dá pra medir a comissão e o frete reais deste produto."
-                          : `${fmtBRL(f.lucro.lucroUnitario)} por unidade × ${f.total} un · margem ${f.lucro.margem.toFixed(1)}%`
+                          : `${fmtBRL(f.lucro.lucroUnitario)} por unidade × ${f.total} un · margem ${fmtPct(f.lucro.margem, 1)}`
                       }
                     >
                       {f.lucro == null ? "—" : (
                         <>
                           {fmtBRL(f.lucro.lucroTotal)}
                           <span style={{ display: "block", fontSize: ".75rem", fontWeight: 400, color: "var(--muted)" }}>
-                            {fmtBRL(f.lucro.lucroUnitario)}/un · {f.lucro.margem.toFixed(1)}%
+                            {fmtBRL(f.lucro.lucroUnitario)}/un · {fmtPct(f.lucro.margem, 1)}
                           </span>
                         </>
                       )}

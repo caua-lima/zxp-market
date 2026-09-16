@@ -320,3 +320,47 @@ describe("motivoSemBreakEven — as tres causas do mesmo traco", () => {
     expect(motivoSemBreakEven(0, 0, false)).toContain("custo é desconhecido");
   });
 });
+
+describe("prejuízo pequeno não é 'dentro do esperado'", () => {
+  /** O caso real: Campanha Menta Ice, medida na conta em 16/09/2026. */
+  const mentaIce = {
+    cost: 6.68,
+    vendas: 83.40,
+    clicks: 40,
+    roas: 12.49,
+    roasTarget: 35,
+    lucro: -0.18,
+    lucroAntesAds: 6.50,
+    margem: -0.1,
+    metaMargem: 15,
+    breakEvenRoas: 1.03,
+  };
+
+  it("não afirma que está tudo bem", () => {
+    const r = getAdRecommendation(mentaIce);
+    expect(r.label).not.toContain("Dentro do esperado");
+  });
+
+  it("diz o que há: prejuízo, e por que não vira alarme", () => {
+    const r = getAdRecommendation(mentaIce);
+    expect(r.label).toContain("Prejuízo");
+    expect(r.label).toContain("baixo demais pra concluir");
+  });
+
+  it("acima do piso de investimento, volta a ser alarme de verdade", () => {
+    const r = getAdRecommendation({ ...mentaIce, cost: 50, lucro: -12 });
+    expect(r.acao).toBe("pausar");
+    expect(r.label).toContain("prejuízo confirmado");
+  });
+
+  it("lucro positivo e pequeno continua 'dentro do esperado'", () => {
+    const r = getAdRecommendation({ ...mentaIce, lucro: 0.40, margem: 0.5 });
+    expect(r.label).toContain("Dentro do esperado");
+  });
+
+  it("lucro exatamente zero não é prejuízo — margem zero é resultado válido", () => {
+    // ADS-03: "Margem exatamente zero é um resultado válido."
+    const r = getAdRecommendation({ ...mentaIce, lucro: 0, margem: 0 });
+    expect(r.label).toContain("Dentro do esperado");
+  });
+});

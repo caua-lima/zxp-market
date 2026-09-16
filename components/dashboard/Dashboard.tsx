@@ -17,6 +17,7 @@ import {
   todayStr,
   isFullMonth,
   prevPeriod,
+  fmtPct,
 } from "@/lib/domain/calc";
 import { calcularMetaDiaria, idealAteHoje } from "@/lib/domain/meta-diaria";
 import { diaEmFoco, rotuloDoDia } from "@/lib/domain/dia-em-foco";
@@ -201,7 +202,7 @@ function Kpi({
     <div className={`kpi k-${tone}`}>
       <div className="k-lbl">{label}</div>
       <div className="k-val" style={{ color: indisponivel ? "var(--muted)" : color }}>
-        {indisponivel ? "—" : isPct ? `${value.toFixed(1)}%` : fmtBRL(value)}
+        {indisponivel ? "—" : isPct ? `${fmtPct(value, 1)}` : fmtBRL(value)}
       </div>
       {sub && <div className="k-sub">{sub}</div>}
       {delta}
@@ -277,13 +278,13 @@ function CurvaABC({ anuncios }: { anuncios: AnuncioResult[] }) {
                 <td data-label="Classe"><span className="tag" style={{ background: "transparent", color: cor(classe), border: `1px solid ${cor(classe)}` }}>{classe}</span></td>
                 <td data-label="Anúncio" style={{ fontWeight: 600, textAlign: "left" }}>{a.title}</td>
                 <td data-label="Lucro" style={{ color: a.lucro >= 0 ? "var(--green)" : "var(--red)", fontWeight: 700 }}>{fmtBRL(a.lucro)}</td>
-                <td data-label="% do lucro" style={{ color: "var(--muted)" }}>{share.toFixed(1)}%</td>
+                <td data-label="% do lucro" style={{ color: "var(--muted)" }}>{fmtPct(share, 1)}</td>
                 <td data-label="Acumulado">
                   <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                     <div style={{ width: 60, height: 6, borderRadius: 99, background: "var(--surface2)", overflow: "hidden" }}>
                       <div style={{ width: `${Math.min(cum, 100)}%`, height: "100%", background: cor(classe) }} />
                     </div>
-                    <span style={{ color: "var(--muted)", fontSize: ".82rem" }}>{cum.toFixed(0)}%</span>
+                    <span style={{ color: "var(--muted)", fontSize: ".82rem" }}>{fmtPct(cum, 0)}</span>
                   </div>
                 </td>
               </tr>
@@ -338,7 +339,7 @@ function ConferenciaMP({ reconc, total }: { reconc?: { count: number; nosso: num
           nossa conta × líquido do Mercado Pago ·{" "}
           {/* O denominador é o que impede ler a amostra como o período. */}
           {total && total > reconc.count
-            ? `${reconc.count} de ${total} pedidos${pctCobertura === null ? "" : ` (${pctCobertura.toFixed(0)}%)`}`
+            ? `${reconc.count} de ${total} pedidos${pctCobertura === null ? "" : ` (${fmtPct(pctCobertura, 0)})`}`
             : `${reconc.count} pedido(s)`}
         </span>
       </div>
@@ -359,7 +360,7 @@ function ConferenciaMP({ reconc, total }: { reconc?: { count: number; nosso: num
           <div style={{ fontSize: "1.05rem", fontWeight: 800, color: cor }}>
             {gap >= 0 ? "−" : "+"}{fmtBRL(Math.abs(gap))}
           </div>
-          <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>{pctAbs.toFixed(1)}% do líquido</div>
+          <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>{fmtPct(pctAbs, 1)} do líquido</div>
         </div>
       </div>
 
@@ -573,7 +574,7 @@ function HojeVsOntem({ hoje, ontem, rotulo, rotuloAnterior }: {
     const diffPct = ((hoje.faturamentoLiquido - ontem.faturamentoLiquido) / Math.abs(ontem.faturamentoLiquido)) * 100;
     const tone = diffPct >= 0 ? "var(--success)" : "var(--danger)";
     diffTxt = (
-      <> Diferença de <b style={{ color: tone }}>{diffPct >= 0 ? "+" : ""}{diffPct.toFixed(1)}%</b> vs {rotuloAnterior.toLowerCase()} ({fmtBRL(ontem.faturamentoLiquido)}).</>
+      <> Diferença de <b style={{ color: tone }}>{diffPct >= 0 ? "+" : ""}{fmtPct(diffPct, 1)}</b> vs {rotuloAnterior.toLowerCase()} ({fmtBRL(ontem.faturamentoLiquido)}).</>
     );
   } else if (ontem) {
     diffTxt = <> {rotuloAnterior} não teve faturamento pra comparar.</>;
@@ -583,7 +584,7 @@ function HojeVsOntem({ hoje, ontem, rotulo, rotuloAnterior }: {
     <div className="panel" style={{ fontSize: ".92rem", lineHeight: 1.6, color: "var(--text-secondary,var(--muted))" }}>
       <b style={{ color: "var(--text-primary,var(--text))" }}>{rotulo}:</b>{" "}
       {fmtBRL(hoje.faturamentoLiquido)} faturados, {hoje.pedidos} pedido(s), margem de{" "}
-      <b style={{ color: margemHoje >= 0 ? "var(--success)" : "var(--danger)" }}>{margemHoje.toFixed(1)}%</b>.
+      <b style={{ color: margemHoje >= 0 ? "var(--success)" : "var(--danger)" }}>{fmtPct(margemHoje, 1)}</b>.
       {diffTxt}
     </div>
   );
@@ -893,7 +894,7 @@ function ConversaoVisitas({ from, to, vendas, receita }: {
             <div className="kpi">
               <div className="k-lbl">Conversão</div>
               <div className="k-val" style={{ color: "var(--accent)" }}>
-                {conversao != null ? `${conversao.toFixed(1)}%` : "—"}
+                {conversao != null ? `${fmtPct(conversao, 1)}` : "—"}
               </div>
               <div className="k-sub">vendas ÷ visitas</div>
             </div>
@@ -1302,11 +1303,11 @@ function MetasOverviewCard({
           value={margemAtual}
           max={metaMargem}
           status={toneMargin}
-          valueLabel={`${margemAtual.toFixed(1)}% (meta ${metaMargem.toFixed(1)}%)`}
+          valueLabel={`${fmtPct(margemAtual, 1)} (meta ${fmtPct(metaMargem, 1)})`}
           helperText={marginStatusLabel}
           insight={insightMargin}
           minLabel="0%"
-          maxLabel={`${metaMargem.toFixed(0)}%`}
+          maxLabel={`${fmtPct(metaMargem, 0)}`}
           tooltip="Lucro líquido operacional dividido pelo retorno (valor da venda − taxa ML − frete) do período. Custos incluídos seguem as regras atuais do Dashboard."
         />
       </div>
@@ -1369,7 +1370,7 @@ function TabelaAnuncios({ anuncios }: { anuncios: AnuncioResult[] }) {
                 <td data-label="ROAS" style={{ color: roas.color, fontWeight: 700 }}>{roas.txt}</td>
                 <td data-label="Lucro bruto" style={{ color: a.lucroBruto >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(a.lucroBruto)}</td>
                 <td data-label="Lucro líq." style={{ fontWeight: 700, color: a.lucro >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(a.lucro)}</td>
-                <td data-label="Margem">{a.semVenda ? <span style={{ color: "var(--muted)" }}>—</span> : <span className={`tag ${margemTag(a.margem)}`}>{a.margem.toFixed(1)}%</span>}</td>
+                <td data-label="Margem">{a.semVenda ? <span style={{ color: "var(--muted)" }}>—</span> : <span className={`tag ${margemTag(a.margem)}`}>{fmtPct(a.margem, 1)}</span>}</td>
               </tr>
             );
           })}
@@ -1388,7 +1389,7 @@ function TabelaAnuncios({ anuncios }: { anuncios: AnuncioResult[] }) {
             <td data-label="ROAS" style={{ color: totalRoas.color }}>{totalRoas.txt}</td>
             <td data-label="Lucro bruto" style={{ color: totalBruto >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(totalBruto)}</td>
             <td data-label="Lucro líq." style={{ color: totalLucro >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(totalLucro)}</td>
-            <td data-label="Margem"><span className={`tag ${margemTag(margemTotal)}`}>{margemTotal.toFixed(1)}%</span></td>
+            <td data-label="Margem"><span className={`tag ${margemTag(margemTotal)}`}>{fmtPct(margemTotal, 1)}</span></td>
           </tr>
         </tfoot>
       </table>
@@ -2329,7 +2330,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
                       : (
                         <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
                           <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                            <span style={{ fontSize: ".75rem", color: "var(--text-muted,var(--muted))", fontWeight: 600 }}>{participacao.toFixed(0)}%</span>
+                            <span style={{ fontSize: ".75rem", color: "var(--text-muted,var(--muted))", fontWeight: 600 }}>{fmtPct(participacao, 0)}</span>
                             <span style={{ color: "var(--red)", fontWeight: 700 }}>{fmtBRL(r.value)}</span>
                           </span>
                           <Delta current={r.value} previous={r.prevValue} mode="pct" invert />

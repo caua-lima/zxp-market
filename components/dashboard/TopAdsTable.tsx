@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtBRL } from "@/lib/domain/calc";
+import { fmtBRL, fmtPct } from "@/lib/domain/calc";
 import type { ComputedAd } from "@/lib/domain/types";
 
 type Props = {
@@ -56,7 +56,7 @@ export default function TopAdsTable({ ads }: Props) {
                       : "negative"
                   }
                 >
-                  {ad.margem.toFixed(1)}%
+                  {fmtPct(ad.margem, 1)}
                 </td>
               </tr>
             );

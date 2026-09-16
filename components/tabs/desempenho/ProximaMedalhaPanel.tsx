@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { authedFetch } from "@/lib/api/authed-fetch";
-import { fmtBRL } from "@/lib/domain/calc";
+import { fmtBRL, fmtPct } from "@/lib/domain/calc";
 import { metricasDeQualidade } from "@/lib/domain/proxima-medalha";
 import { projetarMedalha } from "@/lib/domain/projecao-medalha";
 import type { DiaDeVendas } from "@/lib/domain/reputacao-vendas";
@@ -297,7 +297,7 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
                 </span>
               </span>
               <span style={{ whiteSpace: "nowrap", textAlign: "right" }}>
-                <b>{q.taxa == null ? "—" : `${(q.taxa * 100).toFixed(2)}%`}</b>
+                <b>{q.taxa == null ? "—" : `${fmtPct((q.taxa * 100), 2)}`}</b>
                 {/* Protegido: o ML zera o numero visivel e guarda o real em
                     `excluded`. A tela mostra o real — a protecao acaba numa
                     data, e o zero so adia a noticia. */}
@@ -396,7 +396,7 @@ function BarraEixo({ titulo, eixo, formato, gargalo }: {
         }} />
       </div>
       <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>
-        {eixo.ok ? "critério fechado" : `${eixo.pct.toFixed(0)}% · faltam ${formato(eixo.falta)}`}
+        {eixo.ok ? "critério fechado" : `${fmtPct(eixo.pct, 0)} · faltam ${formato(eixo.falta)}`}
       </div>
     </div>
   );

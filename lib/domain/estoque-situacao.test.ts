@@ -8,7 +8,7 @@ import {
 const p = (over: Partial<ProdutoNaLista> = {}): ProdutoNaLista => ({
   id: "P1", nome: "Produto", estoqueTotal: 100, emCasa: 0, noFull: 100,
   ehFull: true, mediaDiaria: 1, custoUnitario: 10, ativo: true,
-  anuncios: 1, duplicadas: 0, ...over,
+  anuncios: 1, duplicadas: 0, saldoDoLivro: 0, ...over,
 });
 
 describe("duracaoEmDias", () => {
@@ -267,5 +267,45 @@ describe("ordenarPorUrgencia", () => {
     const copia = [...lista];
     ordenarPorUrgencia(lista);
     expect(lista).toEqual(copia);
+  });
+});
+
+describe("saldo negativo no livro — o caso que a tela mostrava e o filtro ignorava", () => {
+  it("saldo negativo é inconsistência", () => {
+    expect(sinaisDoProduto(p({ saldoDoLivro: -17 }))).toContain("inconsistencia");
+  });
+
+  it("mas NÃO é remessa pendente — são problemas opostos", () => {
+    // Remessa sem baixa conta a unidade DUAS vezes; saldo negativo PERDEU uma
+    // entrada. Misturar os dois manda a pessoa pro lugar errado.
+    const s = sinaisDoProduto(p({ saldoDoLivro: -17 }));
+    expect(s).not.toContain("remessa_pendente");
+  });
+
+  it("não duplica o sinal quando também há remessa pendente", () => {
+    const s = sinaisDoProduto(p({ saldoDoLivro: -5, duplicadas: 3 }));
+    expect(s.filter((x) => x === "inconsistencia")).toHaveLength(1);
+    expect(s).toContain("remessa_pendente");
+  });
+
+  it("saldo zero ou positivo não é inconsistência", () => {
+    expect(sinaisDoProduto(p({ saldoDoLivro: 0 }))).not.toContain("inconsistencia");
+    expect(sinaisDoProduto(p({ saldoDoLivro: 42 }))).not.toContain("inconsistencia");
+  });
+
+  it("a ação explica que falta lançar uma COMPRA, não uma baixa", () => {
+    const a = proximaAcao(p({ saldoDoLivro: -17 }));
+    expect(a.acao).toBe("conferir");
+    expect(a.porque).toContain("-17");
+    expect(a.porque).toContain("compra");
+  });
+
+  it("com duplicadas, a explicação é a da baixa", () => {
+    const a = proximaAcao(p({ duplicadas: 3 }));
+    expect(a.porque).toContain("baixa da remessa");
+  });
+
+  it("entra no contador de inconsistência do filtro", () => {
+    expect(contarSinais([p({ saldoDoLivro: -17 })]).inconsistencia).toBe(1);
   });
 });

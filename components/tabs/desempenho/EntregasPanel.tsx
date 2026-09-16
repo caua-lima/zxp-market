@@ -1,6 +1,7 @@
 "use client";
 
 import type { ResultadoEntregas } from "@/lib/domain/shipping-performance";
+import { fmtPct } from "@/lib/domain/calc";
 
 export default function EntregasPanel({ entregas }: { entregas: ResultadoEntregas }) {
   const cor = (p: number) => (p >= 90 ? "var(--green)" : p >= 75 ? "var(--yellow)" : "var(--red)");
@@ -19,7 +20,7 @@ export default function EntregasPanel({ entregas }: { entregas: ResultadoEntrega
       ) : (
         <>
           <div style={{ fontSize: "2rem", fontWeight: 800, color: cor(entregas.percentual) }}>
-            {entregas.percentual.toFixed(1)}%
+            {fmtPct(entregas.percentual, 1)}
           </div>
           <div style={{ fontSize: ".82rem", color: "var(--muted)", marginTop: 4 }}>
             {entregas.noPrazo} de {entregas.comDados} pedido(s) entregues até a data estimada pelo Mercado Livre

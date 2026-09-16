@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { authedFetch } from "@/lib/api/authed-fetch";
-import { fmtBRL } from "@/lib/domain/calc";
+import { fmtBRL, fmtPct } from "@/lib/domain/calc";
 import type { Product } from "@/lib/domain/types";
 import TelaHeader from "@/components/TelaHeader";
 import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
@@ -232,13 +232,13 @@ export default function PrecoTab({ products }: { products: Product[] }) {
             <div className={lucrativo ? "kpi k-pos" : "kpi k-neg"}>
               <div className="k-lbl">Margem</div>
               <div className="k-val tabular-nums" style={{ color: lucrativo ? "var(--green)" : "var(--red)" }}>
-                {s.margem.toFixed(1)}%
+                {fmtPct(s.margem, 1)}
               </div>
               <div className="k-sub">lucro ÷ preço de venda</div>
             </div>
             <div className="kpi k-acc">
               <div className="k-lbl">Markup</div>
-              <div className="k-val tabular-nums">{s.markup > 0 ? `${s.markup.toFixed(0)}%` : "—"}</div>
+              <div className="k-val tabular-nums">{s.markup > 0 ? `${fmtPct(s.markup, 0)}` : "—"}</div>
               <div className="k-sub">{s.markup > 0 ? "retorno sobre o custo" : "sem custo cadastrado"}</div>
             </div>
             <div className="kpi k-acc">

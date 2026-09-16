@@ -136,7 +136,22 @@ header p{color:var(--muted);font-size:.9rem;margin-top:4px}
 /* Modals */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:1000;align-items:center;justify-content:center}
 .modal-overlay.active{display:flex}
-.modal-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:28px;max-width:500px;width:94%;box-shadow:var(--shadow);animation:popIn .2s ease;max-height:90vh;overflow-y:auto}
+/*
+  TECLADO VIRTUAL: `dvh`, nao `vh`.
+
+  `vh` e a altura do viewport GRANDE — a tela toda, como se nao houvesse
+  teclado. Ela nao encolhe quando o teclado abre. Entao, num celular, o modal
+  continuava com 85% da tela CHEIA enquanto a area visivel caia pra menos da
+  metade: o rodape do modal, que e onde fica o botao de salvar, ia parar
+  debaixo do teclado.
+
+  `dvh` e a altura DINAMICA: ela acompanha o teclado abrindo e fechando. O
+  modal encolhe junto, e o conteudo rola dentro do que sobrou.
+
+  As duas linhas ficam: navegador antigo le a primeira e ignora a segunda,
+  navegador novo sobrescreve. Sem @supports, sem ramo pra manter.
+*/
+.modal-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:28px;max-width:500px;width:94%;box-shadow:var(--shadow);animation:popIn .2s ease;overflow-y:auto;max-height:90vh;max-height:90dvh}
 .modal-box-wide{max-width:660px}
 @keyframes popIn{from{transform:scale(.92);opacity:0}to{transform:scale(1);opacity:1}}
 .modal-icon{font-size:2rem;margin-bottom:10px;text-align:center}
@@ -149,7 +164,7 @@ header p{color:var(--muted);font-size:.9rem;margin-top:4px}
 .cmdk-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:min(560px,100%);box-shadow:var(--shadow);animation:popIn .16s ease;overflow:hidden}
 .cmdk-input{border-radius:0;border:none;border-bottom:1px solid var(--border)}
 .cmdk-input:focus{box-shadow:none}
-.cmdk-list{list-style:none;margin:0;padding:6px;max-height:min(360px,50vh);overflow-y:auto}
+.cmdk-list{list-style:none;margin:0;padding:6px;overflow-y:auto;max-height:min(360px,50vh);max-height:min(360px,50dvh)}
 .cmdk-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:.88rem;color:var(--text);cursor:pointer}
 .cmdk-item.is-active{background:var(--surface2);color:var(--text)}
 .cmdk-item-icon{display:inline-flex;color:var(--brand);flex-shrink:0}
@@ -610,12 +625,12 @@ canvas.chart-canvas{width:100%!important;height:100%!important}
   /* dois calendários não cabem; empilhados deixam o popup gigante → mostra 1 */
   .drp-cals .drp-cal + .drp-cal{display:none}
   .drp-cal{min-width:0;width:100%}
-  .drp-pop{padding:12px;max-height:78vh;overflow-y:auto}
+  .drp-pop{padding:12px;max-height:78vh;max-height:78dvh;overflow-y:auto}
   .drp-preset{padding:5px 10px;font-size:.75rem}
   /* modal ocupa a tela toda com folga, rolando por dentro */
   /* a barra de gestos do iPhone come o rodape do modal: sem esta folga,
      o botao "Fechar" fica sob ela e nao aceita toque. */
-  .modal-box{width:96%;max-height:85vh;margin-bottom:env(safe-area-inset-bottom)}
+  .modal-box{width:96%;max-height:85vh;max-height:85dvh;margin-bottom:env(safe-area-inset-bottom)}
 }
 
 /* =========================================================================

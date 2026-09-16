@@ -9,7 +9,7 @@ function hojeBR(): string {
     timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
   }).format(new Date());
 }
-import { fmtBRL, getMarginStatus } from "@/lib/domain/calc";
+import { fmtBRL, getMarginStatus, fmtPct } from "@/lib/domain/calc";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import DateRangePicker from "@/components/dashboard/DateRangePicker";
 import { gravarChaveApp, lerChaveApp } from "@/lib/storage";
@@ -204,7 +204,7 @@ function DetalhePedido({ pedido: p }: { pedido: Pedido }) {
         {linha("Imposto", p.imposto, { sinal: "menos" })}
         {linha("Lucro líquido", p.lucro, {
           forte: true, cor: p.lucro >= 0 ? "var(--green)" : "var(--red)",
-          nota: `margem de ${p.margem.toFixed(1)}% sobre a venda`,
+          nota: `margem de ${fmtPct(p.margem, 1)} sobre a venda`,
         })}
         {!p.vinculado && (
           <div style={{ marginTop: 8, fontSize: ".75rem", color: "var(--warning)", lineHeight: 1.5 }}>
@@ -236,7 +236,7 @@ function DetalhePedido({ pedido: p }: { pedido: Pedido }) {
                       {fmtBRL(it.lucro)}
                     </span>
                     <span style={{ display: "block", fontSize: ".75rem", fontWeight: 600, whiteSpace: "nowrap", color: it.lucro >= 0 ? "var(--green)" : "var(--red)" }}>
-                      {margemItem.toFixed(1)}% margem
+                      {fmtPct(margemItem, 1)} margem
                     </span>
                   </span>
                 </div>
@@ -577,7 +577,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
         <div className="kpi k-acc"><div className="k-lbl">Faturamento</div><div className="k-val">{fmtBRL(totalValor)}</div><div className="k-sub">bruto</div></div>
         <div className="kpi k-pos"><div className="k-lbl">Retorno</div><div className="k-val" style={{ color: "var(--green)" }}>{fmtBRL(totalRetorno)}</div><div className="k-sub">líquido — já sem taxa e frete</div></div>
         <div className={`kpi ${totalLucro >= 0 ? "k-pos" : "k-neg"}`}><div className="k-lbl">Lucro líquido</div><div className="k-val" style={{ color: totalLucro >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(totalLucro)}</div><div className="k-sub">retorno − custos</div></div>
-        <div className="kpi k-warn"><div className="k-lbl">Margem média</div><div className="k-val" style={{ color: "var(--yellow)" }}>{margemMedia.toFixed(1)}%</div></div>
+        <div className="kpi k-warn"><div className="k-lbl">Margem média</div><div className="k-val" style={{ color: "var(--yellow)" }}>{fmtPct(margemMedia, 1)}</div></div>
         <div className="kpi k-acc"><div className="k-lbl">Ticket médio</div><div className="k-val">{fmtBRL(filtrados.length ? totalValor / filtrados.length : 0)}</div><div className="k-sub">por pedido</div></div>
       </div>
 
@@ -761,7 +761,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
                 <div className="ped-card-meta">
                   <span><b style={{ color: "var(--accent)" }}>{r.qtd}</b> un · {r.nVendas} venda(s)</span>
                   {r.mlb && <span>{r.mlb}</span>}
-                  <span className={`tag ${margemTag(r.margem)}`} style={{ marginLeft: "auto" }}>{r.margem.toFixed(1)}%</span>
+                  <span className={`tag ${margemTag(r.margem)}`} style={{ marginLeft: "auto" }}>{fmtPct(r.margem, 1)}</span>
                 </div>
                 <div className="ped-card-grid">
                   <div className="ped-card-cell"><span>Faturamento</span><b>{fmtBRL(r.valor)}</b></div>
@@ -800,7 +800,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
                     <td style={{ textAlign: "right", fontWeight: 600, whiteSpace: "nowrap" }}>{fmtBRL(r.retorno)}</td>
                     <td style={{ textAlign: "right", color: "var(--red)", whiteSpace: "nowrap" }}>−{fmtBRL(r.custos)}</td>
                     <td style={{ textAlign: "right", fontWeight: 800, whiteSpace: "nowrap", color: r.lucro >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(r.lucro)}</td>
-                    <td><span className={`tag ${margemTag(r.margem)}`}>{r.margem.toFixed(1)}%</span></td>
+                    <td><span className={`tag ${margemTag(r.margem)}`}>{fmtPct(r.margem, 1)}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -840,7 +840,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
                     <span>{p.data.split("-").reverse().join("/")} {p.hora}</span>
                     <span>#{p.order_id}</span>
                     <span>{p.qtd} un</span>
-                    <span className={`tag ${margemTag(p.margem)}`} style={{ marginLeft: "auto" }}>{p.margem.toFixed(1)}%</span>
+                    <span className={`tag ${margemTag(p.margem)}`} style={{ marginLeft: "auto" }}>{fmtPct(p.margem, 1)}</span>
                   </div>
                   <div className="ped-card-grid">
                     <div className="ped-card-cell"><span>Valor</span><b>{fmtBRL(p.valor)}</b></div>
@@ -903,7 +903,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
                         <span style={{ marginLeft: 5, color: "var(--muted)", fontSize: ".75rem" }}>▾</span>
                       </td>
                       <td style={{ textAlign: "right", fontWeight: 800, whiteSpace: "nowrap", color: p.lucro >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(p.lucro)}</td>
-                      <td><span className={`tag ${margemTag(p.margem)}`}>{p.margem.toFixed(1)}%</span></td>
+                      <td><span className={`tag ${margemTag(p.margem)}`}>{fmtPct(p.margem, 1)}</span></td>
                     </tr>
                   );
                 })}

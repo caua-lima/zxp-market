@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { fmtBRL, isFullMonth, prevPeriod, todayStr } from "@/lib/domain/calc";
+import { fmtBRL, isFullMonth, prevPeriod, todayStr, fmtPct } from "@/lib/domain/calc";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import DateRangePicker from "@/components/dashboard/DateRangePicker";
 import { Delta } from "@/components/dashboard/ExecutiveKpis";
@@ -139,7 +139,7 @@ function Linha({ rotulo, valor, nota, tipo, base, tooltip, indisponivel }: Linha
           whiteSpace: "nowrap", textAlign: "right", fontVariantNumeric: "tabular-nums",
           fontWeight: ehSub ? 700 : 400,
         }}>
-          {pct === null ? "" : `${pct.toFixed(1)}%`}
+          {pct === null ? "" : `${fmtPct(pct, 1)}`}
         </span>
         {pct !== null && !ehResultado && (
           <div style={{ height: 3, borderRadius: 2, background: "var(--border)", overflow: "hidden", minWidth: 54 }}>
@@ -334,7 +334,35 @@ export default function DreTab() {
   const receitaBruta = metrics.faturamentoBruto;
   const canceladas = m.vendasCanceladas + m.vendasDevolvidas;
   const receitaLiquida = m.faturamentoLiquido;
-  const receitaOperacional = m.totalRetorno; // já é líquida de taxa e frete
+  /**
+   * ─── AS DEDUÇÕES APARECIAM E NÃO ERAM SUBTRAÍDAS ─────────────────────
+   *
+   * Era `m.totalRetorno`, com o comentário "já é líquida de taxa e frete".
+   * Não é: `totalRetorno` soma `unit_price × quantidade` (ver a rota de
+   * métricas) — receita BRUTA do item, antes de qualquer dedução.
+   *
+   * O efeito na tela era uma DRE que não fecha consigo mesma:
+   *
+   *     Receita líquida              14.676,52
+   *     − Taxas do Mercado Livre      1.682,64   ← mostrado
+   *     − Frete                       1.345,30   ← mostrado
+   *     = Receita operacional líquida 14.676,52  ← inalterada
+   *
+   * E essa linha se chama "o que o ML de fato te repassa". Ela dizia que o
+   * ML repassa a receita inteira, com as duas deduções logo acima dela.
+   *
+   * ─── O QUE PROVA QUE A CORREÇÃO É ESTA ───────────────────────────────
+   *
+   * `resultadoOperacional` vem de `lucroComCustos`, que na rota JÁ desconta
+   * taxa e frete — e por isso estava certo. Com o subtotal errado, a cadeia
+   * não fechava: lucro bruto − imposto − Ads dava 4.516,51, e a linha de
+   * resultado mostrava 1.488,57. A diferença era exatamente 3.027,94, que é
+   * taxas + frete.
+   *
+   * Descontando aqui, a conta fecha ponta a ponta e bate com o número que
+   * já estava certo — que é a confirmação de que o erro era só no meio.
+   */
+  const receitaOperacional = m.totalRetorno - m.totalTaxasML - m.totalEnvio;
   const lucroBruto = receitaOperacional - m.totalCMV;
   const resultadoOperacional = m.lucroComCustos; // o mesmo do Dashboard
   /**
@@ -393,7 +421,11 @@ export default function DreTab() {
   const margem = (v: number) => (base ? (v / base) * 100 : 0);
 
   const receitaLiquidaPrev = mPrev?.faturamentoLiquido ?? null;
-  const lucroBrutoPrev = mPrev ? mPrev.totalRetorno - mPrev.totalCMV : null;
+  // Mesma correção no período anterior — senão a comparação mediria uma
+  // base contra outra, e a seta de variação viraria ficção.
+  const lucroBrutoPrev = mPrev
+    ? mPrev.totalRetorno - mPrev.totalTaxasML - mPrev.totalEnvio - mPrev.totalCMV
+    : null;
   const resultadoOperacionalPrev = mPrev?.lucroComCustos ?? null;
   const resultadoLiquidoPrev = mPrev ? mPrev.lucroComCustos - mPrev.custosDre : null;
 
@@ -437,9 +469,9 @@ export default function DreTab() {
     receitaLiquida: mPrev.faturamentoLiquido,
     taxasML: mPrev.totalTaxasML,
     frete: mPrev.totalEnvio,
-    receitaOperacional: mPrev.totalRetorno,
+    receitaOperacional: mPrev.totalRetorno - mPrev.totalTaxasML - mPrev.totalEnvio,
     cmv: mPrev.totalCMV,
-    lucroBruto: mPrev.totalRetorno - mPrev.totalCMV,
+    lucroBruto: mPrev.totalRetorno - mPrev.totalTaxasML - mPrev.totalEnvio - mPrev.totalCMV,
     imposto: mPrev.totalImposto,
     ads: mPrev.totalAds,
     despesasOperacionais: mPrev.custosOperacionais,
@@ -615,7 +647,7 @@ export default function DreTab() {
             <span className="panel-title">Repasse do Mercado Pago</span>
             <span className="panel-sub">
               {metrics.reconc.count} de {metrics.ordersCount} pedidos com repasse liberado
-              {conferencia.cobertura !== null && ` · ${(conferencia.cobertura * 100).toFixed(0)}% do período`}
+              {conferencia.cobertura !== null && ` · ${fmtPct((conferencia.cobertura * 100), 0)} do período`}
             </span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
@@ -655,7 +687,7 @@ export default function DreTab() {
         <div className="kpi k-pos">
           <div className="k-lbl">Lucro bruto</div>
           <div className="k-val" style={{ color: "var(--green)" }}>{fmtBRL(lucroBruto)}</div>
-          <div className="k-sub">margem de {margem(lucroBruto).toFixed(1)}%</div>
+          <div className="k-sub">margem de {fmtPct(margem(lucroBruto), 1)}</div>
           <Delta current={lucroBruto} previous={lucroBrutoPrev} mode="pct" label={prevLabel} />
         </div>
         <div className="kpi k-warn">
@@ -667,7 +699,7 @@ export default function DreTab() {
         <div className="kpi k-neg">
           <div className="k-lbl">{rotuloDoResultado(estado)}</div>
           <div className="k-val" style={{ color: resultadoLiquido >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(resultadoLiquido)}</div>
-          <div className="k-sub">margem de {margem(resultadoLiquido).toFixed(1)}%</div>
+          <div className="k-sub">margem de {fmtPct(margem(resultadoLiquido), 1)}</div>
           <Delta current={resultadoLiquido} previous={resultadoLiquidoPrev} mode="pct" label={prevLabel} />
         </div>
       </div>
@@ -835,7 +867,7 @@ export default function DreTab() {
                     <td style={{ textAlign: "left", fontWeight: 600 }}>{c.nome}</td>
                     <td data-label="Frequência" style={{ textAlign: "left", color: "var(--muted)", fontSize: ".8rem" }}>{c.freq}</td>
                     <td data-label="No período" style={{ textAlign: "right", color: "var(--red)", whiteSpace: "nowrap" }}>−{fmtBRL(c.valor)}</td>
-                    <td data-label="% da receita" style={{ textAlign: "right", color: "var(--muted)" }}>{margem(c.valor).toFixed(1)}%</td>
+                    <td data-label="% da receita" style={{ textAlign: "right", color: "var(--muted)" }}>{fmtPct(margem(c.valor), 1)}</td>
                   </tr>
                 ))}
               </tbody>

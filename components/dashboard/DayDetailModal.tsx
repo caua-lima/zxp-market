@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { authedFetch } from "@/lib/api/authed-fetch";
-import { fmtBRL, formatDateLong } from "@/lib/domain/calc";
+import { fmtBRL, formatDateLong, fmtPct } from "@/lib/domain/calc";
 
 type AnuncioDia = {
   item_id: string;
@@ -83,7 +83,7 @@ export default function DayDetailModal({ date, onClose }: { date: string; onClos
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
             <Linha label="Faturamento líquido" value={fmtBRL(dados.faturamentoLiquido)} />
             <Linha label="Lucro líquido" value={fmtBRL(dados.lucroComCustos)} tone={dados.lucroComCustos >= 0 ? "pos" : "neg"} />
-            <Linha label="Margem líquida" value={`${dados.margemComCustos.toFixed(1)}%`} />
+            <Linha label="Margem líquida" value={`${fmtPct(dados.margemComCustos, 1)}`} />
             <Linha label="Pedidos" value={String(dados.ordersCount)} />
             <Linha label="Gasto com ADS" value={dados.adsFalhou ? "indisponível" : fmtBRL(dados.totalAds)} />
 
@@ -114,7 +114,7 @@ export default function DayDetailModal({ date, onClose }: { date: string; onClos
                         <div style={{ fontSize: ".75rem", color: "var(--text-secondary)" }}>
                           {a.semVenda
                             ? "sem venda hoje — só ADS"
-                            : `${a.qty} un · retorno ${fmtBRL(a.retorno)} · CMV ${fmtBRL(a.custoProduto)} · frete ${fmtBRL(a.envioFull)} · taxa ML ${fmtBRL(a.taxaML)} · imposto ${fmtBRL(a.imposto)} · ads ${fmtBRL(a.ads)} · margem ${a.margem.toFixed(1)}%`}
+                            : `${a.qty} un · retorno ${fmtBRL(a.retorno)} · CMV ${fmtBRL(a.custoProduto)} · frete ${fmtBRL(a.envioFull)} · taxa ML ${fmtBRL(a.taxaML)} · imposto ${fmtBRL(a.imposto)} · ads ${fmtBRL(a.ads)} · margem ${fmtPct(a.margem, 1)}`}
                         </div>
                       </div>
                     ))}

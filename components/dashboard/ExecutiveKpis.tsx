@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtBRL } from "@/lib/domain/calc";
+import { fmtBRL, fmtPct } from "@/lib/domain/calc";
 
 export type KpiTone = "pos" | "neg" | "acc" | "warn";
 
@@ -24,7 +24,7 @@ export function Delta({ current, previous, mode, invert, label = "vs período an
     text = `${diff >= 0 ? "+" : "-"}${Math.abs(diff).toFixed(1)} p.p.`;
   } else {
     const pct = previous !== 0 ? (diff / Math.abs(previous)) * 100 : (current !== 0 ? 100 : 0);
-    text = `${pct >= 0 ? "+" : "-"}${Math.abs(pct).toFixed(1)}%`;
+    text = `${pct >= 0 ? "+" : "-"}${fmtPct(Math.abs(pct), 1)}`;
   }
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 4, fontSize: ".75rem", fontWeight: 700, color }}>
@@ -71,7 +71,7 @@ export default function ExecutiveKpis({ items }: { items: ExecutiveKpiItem[] }) 
               </span>
             </div>
             <div className="exec-kpi-value money" style={{ color: it.indisponivel ? "var(--text-muted)" : color }}>
-              {it.indisponivel ? "—" : it.format === "percent" ? `${it.value.toFixed(1)}%` : fmtBRL(it.value)}
+              {it.indisponivel ? "—" : it.format === "percent" ? `${fmtPct(it.value, 1)}` : fmtBRL(it.value)}
             </div>
             {it.delta && <Delta {...it.delta} />}
             {it.ctaLabel && it.onClick && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { clamp, fmtBRL, mesAtual, diaAtualNoMes, diasNoMes } from "@/lib/domain/calc";
+import { clamp, fmtBRL, mesAtual, diaAtualNoMes, diasNoMes, fmtPct } from "@/lib/domain/calc";
 import type { Goals } from "@/lib/domain/types";
 import type { ArchivedDay } from "@/lib/domain/types";
 
@@ -47,7 +47,7 @@ function ProgressBar({
           className="pbar-label"
           style={{ left: `${clamp(pct, 4, 76)}%`, paddingLeft: 4 }}
         >
-          {pct.toFixed(0)}%
+          {fmtPct(pct, 0)}
         </div>
       </div>
     </div>

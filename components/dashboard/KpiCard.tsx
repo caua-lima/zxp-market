@@ -1,6 +1,6 @@
 "use client";
 
-import { fmtBRL } from "@/lib/domain/calc";
+import { fmtBRL, fmtPct } from "@/lib/domain/calc";
 
 type KpiCardProps = {
   label: string;
@@ -28,7 +28,7 @@ export default function KpiCard({
   const displayValue = isCurrency
     ? fmtBRL(value)
     : isPercent
-    ? `${value.toFixed(1)}%`
+    ? `${fmtPct(value, 1)}`
     : value.toFixed(2);
 
   let color = "var(--text)";

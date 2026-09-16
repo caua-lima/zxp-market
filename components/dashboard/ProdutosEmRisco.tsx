@@ -1,6 +1,7 @@
 "use client";
 
 import type { ProdutoEmRisco } from "@/lib/domain/risk";
+import { fmtPct } from "@/lib/domain/calc";
 
 export default function ProdutosEmRisco({ produtos, onVerEstoque }: { produtos: ProdutoEmRisco[]; onVerEstoque?: () => void }) {
   if (produtos.length === 0) {
@@ -27,7 +28,7 @@ export default function ProdutosEmRisco({ produtos, onVerEstoque }: { produtos: 
                 </span>
               )}
               {p.motivos.includes("margem-baixa") && p.margem != null && (
-                <span className="severity-chip severity-critical">margem {p.margem.toFixed(1)}%</span>
+                <span className="severity-chip severity-critical">margem {fmtPct(p.margem, 1)}</span>
               )}
             </div>
           </div>

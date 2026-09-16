@@ -1,6 +1,7 @@
 "use client";
 
 import { janelaRecomendadaMeses, type ResultadoCompradores } from "@/lib/domain/repurchase";
+import { fmtPct } from "@/lib/domain/calc";
 
 function fmtDataBR(iso: string): string {
   const [y, m, d] = iso.split("-");
@@ -69,7 +70,7 @@ export default function CompradoresPanel({
             <div>
               <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Taxa de recompra</div>
               <div style={{ fontSize: "1.3rem", fontWeight: 800, color: compradores.taxaRecompra != null ? cor(compradores.taxaRecompra) : "var(--muted)" }}>
-                {compradores.taxaRecompra != null ? `${compradores.taxaRecompra.toFixed(1)}%` : "—"}
+                {compradores.taxaRecompra != null ? `${fmtPct(compradores.taxaRecompra, 1)}` : "—"}
               </div>
             </div>
           </div>

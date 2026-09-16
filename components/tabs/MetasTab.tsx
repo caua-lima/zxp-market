@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Modal from "@/components/Modal";
-import { fmtBRL, formatMesBR, mesAtual, diasNoMes, diaAtualNoMes, projetarMes, scenariosDeProjecao } from "@/lib/domain/calc";
+import { fmtBRL, formatMesBR, mesAtual, diasNoMes, diaAtualNoMes, projetarMes, scenariosDeProjecao, fmtPct } from "@/lib/domain/calc";
 import type { GoalEntry } from "@/lib/domain/types";
 import {
   deleteGoalEntry,
@@ -255,7 +255,7 @@ export default function MetasTab({
                       <div style={{ height: "100%", width: `${Math.min(100, Math.max(0, m.pctReal))}%`, background: TONE_COLOR[m.tone], transition: "width .3s ease" }} />
                     </div>
                     <div style={{ fontSize: ".8rem", color: "var(--text-secondary,var(--muted))", marginTop: 5 }}>
-                      {m.pctReal.toFixed(0)}% de {fmtBRL(m.valor)}
+                      {fmtPct(m.pctReal, 0)} de {fmtBRL(m.valor)}
                       {m.falta > 0 ? (
                         <> · faltam <b style={{ color: "var(--text-primary,var(--text))" }}>{fmtBRL(m.falta)}</b>
                           {m.ritmoDia != null && <> · precisa de {fmtBRL(m.ritmoDia)}/dia</>}
@@ -342,7 +342,7 @@ export default function MetasTab({
                             border: `1px solid ${margemOk ? "var(--green)" : "var(--red)"}`,
                           }}
                         >
-                          margem {realizado.margemComCustos.toFixed(1)}% (meta {margemMeta}%)
+                          margem {fmtPct(realizado.margemComCustos, 1)} (meta {margemMeta}%)
                         </span>
                       )}
                     </div>
@@ -359,7 +359,7 @@ export default function MetasTab({
                     <div style={{ fontSize: ".8rem", color: "var(--text-secondary,var(--muted))", marginTop: 5 }}>
                       {realizado == null
                         ? `meta ${fmtBRL(meta)}`
-                        : `${fmtBRL(realizado.faturamentoLiquido)} de ${fmtBRL(meta)} (${(pct ?? 0).toFixed(0)}%)`}
+                        : `${fmtBRL(realizado.faturamentoLiquido)} de ${fmtBRL(meta)} (${fmtPct((pct ?? 0), 0)})`}
                     </div>
                   </div>
                 );

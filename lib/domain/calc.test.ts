@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseBRNumber } from "./calc";
+import { parseBRNumber, fmtPct } from "./calc";
 
 describe("parseBRNumber — o erro de mil vezes", () => {
   it("le o formato brasileiro com milhar E centavos", () => {
@@ -40,5 +40,34 @@ describe("parseBRNumber — o erro de mil vezes", () => {
     expect(parseBRNumber("abc")).toBe(0);
     expect(parseBRNumber(null)).toBe(0);
     expect(parseBRNumber(undefined)).toBe(0);
+  });
+});
+
+describe("fmtPct — percentual em português", () => {
+  it("usa vírgula decimal, como fmtBRL", () => {
+    expect(fmtPct(37.8)).toBe("37,8%");
+    expect(fmtPct(17.1)).toBe("17,1%");
+  });
+
+  it("negativo mantém o sinal", () => {
+    expect(fmtPct(-0.1)).toBe("-0,1%");
+  });
+
+  it("zero não vira vazio", () => {
+    expect(fmtPct(0)).toBe("0,0%");
+  });
+
+  it("milhar usa ponto, como a moeda", () => {
+    expect(fmtPct(1234.5)).toBe("1.234,5%");
+  });
+
+  it("casas configuráveis", () => {
+    expect(fmtPct(37.85, 2)).toBe("37,85%");
+    expect(fmtPct(37.85, 0)).toBe("38%");
+  });
+
+  it("valor que não é número vira travessão, não NaN%", () => {
+    expect(fmtPct(NaN)).toBe("—");
+    expect(fmtPct(Infinity)).toBe("—");
   });
 });

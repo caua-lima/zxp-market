@@ -275,3 +275,27 @@ export function getMarginStatus(margem: number, metaMargem = 10): MarginStatus {
 export function getMarginStatusLabel(status: MarginStatus): string {
   return status === "saudavel" ? "Margem saudável" : status === "atencao" ? "Margem em atenção" : "Prejuízo";
 }
+
+/**
+ * Percentual no formato brasileiro.
+ *
+ * ─── A TELA MISTURAVA DOIS SEPARADORES ───────────────────────────────────
+ *
+ * `fmtBRL` sempre produziu "R$ 14.676,52" — vírgula decimal, como se escreve
+ * em português. Os percentuais eram `toFixed(1) + "%"`, que produz "37.8%":
+ * ponto decimal, como se escreve em inglês.
+ *
+ * Os dois apareciam lado a lado no mesmo cartão — "R$ 5.543,72 · margem de
+ * 37.8%" — e essa mistura é do tipo que não se nota até alguém copiar o
+ * número pra uma planilha em pt-BR e receber trinta e sete mil e oito.
+ *
+ * O brief pede moeda, percentuais e unidades padronizados. Este é o lado que
+ * faltava.
+ */
+export function fmtPct(valor: number, casas = 1): string {
+  if (!Number.isFinite(valor)) return "—";
+  return `${valor.toLocaleString("pt-BR", {
+    minimumFractionDigits: casas,
+    maximumFractionDigits: casas,
+  })}%`;
+}
