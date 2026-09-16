@@ -91,6 +91,16 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
   const [itemsAnterior, setItemsAnterior] = useState<AdItem[] | null>(null);
   const periodoAnterior = useMemo(() => derivarPeriodoAnterior(range, isoOf(new Date())), [range]);
 
+  /**
+   * Dias do periodo — entra na CONFIANCA das recomendacoes, nao no calculo.
+   * Dois dias de dados nao sustentam decisao de verba por maior que seja o
+   * numero que aparece.
+   */
+  const diasDoPeriodo = useMemo(() => {
+    const ms = Date.parse(range.to + "T00:00:00Z") - Date.parse(range.from + "T00:00:00Z");
+    return Number.isFinite(ms) ? Math.max(Math.round(ms / 86400000) + 1, 1) : 1;
+  }, [range]);
+
   const [busca, setBusca] = useState("");
   const [statusFiltro, setStatusFiltro] = useState<StatusAnuncio | "">("");
   const [lucroFiltro, setLucroFiltro] = useState<"" | "lucro" | "prejuizo">("");
@@ -455,7 +465,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
                       tudo e esconde a campanha que está sangrando. */}
                   <AdsCampaignList itens={items} modo={modo} metricasReais={metricasReaisPorCampanha} />
 
-                  <AdsDecisionPanel linhas={linhas} changelog={changelog} onAbrirAnuncio={abrirAnuncio} />
+                  <AdsDecisionPanel linhas={linhas} changelog={changelog} onAbrirAnuncio={abrirAnuncio} diasDoPeriodo={diasDoPeriodo} />
 
                   {/* Flutuante (position:fixed), então a posição no JSX não
                       afeta o layout — fica aqui só pra receber as MESMAS
