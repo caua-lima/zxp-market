@@ -24,13 +24,34 @@ import { getValidMlAccessToken } from "@/lib/ml/getToken";
 import { fetchOrdersLive, loadOrders, readShippingCosts } from "@/lib/ml/orders";
 import { classificarVenda, detectarPedidosSubstituidos } from "@/lib/domain/venda-status";
 import { diaBRDe } from "@/lib/domain/periodo-br";
+import { custoNaData, impostoNaData, type CustoFaixa, type ImpostoFaixa } from "@/lib/domain/types";
 import { ratearFretePorPedido } from "@/lib/domain/frete-pacote";
 
 export const maxDuration = 30;
 
 type ProdutoData = {
-  custo: number;
-  imposto: number;
+  /**
+   * ─── O CUSTO DE HOJE APLICADO NA VENDA DE MARÇO ──────────────────────
+   *
+   * Era `custo: number` e `imposto: number` — os valores de HOJE, lidos uma
+   * vez e aplicados a toda venda do período, de qualquer data.
+   *
+   * Quem comprou mais barato em março aparecia com a margem de hoje. Pior:
+   * ajustar o custo médio de um produto reescrevia o lucro de meses já
+   * fechados nesta aba, e só nesta — `order-finance` (usado pela
+   * notificação de venda) e a rota de métricas (Dashboard e DRE) já
+   * respeitavam a data da venda via `custoNaData`/`impostoNaData`.
+   *
+   * Ou seja: as duas telas mostravam margens diferentes pro MESMO pedido, e
+   * a diferença aparecia só depois de alguém mexer no cadastro.
+   *
+   * Agora as faixas de vigência vêm inteiras, e a alíquota e o custo são os
+   * que valiam no dia do pedido — a mesma definição que o resto do app usa.
+   */
+  custoMedio: number;
+  custoMedioFaixas?: CustoFaixa[];
+  imposto: number | string;
+  impostoFaixas?: ImpostoFaixa[];
   /**
    * Id do produto no Estoque. Existe pra agrupar as vendas por PRODUTO, e não
    * só por anúncio: um produto costuma ter várias listagens, e a venda que o
@@ -126,6 +147,13 @@ function vendasPorItem(
       temDevolucaoConcluida: devolIds.has(oid),
       substituidoNoPacote: substituidos.has(oid),
     }).classe !== "valida") continue;
+    /**
+     * O dia da venda, em horário de Brasília — é a chave que escolhe qual
+     * faixa de custo e de imposto valia. `diaBRDe` é a mesma função que a
+     * rota de métricas usa; converter aqui de outro jeito produziria uma
+     * divergência de um dia nas viradas de mês.
+     */
+    const diaPedido = diaBRDe(String(o.date_created ?? ""));
     const items = (o.items as OrderItem[]) ?? [];
     const totalUnits = items.reduce((s, it) => s + Number(it.quantity ?? 1), 0);
     const envioPerUnit = totalUnits > 0 ? (rateio.porPedido.get(oid) ?? 0) / totalUnits : 0;
@@ -143,8 +171,9 @@ function vendasPorItem(
       // Receita, taxa e frete são conhecidos mesmo sem vínculo — o que falta é
       // o CUSTO. Somar zero no lugar dele não é estimar, é inventar pra cima.
       if (prod) {
-        cur.cmv += prod.custo * qty;
-        cur.imposto += receita * (prod.imposto / 100);
+        // Custo e alíquota VIGENTES NO DIA DA VENDA, não os de hoje.
+        cur.cmv += custoNaData(prod, diaPedido) * qty;
+        cur.imposto += receita * (impostoNaData(prod, diaPedido) / 100);
       } else {
         cur.semCusto = true;
       }
@@ -159,8 +188,8 @@ function vendasPorItem(
         acc.unidades += qty;
         acc.taxaML += Number(it.sale_fee ?? 0) * qty;
         acc.envio += envioPerUnit * qty;
-        acc.cmv += prod.custo * qty;
-        acc.imposto += receita * (prod.imposto / 100);
+        acc.cmv += custoNaData(prod, diaPedido) * qty;
+        acc.imposto += receita * (impostoNaData(prod, diaPedido) / 100);
         porProduto.set(pk, acc);
       }
     }
@@ -215,8 +244,12 @@ export async function GET(req: Request) {
     for (const doc of prodSnap.docs) {
       const d = doc.data();
       const entry: ProdutoData = {
-        custo: Number(d.custoMedio ?? d.custo ?? 0),
-        imposto: Number(d.imposto ?? 0),
+        custoMedio: Number(d.custoMedio ?? d.custo ?? 0),
+        // As faixas são o histórico: cada uma diz a partir de quando aquele
+        // custo/alíquota passou a valer. Sem elas, só resta o valor de hoje.
+        custoMedioFaixas: Array.isArray(d.custoMedioFaixas) ? (d.custoMedioFaixas as CustoFaixa[]) : undefined,
+        imposto: d.imposto ?? 0,
+        impostoFaixas: Array.isArray(d.impostoFaixas) ? (d.impostoFaixas as ImpostoFaixa[]) : undefined,
         produtoId: String(d.id ?? doc.id),
       };
       const mlbs: string[] = Array.isArray(d.mlbs) && d.mlbs.length ? d.mlbs : d.mlb ? [String(d.mlb)] : [];
