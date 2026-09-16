@@ -37,6 +37,7 @@ import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import {
   ORDEM_DE_RESTAURACAO, podeRestaurar, avaliarDestino, explicarDestino, classeDe,
 } from "../lib/domain/backup-inventario.ts";
+import { lerLinhaDoDump } from "../lib/domain/backup-serie.ts";
 
 const args = process.argv.slice(2);
 const opt = (n, p) => { const i = args.indexOf(`--${n}`); return i >= 0 && args[i + 1] ? args[i + 1] : p; };
@@ -140,19 +141,16 @@ if (!clientEmail || !privateKey) {
 initializeApp({ credential: cert({ projectId: destinoProjeto, clientEmail, privateKey }) });
 const db = getFirestore();
 
-/** Desfaz a marcação de tipo do backup. Sem isto, data vira mapa. */
-function desserializar(v) {
-  if (v === null || v === undefined) return v;
-  if (Array.isArray(v)) return v.map(desserializar);
-  if (typeof v === "object") {
-    if (v.__tipo === "timestamp") return Timestamp.fromDate(new Date(v.iso));
-    if (v.__tipo === "ref") return db.doc(v.path);
-    const o = {};
-    for (const [k, x] of Object.entries(v)) o[k] = desserializar(x);
-    return o;
-  }
-  return v;
-}
+/**
+ * As fábricas que a desserialização precisa.
+ *
+ * `backup-serie` não pode importar `firebase-admin` — ele roda em teste e
+ * no editor, onde o SDK não existe. Quem tem o SDK traz as duas.
+ */
+const FABRICAS = {
+  paraData: (iso) => Timestamp.fromDate(new Date(iso)),
+  paraRef: (caminho) => db.doc(caminho),
+};
 
 let escritos = 0;
 for (const nome of ORDEM_DE_RESTAURACAO) {
@@ -168,8 +166,8 @@ for (const nome of ORDEM_DE_RESTAURACAO) {
   for (let i = 0; i < linhas.length; i += 400) {
     const lote = db.batch();
     for (const l of linhas.slice(i, i + 400)) {
-      const { caminho, dados } = JSON.parse(l);
-      lote.set(db.doc(caminho), desserializar(dados));
+      const { caminho, dados } = lerLinhaDoDump(l, FABRICAS);
+      lote.set(db.doc(caminho), dados);
     }
     await lote.commit();
   }

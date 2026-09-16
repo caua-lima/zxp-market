@@ -36,6 +36,7 @@ import { getFirestore } from "firebase-admin/firestore";
 // a mesma que o app e os testes usam. Copiar a lista pra ca seria garantir
 // que backup e app discordassem na primeira colecao nova.
 import { colecoesParaBackup, INVENTARIO } from "../lib/domain/backup-inventario.ts";
+import { linhaDoDump } from "../lib/domain/backup-serie.ts";
 
 const args = process.argv.slice(2);
 const opt = (nome, padrao) => {
@@ -68,25 +69,15 @@ const destino = path.join(saida, `${projectId}_${carimbo}`);
 fs.mkdirSync(destino, { recursive: true });
 
 /**
- * Serializa um documento preservando Timestamp e referência.
+ * A serialização mora em lib/domain/backup-serie.ts, com teste.
  *
- * O JSON puro transformaria Timestamp num objeto `{_seconds, _nanoseconds}`
- * que a restauração devolveria como mapa comum — e a data viraria um objeto
- * que nenhuma query de intervalo encontra. Marcar o tipo é o que permite
- * reconstruir na volta.
+ * Ela vivia aqui, e a metade de volta vivia no script de restauração — as
+ * duas pontas da mesma conversa, em arquivos diferentes, sem nada
+ * garantindo que combinassem. E é a parte mais provável de estar errada,
+ * porque é a única que não dá pra conferir olhando o resultado: um
+ * Timestamp mal serializado vira um mapa de aparência inofensiva, e o erro
+ * só aparece numa restauração em que a data não filtra nada.
  */
-function serializar(v) {
-  if (v === null || v === undefined) return v;
-  if (typeof v?.toDate === "function") return { __tipo: "timestamp", iso: v.toDate().toISOString() };
-  if (typeof v?.path === "string" && typeof v?.id === "string") return { __tipo: "ref", path: v.path };
-  if (Array.isArray(v)) return v.map(serializar);
-  if (typeof v === "object") {
-    const o = {};
-    for (const [k, x] of Object.entries(v)) o[k] = serializar(x);
-    return o;
-  }
-  return v;
-}
 
 /**
  * Exporta uma coleção, inclusive as subcoleções de cada documento.
@@ -102,7 +93,7 @@ async function exportar(nome) {
   async function percorrer(ref, prefixo) {
     const snap = await ref.get();
     for (const d of snap.docs) {
-      linhas.push(JSON.stringify({ caminho: `${prefixo}/${d.id}`, dados: serializar(d.data()) }));
+      linhas.push(linhaDoDump(`${prefixo}/${d.id}`, d.data()));
       docs += 1;
       for (const sub of await d.ref.listCollections()) {
         await percorrer(sub, `${prefixo}/${d.id}/${sub.id}`);

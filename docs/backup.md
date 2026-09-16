@@ -67,7 +67,22 @@ ser suspensa nem um script apagar a coleção errada.
 ## Retenção
 
 14 diários, 8 semanais (domingo), 12 mensais (último dia do mês). A regra está
-em `manterBackup()`, com testes.
+em `manterBackup()`, com testes, e quem a APLICA é:
+
+```bash
+npm run backup:podar            # só mostra o que faria
+npm run backup:podar -- --aplicar
+```
+
+O modo padrão não apaga nada. Uma retenção que ninguém executa não é
+política, é comentário: o diretório cresce até acabar o disco, e aí alguém
+apaga tudo às pressas — inclusive o mensal de seis meses atrás, que era o
+único que cobria a perda silenciosa.
+
+A data sai do `resumo.json`, ou do nome do diretório como plano B — nunca do
+mtime, que muda quando alguém copia a pasta. Pelo mtime, copiar o diretório
+inteiro faria todos os dumps parecerem de hoje e a poda pararia de funcionar.
+Diretório sem data legível nunca é apagado.
 
 O raciocínio: a perda que a retenção precisa cobrir não é a que se descobre no
 mesmo dia — essa o backup de ontem resolve. É a silenciosa. Um custo médio
