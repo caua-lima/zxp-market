@@ -19,6 +19,8 @@ import { gravarChaveApp, lerChaveApp } from "@/lib/storage";
 import { composicaoDoEstoque } from "@/lib/domain/full-indisponivel";
 import TelaHeader from "@/components/TelaHeader";
 import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
+import Paginacao from "@/components/Paginacao";
+import { paginar } from "@/lib/domain/paginacao";
 import {
   filtrarProdutos, precisaDeAcao, proximaAcao, ordenarPorUrgencia,
   contarSinais, resumoDoEstoque, ROTULO_SINAL,
@@ -246,7 +248,9 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
   const [impostoMassa, setImpostoMassa] = useState(false);
 
   /** A vista: o recorte da lista. O padrão é a pergunta que se faz ao abrir. */
-  const [vista, setVista] = useState<"acao" | "todos">("acao");
+  const [vista, setVista] = useState<"acao" | "todos" | "movimentos">("acao");
+  /** Página da vista de movimentações. Volta pra 1 quando a busca muda. */
+  const [paginaMov, setPaginaMov] = useState(1);
   const [filtroEstoque, setFiltroEstoque] = useState<FiltroEstoque>(FILTRO_ESTOQUE_VAZIO);
   const [vincularSku, setVincularSku] = useState(false);
 
@@ -638,6 +642,18 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
           >
             Todos os produtos ({ativos})
           </button>
+          {/*
+            A terceira vista. Movimentação de estoque só existia DENTRO da
+            linha expandida de cada produto — pra ver o que entrou na semana
+            passada era preciso abrir produto por produto e lembrar o que
+            tinha visto em cada um.
+          */}
+          <button
+            type="button" className={`seg-btn ${vista === "movimentos" ? "active" : ""}`}
+            onClick={() => setVista("movimentos")}
+          >
+            Movimentações ({movimentos.length})
+          </button>
         </div>
 
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -732,6 +748,28 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
         </div>
       )}
 
+      {/*
+        ─── MOVIMENTAÇÕES ──────────────────────────────────────────────────
+
+        Paginada porque a lista cresce pra sempre: cada entrada, ajuste e
+        envio pro Full vira uma linha, e nenhuma some. Desenhar quinhentas
+        de uma vez trava a aba num celular.
+
+        Página numerada e não rolagem infinita: quem procura aqui procura
+        uma entrada específica — "aquela compra de março" — e rolagem
+        infinita não tem endereço. Não dá pra voltar pro mesmo ponto nem
+        dizer a alguém onde olhar.
+      */}
+      {vista === "movimentos" ? (
+        <MovimentacoesPanel
+          movimentos={movimentos}
+          produtos={data.products}
+          busca={search}
+          pagina={paginaMov}
+          onPagina={setPaginaMov}
+        />
+      ) : (
+      <>
       {/* Lista */}
       <div className="panel">
         {filtered.length === 0 ? (
@@ -792,6 +830,8 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
       </div>
 
       <PrevisaoPanel products={filtered} estoqueML={estoqueML} forecast={forecast} />
+      </>
+      )}
 
       {impostoMassa && (
         <ImpostoMassaModal
@@ -886,6 +926,122 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
   );
 }
 
+/**
+ * Todas as movimentações de estoque, do mais recente pro mais antigo.
+ *
+ * ─── POR QUE ESTA VISTA PRECISAVA EXISTIR ───────────────────────────────
+ *
+ * Movimentação só aparecia DENTRO da linha expandida de cada produto. Pra
+ * responder "o que entrou na semana passada?" era preciso abrir produto por
+ * produto e lembrar o que tinha visto em cada um — e a resposta certa é uma
+ * lista ordenada por data, que é o que isto é.
+ *
+ * Paginada porque a lista cresce pra sempre: nenhuma movimentação some, e
+ * desenhar quinhentas linhas de uma vez trava a aba num celular.
+ */
+function MovimentacoesPanel({ movimentos, produtos, busca, pagina, onPagina }: {
+  movimentos: EstoqueMovimento[];
+  produtos: Product[];
+  busca: string;
+  pagina: number;
+  onPagina: (n: number) => void;
+}) {
+  const nomePorId = useMemo(
+    () => new Map(produtos.map((p) => [p.id, p.name || p.id])),
+    [produtos],
+  );
+
+  const ordenados = useMemo(() => {
+    const chave = (x: unknown) => String(x ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const termo = chave(busca).trim();
+
+    const lista = movimentos.filter((m) => {
+      if (!termo) return true;
+      const alvo = chave(`${nomePorId.get(m.productId) ?? ""} ${m.obs ?? ""} ${TIPO_MOVIMENTO_LABEL[m.tipo] ?? m.tipo}`);
+      return termo.split(/\s+/).every((w) => alvo.includes(w));
+    });
+
+    /**
+     * Mais recente primeiro, e o desempate é o id.
+     *
+     * Sem desempate, duas movimentações do MESMO dia — o caso comum, porque
+     * a data é só o dia — trocariam de lugar entre duas pinturas, e a linha
+     * que a pessoa estava lendo saltaria.
+     */
+    return [...lista].sort((a, b) =>
+      String(b.data ?? "").localeCompare(String(a.data ?? "")) || String(b.id).localeCompare(String(a.id)));
+  }, [movimentos, nomePorId, busca]);
+
+  const p = paginar(ordenados, pagina, 25);
+
+  return (
+    <div className="panel">
+      <div className="panel-head" style={{ marginBottom: 8 }}>
+        <span className="panel-title">Movimentações de estoque</span>
+        <span className="panel-sub">entradas, ajustes e envios pro Full — do mais recente pro mais antigo</span>
+      </div>
+
+      {ordenados.length === 0 ? (
+        <div className="empty-state">
+          <span className="empty-ico">📋</span>
+          {busca.trim()
+            ? <>Nenhuma movimentação bate com <b>{busca.trim()}</b>. Existem {movimentos.length} no total.</>
+            : "Nenhuma movimentação lançada ainda."}
+        </div>
+      ) : (
+        <>
+          <div className="table-wrapper" style={{ border: "none" }}>
+            <table className="tbl-modern tbl-cards">
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left" }}>Data</th>
+                  <th style={{ textAlign: "left" }}>Produto</th>
+                  <th style={{ textAlign: "left" }}>Tipo</th>
+                  <th style={{ textAlign: "right" }}>Qtd</th>
+                  <th style={{ textAlign: "right" }}>Custo un.</th>
+                  <th style={{ textAlign: "left" }}>Observação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {p.itens.map((m) => {
+                  /*
+                    A cor segue a MESMA regra da linha expandida do produto
+                    (ver o histórico dentro de ProductRow): compra é entrada,
+                    envio pro Full é transferência, ajuste segue o sinal. Duas
+                    regras de cor pro mesmo dado fariam a mesma movimentação
+                    aparecer verde num lugar e vermelha no outro.
+                  */
+                  const ehCompra = m.tipo === "entrada";
+                  const ehFullMov = m.tipo === "saida_full";
+                  const sinal = ehCompra ? "+" : ehFullMov ? "−" : (m.quantidade >= 0 ? "+" : "−");
+                  const cor = ehCompra ? "var(--green)" : ehFullMov ? "var(--yellow)" : (m.quantidade >= 0 ? "var(--green)" : "var(--red)");
+                  return (
+                    <tr key={m.id}>
+                      <td data-label="Data" style={{ whiteSpace: "nowrap" }}>{m.data}</td>
+                      <td data-label="Produto" style={{ fontWeight: 600 }}>
+                        {nomePorId.get(m.productId) ?? <span style={{ color: "var(--muted)" }}>produto removido</span>}
+                      </td>
+                      <td data-label="Tipo">{TIPO_MOVIMENTO_LABEL[m.tipo] ?? m.tipo}</td>
+                      <td data-label="Qtd" style={{ textAlign: "right", color: cor, fontWeight: 700, whiteSpace: "nowrap" }}>
+                        {sinal}{Math.abs(m.quantidade)}
+                      </td>
+                      <td data-label="Custo un." style={{ textAlign: "right", whiteSpace: "nowrap", color: m.custoUnit ? "var(--text)" : "var(--muted)" }}>
+                        {m.custoUnit ? fmtBRL(parseNum(String(m.custoUnit))) : "—"}
+                      </td>
+                      <td data-label="Observação" style={{ color: "var(--muted)" }}>{m.obs || "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <Paginacao pagina={p} onIr={onPagina} unidade="movimentação" />
+        </>
+      )}
+    </div>
+  );
+}
 function ProductRow({
   product, estoqueML, expanded, onToggle, onEdit, onMov, onAgencias, duplicadas = 0, situacao = null,
 }: {

@@ -1307,3 +1307,20 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
   background:var(--surface);border:1px solid var(--border);
   border-radius:var(--radius);box-shadow:0 12px 32px rgba(0,0,0,.4);
 }
+
+/* ─── PAGINAÇÃO (components/Paginacao.tsx) ────────────────────────────────── */
+.paginacao{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:12px;flex-wrap:wrap;padding:12px 4px 4px;margin-top:8px;
+  border-top:1px solid var(--border);
+}
+.paginacao-resumo{font-size:.78rem;color:var(--muted);padding:6px 4px}
+.paginacao-botoes{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.paginacao-corte{color:var(--muted);padding:0 4px;font-size:.8rem}
+@media(max-width:720px){
+  /* No celular os controles ficam centralizados e o resumo vai pra cima:
+     numa linha só, os números de página encolheriam abaixo do alvo de toque. */
+  .paginacao{flex-direction:column;align-items:stretch}
+  .paginacao-botoes{justify-content:center}
+  .paginacao-botoes .btn{min-width:38px;min-height:34px}
+}
