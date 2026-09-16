@@ -17,6 +17,14 @@ import { authedFetch } from "@/lib/api/authed-fetch";
 import { useAccess } from "@/components/tabs/AccessGuard";
 import { gravarChaveApp, lerChaveApp } from "@/lib/storage";
 import { composicaoDoEstoque } from "@/lib/domain/full-indisponivel";
+import TelaHeader from "@/components/TelaHeader";
+import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
+import {
+  filtrarProdutos, precisaDeAcao, proximaAcao, ordenarPorUrgencia,
+  contarSinais, resumoDoEstoque, ROTULO_SINAL,
+  FILTRO_ESTOQUE_VAZIO, type FiltroEstoque, type ProdutoNaLista, type SinalDoProduto,
+  DIAS_COBERTURA_BAIXA,
+} from "@/lib/domain/estoque-situacao";
 
 type MlItem = { available: number; sold: number; status: string; price: number; regularPrice: number; hasPromo: boolean; logistic: string; inventoryId?: string };
 type EstoqueML = Record<string, MlItem>;
@@ -236,6 +244,10 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
     return () => document.removeEventListener("keydown", onKey);
   }, [expanded]);
   const [impostoMassa, setImpostoMassa] = useState(false);
+
+  /** A vista: o recorte da lista. O padrão é a pergunta que se faz ao abrir. */
+  const [vista, setVista] = useState<"acao" | "todos">("acao");
+  const [filtroEstoque, setFiltroEstoque] = useState<FiltroEstoque>(FILTRO_ESTOQUE_VAZIO);
   const [vincularSku, setVincularSku] = useState(false);
 
   const carregarEstoque = useCallback(async () => {
@@ -305,15 +317,95 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
     return map;
   }, [movimentos]);
 
-  const filtered = data.products.filter((p) => {
-    const q = search.toLowerCase();
-    if (!q) return true;
-    return (
-      p.name.toLowerCase().includes(q) ||
-      (p.sku ?? "").toLowerCase().includes(q) ||
-      mlbsDe(p).some((m) => m.toLowerCase().includes(q))
-    );
-  });
+  /**
+   * ─── O QUE CADA PRODUTO PRECISA, EM VEZ DE TUDO QUE SE SABE DELE ─────
+   *
+   * A lista mostrava oito colunas de fato — em casa, Full, total, custo,
+   * preço, imposto — e deixava a conclusão pra pessoa. Com quarenta
+   * produtos, "qual deles precisa de mim hoje?" virava ler quarenta linhas
+   * e cruzar seis colunas de cabeça.
+   *
+   * `estoque-situacao` responde isso, com teste: quais SINAIS cada produto
+   * carrega e qual é a PRÓXIMA AÇÃO — uma só, por ordem de urgência.
+   *
+   * A ordem é a parte que decide: ruptura COM estoque em casa vem antes de
+   * ruptura sem, porque a primeira se resolve hoje com uma coleta e sem
+   * gastar nada. É a que a pessoa consegue resolver agora.
+   */
+  const paraSituacao = useMemo<ProdutoNaLista[]>(() => data.products.map((p) => {
+    const f = fullDe(p, estoqueML);
+    const emCasa = estoqueForaDoFull(Math.max(p.qtdLocal ?? 0, 0), f.proprio, f.ehFull);
+    const duplicadas = duplicadasPorProduto.get(p.id) ?? 0;
+    return {
+      id: p.id,
+      nome: p.name || p.id,
+      // O mesmo total que a linha mostra, menos o que está contado duas
+      // vezes: um sinal calculado sobre número inflado aponta pro produto
+      // errado.
+      estoqueTotal: Math.max(f.qtd + emCasa - duplicadas, 0),
+      emCasa: Math.max(emCasa - duplicadas, 0),
+      noFull: f.qtd,
+      ehFull: f.ehFull,
+      mediaDiaria: mediaDiariaAjustada(
+        forecast.vendas[p.id] ?? 0, forecast.dias, forecast.diasAtivos?.[p.id],
+      ),
+      custoUnitario: custoMedioDe(p),
+      ativo: Boolean(p.ativo),
+      anuncios: mlbsDe(p).filter(Boolean).length,
+      duplicadas,
+    };
+  }), [data.products, estoqueML, forecast, duplicadasPorProduto]);
+
+  const porId = useMemo(() => new Map(paraSituacao.map((x) => [x.id, x])), [paraSituacao]);
+
+
+  const sinaisContados = useMemo(() => contarSinais(paraSituacao), [paraSituacao]);
+  const resumoSituacao = useMemo(() => resumoDoEstoque(paraSituacao), [paraSituacao]);
+
+  /**
+   * O estado dos dados, pro selo do cabeçalho.
+   *
+   * `produtos` é essencial; o estoque do ML é secundário — sem ele a aba
+   * mostra o cadastro e o livro do galpão, que continua servindo. Por isso
+   * uma falha nele vira RESSALVA e não erro: dizer "não carregou" numa tela
+   * que está mostrando metade do que sabe é alarme falso.
+   */
+  const estadoDaTela = useMemo(() => resumirEstadoDaTela({
+    fontes: { produtos: data.fontes.produtos },
+    essenciais: ["produtos"],
+    pendencias: [
+      ...(duplicadasPorProduto.size > 0 ? [{
+        chave: "estoque-duplicado",
+        titulo: `${duplicadasPorProduto.size} produto(s) com unidades contadas duas vezes`,
+        detalhe: "Remessa que chegou no Full sem a baixa do galpão lançada — o total aparece maior que o real.",
+        efeito: "indefinido" as const,
+      }] : []),
+      ...(sinaisContados.sem_custo > 0 ? [{
+        chave: "sem-custo",
+        titulo: `${sinaisContados.sem_custo} produto(s) sem custo cadastrado`,
+        detalhe: "O capital em estoque está subestimado por eles, e o lucro das vendas deles aparece inteiro.",
+        efeito: "otimista" as const,
+      }] : []),
+    ],
+  }), [data.fontes.produtos, duplicadasPorProduto, sinaisContados]);
+
+  /**
+   * A lista visível: a vista escolhe o RECORTE, o filtro afina dentro dele.
+   *
+   * "Precisa de ação" não é mais um filtro entre outros — é a vista padrão,
+   * porque é a pergunta que se faz ao abrir esta aba. A lista completa
+   * continua a um clique.
+   */
+  const filtered = useMemo(() => {
+    const alvo = { ...filtroEstoque, busca: search };
+    let ids = filtrarProdutos(paraSituacao, alvo);
+    if (vista === "acao") ids = ids.filter(precisaDeAcao);
+    ids = ordenarPorUrgencia(ids);
+
+    // Volta pros Product originais, na ordem que a urgência definiu.
+    const mapa = new Map(data.products.map((p) => [p.id, p]));
+    return ids.map((x) => mapa.get(x.id)).filter((p): p is Product => !!p);
+  }, [paraSituacao, data.products, filtroEstoque, search, vista]);
 
   const total = data.products.length;
   const ativos = data.products.filter((p) => p.ativo).length;
@@ -328,13 +420,18 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
   // o mesmo bug do pool compartilhado aqui no card do topo, mesmo com a linha
   // da tabela já certa.
   const unFull = data.products.reduce((s, p) => s + fullDe(p, estoqueML).qtd, 0);
-  // Valor parado = (Full + estoque fora do Full) × custo médio. O próprio não
-  // soma com casa: é o mesmo estoque exposto no anúncio.
-  const valorEstoque = data.products.reduce((s, p) => {
-    const casa = Math.max(p.qtdLocal ?? 0, 0);
-    const { qtd: full, proprio, ehFull } = fullDe(p, estoqueML);
-    return s + (full + estoqueForaDoFull(casa, proprio, ehFull)) * custoMedioDe(p);
-  }, 0);
+  /**
+   * O valor parado agora vem de `resumoDoEstoque` (estoque-situacao).
+   *
+   * A conta daqui somava Full + fora do Full sem descontar a unidade CONTADA
+   * DUAS VEZES — a que já chegou no centro e cujo livro do galpão ninguém
+   * baixou. A aba avisava dessa duplicação num aviso amarelo no topo e
+   * mostrava o capital inflado por ela logo abaixo, no cartão.
+   *
+   * A definição compartilhada desconta, e ainda diz quantos produtos estão
+   * sem custo — porque sem isso o valor parece fechado quando pode faltar
+   * metade dele.
+   */
   // Produto ativo sem nenhum MLB ligado: a venda dele nunca casa com o
   // cadastro, então entra no lucro com CMV zero (ver metrics/route.ts).
   const semAnuncio = data.products.filter((p) => p.ativo && mlbsDe(p).filter(Boolean).length === 0);
@@ -343,34 +440,14 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
     const f = fullDe(p, estoqueML);
     return f.ehFull && f.qtd <= FULL_BAIXO && (p.qtdLocal ?? 0) > 0;
   });
-  // Venda potencial = todo o estoque × preço de venda atual do ML.
-  const valorPotencialVenda = data.products.reduce((s, p) => s + previsaoDe(p, estoqueML, forecast).valorPotencial, 0);
+  // "Venda potencial" saiu do resumo: estoque × preço só vira receita se tudo
+  // vender, e o cartão ficava ao lado de números que são fatos. O brief pede
+  // quatro indicadores, e esse não é um deles.
 
-  // Indicadores de reposição (Fase 5) — cobertura real via forecast, só
-  // produtos ativos (produto descontinuado não precisa de alerta de compra).
-  const resumoCobertura = useMemo(() => {
-    let ruptura = 0, critico = 0, repor = 0, encalhado = 0, valorEmRisco = 0;
-    for (const p of data.products) {
-      if (!p.ativo) continue;
-      const f = previsaoDe(p, estoqueML, forecast);
-      const vendasPeriodo = forecast.vendas[p.id] ?? 0;
-      const coberturaDias = Number.isFinite(f.cobertura) ? f.cobertura : null;
-      const status = getCoverageStatus(coberturaDias, f.total, vendasPeriodo);
-      if (f.total <= 0) ruptura++;
-      if (status === "critico") { critico++; valorEmRisco += f.total * custoMedioDe(p); }
-      else if (status === "repor") repor++;
-      else if (status === "encalhado") { encalhado++; valorEmRisco += f.total * custoMedioDe(p); }
-    }
-    return { ruptura, critico, repor, encalhado, valorEmRisco };
-  }, [data.products, estoqueML, forecast]);
-
-  /**
-   * Total de produtos que pedem alguma ação. `ruptura` fica FORA da soma
-   * porque todo produto sem estoque já é contado em `critico` ou `encalhado`
-   * pelo getCoverageStatus — somar os quatro contaria o mesmo produto duas
-   * vezes e o cartão mostraria mais produtos em risco do que existem.
-   */
-  const precisamAtencao = resumoCobertura.critico + resumoCobertura.repor + resumoCobertura.encalhado;
+  // O resumo de cobertura e o contador de "precisam de atenção" saíram daqui:
+  // `resumoDoEstoque` responde o mesmo com uma definição só, e a antiga tinha
+  // uma ressalva difícil (ruptura ficava FORA da soma pra não contar o mesmo
+  // produto duas vezes) que existia só porque as faixas se sobrepunham.
 
   function onAdd() {
     setEditProduct({ id: newId(), name: "", custo: "", sku: "", imposto: "", mlbs: [""], ativo: true });
@@ -413,28 +490,32 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
       )}
 
       {/* Header */}
-      <div className="tab-head">
-        <div className="tab-head-left">
-          <h2 className="tab-title">Estoque de Produtos</h2>
-          <button type="button" className="btn btn-sm btn-ghost" onClick={carregarEstoque} disabled={loadingML}>
-            {loadingML ? "Atualizando..." : "⟳ Atualizar Full (ML)"}
+      {/*
+        Quatro botões na mesma altura e com o mesmo peso não são quatro ações,
+        são nenhuma: a pessoa lia os quatro toda vez pra achar o que queria.
+        Agora é uma principal e as outras atrás do ⋯ — e o botão de recarregar,
+        que é controle e não ação, virou `extra`.
+      */}
+      <TelaHeader
+        titulo="Estoque"
+        subtitulo={`${ativos} de ${total} ativo(s)`}
+        estado={estadoDaTela}
+        extra={(
+          <button
+            type="button" className="btn btn-sm btn-ghost"
+            onClick={carregarEstoque} disabled={loadingML}
+            title="Rebusca estoque e vendas no Mercado Livre"
+          >
+            {loadingML ? "Atualizando…" : "⟳ Atualizar"}
           </button>
-        </div>
-        {canEdit && (
-          <div className="tab-actions">
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setVincularSku(true)}>
-              Vincular por SKU
-            </button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setImpostoMassa(true)}>
-              Imposto em massa
-            </button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEntradaMassa(true)}>
-              ＋ Entrada em massa
-            </button>
-            <button type="button" className="btn btn-primary btn-sm" onClick={onAdd}>＋ Novo Produto</button>
-          </div>
         )}
-      </div>
+        acao={canEdit ? { rotulo: "＋ Novo Produto", onClick: onAdd } : null}
+        secundarias={canEdit ? [
+          { rotulo: "Vincular por SKU", onClick: () => setVincularSku(true) },
+          { rotulo: "Imposto em massa", onClick: () => setImpostoMassa(true) },
+          { rotulo: "＋ Entrada em massa", onClick: () => setEntradaMassa(true) },
+        ] : []}
+      />
 
       {/*
         Resumo — 5 cartões em vez dos 10 de antes. Eram tantos que nenhum se
@@ -445,39 +526,63 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
         distinta, e o detalhe das faixas fica no `k-sub`, sem perder informação.
       */}
       <div className="kpi-grid">
-        <div className="kpi k-acc">
-          <div className="k-lbl">Produtos</div>
-          <div className="k-val">{total}</div>
-          <div className="k-sub">{ativos} ativos</div>
-        </div>
-        <div className="kpi k-pos">
-          <div className="k-lbl">Valor em estoque</div>
-          <div className="k-val" style={{ color: "var(--green)" }}>{fmtBRL(valorEstoque)}</div>
-          <div className="k-sub">(casa + Full) × custo médio</div>
-        </div>
-        {/* "produtos cadastrados" explícito: a aba Full mostra o Full da CONTA
-            INTEIRA (inclui anúncio sem cadastro aqui), então o número de lá é
-            maior. Os dois estão certos — o rótulo é que precisa dizer qual é
-            qual, senão parece divergência. */}
-        <div className="kpi k-acc">
-          <div className="k-lbl">Unidades</div>
-          <div className="k-val">{unCasa + unFull}</div>
-          <div className="k-sub" title="Conta apenas os produtos cadastrados nesta aba. A aba Full mostra o total da conta no Mercado Livre, incluindo anúncios ainda não cadastrados aqui.">
-            {unCasa} em casa · {unFull} no Full · só cadastrados
+        {/*
+          ─── OS QUATRO NÚMEROS DO RESUMO ──────────────────────────────────
+
+          Eram cinco cartões, e o quinto — Precisam de atenção — espremia
+          CINCO números numa linha de subtítulo: ruptura, crítico, repor,
+          parado e valor em risco. Cinco números numa linha não são cinco
+          números, são um parágrafo que ninguém lê.
+
+          Agora cada cartão responde uma pergunta, e ruptura e cobertura
+          baixa ficam separadas porque pedem AÇÕES diferentes: ruptura já
+          está perdendo venda, cobertura baixa ainda dá tempo de repor.
+        */}
+        <div className={resumoSituacao.ruptura > 0 ? "kpi k-neg" : "kpi k-pos"}>
+          <div className="k-lbl">Em ruptura</div>
+          <div className="k-val" style={{ color: resumoSituacao.ruptura > 0 ? "var(--red)" : "var(--green)" }}>
+            {resumoSituacao.ruptura}
+          </div>
+          <div className="k-sub">
+            {resumoSituacao.ruptura === 0
+              ? "nenhum produto sem estoque"
+              : "sem estoque — o anúncio perde posição a cada hora"}
           </div>
         </div>
-        <div className="kpi k-acc">
-          <div className="k-lbl">Venda potencial</div>
-          <div className="k-val">{fmtBRL(valorPotencialVenda)}</div>
-          <div className="k-sub">estoque × preço ML atual</div>
+
+        <div className={resumoSituacao.coberturaBaixa > 0 ? "kpi k-warn" : "kpi k-pos"}>
+          <div className="k-lbl">Cobertura baixa</div>
+          <div className="k-val" style={{ color: resumoSituacao.coberturaBaixa > 0 ? "var(--yellow)" : "var(--green)" }}>
+            {resumoSituacao.coberturaBaixa}
+          </div>
+          <div className="k-sub">duram menos de {DIAS_COBERTURA_BAIXA} dias — ainda dá tempo de repor</div>
         </div>
-        <div className={precisamAtencao > 0 ? "kpi k-neg" : "kpi k-pos"}>
-          <div className="k-lbl">Precisam de atenção</div>
-          <div className="k-val" style={{ color: precisamAtencao > 0 ? "var(--red)" : "var(--green)" }}>{precisamAtencao}</div>
+
+        <div className="kpi k-pos">
+          <div className="k-lbl">Capital em estoque</div>
+          <div className="k-val" style={{ color: "var(--green)" }}>{fmtBRL(resumoSituacao.capitalEmEstoque)}</div>
+          {/*
+            O número de produtos sem custo vem JUNTO, não num aviso separado:
+            sem ele, "R$ 32 mil em estoque" parece um fato fechado quando
+            pode faltar metade. A ressalva tem que estar ao lado do número
+            que ela ressalva.
+          */}
           <div className="k-sub">
-            {precisamAtencao === 0
-              ? "nenhum produto em risco"
-              : `${resumoCobertura.ruptura} sem estoque · ${resumoCobertura.critico} crítico · ${resumoCobertura.repor} repor · ${resumoCobertura.encalhado} parado · ${fmtBRL(resumoCobertura.valorEmRisco)} em risco`}
+            {resumoSituacao.semCusto > 0
+              ? <>(casa + Full) × custo médio · <b style={{ color: "var(--yellow)" }}>subestimado</b>: {resumoSituacao.semCusto} sem custo</>
+              : <>{unCasa} em casa · {unFull} no Full, ao custo médio</>}
+          </div>
+        </div>
+
+        <div className={resumoSituacao.remessasPendentes > 0 ? "kpi k-warn" : "kpi k-acc"}>
+          <div className="k-lbl">Remessas pendentes</div>
+          <div className="k-val" style={{ color: resumoSituacao.remessasPendentes > 0 ? "var(--yellow)" : "var(--muted)" }}>
+            {resumoSituacao.remessasPendentes}
+          </div>
+          <div className="k-sub">
+            {resumoSituacao.remessasPendentes === 0
+              ? "nenhuma baixa em aberto"
+              : "chegaram no Full e a saída do galpão não foi lançada"}
           </div>
         </div>
       </div>
@@ -506,11 +611,106 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
           ambiguidade. Aproximado continua exigindo seu aval no modal. */}
       {canEdit && <AutoVincularSku uid={uid} produtos={data.products} />}
 
-      {/* Busca */}
-      <input
-        className="search-inp" type="search" placeholder="Buscar por nome, SKU ou código MLB…" value={search}
-        onChange={(e) => setSearch(e.target.value)} aria-label="Buscar produto"
-      />
+      {/*
+        ─── VISTAS E FILTROS ───────────────────────────────────────────────
+
+        Havia uma caixa de busca solta e mais nada. Os problemas do estoque —
+        ruptura, cobertura baixa, produto sem custo, produto sem vínculo,
+        unidade contada duas vezes — só apareciam como avisos soltos no topo,
+        cada um com a sua lista de nomes em texto corrido. Ver os produtos em
+        si exigia procurar cada nome na tabela abaixo.
+
+        A vista define o recorte; os sinais afinam dentro dele. Cada sinal
+        mostra QUANTOS produtos carrega: filtro sem contador obriga a clicar
+        pra descobrir que não tem nada ali.
+      */}
+      <div className="panel" style={{ padding: "10px 12px" }}>
+        <div className="seg" style={{ marginBottom: 10 }}>
+          <button
+            type="button" className={`seg-btn ${vista === "acao" ? "active" : ""}`}
+            onClick={() => setVista("acao")}
+          >
+            Precisa de ação ({paraSituacao.filter(precisaDeAcao).length})
+          </button>
+          <button
+            type="button" className={`seg-btn ${vista === "todos" ? "active" : ""}`}
+            onClick={() => setVista("todos")}
+          >
+            Todos os produtos ({ativos})
+          </button>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input
+            className="search-inp" type="search" style={{ flex: "1 1 240px", margin: 0 }}
+            placeholder="Buscar por nome, SKU ou código MLB…" value={search}
+            onChange={(e) => setSearch(e.target.value)} aria-label="Buscar produto"
+          />
+
+          <label
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: ".8rem", color: "var(--muted)" }}
+          >
+            Logística
+            <select
+              value={filtroEstoque.logistica ?? ""}
+              onChange={(e) => setFiltroEstoque((f) => ({
+                ...f, logistica: (e.target.value || null) as FiltroEstoque["logistica"],
+              }))}
+              aria-label="Filtrar por logística"
+            >
+              <option value="">Full e próprio</option>
+              <option value="full">Só Full</option>
+              <option value="proprio">Só próprio</option>
+            </select>
+          </label>
+
+          <label
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: ".8rem", color: "var(--muted)" }}
+          >
+            <input
+              type="checkbox" checked={filtroEstoque.incluirInativos}
+              onChange={(e) => setFiltroEstoque((f) => ({ ...f, incluirInativos: e.target.checked }))}
+            />
+            Incluir inativos
+          </label>
+        </div>
+
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+          {(Object.keys(ROTULO_SINAL) as SinalDoProduto[]).map((sinal) => {
+            const n = sinaisContados[sinal];
+            const on = filtroEstoque.sinais.includes(sinal);
+            return (
+              <button
+                key={sinal}
+                type="button"
+                className={`chip chip-btn${on ? " is-on" : ""}`}
+                aria-pressed={on}
+                // Sinal sem nenhum produto fica desabilitado em vez de sumir:
+                // um filtro que aparece e desaparece conforme os dados muda de
+                // lugar entre uma visita e outra.
+                disabled={n === 0 && !on}
+                onClick={() => setFiltroEstoque((f) => ({
+                  ...f,
+                  sinais: f.sinais.includes(sinal)
+                    ? f.sinais.filter((x) => x !== sinal)
+                    : [...f.sinais, sinal],
+                }))}
+              >
+                {ROTULO_SINAL[sinal]} ({n})
+              </button>
+            );
+          })}
+
+          {(filtroEstoque.sinais.length > 0 || filtroEstoque.logistica || filtroEstoque.incluirInativos) && (
+            <button
+              type="button" className="btn btn-ghost btn-xs"
+              onClick={() => setFiltroEstoque(FILTRO_ESTOQUE_VAZIO)}
+            >
+              Limpar filtros
+            </button>
+          )}
+        </div>
+      </div>
 
       {/* Aviso no topo porque a causa do total inflado não está na linha de um
           produto só — está numa remessa que ninguém baixou. Sem isto, o número
@@ -553,6 +753,12 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
               <thead>
                 <tr>
                   <th style={{ textAlign: "left" }}>Produto</th>
+                  {/*
+                    A coluna que faltava, e é a primeira depois do nome de
+                    propósito: a lista existe pra responder o que fazer, e a
+                    resposta não pode estar na oitava coluna.
+                  */}
+                  <th style={{ textAlign: "left" }}>Próxima ação</th>
                   <th style={{ textAlign: "right" }}>Em casa</th>
                   <th style={{ textAlign: "right" }}>Full (ML)</th>
                   <th style={{ textAlign: "right" }}>Total</th>
@@ -572,6 +778,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
                     estoqueML={estoqueML}
                     expanded={expanded === p.id}
                     onToggle={() => setExpanded((cur) => (cur === p.id ? null : p.id))}
+                    situacao={porId.get(p.id) ?? null}
                     onEdit={() => setEditProduct({ ...p, mlbs: mlbsDe(p) })}
                     onMov={(tipo) => setMovModal({ product: p, tipo })}
                     onAgencias={() => setAgenciasProduct(p)}
@@ -680,11 +887,13 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
 }
 
 function ProductRow({
-  product, estoqueML, expanded, onToggle, onEdit, onMov, onAgencias, duplicadas = 0,
+  product, estoqueML, expanded, onToggle, onEdit, onMov, onAgencias, duplicadas = 0, situacao = null,
 }: {
   product: Product;
   uid: string;
   estoqueML: EstoqueML;
+  /** O produto no vocabulário de situação, pra célula de próxima ação. */
+  situacao?: ProdutoNaLista | null;
   /** Unidades já no Full que ainda não saíram do livro do galpão (0 = nenhuma). */
   duplicadas?: number;
   expanded: boolean;
@@ -730,6 +939,31 @@ function ProductRow({
               </div>
             </div>
           </div>
+        </td>
+        {/*
+          PRÓXIMA AÇÃO — uma só, e o porquê no tooltip.
+
+          O rótulo vem de `proximaAcao`, com teste. A cor separa o que está
+          perdendo venda agora (vermelho) do que estraga número (âmbar) e do
+          que só atrapalha a leitura (cinza) — mas o TEXTO carrega a mesma
+          informação, porque cor sozinha exclui quem não distingue os tons.
+        */}
+        <td data-label="Próxima ação" style={{ textAlign: "left", whiteSpace: "nowrap" }}>
+          {(() => {
+            if (!situacao) return <span style={{ color: "var(--muted)" }}>—</span>;
+            const a = proximaAcao(situacao);
+            if (a.urgencia === 0) return <span style={{ color: "var(--muted)", fontSize: ".8rem" }}>{a.rotulo}</span>;
+            const cor = a.urgencia >= 60 ? "var(--red)" : a.urgencia >= 30 ? "var(--gold)" : "var(--muted)";
+            return (
+              <span
+                className="chip"
+                style={{ color: cor, borderColor: cor, fontWeight: 700 }}
+                title={a.porque}
+              >
+                {a.rotulo}
+              </span>
+            );
+          })()}
         </td>
         <td data-label="Em casa" style={{ textAlign: "right", fontWeight: 700, whiteSpace: "nowrap", color: casaExibida > 0 ? "var(--yellow)" : "var(--muted)" }}>
           {casaExibida} un
