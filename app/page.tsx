@@ -8,19 +8,47 @@ import { PushNotificationToggle } from "@/components/PushNotificationToggle";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import AjudaChat from "@/components/AjudaChat";
 import { useUserData } from "@/components/useUserData";
+import dynamic from "next/dynamic";
 import { AccessGuard, useAccess } from "@/components/tabs/AccessGuard";
+/**
+ * ─── AS ABAS SÓ BAIXAM QUANDO SÃO ABERTAS ───────────────────────────────
+ *
+ * As onze eram `import` estático no topo. Como o componente que as usa é
+ * um só, tudo caía no mesmo pedaço: abrir o Dashboard baixava EstoqueTab
+ * (~2.400 linhas), AdsTab, DreTab, DesempenhoTab e mais sete — inclusive as
+ * que o papel da pessoa nem deixa abrir.
+ *
+ * Elas já eram renderizadas com `{activeTab === 'x' && <X/>}`, então nunca
+ * chegavam à tela antes da hora — só ao NAVEGADOR. `next/dynamic` fecha essa
+ * diferença: cada uma vira um pedaço próprio, buscado no primeiro clique e
+ * guardado depois disso.
+ *
+ * O Dashboard fica de fora de propósito: é a aba padrão, a primeira coisa
+ * que todo mundo vê. Adiá-lo trocaria bytes por um spinner na abertura, que
+ * é o oposto do que se quer.
+ *
+ * `loading` existe pra que a troca de aba não pisque em branco na primeira
+ * vez — sem ele, o vão entre o clique e o pedaço chegar parece travamento.
+ */
+const aoCarregar = () => (
+  <div className="panel" style={{ padding: 40, textAlign: "center", color: "var(--muted)" }}>
+    Carregando…
+  </div>
+);
+
+const MetasTab = dynamic(() => import("@/components/tabs/MetasTab"), { loading: aoCarregar });
+const PedidosTab = dynamic(() => import("@/components/tabs/PedidosTab"), { loading: aoCarregar });
+const AdsTab = dynamic(() => import("@/components/tabs/AdsTab"), { loading: aoCarregar });
+const CustosTab = dynamic(() => import("@/components/tabs/CustosTab"), { loading: aoCarregar });
+const EstoqueTab = dynamic(() => import("@/components/tabs/EstoqueTab"), { loading: aoCarregar });
+const FullTab = dynamic(() => import("@/components/tabs/FullTab"), { loading: aoCarregar });
+const DesempenhoTab = dynamic(() => import("@/components/tabs/DesempenhoTab"), { loading: aoCarregar });
+const AccessControlTab = dynamic(() => import("@/components/tabs/AccessControlTab"), { loading: aoCarregar });
+const DreTab = dynamic(() => import("@/components/tabs/DreTab"), { loading: aoCarregar });
+const PrecoTab = dynamic(() => import("@/components/tabs/PrecoTab"), { loading: aoCarregar });
+const TarefasTab = dynamic(() => import("@/components/tabs/TarefasTab"), { loading: aoCarregar });
+
 import LoginCard from "@/components/LoginCard";
-import MetasTab from "@/components/tabs/MetasTab";
-import PedidosTab from "@/components/tabs/PedidosTab";
-import AdsTab from "@/components/tabs/AdsTab";
-import CustosTab from "@/components/tabs/CustosTab";
-import EstoqueTab from "@/components/tabs/EstoqueTab";
-import FullTab from "@/components/tabs/FullTab";
-import DesempenhoTab from "@/components/tabs/DesempenhoTab";
-import AccessControlTab from "@/components/tabs/AccessControlTab";
-import DreTab from "@/components/tabs/DreTab";
-import PrecoTab from "@/components/tabs/PrecoTab";
-import TarefasTab from "@/components/tabs/TarefasTab";
 import Dashboard from "@/components/dashboard/Dashboard";
 import { MlAccountStatus } from "@/components/MlAccountStatus";
 import { ZxpMark } from "@/components/ZxpMark";
