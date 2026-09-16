@@ -159,3 +159,35 @@ describe("manterBackup", () => {
     expect(manterBackup({ idadeEmDias: 400, fimDeMes: true, fimDeSemana: false })).toBe(false);
   });
 });
+
+describe("avaliarDestino com emulador", () => {
+  const origem = "vazxpress-a2350";
+
+  it("emulador com o MESMO id passa — o id igual é requisito do ensaio", () => {
+    // O id é o que separa os dados dentro do emulador; o app só encontra o que
+    // foi restaurado se os dois combinarem. A regra antiga olhava o id e
+    // concluía "é produção", recusando justamente o ensaio.
+    const r = avaliarDestino({
+      projetoDeOrigem: origem, projetoDeDestino: origem,
+      confirmouProducao: false, emulador: true,
+    });
+    expect(r.permitido).toBe(true);
+    expect(r.motivo).toBe("destino_emulador");
+    expect(explicarDestino(r.motivo)).toContain("nada sai desta máquina");
+  });
+
+  it("sem emulador, o mesmo id continua exigindo confirmação", () => {
+    const r = avaliarDestino({
+      projetoDeOrigem: origem, projetoDeDestino: origem, confirmouProducao: false,
+    });
+    expect(r.permitido).toBe(false);
+  });
+
+  it("emulador sem destino ainda é recusado — a trava do id vazio vem antes", () => {
+    const r = avaliarDestino({
+      projetoDeOrigem: origem, projetoDeDestino: "", confirmouProducao: false, emulador: true,
+    });
+    expect(r.permitido).toBe(false);
+    expect(r.motivo).toBe("destino_ausente");
+  });
+});

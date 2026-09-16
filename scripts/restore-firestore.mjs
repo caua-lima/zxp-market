@@ -93,6 +93,7 @@ if (soConferir) {
   process.exit(0);
 }
 
+const emulador = process.env.FIRESTORE_EMULATOR_HOST;
 const origem = resumo?.projeto ?? process.env.FIREBASE_PROJECT_ID;
 const destinoProjeto = opt("projeto", process.env.FIREBASE_PROJECT_ID);
 
@@ -100,6 +101,7 @@ const decisao = avaliarDestino({
   projetoDeOrigem: origem,
   projetoDeDestino: destinoProjeto,
   confirmouProducao: flag("confirmar-producao"),
+  emulador: !!emulador,
 });
 
 console.log(`\nDestino: ${destinoProjeto || "(nenhum)"}`);
@@ -145,8 +147,6 @@ if (decisao.motivo === "producao_confirmada") {
  * pra desviar as chamadas — quando ela existe, nada sai da máquina, e pedir
  * uma chave privada de serviço seria pedir um segredo pra não usar.
  */
-const emulador = process.env.FIRESTORE_EMULATOR_HOST;
-
 if (emulador) {
   console.log(`\nEMULADOR: ${emulador} — nada sai desta máquina.`);
   initializeApp({ projectId: destinoProjeto });

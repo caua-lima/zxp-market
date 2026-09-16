@@ -113,6 +113,32 @@ um segredo à toa. A porta 8199 está em `firebase.json`.
 advisories moderadas que poluiriam o `npm audit` por uma ferramenta usada
 uma vez a cada poucos meses. O `npx -y` baixa na hora.
 
+### O app em cima do restaurado
+
+Com o Firestore E o Auth no emulador, da pra abrir o app apontado pra la e
+conferir na tela — sem projeto novo, sem credencial de producao:
+
+```bash
+npx -y firebase-tools@latest emulators:start --only firestore,auth --project vazxpress-a2350
+```
+
+Restaure o dump, crie um usuario no emulador de Auth com um e-mail que exista
+em `controleAcesso` e acrescente ao `.env.local`:
+
+```
+NEXT_PUBLIC_FIREBASE_EMULADOR=127.0.0.1:8199,127.0.0.1:9299
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=vazxpress-a2350
+```
+
+Uma barra dourada no topo avisa que a tela e emulador. **Tire as duas linhas
+do `.env.local` quando terminar** — uma sessao apontada pro emulador que
+parece producao e como alguem conclui que os dados sumiram.
+
+O que o ensaio NAO devolve: a conexao com o Mercado Livre. Estoque no Full,
+vendas e Ads ficam zerados ate a autorizacao OAuth ser refeita. Numa
+restauracao de verdade, esse e o passo seguinte — e o app diz `unauthorized`
+no topo enquanto isso.
+
 ### Executado em 16/09/2026
 
 Dump de produção (230 documentos, 15 coleções) restaurado no emulador e

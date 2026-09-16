@@ -235,9 +235,29 @@ export function avaliarDestino(args: {
   projetoDeOrigem: string;
   projetoDeDestino: string;
   confirmouProducao: boolean;
+  /**
+   * O destino é um emulador local?
+   *
+   * ─── POR QUE ISTO PRECISOU EXISTIR ────────────────────────────────────
+   *
+   * O ensaio no emulador usa o MESMO id de projeto de propósito: o id é o que
+   * separa os dados dentro do emulador, e o app só encontra o que foi
+   * restaurado se os dois combinarem.
+   *
+   * Só que a regra olhava o id e concluía "é produção" — recusando justamente
+   * o ensaio, que é a coisa que ela existe pra viabilizar. Emulador não tem
+   * produção pra proteger: nada nele sai da máquina.
+   */
+  emulador?: boolean;
 }): { permitido: boolean; motivo: string } {
   if (!args.projetoDeDestino) {
     return { permitido: false, motivo: "destino_ausente" };
+  }
+
+  // Antes da comparação de id: o emulador é isolado por construção, e o id
+  // igual ali é requisito, não risco.
+  if (args.emulador) {
+    return { permitido: true, motivo: "destino_emulador" };
   }
   if (args.projetoDeDestino !== args.projetoDeOrigem) {
     return { permitido: true, motivo: "destino_isolado" };
@@ -249,6 +269,9 @@ export function avaliarDestino(args: {
 }
 
 export function explicarDestino(motivo: string): string {
+  if (motivo === "destino_emulador") {
+    return "Destino é um emulador local — nada sai desta máquina, e o id igual ao de produção é requisito do ensaio.";
+  }
   if (motivo === "destino_isolado") {
     return "Restaurando num projeto separado — o original fica intacto.";
   }
