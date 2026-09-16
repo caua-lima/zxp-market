@@ -1403,22 +1403,36 @@ function TabelaAnuncios({ anuncios }: { anuncios: AnuncioResult[] }) {
  * ao mudar a data aqui, busca só os anúncios daquele intervalo.
  */
 function LucroPorAnuncioPanel({ anuncios, from, to }: { anuncios: AnuncioResult[]; from?: string; to?: string }) {
-  const [range, setRange] = useState<{ from: string; to: string }>({ from: from ?? "", to: to ?? "" });
+  /**
+   * ─── O PERÍODO PRÓPRIO É UMA EXCEÇÃO, NÃO UMA CÓPIA ──────────────────
+   *
+   * Era um `range` em estado mais um efeito que o reescrevia sempre que o
+   * dashboard mudava de período:
+   *
+   *   useEffect(() => { if (!proprio) setRange({ from, to }); }, [from, to, proprio]);
+   *
+   * Espelhar prop em estado e corrigir por efeito custa sempre uma pintura
+   * errada: o painel pinta o período ANTIGO com o dado NOVO e só no quadro
+   * seguinte o seletor de datas se atualiza. Na troca de mês no dashboard,
+   * o rótulo do seletor mostra o mês anterior por um quadro.
+   *
+   * O estado que existe de verdade é outro: se a pessoa ESCOLHEU um período
+   * próprio, e qual. Enquanto ela não escolheu, o período é o do dashboard —
+   * e isso é derivação, não sincronização. Sem efeito, sem quadro errado.
+   */
+  const [rangeProprio, setRangeProprio] = useState<{ from: string; to: string } | null>(null);
   const [proprio, setProprio] = useState<AnuncioResult[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState(false);
 
+  const range = rangeProprio ?? { from: from ?? "", to: to ?? "" };
   const indep = !!proprio && (range.from !== from || range.to !== to);
 
-  // Segue o dashboard enquanto o filtro próprio não estiver ativo.
-  useEffect(() => {
-    if (!proprio) setRange({ from: from ?? "", to: to ?? "" });
-  }, [from, to, proprio]);
-
   async function aplicar(f: string, t: string) {
-    setRange({ from: f, to: t });
-    // Voltou ao período do dashboard → usa os dados que já vieram, sem refetch.
-    if (f === from && t === to) { setProprio(null); setErro(false); return; }
+    // Voltou ao período do dashboard → volta a SEGUIR o dashboard (range próprio
+    // some) e usa os dados que já vieram, sem refetch.
+    if (f === from && t === to) { setRangeProprio(null); setProprio(null); setErro(false); return; }
+    setRangeProprio({ from: f, to: t });
     setLoading(true); setErro(false);
     try {
       const r = await authedFetch(`/api/ml/metrics?from=${f}&to=${t}`, { cache: "no-store" });
@@ -1663,7 +1677,15 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
   const [mlRefreshing, setMlRefreshing] = useState(false);
   const [mlLoading, setMlLoading] = useState(false);
   const [mlMetrics, setMlMetrics] = useState<MlMetrics | null>(null);
-  const [prevMetrics, setPrevMetrics] = useState<MlMetrics | null>(null);
+  /**
+   * A comparação com o período anterior, CARIMBADA com o período a que
+   * pertence — ver o efeito que a busca, logo abaixo.
+   *
+   * Guardar só o `MlMetrics` obrigava a zerá-lo por efeito a cada troca de
+   * período, e o efeito roda depois da pintura: um quadro com a variação
+   * do mês novo contra o anterior do mês VELHO.
+   */
+  const [respPrev, setRespPrev] = useState<{ de: string; ate: string; m: MlMetrics } | null>(null);
   /**
    * "Ontem" fixo (independe do período do DateRangePicker) — alimenta o
    * bloco "Hoje vs Ontem" e a comparação de cada card de "Vendas do Dia".
@@ -1806,20 +1828,40 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
   }, []);
 
   useEffect(() => {
-    fetchMetrics(periodoRange.from, periodoRange.to, false, false, foco.dia);
+    // Dentro de um callback async: chamar direto no corpo do efeito faz a
+    // regra tratar a função inteira como síncrona, mesmo com todo o setState
+    // depois de um `await`.
+    void (async () => {
+      await fetchMetrics(periodoRange.from, periodoRange.to, false, false, foco.dia);
+    })();
   }, [periodoRange, foco.dia, fetchMetrics]);
 
   // Métricas do período ANTERIOR (mesmo tamanho) para a comparação vs. anterior.
   const prevRange = useMemo(() => prevPeriod(periodoRange.from, periodoRange.to), [periodoRange]);
+
+  // Resposta de outro período não é a deste. Decidido no render, sem reset.
+  const prevMetrics = respPrev && respPrev.de === prevRange.from && respPrev.ate === prevRange.to
+    ? respPrev.m
+    : null;
+  /**
+   * ─── A COMPARAÇÃO CARREGA O PERÍODO A QUE ELA PERTENCE ───────────────
+   *
+   * Era `setPrevMetrics(null)` no começo do efeito — reset síncrono, um
+   * quadro depois da pintura. Trocar o período fazia as setas de variação
+   * ("vs mês anterior") compararem o mês NOVO contra o anterior do mês
+   * VELHO por um quadro: uma variação percentual que nunca existiu.
+   *
+   * Com o período carimbado na resposta, comparação de outro período
+   * simplesmente não é a deste — decidido no render.
+   */
   useEffect(() => {
     let alive = true;
-    setPrevMetrics(null);
     (async () => {
       try {
         const res = await authedFetch(`/api/ml/metrics?from=${prevRange.from}&to=${prevRange.to}`, { cache: "no-store" });
         if (!res.ok) return;
         const json = await res.json();
-        if (alive && mountedRef.current) setPrevMetrics(json);
+        if (alive && mountedRef.current) setRespPrev({ de: prevRange.from, ate: prevRange.to, m: json });
       } catch { /* comparação é opcional; silencioso */ }
     })();
     return () => { alive = false; };

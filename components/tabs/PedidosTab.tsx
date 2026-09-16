@@ -348,8 +348,27 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
   // assíncrono/externo) — aqui é sincronizar o drawer com um prop que só
   // fica pronto depois da lista de pedidos carregar, não dá pra fazer isso
   // durante o render.
+  /**
+   * ─── POR QUE ESTA FICA COMO ESTÁ ─────────────────────────────────────
+   *
+   * As outras ocorrências desta regra no app eram espelhamento de prop em
+   * estado, e viraram derivação — cada uma escondia um quadro de dado
+   * errado. Esta não é isso.
+   *
+   * Aqui o que acontece é um EVENTO: chegou um deep link de notificação, e
+   * o pedido apareceu na lista. Abrir o drawer é a reação a esse evento.
+   * Não dá pra derivar porque `detalhe` também é do usuário — ele fecha o
+   * drawer, e uma derivação o reabriria no render seguinte.
+   *
+   * Dá pra reescrever com dois estados extras (qual deep link já foi
+   * consumido, qual foi fechado à mão), e o resultado é mais estado e mais
+   * linhas pra descrever a mesma coisa. Efeito é a ferramenta certa pra
+   * "aconteceu isto, reaja" — que é o que a própria documentação da regra
+   * diz.
+   */
   useEffect(() => {
     if (openOrderId && pedidos.some((p) => p.order_id === openOrderId)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- evento (deep link), nao espelhamento de prop; ver o comentario acima
       setDetalhe(openOrderId);
     }
   }, [openOrderId, pedidos]);
@@ -372,8 +391,11 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
   const [logisticaFiltro, setLogisticaFiltro] = useState("");
   // Filtros frequentes salvos no navegador (localStorage) — não é modelo
   // global, não precisa de Firestore nem de rule nova.
-  const [filtrosSalvos, setFiltrosSalvos] = useState<FiltroSalvo[]>([]);
-  useEffect(() => { setFiltrosSalvos(lerFiltrosSalvos()); }, []);
+  // Mesma leitura preguiçosa dos planejados em EstoqueTab: o efeito que
+  // substituía a lista logo depois custava um quadro com a barra de
+  // filtros salvos vazia. `lerChaveApp` é segura sem `window`, e o
+  // servidor nunca renderiza esta aba (portão de autenticação antes).
+  const [filtrosSalvos, setFiltrosSalvos] = useState<FiltroSalvo[]>(() => lerFiltrosSalvos());
 
   function salvarFiltroAtual() {
     const nome = window.prompt("Nome para este filtro:")?.trim();
@@ -418,7 +440,12 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
     }
   }, [range]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    // Dentro de um callback async: chamar direto no corpo do efeito faz a
+    // regra tratar a função inteira como síncrona, mesmo com todo o setState
+    // depois de um `await`.
+    void (async () => { await load(); })();
+  }, [load]);
 
   async function atualizar() {
     setLoading(true);

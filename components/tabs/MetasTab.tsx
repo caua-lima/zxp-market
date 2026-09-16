@@ -88,13 +88,42 @@ export default function MetasTab({
 
   // Progresso real (faturamento/lucro do mês da meta ativa) — mesma rota que
   // o Dashboard já usa, só filtrando pelo mês da meta em vez do período livre.
-  const [metricsAtivo, setMetricsAtivo] = useState<MetricsAtivo | null>(null);
+  /**
+   * ─── O PROGRESSO CARREGA O MÊS A QUE ELE PERTENCE ────────────────────
+   *
+   * Era um `MetricsAtivo | null` solto, e o efeito só zerava quando
+   * `activeEntry` virava NULO. Quando ele mudava de uma meta pra OUTRA —
+   * que acontece ao cadastrar meta nova, sem o componente remontar — o
+   * estado seguia com o progresso da meta ANTERIOR até a busca da nova
+   * responder.
+   *
+   * Nesse intervalo as barras mostram o realizado de um mês contra o alvo
+   * de outro. Não é uma piscada de 'carregando': é um percentual de
+   * progresso errado, desenhado com confiança.
+   *
+   * Guardando o mês junto do número, resposta de outro mês simplesmente
+   * não é a resposta deste — decidido no render, sem reset e sem janela.
+   */
+  const [respostaMeta, setRespostaMeta] = useState<{ mes: string; m: MetricsAtivo } | null>(null);
+  const metricsAtivo = respostaMeta && respostaMeta.mes === activeEntry?.mes ? respostaMeta.m : null;
+
   useEffect(() => {
-    if (!activeEntry) { setMetricsAtivo(null); return; }
+    if (!activeEntry) return;
     let vivo = true;
     authedFetch(`/api/ml/metrics?month=${activeEntry.mes}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (vivo && j) setMetricsAtivo({ faturamentoLiquido: j.faturamentoLiquido ?? 0, lucroComCustos: j.lucroComCustos ?? 0, margemComCustos: j.margemComCustos ?? 0, faturamentoHoje: j.faturamentoHoje ?? 0 }); })
+      .then((j) => {
+        if (!vivo || !j) return;
+        setRespostaMeta({
+          mes: activeEntry.mes,
+          m: {
+            faturamentoLiquido: j.faturamentoLiquido ?? 0,
+            lucroComCustos: j.lucroComCustos ?? 0,
+            margemComCustos: j.margemComCustos ?? 0,
+            faturamentoHoje: j.faturamentoHoje ?? 0,
+          },
+        });
+      })
       .catch(() => {});
     return () => { vivo = false; };
   }, [activeEntry]);

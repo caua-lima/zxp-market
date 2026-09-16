@@ -65,9 +65,16 @@ export default function TarefasTab({ openTaskId }: { openTaskId?: string } = {})
   // modal de edição assim que a tarefa aparecer na lista carregada. Mesmo
   // padrão/mesma ressalva de PedidosTab.tsx (setState síncrono no efeito é
   // sincronizar com um prop que só fica pronto depois da lista carregar).
+  /**
+   * Mesmo caso do deep link de PedidosTab, e pelo mesmo motivo: é um
+   * evento (chegou o link, a tarefa apareceu na lista), não espelhamento
+   * de prop. `editTask` também é do usuário — ele fecha o modal, e uma
+   * derivação o reabriria no render seguinte.
+   */
   useEffect(() => {
     if (openTaskId) {
       const t = tasks.find((x) => x.id === openTaskId);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- evento (deep link); ver o comentario acima
       if (t) setEditTask(t);
     }
   }, [openTaskId, tasks]);
@@ -121,6 +128,11 @@ export default function TarefasTab({ openTaskId }: { openTaskId?: string } = {})
     if (t.status === status) return;
     const evento: TaskAtividade = {
       tipo: status === "done" ? "concluida" : "movida",
+      // por evento (clique/arraste); a regra a trata como render porque ela
+      // é declarada no corpo do componente. Carimbar a hora é o trabalho
+      // desta função, e tirar o relógio daqui só empurraria a impureza pra
+      // quem chama.
+      // eslint-disable-next-line react-hooks/purity -- `mover` so e chamada por evento (clique/arraste); ver o comentario acima
       por: email, em: Date.now(),
       detalhe: `${COLS.find((c) => c.status === t.status)?.label} → ${COLS.find((c) => c.status === status)?.label}`,
     };

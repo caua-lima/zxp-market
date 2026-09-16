@@ -50,26 +50,66 @@ const FONTES_INICIAIS: EstadosDasFontes = {
   historicoMetas: FONTE_CARREGANDO,
 };
 
+/** O conteúdo, sem a conta — é o que a tela lê. */
+type Conteudo = Omit<UserData, "fontes"> & { fontes: EstadosDasFontes };
+
+const VAZIO: Conteudo = {
+  draft: null,
+  goals: null,
+  goalEntries: [],
+  costs: [],
+  products: [],
+  ready: false,
+  fontes: FONTES_INICIAIS,
+};
+
+/**
+ * Os dados do usuário, CARREGANDO A CONTA A QUE ELES PERTENCEM.
+ *
+ * ─── O QUADRO DA CONTA ANTERIOR ──────────────────────────────────────────
+ *
+ * Eram sete estados soltos e um efeito que começava assim:
+ *
+ *     useEffect(() => {
+ *       if (!uid) { setDraft(null); setGoals(null); setCosts([]); ... }
+ *
+ * Reset síncrono dentro do efeito — e o efeito roda DEPOIS da pintura. Na
+ * troca de conta, a sequência é: `uid` muda, o app repinta com os produtos,
+ * custos e metas da conta ANTERIOR, e só no quadro seguinte o efeito limpa.
+ *
+ * E pior: a limpeza só acontecia quando `uid` virava NULO. Trocar direto de
+ * uma conta pra outra — que é o que o seletor de conta faz — não passava por
+ * null, então os dados da primeira ficavam na tela até cada assinatura da
+ * segunda responder, uma a uma.
+ *
+ * Num app onde a tela mostra custo de produto e resultado financeiro, isso
+ * não é um flash cosmético.
+ *
+ * Com a conta carimbada no estado, conteúdo de outra conta simplesmente não
+ * é o conteúdo desta: a troca zera tudo NO RENDER, sem efeito e sem quadro
+ * intermediário.
+ */
 export function useUserData(uid: string | null | undefined): UserData {
-  const [draft, setDraft] = useState<DraftToday | null>(null);
-  const [goals, setGoals] = useState<Goals | null>(null);
-  const [goalEntries, setGoalEntries] = useState<GoalEntry[]>([]);
-  const [costs, setCosts] = useState<Cost[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [ready, setReady] = useState(false);
-  const [fontes, setFontes] = useState<EstadosDasFontes>(FONTES_INICIAIS);
+  const [dados, setDados] = useState<{ uid: string; c: Conteudo } | null>(null);
+
+  // Conteúdo de outra conta não é o desta. Decidido no render.
+  const atual = uid && dados?.uid === uid ? dados.c : VAZIO;
 
   useEffect(() => {
-    if (!uid) {
-      setDraft(null);
-      setGoals(null);
-      setGoalEntries([]);
-      setCosts([]);
-      setProducts([]);
-      setReady(false);
-      setFontes(FONTES_INICIAIS);
-      return;
-    }
+    if (!uid) return;
+
+    /**
+     * Aplica uma mudança ao conteúdo DESTA conta.
+     *
+     * Se o estado guardado for de outra conta (ou não existir), começa do
+     * vazio em vez de mesclar — mesclar traria metade dos dados da conta
+     * anterior pra dentro da nova.
+     */
+    const aplicar = (patch: Partial<Conteudo>) =>
+      setDados((a) => ({
+        uid,
+        c: a && a.uid === uid ? { ...a.c, ...patch } : { ...VAZIO, ...patch },
+      }));
 
     let loaded = 0;
     // Fase de emergência (cota do Firestore estourada): watchDays foi removido
@@ -81,7 +121,7 @@ export function useUserData(uid: string | null | undefined): UserData {
     const TOTAL = 5;
     const markReady = () => {
       loaded += 1;
-      if (loaded >= TOTAL) setReady(true);
+      if (loaded >= TOTAL) aplicar({ ready: true });
     };
 
     /**
@@ -102,15 +142,19 @@ export function useUserData(uid: string | null | undefined): UserData {
      * cadastrado" de "a assinatura de custos foi negada" — e a tela mostrava a
      * primeira, que é a versão tranquilizadora e falsa.
      *
-     * Por isso cada fonte agora carrega o próprio estado. A tela continua
-     * utilizável com o que chegou; o que não chegou é dito, não fingido.
+     * Por isso cada fonte carrega o próprio estado. A tela continua utilizável
+     * com o que chegou; o que não chegou é dito, não fingido.
      */
-    const destravar = setTimeout(() => setReady(true), 6000);
+    const destravar = setTimeout(() => aplicar({ ready: true }), 6000);
 
     const marcar = (fonte: keyof EstadosDasFontes, estado: EstadoFonte) =>
-      setFontes((atual) => (atual[fonte].situacao === estado.situacao && estado.situacao === "carregada"
-        ? atual
-        : { ...atual, [fonte]: estado }));
+      setDados((a) => {
+        const base = a && a.uid === uid ? a.c : VAZIO;
+        if (base.fontes[fonte].situacao === estado.situacao && estado.situacao === "carregada") {
+          return a && a.uid === uid ? a : { uid, c: base };
+        }
+        return { uid, c: { ...base, fontes: { ...base.fontes, [fonte]: estado } } };
+      });
 
     let f1 = true, f3 = true, f4 = true, f5 = true, f6 = true;
 
@@ -120,7 +164,7 @@ export function useUserData(uid: string | null | undefined): UserData {
      * seis segundos de espera por algo que já se sabe que não vem.
      */
     const u1 = watchDraft(uid, (d) => {
-      setDraft(d);
+      aplicar({ draft: d });
       marcar("rascunho", fonteCarregada());
       if (f1) { f1 = false; markReady(); }
     }, (e) => {
@@ -129,7 +173,7 @@ export function useUserData(uid: string | null | undefined): UserData {
     });
 
     const u3 = watchGoals(uid, (g) => {
-      setGoals(g);
+      aplicar({ goals: g });
       marcar("metas", fonteCarregada());
       if (f3) { f3 = false; markReady(); }
     }, (e) => {
@@ -138,7 +182,7 @@ export function useUserData(uid: string | null | undefined): UserData {
     });
 
     const u4 = watchCosts(uid, (c) => {
-      setCosts(c);
+      aplicar({ costs: c });
       marcar("custos", fonteCarregada());
       if (f4) { f4 = false; markReady(); }
     }, (e) => {
@@ -147,7 +191,7 @@ export function useUserData(uid: string | null | undefined): UserData {
     });
 
     const u5 = watchProducts(uid, (ps) => {
-      setProducts(ps);
+      aplicar({ products: ps });
       marcar("produtos", fonteCarregada());
       if (f5) { f5 = false; markReady(); }
     }, (e) => {
@@ -156,7 +200,7 @@ export function useUserData(uid: string | null | undefined): UserData {
     });
 
     const u6 = watchGoalEntries(uid, (es) => {
-      setGoalEntries(es);
+      aplicar({ goalEntries: es });
       marcar("historicoMetas", fonteCarregada());
       if (f6) { f6 = false; markReady(); }
     }, (e) => {
@@ -167,5 +211,5 @@ export function useUserData(uid: string | null | undefined): UserData {
     return () => { clearTimeout(destravar); u1(); u3(); u4(); u5(); u6(); };
   }, [uid]);
 
-  return { draft, goals, goalEntries, costs, products, ready, fontes };
+  return atual;
 }

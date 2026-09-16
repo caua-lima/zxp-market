@@ -136,7 +136,12 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
     } catch { /* ignora */ } finally { setLoadingML(false); }
   }, []);
 
-  useEffect(() => { carregarEstoque(); }, [carregarEstoque]);
+  useEffect(() => {
+    // Dentro de um callback async: chamar direto no corpo do efeito faz a
+    // regra tratar a função inteira como síncrona, mesmo com todo o setState
+    // depois de um `await`.
+    void (async () => { await carregarEstoque(); })();
+  }, [carregarEstoque]);
   useEffect(() => watchMovimentos(setMovimentos), []);
   useEffect(() => watchRemessasIgnoradas(setRemessasIgnoradas), []);
 
@@ -1359,8 +1364,19 @@ function gravarPlanejados(ids: Set<string>) {
 const STATUS_PESO: Record<CoverageStatus, number> = { critico: 0, repor: 1, "sem-giro": 2, encalhado: 3, saudavel: 4 };
 
 function PrevisaoPanel({ products, estoqueML, forecast }: { products: Product[]; estoqueML: EstoqueML; forecast: Forecast }) {
-  const [planejados, setPlanejados] = useState<Set<string>>(new Set());
-  useEffect(() => { setPlanejados(lerPlanejados()); }, []);
+  /**
+   * O que já está planejado sai do localStorage NO PRIMEIRO RENDER.
+   *
+   * Era `useState(new Set())` mais um efeito que substituía o conteúdo
+   * logo depois — um quadro com a lista vazia antes da lista de verdade,
+   * e cada linha piscando de 'não planejado' pra 'planejado'.
+   *
+   * `lerChaveApp` devolve null sem `window`, então a leitura preguiçosa é
+   * segura no servidor. E o servidor nunca renderiza este painel — o
+   * portão de autenticação devolve null antes —, então não há hidratação
+   * pra divergir.
+   */
+  const [planejados, setPlanejados] = useState<Set<string>>(() => lerPlanejados());
   function togglePlanejado(id: string) {
     setPlanejados((prev) => {
       const next = new Set(prev);

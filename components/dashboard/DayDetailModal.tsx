@@ -35,19 +35,39 @@ type DayMetrics = {
  * usa (só com from=to=o dia clicado) — nenhum cálculo novo, nenhuma rota nova.
  */
 export default function DayDetailModal({ date, onClose }: { date: string; onClose: () => void }) {
-  const [dados, setDados] = useState<DayMetrics | null>(null);
-  const [erro, setErro] = useState(false);
-  const [loading, setLoading] = useState(true);
+  /**
+   * ─── A RESPOSTA CARREGA O DIA A QUE ELA PERTENCE ─────────────────────
+   *
+   * Eram três estados soltos — `dados`, `erro`, `loading` — e o efeito
+   * começava com `setLoading(true); setErro(false);`. Isso é reset SÍNCRONO
+   * dentro do efeito, e o efeito roda DEPOIS da pintura.
+   *
+   * Quando `date` muda sem o componente remontar, a sequência é: pinta o
+   * título novo com os números ANTIGOS, e só no quadro seguinte aparece
+   * "Carregando…". Um quadro de dado errado sob o cabeçalho certo.
+   *
+   * Guardar o dia JUNTO da resposta elimina o reset: resposta de outro dia
+   * simplesmente não é a resposta deste, e isso se decide durante o render,
+   * sem setState nenhum e sem quadro intermediário.
+   *
+   * (Hoje o modal cobre a tela, então trocar de dia sem fechar não é
+   * alcançável pelo mouse. O `key` que faltava resolveria o caso de hoje;
+   * isto resolve o caso de hoje E o do dia em que alguém puser dois pontos
+   * clicáveis fora do overlay.)
+   */
+  const [resposta, setResposta] = useState<{ dia: string; dados: DayMetrics | null } | null>(null);
+
+  const atual = resposta?.dia === date ? resposta : null;
+  const loading = atual === null;
+  const dados = atual?.dados ?? null;
+  const erro = atual !== null && atual.dados === null;
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
-    setErro(false);
     authedFetch(`/api/ml/metrics?from=${date}&to=${date}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((j) => { if (alive) setDados(j); })
-      .catch(() => { if (alive) setErro(true); })
-      .finally(() => { if (alive) setLoading(false); });
+      .then((j) => { if (alive) setResposta({ dia: date, dados: j }); })
+      .catch(() => { if (alive) setResposta({ dia: date, dados: null }); });
     return () => { alive = false; };
   }, [date]);
 

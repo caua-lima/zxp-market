@@ -20,17 +20,34 @@ import { watchAccessEntry } from "@/lib/firebase/data";
 export function AvatarUpload({ size = 28 }: { size?: number }) {
   const { user } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [photoURL, setPhotoURL] = useState<string | null>(null);
-  const [entryName, setEntryName] = useState<string | null>(null);
+  /**
+   * ─── SEM E-MAIL NÃO É 'LIMPAR', É 'NÃO HÁ' ──────────────────────────
+   *
+   * O efeito começava com `if (!email) { setPhotoURL(null); setEntryName(null); return; }`
+   * — reset síncrono dentro do efeito, um quadro depois da pintura. Na
+   * troca de conta, o avatar da conta anterior fica visível por um quadro.
+   *
+   * Com o e-mail guardado junto, a entrada de outra conta não é a entrada
+   * desta, e a decisão acontece no render.
+   */
+  const [entrada, setEntrada] = useState<{ email: string; photoURL: string | null; nome: string | null } | null>(null);
+
+  const emailAtual = user?.email?.toLowerCase() ?? null;
+  const daConta = entrada?.email === emailAtual ? entrada : null;
+  const photoURL = daConta?.photoURL ?? null;
+  const entryName = daConta?.nome ?? null;
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const email = user?.email?.toLowerCase();
-    if (!email) { setPhotoURL(null); setEntryName(null); return; }
+    const email = emailAtual;
+    if (!email) return;
     return watchAccessEntry(email, (entry) => {
-      setPhotoURL(entry?.photoURL || user?.photoURL || null);
-      setEntryName(entry?.displayName || null);
+      setEntrada({
+        email,
+        photoURL: entry?.photoURL || user?.photoURL || null,
+        nome: entry?.displayName || null,
+      });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.email]);
@@ -45,7 +62,10 @@ export function AvatarUpload({ size = 28 }: { size?: number }) {
     setError("");
     try {
       const url = await uploadProfilePhoto(email, file);
-      setPhotoURL(url); // feedback imediato; o listener do Firestore confirma logo em seguida
+      // Feedback imediato; o listener do Firestore confirma logo em seguida.
+      // Carrega o e-mail junto, como o listener faz — senão a foto nova
+      // apareceria sob a conta errada se a troca acontecesse no meio do envio.
+      setEntrada((a) => ({ email, photoURL: url, nome: a?.email === email ? a.nome : null }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao enviar a foto.");
     } finally {

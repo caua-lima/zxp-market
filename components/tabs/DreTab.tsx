@@ -195,10 +195,34 @@ const JANELA_MAX_DIAS_FULL = 55; // teto do ML na busca de operações de estoqu
 
 export default function DreTab() {
   const [range, setRange] = useState(() => monthRange());
-  const [m, setM] = useState<Metrics | null>(null);
-  const [mPrev, setMPrev] = useState<Metrics | null>(null);
-  const [coletaFull, setColetaFull] = useState<CustoColetaFull | null>(null);
-  const [loading, setLoading] = useState(true);
+  /**
+   * ─── CADA RESPOSTA CARREGA O PERÍODO A QUE ELA PERTENCE ──────────────
+   *
+   * Eram quatro estados soltos e um `setLoading(true)` no começo de `load`,
+   * que roda DEPOIS da pintura. Trocar o período no seletor pintava o
+   * cabeçalho novo com os números do período ANTERIOR, e só no quadro
+   * seguinte aparecia "Carregando DRE…".
+   *
+   * Isso é alcançável com um clique: o DateRangePicker muda `range` sem
+   * remontar a aba. E o que aparece nesse quadro não é um esqueleto cinza —
+   * é uma DRE inteira, com valores, sob o nome do mês errado.
+   *
+   * Guardando o período junto da resposta, resposta de outro período
+   * simplesmente não é a resposta deste. A decisão acontece no render, sem
+   * setState e sem quadro intermediário.
+   */
+  type Periodo = { from: string; to: string };
+  const mesmoPeriodo = (a: Periodo | undefined, b: Periodo) => a?.from === b.from && a?.to === b.to;
+
+  const [resp, setResp] = useState<{ periodo: Periodo; m: Metrics | null } | null>(null);
+  const [respPrev, setRespPrev] = useState<{ periodo: Periodo; m: Metrics | null } | null>(null);
+  const [respColeta, setRespColeta] = useState<{ periodo: Periodo; c: CustoColetaFull | null } | null>(null);
+
+  const daVez = resp && mesmoPeriodo(resp.periodo, range) ? resp : null;
+  const loading = daVez === null;
+  const m = daVez?.m ?? null;
+  const mPrev = respPrev && mesmoPeriodo(respPrev.periodo, range) ? respPrev.m : null;
+  const coletaFull = respColeta && mesmoPeriodo(respColeta.periodo, range) ? respColeta.c : null;
   const [apresentando, setApresentando] = useState(false);
   /**
    * Cadastro de custo sem sair da DRE. É onde a falta de uma despesa aparece
@@ -212,7 +236,11 @@ export default function DreTab() {
   const podeCadastrarCusto = canEditTab("custos");
 
   const load = useCallback(async (forcar = false) => {
-    setLoading(true);
+    // Sem `setLoading`: `loading` é derivado de a resposta ser deste período.
+    // O período de partida é capturado aqui pra carimbar o resultado — se o
+    // seletor mudar no meio da busca, a resposta chega carimbada com o período
+    // ANTIGO e o render a descarta sozinho.
+    const pedido: Periodo = { from: range.from, to: range.to };
     try {
       /**
        * `forcar` fura o cache de 60s da rota de metricas. Sem isso, um custo
@@ -220,11 +248,11 @@ export default function DreTab() {
        * salvo — e na tela isso e indistinguivel de "nao salvou".
        */
       const r = await authedFetch(`/api/ml/metrics?from=${range.from}&to=${range.to}${forcar ? "&fresh=1" : ""}`, { cache: "no-store" });
-      setM(r.ok ? await r.json() : null);
+      setResp({ periodo: pedido, m: r.ok ? await r.json() : null });
     } catch {
-      setM(null);
+      setResp({ periodo: pedido, m: null });
     } finally {
-      setLoading(false);
+      // nada a fazer: `loading` sai do render.
     }
 
     // Coleta pro Full: best-effort, nunca trava a DRE. Só as remessas que
@@ -234,13 +262,13 @@ export default function DreTab() {
       const hoje = todayStr();
       const diasAte = Math.ceil((Date.parse(`${hoje}T00:00:00Z`) - Date.parse(`${range.from}T00:00:00Z`)) / 86400000) + 1;
       if (!Number.isFinite(diasAte) || diasAte > JANELA_MAX_DIAS_FULL) {
-        setColetaFull({ total: 0, parcial: false, foraDaJanela: true, remessas: 0, todas: [], pendentes: 0 });
+        setRespColeta({ periodo: pedido, c: { total: 0, parcial: false, foraDaJanela: true, remessas: 0, todas: [], pendentes: 0 } });
       } else {
         const rf = await authedFetch(
           `/api/ml/gestao-full?dias=${Math.max(diasAte, 1)}${forcar ? "&forcar=1" : ""}`,
           { cache: "no-store" },
         );
-        if (!rf.ok) setColetaFull(null);
+        if (!rf.ok) setRespColeta({ periodo: pedido, c: null });
         else {
           const j = (await rf.json()) as {
             remessas?: { remessa: string; data: string; recebido?: number; custo?: number | null; ehTransferencia?: boolean; custoEstimado?: boolean }[];
@@ -250,7 +278,7 @@ export default function DreTab() {
             (x) => !x.ehTransferencia && x.data >= range.from && x.data <= range.to,
           );
           const total = noPeriodo.reduce((s, x) => s + (x.custo ?? 0), 0);
-          setColetaFull({
+          setRespColeta({ periodo: pedido, c: {
             total,
             parcial: noPeriodo.some((x) => x.custo == null),
             foraDaJanela: false,
@@ -263,11 +291,11 @@ export default function DreTab() {
               custoEstimado: x.custoEstimado === true,
             })),
             pendentes: noPeriodo.filter((x) => x.custo == null).length,
-          });
+          } });
         }
       }
     } catch {
-      setColetaFull(null);
+      setRespColeta({ periodo: pedido, c: null });
     }
     // Período anterior equivalente — mesma lógica do Dashboard (mês cheio vs
     // mês anterior; mês em andamento vs mesmo dia do mês anterior). Falha
@@ -275,13 +303,18 @@ export default function DreTab() {
     try {
       const prev = prevPeriod(range.from, range.to);
       const rp = await authedFetch(`/api/ml/metrics?from=${prev.from}&to=${prev.to}`, { cache: "no-store" });
-      setMPrev(rp.ok ? await rp.json() : null);
+      setRespPrev({ periodo: pedido, m: rp.ok ? await rp.json() : null });
     } catch {
-      setMPrev(null);
+      setRespPrev({ periodo: pedido, m: null });
     }
   }, [range]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    // Dentro de um callback async: chamar `load()` direto no corpo do efeito
+    // faz a regra tratar a funcao inteira como sincrona, mesmo com todo o
+    // setState depois de um `await`. Mesmo padrao ja usado em CustosTab.
+    void (async () => { await load(); })();
+  }, [load]);
 
   const prevLabel = !isFullMonth(range.from, range.to)
     ? "vs período anterior"
