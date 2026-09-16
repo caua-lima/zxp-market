@@ -90,7 +90,41 @@ corrompido por importação errada só aparece quando alguém estranha a margem,
 isso leva semanas. Os 12 mensais existem pra poder voltar a um mês fechado
 depois de descobrir tarde.
 
-## Ensaio de restauração
+## Ensaio de restauração — no emulador, sem projeto nenhum
+
+**Este é o caminho normal.** Roda na sua máquina, não cria projeto na conta,
+não custa nada e não tem como escrever no lugar errado.
+
+```bash
+npx -y firebase-tools@latest emulators:start --only firestore --project zxp-ensaio-restauracao
+```
+
+Com o emulador no ar, em outro terminal:
+
+```bash
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8199 node scripts/restore-firestore.mjs --dump ./backups/<dump> --projeto zxp-ensaio-restauracao
+```
+
+Com `FIRESTORE_EMULATOR_HOST` definida, o script NÃO pede credencial — o
+emulador não usa nenhuma, e pedir uma chave privada pra não usar seria pedir
+um segredo à toa. A porta 8199 está em `firebase.json`.
+
+`firebase-tools` não é dependência do projeto de propósito: ele traz cinco
+advisories moderadas que poluiriam o `npm audit` por uma ferramenta usada
+uma vez a cada poucos meses. O `npx -y` baixa na hora.
+
+### Executado em 16/09/2026
+
+Dump de produção (230 documentos, 15 coleções) restaurado no emulador e
+conferido CAMPO A CAMPO contra o dump: **230 idênticos, 0 divergentes**. O
+custo médio do primeiro produto voltou 46,7765 — o mesmo valor lido da
+produção antes do dump.
+
+O que isso prova: o dump é gravável, os tipos voltam, os caminhos existem, os
+lotes passam. O que **não** prova: que o app funciona em cima do resultado.
+Pra isso ainda falta o ensaio num projeto de verdade, abaixo.
+
+## Ensaio num projeto de verdade
 
 **Backup que nunca foi restaurado não é backup, é arquivo.** Faça o ensaio num
 projeto Firebase separado e descartável — nunca sobre a produção.

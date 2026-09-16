@@ -131,14 +131,41 @@ if (decisao.motivo === "producao_confirmada") {
   }
 }
 
-const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-const privateKey = (process.env.FIREBASE_PRIVATE_KEY ?? "").replace(/\\n/g, "\n");
-if (!clientEmail || !privateKey) {
-  console.error("Faltam FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY do projeto de DESTINO.");
-  process.exit(1);
-}
+/**
+ * ─── O ENSAIO CONTRA O EMULADOR ──────────────────────────────────────────
+ *
+ * O script exigia credencial sempre — e o emulador do Firestore não usa
+ * credencial nenhuma. O efeito é que ele BLOQUEAVA exatamente o ensaio mais
+ * barato: o que roda na máquina de quem desenvolve, sem projeto novo na
+ * conta, sem custo e sem risco de escrever em lugar errado.
+ * "Backup que nunca foi restaurado não é backup" estava escrito no topo
+ * deste arquivo, e o arquivo dificultava restaurar.
+ *
+ * `FIRESTORE_EMULATOR_HOST` é a variável que o próprio SDK do Firebase lê
+ * pra desviar as chamadas — quando ela existe, nada sai da máquina, e pedir
+ * uma chave privada de serviço seria pedir um segredo pra não usar.
+ */
+const emulador = process.env.FIRESTORE_EMULATOR_HOST;
 
-initializeApp({ credential: cert({ projectId: destinoProjeto, clientEmail, privateKey }) });
+if (emulador) {
+  console.log(`\nEMULADOR: ${emulador} — nada sai desta máquina.`);
+  initializeApp({ projectId: destinoProjeto });
+} else {
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = (process.env.FIREBASE_PRIVATE_KEY ?? "").replace(/\\n/g, "\n");
+  if (!clientEmail || !privateKey) {
+    console.error(
+      [
+        "Faltam FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY do projeto de DESTINO.",
+        "",
+        "Pra ensaiar sem projeto nenhum, suba o emulador e defina",
+        "FIRESTORE_EMULATOR_HOST — aí credencial não é necessária.",
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
+  initializeApp({ credential: cert({ projectId: destinoProjeto, clientEmail, privateKey }) });
+}
 const db = getFirestore();
 
 /**
@@ -177,7 +204,18 @@ for (const nome of ORDEM_DE_RESTAURACAO) {
 
 console.log(`\n${escritos} documento(s) restaurados em ${destinoProjeto}.`);
 console.log(
-  "O ensaio só termina quando você ABRIR o app apontando pra este projeto e\n" +
-  "conferir um valor que você conhece de cor — o custo médio de um produto, por\n" +
-  "exemplo. Contagem de documento certa não prova que o conteúdo voltou certo."
+  emulador
+    ? [
+        "Restaurado no EMULADOR. Isto prova que o dump é gravável: os tipos",
+        "voltam, os caminhos existem, os lotes passam.",
+        "",
+        "O que NÃO prova: que o app funciona em cima disso. Pra isso, um",
+        "projeto de verdade e o app apontando pra ele.",
+      ].join("\n")
+    : [
+        "O ensaio só termina quando você ABRIR o app apontando pra este projeto",
+        "e conferir um valor que você conhece de cor — o custo médio de um",
+        "produto, por exemplo. Contagem de documento certa não prova que o",
+        "conteúdo voltou certo.",
+      ].join("\n"),
 );
