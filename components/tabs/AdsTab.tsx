@@ -83,6 +83,25 @@ function paraOverview(t: Totais, pub: boolean): OverviewTotais {
 
 export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?: number; products?: Product[] }) {
   const [range, setRange] = useState(() => mesAteHoje());
+
+  /**
+   * ─── CAMPANHA E ANÚNCIO SÃO PERGUNTAS DIFERENTES ─────────────────────
+   *
+   * A aba era uma rolagem só: visão geral, participação, funil, campanhas,
+   * decisões, qualidade do dado e a tabela analítica, tudo empilhado. Quem
+   * abria pra responder "qual campanha está sangrando?" passava por quatro
+   * blocos de anúncio antes; quem abria pra responder "este anúncio dá
+   * lucro?" rolava por quatro blocos de campanha.
+   *
+   * E há uma diferença que a rolagem escondia: ORÇAMENTO é da campanha e
+   * não do anúncio. Somar orçamento por anúncio conta a mesma verba tantas
+   * vezes quantos anúncios a campanha tiver — e com os dois no mesmo scroll,
+   * nada impede alguém de fazer essa soma de cabeça.
+   *
+   * Decisões é o padrão: é o que se faz com a informação, e não a
+   * informação.
+   */
+  const [vista, setVista] = useState<"decisoes" | "campanhas" | "anuncios">("decisoes");
   const [modo, setModo] = useState<Modo>("pub");
   const [items, setItems] = useState<AdItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -444,28 +463,73 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
             <>
               <AdsOverview modo={modo} atual={overviewAtual} anterior={overviewAnterior} loading={loading} />
 
+              {/*
+                A visão geral fica ACIMA das vistas de propósito: os números
+                do topo valem pras três, e repeti-los dentro de cada uma
+                faria a mesma informação parecer três medições.
+              */}
+              {!loading && items.length > 0 && (
+                <div className="seg" style={{ margin: "14px 0 4px" }}>
+                  <button
+                    type="button" className={`seg-btn ${vista === "decisoes" ? "active" : ""}`}
+                    onClick={() => setVista("decisoes")}
+                  >
+                    Decisões
+                  </button>
+                  <button
+                    type="button" className={`seg-btn ${vista === "campanhas" ? "active" : ""}`}
+                    onClick={() => setVista("campanhas")}
+                    title="Orçamento, investimento, receita atribuída, ROAS e meta — por campanha"
+                  >
+                    Campanhas ({campanhasEncontradas || 0})
+                  </button>
+                  <button
+                    type="button" className={`seg-btn ${vista === "anuncios" ? "active" : ""}`}
+                    onClick={() => setVista("anuncios")}
+                    title="Custo, resultado e estoque — por anúncio"
+                  >
+                    Anúncios ({items.length})
+                  </button>
+                </div>
+              )}
+
               {!loading && items.length > 0 && (
                 <>
-                  {/* Participacao do Ads na receita — leitura de negocio, vem
-                      antes do funil (que ja e leitura de campanha). */}
-                  <AdsParticipacao
-                    receitaDireta={t.direct}
-                    receitaAtribuida={t.adSales}
-                    receitaTotal={t.total}
-                    investimento={t.cost}
-                  />
+                  {/*
+                    CTR, CPC, impressões e funil moram na vista de CAMPANHAS.
+                    São leitura de campanha, não de anúncio, e na vista de
+                    decisões eram quatro blocos entre a pessoa e a resposta.
+                  */}
+                  {vista === "campanhas" && (
+                    <>
+                      <AdsParticipacao
+                        receitaDireta={t.direct}
+                        receitaAtribuida={t.adSales}
+                        receitaTotal={t.total}
+                        investimento={t.cost}
+                      />
 
-                  <AdsFunnel
-                    impressoes={t.prints} cliques={t.clicks} investimento={t.cost}
-                    vendas={pub ? t.directUn : t.totalUn} receita={pub ? t.direct : t.total}
-                    lucroAposAds={pub ? t.lucroLiqDireto : t.lucroLiq}
-                  />
+                      <AdsFunnel
+                        impressoes={t.prints} cliques={t.clicks} investimento={t.cost}
+                        vendas={pub ? t.directUn : t.totalUn} receita={pub ? t.direct : t.total}
+                        lucroAposAds={pub ? t.lucroLiqDireto : t.lucroLiq}
+                      />
 
-                  {/* Mesmo funil, recortado por campanha — o de cima soma
-                      tudo e esconde a campanha que está sangrando. */}
-                  <AdsCampaignList itens={items} modo={modo} metricasReais={metricasReaisPorCampanha} />
+                      {/* O mesmo funil, recortado por campanha — o de cima
+                          soma tudo e esconde a campanha que está sangrando. */}
+                      <AdsCampaignList itens={items} modo={modo} metricasReais={metricasReaisPorCampanha} />
 
-                  <AdsDecisionPanel linhas={linhas} changelog={changelog} onAbrirAnuncio={abrirAnuncio} diasDoPeriodo={diasDoPeriodo} />
+                      <div className="note" style={{ marginTop: 12 }}>
+                        <b>Orçamento é da campanha, não do anúncio.</b> Ele aparece só aqui de
+                        propósito: somado por anúncio, a mesma verba seria contada tantas vezes
+                        quantos anúncios a campanha tiver.
+                      </div>
+                    </>
+                  )}
+
+                  {vista === "decisoes" && (
+                    <AdsDecisionPanel linhas={linhas} changelog={changelog} onAbrirAnuncio={abrirAnuncio} diasDoPeriodo={diasDoPeriodo} />
+                  )}
 
                   {/* Flutuante (position:fixed), então a posição no JSX não
                       afeta o layout — fica aqui só pra receber as MESMAS
@@ -483,6 +547,14 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
                 </>
               )}
 
+              {/*
+                A tabela analítica é a vista de ANÚNCIOS: custo, resultado e
+                estoque item a item. Continua visível enquanto carrega e
+                quando não há dado nenhum, porque nesses dois casos não há
+                vista pra escolher — e uma tela sem nada nem explicação é
+                pior que uma tabela vazia que diz por quê.
+              */}
+              {(vista === "anuncios" || loading || items.length === 0) && (
               <div className="panel">
                 <div className="panel-head" style={{ marginBottom: 8 }}>
                   <span className="panel-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -627,6 +699,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
                   )}
                 </div>
               </div>
+              )}
             </>
           )}
         </>
