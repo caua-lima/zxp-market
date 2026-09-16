@@ -953,7 +953,7 @@ function ProductRow({
             if (!situacao) return <span style={{ color: "var(--muted)" }}>—</span>;
             const a = proximaAcao(situacao);
             if (a.urgencia === 0) return <span style={{ color: "var(--muted)", fontSize: ".8rem" }}>{a.rotulo}</span>;
-            const cor = a.urgencia >= 60 ? "var(--red)" : a.urgencia >= 30 ? "var(--gold)" : "var(--muted)";
+            const cor = a.urgencia >= 60 ? "var(--red)" : a.urgencia >= 30 ? "var(--yellow)" : "var(--muted)";
             return (
               <span
                 className="chip"

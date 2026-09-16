@@ -164,7 +164,7 @@ function LinhaBase({ l, onAbrir, base, children }: {
         <div style={{
           display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap",
           marginTop: 4, fontSize: ".72rem",
-          color: p.rotulo === "baixa" ? "var(--muted)" : "var(--gold)",
+          color: p.rotulo === "baixa" ? "var(--muted)" : "var(--yellow)",
         }}>
           <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>
             confiança {p.rotulo}

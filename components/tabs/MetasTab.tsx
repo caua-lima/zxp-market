@@ -15,6 +15,8 @@ import { useAccess } from "@/components/tabs/AccessGuard";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import { getRevenuePaceLabel, getRevenuePaceStatus, selectActiveGoal } from "@/lib/domain/gauge";
 import { calcularMetaDiaria, idealAteHoje } from "@/lib/domain/meta-diaria";
+import TelaHeader from "@/components/TelaHeader";
+import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
 
 type MetricsAtivo = { faturamentoLiquido: number; lucroComCustos: number; margemComCustos: number; faturamentoHoje: number };
 
@@ -32,6 +34,18 @@ export default function MetasTab({
 }) {
   const { canEditTab } = useAccess();
   const canEdit = canEditTab("metas");
+  /**
+   * A meta do mes corrente, se houver.
+   *
+   * O cabecalho precisa dizer que NAO ha meta: sem ela, todo indicador de
+   * progresso do app fica sem denominador, e a tela de Metas e o unico lugar
+   * onde essa ausencia e acionavel.
+   */
+  const mesCorrente = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit",
+  }).format(new Date()).slice(0, 7);
+  const metaAtiva = data.goalEntries.find((e) => e.mes === mesCorrente) ?? null;
+
   const [openNew, setOpenNew] = useState(false);
   const [editEntry, setEditEntry] = useState<GoalEntry | null>(null);
 
@@ -159,14 +173,21 @@ export default function MetasTab({
 
   return (
     <div className="dash">
-      <div className="tab-head">
-        <div className="tab-head-left"><h2 className="tab-title">Definição de Metas</h2></div>
-        {canEdit && (
-          <div className="tab-actions">
-            <button type="button" className="btn btn-purple btn-sm" onClick={() => setOpenNew(true)}>＋ Nova Meta</button>
-          </div>
-        )}
-      </div>
+      <TelaHeader
+        titulo="Metas"
+        subtitulo={metaAtiva ? `meta ativa: ${metaAtiva.mes}` : "nenhuma meta ativa"}
+        estado={resumirEstadoDaTela({
+          fontes: { metas: data.fontes.metas },
+          essenciais: ["metas"],
+          pendencias: metaAtiva ? [] : [{
+            chave: "sem-meta",
+            titulo: "Nenhuma meta definida pro mês corrente",
+            detalhe: "Todo indicador de progresso fica sem denominador até uma meta ser cadastrada.",
+            efeito: "indefinido" as const,
+          }],
+        })}
+        acao={canEdit ? { rotulo: "＋ Nova Meta", onClick: () => setOpenNew(true) } : null}
+      />
 
       {/* Resumo da meta ativa */}
       {activeEntry && (

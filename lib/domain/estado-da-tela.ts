@@ -121,7 +121,7 @@ export function resumirEstadoDaTela(args: {
         falhasSecundarias > 0 && pendencias.length === 0
           ? "Parte dos dados não chegou. A tela funciona com o que veio, e o que falta está indicado."
           : "Falta informação pra fechar estes números. As ressalvas estão listadas na tela.",
-      cor: "var(--gold)",
+      cor: "var(--yellow)",
       pendencias: total,
     };
   }

@@ -379,7 +379,7 @@ function ConferenciaMP({ reconc, total }: { reconc?: { count: number; nosso: num
       ) : ok ? (
         <div style={{
           padding: "10px 12px", borderRadius: 8, fontSize: ".82rem", lineHeight: 1.55,
-          background: "rgba(244,185,66,.1)", border: "1px solid rgba(244,185,66,.35)", color: "var(--gold)",
+          background: "rgba(244,185,66,.1)", border: "1px solid rgba(244,185,66,.35)", color: "var(--yellow)",
         }}>
           <b>Bate nos {reconc.count} pedidos já liberados</b> — e só neles.
           {" "}

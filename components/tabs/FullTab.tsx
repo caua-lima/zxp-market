@@ -7,6 +7,7 @@ import RemessasFull from "@/components/tabs/full/RemessasFull";
 import HistoricoMovimentos from "@/components/tabs/full/HistoricoMovimentos";
 import EstoqueRetidoFull, { type EstoqueFullRetido } from "@/components/tabs/full/EstoqueRetidoFull";
 import { authedFetch } from "@/lib/api/authed-fetch";
+import TelaHeader from "@/components/TelaHeader";
 
 /**
  * Aba exclusiva do Full — baixa de estoque a partir do que o Mercado Livre
@@ -45,14 +46,10 @@ export default function FullTab({ products }: { products: Product[] }) {
 
   return (
     <div className="dash">
-      <div className="tab-head">
-        <div className="tab-head-left">
-          <h2 className="tab-title">Full</h2>
-        </div>
-      </div>
-      <div style={{ fontSize: ".8rem", color: "var(--muted)", marginTop: -6 }}>
-        Baixa de estoque a partir do que o Mercado Livre já recebeu — detectado e aplicado automaticamente.
-      </div>
+      <TelaHeader
+        titulo="Full"
+        subtitulo="baixa de estoque a partir do que o ML já recebeu"
+      />
 
       <EstoqueRetidoFull dados={retido} custoPorProduto={custoPorProduto} />
       <RemessasFull movimentos={movimentos} />

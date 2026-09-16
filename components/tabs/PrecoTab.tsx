@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import { fmtBRL } from "@/lib/domain/calc";
 import type { Product } from "@/lib/domain/types";
+import TelaHeader from "@/components/TelaHeader";
+import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
+import { fonteCarregada, fonteComErro, FONTE_CARREGANDO } from "@/lib/domain/estado-fonte";
 
 type MlItem = { available: number; status: string; price: number; logistic: string };
 type EstoqueML = Record<string, MlItem>;
@@ -108,13 +111,14 @@ export default function PrecoTab({ products }: { products: Product[] }) {
 
   return (
     <div className="dash">
-      <div className="tab-head">
-        <div className="tab-head-left"><h2 className="tab-title">Calculadora de Preço</h2></div>
-      </div>
-      <div style={{ fontSize: ".8rem", color: "var(--muted)", marginTop: -6 }}>
-        Escolha o anúncio, teste um preço e veja o lucro real — com a comissão que o Mercado Livre
-        cobraria <b>naquele preço</b>, buscada na hora, não estimada.
-      </div>
+      <TelaHeader
+        titulo="Calculadora de Preço"
+        subtitulo="comissão buscada na hora, no preço testado — não estimada"
+        estado={resumirEstadoDaTela({
+          fontes: { anuncios: carregandoLista ? FONTE_CARREGANDO : erro ? fonteComErro(erro) : fonteCarregada() },
+          essenciais: ["anuncios"],
+        })}
+      />
 
       <div className="panel" style={{ marginTop: 14 }}>
         <div className="panel-head" style={{ marginBottom: 10 }}>

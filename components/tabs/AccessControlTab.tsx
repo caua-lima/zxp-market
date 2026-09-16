@@ -15,6 +15,9 @@ import {
 import type { UserData } from "@/components/useUserData";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import { useAccess } from "@/components/tabs/AccessGuard";
+import TelaHeader from "@/components/TelaHeader";
+import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
+import { fonteCarregada, FONTE_CARREGANDO } from "@/lib/domain/estado-fonte";
 
 const PERMISSION_TABS: PermissionTab[] = ["custos", "metas", "estoque", "ads"];
 const PERMISSION_TAB_LABEL: Record<PermissionTab, string> = {
@@ -270,9 +273,27 @@ export default function AccessControlTab({
 
   return (
     <div className="dash">
-      <div className="tab-head">
-        <div className="tab-head-left"><h2 className="tab-title">Controle de Acesso</h2></div>
-      </div>
+      <TelaHeader
+        titulo="Acesso"
+        subtitulo={`${entries.length} pessoa(s) com acesso`}
+        estado={resumirEstadoDaTela({
+          fontes: { acessos: loading ? FONTE_CARREGANDO : fonteCarregada() },
+          essenciais: ["acessos"],
+          /**
+           * Um owner só é uma pendência de verdade: se essa conta perder o
+           * acesso, ninguém mais consegue conceder acesso a ninguém — e o
+           * bootstrap do primeiro owner já foi consumido.
+           */
+          pendencias: owners <= 1 ? [{
+            chave: "owner-unico",
+            titulo: "Só uma conta é owner",
+            detalhe:
+              "Se ela perder o acesso, ninguém mais consegue conceder acesso a ninguém. " +
+              "Um segundo owner é a única forma de destravar sem mexer no banco.",
+            efeito: "indefinido" as const,
+          }] : [],
+        })}
+      />
 
       <div className="kpi-grid">
         <div className="kpi k-acc"><div className="k-lbl">Acessos</div><div className="k-val">{entries.length}</div></div>

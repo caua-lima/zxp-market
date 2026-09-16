@@ -10,6 +10,9 @@ import { appendAtividade, isTaskAtrasada, type AccessEntry, type Task, type Task
 import { deleteTask, upsertTask, watchAccessList, watchTasks } from "@/lib/firebase/data";
 import { useAccess } from "@/components/tabs/AccessGuard";
 import { authedFetch } from "@/lib/api/authed-fetch";
+import TelaHeader from "@/components/TelaHeader";
+import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
+import { fonteCarregada, FONTE_CARREGANDO } from "@/lib/domain/estado-fonte";
 
 const PRIORIDADE_META: Record<TaskPriority, { label: string; cor: string; peso: number }> = {
   critica: { label: "Crítica", cor: "var(--danger,var(--red))", peso: 3 },
@@ -132,6 +135,9 @@ export default function TarefasTab({ openTaskId }: { openTaskId?: string } = {})
   const minhas = tasks.filter((t) => t.assignedTo === email).length;
   const criadas = tasks.filter((t) => t.createdBy === email).length;
   const abertas = tasks.filter((t) => t.status !== "done").length;
+  // Passou do prazo e nao foi concluida. Usa `hoje` (estado que vira a
+  // meia-noite) e nao `new Date()`, pelo mesmo motivo do memo dos visiveis.
+  const atrasadas = tasks.filter((t) => !!t.dueDate && t.status !== "done" && t.dueDate < hoje).length;
 
   // Distância mínima antes de considerar arrasto (não clique) — sem isso, um
   // toque simples pra abrir "Editar" já dispararia um drag. PointerSensor
@@ -154,12 +160,23 @@ export default function TarefasTab({ openTaskId }: { openTaskId?: string } = {})
 
   return (
     <div className="dash">
-      <div className="tab-head">
-        <div className="tab-head-left"><h2 className="tab-title">Tarefas</h2></div>
-        <div className="tab-actions">
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => setOpenNew(true)}>＋ Nova Tarefa</button>
-        </div>
-      </div>
+      <TelaHeader
+        titulo="Tarefas"
+        subtitulo={`${abertas} em aberto de ${tasks.length}`}
+        estado={resumirEstadoDaTela({
+          fontes: { tarefas: loading ? FONTE_CARREGANDO : fonteCarregada() },
+          essenciais: ["tarefas"],
+          // Atrasada não é erro de dado — é uma pendência da operação, e é
+          // exatamente o que o selo do cabeçalho deve carregar pra fora.
+          pendencias: atrasadas > 0 ? [{
+            chave: "tarefas-atrasadas",
+            titulo: `${atrasadas} tarefa(s) passaram do prazo`,
+            detalhe: "O prazo combinado já venceu. Reveja o prazo ou conclua.",
+            efeito: "indefinido" as const,
+          }] : [],
+        })}
+        acao={{ rotulo: "＋ Nova Tarefa", onClick: () => setOpenNew(true) }}
+      />
 
       <div className="kpi-grid">
         <div className="kpi k-acc"><div className="k-lbl">Em aberto</div><div className="k-val">{abertas}</div><div className="k-sub">{tasks.length} no total</div></div>

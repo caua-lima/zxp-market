@@ -284,7 +284,7 @@ export function explicarEstado(e: EstadoApuracao): string {
 /** Cor semântica do estado, nos tokens do tema. */
 export function corDoEstado(e: EstadoApuracao): string {
   if (e === "conciliado") return "var(--green)";
-  if (e === "parcial") return "var(--gold)";
+  if (e === "parcial") return "var(--yellow)";
   return "var(--muted)";
 }
 
