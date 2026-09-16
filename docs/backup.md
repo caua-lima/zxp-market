@@ -20,7 +20,29 @@ restaurado não vira um app funcionando:
 | `FIREBASE_PRIVATE_KEY`, `FIREBASE_CLIENT_EMAIL` | Vercel | Gerar chave nova de conta de serviço no console do Firebase. |
 | `BOOTSTRAP_OWNER_EMAILS` | Vercel | Define quem pode virar o primeiro owner. Sem ela e sem `controleAcesso`, o app fica sem ninguém dentro. |
 | `CRON_SECRET` | Vercel | Gerar outro; o cron para até lá. |
-| `firestore.rules`, `firestore.indexes.json` | neste repositório | Já versionados — é o único item desta tabela que o git cobre. |
+| `firestore.rules` | neste repositório | Já versionado — é o único item desta tabela que o git cobre. |
+| Índices do Firestore | console do Firebase | **Não versionados.** Ver a nota abaixo. |
+
+### Índices do Firestore
+
+Não existe `firestore.indexes.json` neste repositório, e hoje isso está
+certo: **toda** consulta do app usa um `where` OU um `orderBy` sozinho, e
+esses o Firestore indexa automaticamente. Nenhum índice composto foi criado
+à mão, então não há o que versionar.
+
+Isso deixa de valer no minuto em que alguém escrever uma consulta que
+combina os dois — `where(...).orderBy(...)` em campos diferentes. O
+Firestore recusa a consulta com um erro que traz um link pra criar o índice
+no console, e é **aí** que o arquivo precisa passar a existir:
+
+```bash
+npx firebase firestore:indexes > firestore.indexes.json
+```
+
+Índice criado só pelo link do console vive no projeto e em lugar nenhum: se
+o projeto for recriado numa restauração, as consultas que dependiam dele
+voltam a falhar, e o erro aparece como tela quebrada em produção, não como
+aviso no deploy.
 
 Exporte as variáveis com `vercel env pull` e guarde o arquivo **fora do
 repositório e criptografado**. Ele contém a chave privada da conta de serviço:

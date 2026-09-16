@@ -251,6 +251,12 @@ export function mesDeReferencia(r: RascunhoCusto, hojeISO: string): string {
  * Prometer o mês corrente era um número que a tela seguinte desmentia. Agora
  * a prévia devolve o primeiro mês em que ele de fato pesa.
  *
+ * ─── NÃO CONFUNDIR COM `acumuladoEProjetado` DE `custos-lista` ──────────
+ *
+ * Esta é a prévia de um RASCUNHO, e responde em qual mês ele vai pesar pela
+ * primeira vez. A de lá recebe um custo JÁ SALVO e divide um mês entre o que
+ * já saiu e o total. As duas já se chamaram `impactoNoMes`.
+ *
  * @returns `null` enquanto o valor não for legível.
  */
 export function impactoNoMes(

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  impactoNoMes, impactoDaLista, rotuloDaVigencia,
+  acumuladoEProjetado, impactoDaLista, rotuloDaVigencia,
   filtrarCustos, ordenarCustos, filtrosAtivos, FILTRO_VAZIO,
 } from "./custos-lista";
 import type { Cost } from "./types";
@@ -9,57 +9,57 @@ const custo = (over: Partial<Cost> = {}): Cost => ({
   id: "c1", nome: "Custo", valor: "1000", freq: "mensal", data: "2026-09-01", ...over,
 });
 
-describe("impactoNoMes — acumulado não é projeção", () => {
+describe("acumuladoEProjetado — acumulado não é projeção", () => {
   it("no meio do mês, o acumulado é menor que a projeção", () => {
-    const i = impactoNoMes(custo({ valor: "3000" }), "2026-09", "2026-09-10");
+    const i = acumuladoEProjetado(custo({ valor: "3000" }), "2026-09", "2026-09-10");
     expect(i.projetado).toBeCloseTo(3000, 2);
     expect(i.acumulado).toBeLessThan(i.projetado);
     expect(i.mesFechado).toBe(false);
   });
 
   it("mês passado: os dois são o mesmo, e não há o que projetar", () => {
-    const i = impactoNoMes(custo(), "2026-08", "2026-09-15");
+    const i = acumuladoEProjetado(custo(), "2026-08", "2026-09-15");
     expect(i.acumulado).toBeCloseTo(i.projetado, 2);
     expect(i.mesFechado).toBe(true);
   });
 
   it("mês futuro: nada aconteceu ainda", () => {
-    const i = impactoNoMes(custo(), "2026-12", "2026-09-15");
+    const i = acumuladoEProjetado(custo(), "2026-12", "2026-09-15");
     expect(i.acumulado).toBe(0);
     expect(i.projetado).toBeGreaterThan(0);
   });
 
   it("último dia do mês fecha o mês", () => {
-    expect(impactoNoMes(custo(), "2026-09", "2026-09-30").mesFechado).toBe(true);
+    expect(acumuladoEProjetado(custo(), "2026-09", "2026-09-30").mesFechado).toBe(true);
   });
 
   it("custo arquivado não projeta nada", () => {
-    const i = impactoNoMes(custo({ ativo: false, vigenteAte: "2026-08-31" }), "2026-09", "2026-09-10");
+    const i = acumuladoEProjetado(custo({ ativo: false, vigenteAte: "2026-08-31" }), "2026-09", "2026-09-10");
     expect(i.projetado).toBe(0);
   });
 
   it("custo que começa no meio do mês só conta a partir dali", () => {
-    const cheio = impactoNoMes(custo(), "2026-09", "2026-09-30").projetado;
-    const meio = impactoNoMes(custo({ vigenteDe: "2026-09-16" }), "2026-09", "2026-09-30").projetado;
+    const cheio = acumuladoEProjetado(custo(), "2026-09", "2026-09-30").projetado;
+    const meio = acumuladoEProjetado(custo({ vigenteDe: "2026-09-16" }), "2026-09", "2026-09-30").projetado;
     expect(meio).toBeLessThan(cheio);
   });
 
   it("avulso do dia 20 não está no acumulado do dia 10", () => {
     const c = custo({ freq: "avulso", data: "2026-09-20", valor: "500" });
-    const i = impactoNoMes(c, "2026-09", "2026-09-10");
+    const i = acumuladoEProjetado(c, "2026-09", "2026-09-10");
     expect(i.acumulado).toBe(0);
     expect(i.projetado).toBeCloseTo(500, 2);
   });
 
   it("avulso já passado entra nos dois", () => {
     const c = custo({ freq: "avulso", data: "2026-09-05", valor: "500" });
-    const i = impactoNoMes(c, "2026-09", "2026-09-10");
+    const i = acumuladoEProjetado(c, "2026-09", "2026-09-10");
     expect(i.acumulado).toBeCloseTo(500, 2);
     expect(i.projetado).toBeCloseTo(500, 2);
   });
 
   it("valor no formato brasileiro é lido certo", () => {
-    const i = impactoNoMes(custo({ valor: "1.234,56", freq: "avulso", data: "2026-09-05" }), "2026-09", "2026-09-30");
+    const i = acumuladoEProjetado(custo({ valor: "1.234,56", freq: "avulso", data: "2026-09-05" }), "2026-09", "2026-09-30");
     expect(i.projetado).toBeCloseTo(1234.56, 2);
   });
 });

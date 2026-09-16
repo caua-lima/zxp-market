@@ -15,7 +15,7 @@ import { authedFetch } from "@/lib/api/authed-fetch";
 import TelaHeader from "@/components/TelaHeader";
 import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
 import {
-  filtrarCustos, ordenarCustos, filtrosAtivos, impactoDaLista, impactoNoMes,
+  filtrarCustos, ordenarCustos, filtrosAtivos, impactoDaLista, acumuladoEProjetado,
   rotuloDaVigencia, FILTRO_VAZIO, type FiltroCustos, type OrdemCustos,
 } from "@/lib/domain/custos-lista";
 
@@ -49,7 +49,7 @@ type Edicao = { custo: Cost | null; escopo: Escopo };
  * podia não bater com o total exibido logo acima delas.
  */
 function pesoNoMes(c: Cost, hojeISO: string) {
-  return impactoNoMes(c, mesAtual(), hojeISO);
+  return acumuladoEProjetado(c, mesAtual(), hojeISO);
 }
 
 function sufixoDaFrequencia(c: Cost): string {

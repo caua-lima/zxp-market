@@ -47,8 +47,24 @@ function paraVigencia(c: Cost) {
   };
 }
 
-/** O impacto de UM custo no mês de competência. */
-export function impactoNoMes(c: Cost, mes: string, hojeISO: string): ImpactoNoMes {
+/**
+ * O impacto de UM custo já salvo no mês de competência: quanto já saiu e
+ * quanto o mês inteiro vai custar.
+ *
+ * ─── NÃO CONFUNDIR COM `impactoNoMes` DE `custo-form` ───────────────────
+ *
+ * Esta função já se chamou `impactoNoMes`, e o nome era uma armadilha: em
+ * `custo-form` existe outra `impactoNoMes`, que responde coisa diferente —
+ * "em qual mês este RASCUNHO vai pesar pela primeira vez, e quanto". Um
+ * custo mensal cadastrado no dia 14 só pesa no mês SEGUINTE, e é isso que
+ * aquela responde.
+ *
+ * Esta aqui recebe um custo JÁ SALVO e um mês, e divide aquele mês em dois:
+ * o que já aconteceu e o total. As duas são necessárias e nenhuma substitui
+ * a outra — o que não podia continuar é as duas se chamarem igual, na mesma
+ * pasta, esperando que ninguém importasse a errada.
+ */
+export function acumuladoEProjetado(c: Cost, mes: string, hojeISO: string): ImpactoNoMes {
   const de = `${mes}-01`;
   const fim = `${mes}-${String(diasNoMes(mes)).padStart(2, "0")}`;
   const v = paraVigencia(c);
@@ -68,7 +84,7 @@ export function impactoNoMes(c: Cost, mes: string, hojeISO: string): ImpactoNoMe
 export function impactoDaLista(custos: readonly Cost[], mes: string, hojeISO: string): ImpactoNoMes {
   let acumulado = 0, projetado = 0, fechado = true;
   for (const c of custos) {
-    const i = impactoNoMes(c, mes, hojeISO);
+    const i = acumuladoEProjetado(c, mes, hojeISO);
     acumulado += i.acumulado;
     projetado += i.projetado;
     if (!i.mesFechado) fechado = false;
@@ -190,7 +206,7 @@ export function ordenarCustos(
   }
 
   return lista.sort((a, b) =>
-    (impactoNoMes(b, mes, hojeISO).projetado - impactoNoMes(a, mes, hojeISO).projetado) || porNome(a, b));
+    (acumuladoEProjetado(b, mes, hojeISO).projetado - acumuladoEProjetado(a, mes, hojeISO).projetado) || porNome(a, b));
 }
 
 /** Quantos filtros estão ativos — pro botão dizer "Filtros (2)". */
