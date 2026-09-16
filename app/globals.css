@@ -1220,3 +1220,90 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
     -webkit-print-color-adjust:exact;print-color-adjust:exact}
   .apres-pagina:last-child{break-after:auto;page-break-after:auto}
 }
+
+/* ─── CABEÇALHO DE TELA (components/TelaHeader.tsx) ─────────────────────────
+   Título, período e ESTADO DOS DADOS de um lado; uma ação principal do outro.
+   O padrão que a auditoria pede pra todas as telas — antes cada aba escrevia
+   o seu, e nenhuma dizia se dava pra confiar no que estava na tela. */
+.tela-head{
+  display:flex;align-items:flex-start;justify-content:space-between;
+  gap:14px;flex-wrap:wrap;min-width:0;margin-bottom:14px;
+}
+.tela-head-id{display:flex;flex-direction:column;gap:4px;min-width:0}
+.tela-head-meta{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  font-size:.8rem;color:var(--muted);min-width:0;
+}
+/* O período é a identidade da tela junto com o título — não é metadado
+   secundário, e por isso não cai pro cinza dos outros. */
+/* Só a primeira letra. `text-transform:capitalize` maiusculiza TODA palavra
+   e escrevia "Setembro De 2026" — em português, a preposição é minúscula. */
+.tela-head-periodo{color:var(--text);font-weight:600}
+.tela-head-periodo::first-letter{text-transform:uppercase}
+.tela-head-sub{color:var(--muted)}
+.tela-head-estado{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:.75rem;font-weight:700;letter-spacing:.02em;
+  border:1px solid currentColor;border-radius:999px;padding:1px 9px;
+  white-space:nowrap;
+}
+.tela-head-acoes{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+.tela-head-menu{
+  position:absolute;right:0;top:calc(100% + 6px);z-index:41;
+  min-width:200px;padding:5px;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);box-shadow:0 12px 32px rgba(0,0,0,.4);
+  display:flex;flex-direction:column;gap:2px;
+}
+.tela-head-menu-item{
+  display:block;width:100%;text-align:left;
+  padding:8px 10px;border:none;border-radius:7px;
+  background:transparent;color:var(--text);
+  font-size:.85rem;font:inherit;cursor:pointer;
+}
+.tela-head-menu-item:hover:not(:disabled){background:var(--surface2)}
+.tela-head-menu-item:disabled{color:var(--muted);cursor:not-allowed}
+
+@media (max-width:640px){
+  /* No celular a ação vai pra linha de baixo e ocupa a largura toda: alvo de
+     toque confortável vale mais que caber tudo numa linha só. */
+  .tela-head{flex-direction:column;align-items:stretch;gap:10px}
+  .tela-head-acoes{width:100%}
+  .tela-head-acoes > .btn-primary{flex:1}
+}
+
+/* Chip clicável — filtro que liga/desliga. O `chip` já existia só como
+   etiqueta; como botão ele precisa de estado visível, e `is-on` carrega
+   BORDA e COR, não só cor: filtro ativo sinalizado só por matiz exclui quem
+   não distingue os dois tons. */
+.chip-btn{cursor:pointer;font:inherit;font-size:.75rem;background:transparent}
+.chip-btn:hover{border-color:var(--muted)}
+.chip-btn.is-on{
+  border-color:var(--brand);color:var(--brand);
+  background:color-mix(in srgb, var(--brand) 12%, transparent);
+  font-weight:700;
+}
+
+/* Ação destrutiva atrás de um passo a mais. Arquivar e excluir pareciam a
+   mesma coisa lado a lado, e só uma delas é reversível. */
+.acao-perigosa{position:relative;display:inline-block}
+.acao-perigosa > summary{
+  list-style:none;cursor:pointer;
+  padding:2px 8px;border-radius:6px;
+  color:var(--muted);font-size:.85rem;line-height:1.4;
+}
+.acao-perigosa > summary::-webkit-details-marker{display:none}
+.acao-perigosa > summary:hover{background:var(--surface2);color:var(--text)}
+.acao-perigosa > summary:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+@media(max-width:720px){
+  /* No toque, o ⋯ precisa do mesmo alvo confortável que os botões ao lado —
+     um alvo de 20px encostado num de 40px é onde o dedo erra. */
+  .acao-perigosa > summary{min-width:44px;min-height:38px;display:inline-flex;align-items:center;justify-content:center}
+}
+.acao-perigosa-menu{
+  position:absolute;right:0;top:calc(100% + 4px);z-index:20;
+  padding:10px;min-width:180px;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);box-shadow:0 12px 32px rgba(0,0,0,.4);
+}

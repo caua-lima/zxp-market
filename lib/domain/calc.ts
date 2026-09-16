@@ -179,7 +179,7 @@ export function computeSummary(adsRaw: Listing[]): DaySummary {
   };
 }
 
-function normalizeCostDate(raw: string | undefined): string | null {
+export function normalizeCostDate(raw: string | undefined): string | null {
   if (!raw) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
   const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
