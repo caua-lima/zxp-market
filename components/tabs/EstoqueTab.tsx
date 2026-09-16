@@ -26,6 +26,7 @@ import VincularSkuModal from "@/components/tabs/estoque/VincularSkuModal";
 import { DIAS_ALVO, hojeBR, todayISO, parseNum, mlbsDe, normMlb, custoMedioDe, anunciosDe, fullDe, precosDe, previsaoDe, coberturaFmt } from "@/components/tabs/estoque/estoque-compartilhado";
 import type { EstoqueML, Forecast, PlanoSku } from "@/components/tabs/estoque/estoque-compartilhado";
 import { filtrarProdutos, precisaDeAcao, proximaAcao, ordenarPorUrgencia, contarSinais, resumoDoEstoque, ROTULO_SINAL, FILTRO_ESTOQUE_VAZIO, type FiltroEstoque, type ProdutoNaLista, type SinalDoProduto, DIAS_COBERTURA_BAIXA } from "@/lib/domain/estoque-situacao";
+import DetalheProduto from "@/components/tabs/estoque/DetalheProduto";
 
 
 
@@ -760,8 +761,24 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
                 </div>
                 <button type="button" className="drawer-close" onClick={() => setExpanded(null)} aria-label="Fechar histórico">✕</button>
               </div>
-              <div className="drawer-body" style={{ padding: "12px 16px" }}>
-                <MovimentosHistorico product={p} movs={movsPorProduto.get(p.id) ?? []} onMov={(tipo) => setMovModal({ product: p, tipo })} />
+              {/*
+                A gaveta ja existia com o historico sozinho dentro. Os MLBs e os
+                precos por anuncio viviam num modal separado ("Agencias"), e a
+                memoria de calculo nao existia em lugar nenhum — pra entender um
+                produto era preciso juntar tres telas.
+              */}
+              <div className="drawer-body" style={{ padding: "12px 16px", display: "flex", flexDirection: "column", gap: 18 }}>
+                <DetalheProduto product={p} estoqueML={estoqueML} />
+
+                <section>
+                  <h4 style={{
+                    margin: "0 0 8px", fontSize: ".75rem", fontWeight: 700,
+                    letterSpacing: ".06em", textTransform: "uppercase", color: "var(--muted)",
+                  }}>
+                    Movimentações
+                  </h4>
+                  <MovimentosHistorico product={p} movs={movsPorProduto.get(p.id) ?? []} onMov={(tipo) => setMovModal({ product: p, tipo })} />
+                </section>
               </div>
             </div>
           </div>
