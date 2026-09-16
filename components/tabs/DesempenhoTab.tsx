@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import ReputacaoPanel from "./desempenho/ReputacaoPanel";
-import ProximaMedalhaPanel from "@/components/tabs/desempenho/ProximaMedalhaPanel";
+import ProximaMedalhaPanel from "@/components/tabs/desempenho/ProximaMedalhaPanel";
 import RequisitosMercadoLiderPanel from "./desempenho/RequisitosMercadoLiderPanel";
 import CompradoresPanel from "./desempenho/CompradoresPanel";
 import HeatmapVendas from "./desempenho/HeatmapVendas";
@@ -46,6 +46,34 @@ function diasCobrindoMesPassado(): number {
   return br.getUTCDate() + diasDoMesPassado;
 }
 
+/**
+ * Uma seção da aba, com o título e — o que importa — a ORIGEM do que vem
+ * embaixo.
+ *
+ * Sem a origem, um requisito que o ML não expõe por API aparece do lado de
+ * uma métrica oficial com o mesmo peso visual, e a tela passa a parecer que
+ * está afirmando coisas que não mediu.
+ */
+function SecaoDesempenho({ titulo, origem, children }: {
+  titulo: string;
+  origem: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section style={{ marginTop: 18 }}>
+      <div style={{ marginBottom: 8 }}>
+        <h3 style={{
+          margin: 0, fontSize: ".78rem", fontWeight: 700,
+          letterSpacing: ".07em", textTransform: "uppercase", color: "var(--text)",
+        }}>
+          {titulo}
+        </h3>
+        <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 2 }}>{origem}</div>
+      </div>
+      {children}
+    </section>
+  );
+}
 export default function DesempenhoTab() {
   const [months, setMonths] = useState(12);
   // null = periodo em meses; numero = periodo em dias (tem prioridade).
@@ -140,39 +168,85 @@ export default function DesempenhoTab() {
         </div>
       ) : (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+          {/*
+            ─── A ORDEM VIROU PRECEDÊNCIA, E NÃO O QUE O VIEWPORT DECIDIR ──
+
+            Os quatro painéis viviam num `auto-fit` de minmax(320px, 1fr):
+            numa tela larga viravam quatro colunas lado a lado, todas com o
+            mesmo peso; numa estreita, uma fila. Em nenhum dos dois casos a
+            tela dizia qual ler primeiro.
+
+            E há uma ordem certa, porque os quatro têm origens diferentes e
+            confiabilidades diferentes:
+
+              1. o que o ML AFIRMA sobre a conta (medido por eles);
+              2. o que ainda falta pra próxima medalha (deles + meta nossa);
+              3. o que o ML NÃO expõe e não dá pra verificar por API;
+              4. o que a gente calcula por conta própria a partir dos pedidos.
+
+            Ler o 3 antes do 1 é o caminho pra confundir requisito não
+            verificável com métrica oficial — e o app passa a parecer que
+            está afirmando coisas que não mediu.
+
+            Os cabeçalhos de seção existem pra isso: dizem DE ONDE vem o que
+            está embaixo deles.
+          */}
+
+          <SecaoDesempenho titulo="Estado oficial" origem="medido e publicado pelo Mercado Livre">
             <ReputacaoPanel reputation={dados.reputacao} indisponivel={dados.reputacaoIndisponivel} />
-            {/* Quanto falta pra proxima medalha — qualidade medida pela API,
-                alvo de faturamento digitado (o ML nao expoe o limiar). */}
+          </SecaoDesempenho>
+
+          <SecaoDesempenho
+            titulo="Próxima medalha"
+            origem="qualidade medida pelo ML; o alvo de faturamento é digitado por você — o ML não expõe o limiar"
+          >
             <ProximaMedalhaPanel
               metrics={dados.reputacao?.metrics}
               nivelAtual={dados.reputacao?.power_seller_status}
             />
+          </SecaoDesempenho>
+
+          <SecaoDesempenho
+            titulo="Requisitos que não dá pra verificar por aqui"
+            origem="o ML não expõe estes por API — confira no Seller Center"
+          >
             <RequisitosMercadoLiderPanel
               requisitos={dados.requisitosMercadoLider}
               registrationDate={dados.registrationDate}
               vendasConcluidas={dados.reputacao?.transactions?.completed}
               jaEhLider={!!dados.reputacao?.power_seller_status}
             />
-            <CompradoresPanel
-              compradores={dados.compradores}
-              months={dados.months}
-              periodoInicio={dados.from}
-              historicoDesde={dados.historicoDesde}
-              to={dados.to}
-              dias={dados.dias}
-              semComprador={dados.semComprador}
-              onUsarJanela={(m) => { setDias(null); setMonths(m); }}
-            />
-          </div>
+          </SecaoDesempenho>
+
+          <SecaoDesempenho
+            titulo="Cálculo local"
+            origem="apurado aqui, a partir dos pedidos sincronizados — pode divergir do painel do ML"
+          >
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+              <CompradoresPanel
+                compradores={dados.compradores}
+                months={dados.months}
+                periodoInicio={dados.from}
+                historicoDesde={dados.historicoDesde}
+                to={dados.to}
+                dias={dados.dias}
+                semComprador={dados.semComprador}
+                onUsarJanela={(m) => { setDias(null); setMonths(m); }}
+              />
+              <EntregasPanel entregas={dados.entregas} />
+            </div>
+          </SecaoDesempenho>
 
           {/* Fica logo abaixo do painel de compradores: e onde a falta de
               historico se manifesta (recompra travada). */}
           <BackfillHistorico onConcluir={() => carregar(true)} />
 
+          {/*
+            Entregas subiu pra seção de cálculo local, junto de compradores:
+            os dois saem dos pedidos sincronizados, e separá-los fazia parecer
+            que tinham origens diferentes.
+          */}
           <HeatmapVendas heatmap={dados.heatmap} from={dados.from} to={dados.to} />
-
-          <EntregasPanel entregas={dados.entregas} />
         </>
       )}
     </div>
