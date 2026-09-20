@@ -13,9 +13,10 @@ import { enviarLembretesDeTarefa } from "@/lib/task-reminders-run";
  * conferir o texto de uma tarefa que vence amanhã sem ter que mexer no prazo
  * dela. Sem isso, usa hoje no fuso de São Paulo.
  *
- * Cuidado ao repetir: a notificação é deduplicada por pessoa/dia, então a
- * segunda chamada no mesmo dia responde `jaAvisadoHoje` e não manda push de
- * novo — é o comportamento correto, não uma falha.
+ * Cuidado ao repetir: o evento é único por pessoa/dia e o outbox não reenvia o
+ * que já foi aceito, então a segunda chamada no mesmo dia responde
+ * `jaAvisadoHoje` (nada novo a enviar) — é o comportamento correto. Se o envio
+ * anterior tinha falhado, a nova chamada TENTA DE NOVO só o que faltou.
  */
 export async function POST(req: Request) {
   const gate = await requireAccess(req, { allowCron: true, capacidade: "administrar" });

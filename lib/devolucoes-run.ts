@@ -2,7 +2,8 @@ import "server-only";
 import { fetchML } from "@/lib/ml/fetch-ml";
 import { getMlAccessToken } from "@/app/api/ml/token";
 import { avisosDeDevolucao, type Reclamacao } from "@/lib/domain/devolucoes";
-import { buildPayload, enviarEPersistirEntrega } from "@/lib/ml/notificar-venda";
+import { buildPayload } from "@/lib/ml/notificar-venda";
+import { enviarEPersistirEntrega } from "@/lib/notification-dispatch";
 import { createNotificationEventIdempotent } from "@/lib/notification-events";
 import { buildOrderDeepLink } from "@/lib/domain/notifications";
 

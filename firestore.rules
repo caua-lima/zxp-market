@@ -336,6 +336,24 @@ service cloud.firestore {
              .affectedKeys().hasOnly([request.auth.token.email]);
     }
 
+    /**
+     * O outbox de push e o estado de entrega de cada aparelho: NINGUEM alcanca
+     * pelo cliente.
+     *
+     * `notification_outbox` guarda o payload COMPLETO do aviso — com lucro e
+     * margem —, e `notification_entregas` diz quem recebeu o que e em que
+     * aparelho. Nenhum dos dois serve a tela: o app le a Central pelas colecoes
+     * de eventos. So o Admin SDK (o worker de lib/notification-outbox.ts) entra,
+     * e ele ignora estas regras; o `false` explicito e pra uma regra ampla
+     * adicionada depois nao abrir estas colecoes sem querer.
+     */
+    match /notification_outbox/{pushId} {
+      allow read, write: if false;
+    }
+    match /notification_entregas/{entregaId} {
+      allow read, write: if false;
+    }
+
     // Preferências de notificação por usuário — cada um só lê/escreve as
     // próprias (mais restrito que o /usuarios/{uid}/** legado abaixo, que
     // permite leitura por qualquer autorizado; aqui nem owner lê a do

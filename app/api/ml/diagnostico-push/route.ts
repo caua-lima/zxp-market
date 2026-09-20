@@ -108,20 +108,27 @@ export async function GET(req: Request) {
     eventos = snap.docs.map((d) => {
       const v = d.data();
       const entrega = (v.delivery ?? {}) as Record<string, unknown>;
+      const resumo = (entrega.resumo ?? null) as { total?: number; aceitos?: number; pendentes?: number; suprimidos?: number; falhas?: number; expirados?: number } | null;
       return {
         id: d.id,
         type: v.type,
         title: v.title,
         // O que interessa aqui é a ENTREGA, não o conteúdo.
         tentou: Boolean(entrega.pushAttemptedAt),
-        entregou: Boolean(entrega.pushDeliveredAt),
+        /**
+         * "Aceito pelo provedor" — o FCM devolveu um id de mensagem. NÃO é
+         * "exibido no aparelho". Eventos antigos (anteriores ao outbox) só têm
+         * `pushDeliveredAt`, que significava a mesma coisa com um nome enganoso.
+         */
+        aceitoPeloProvedor: Boolean(entrega.acceptedByProviderAt ?? entrega.pushDeliveredAt),
+        destinos: resumo,
         erro: entrega.pushError ?? null,
       };
     });
   } catch { /* idem */ }
 
   const vendasRecentes = eventos.filter((e) => String(e.type ?? "").startsWith("sale_"));
-  const semEntrega = vendasRecentes.filter((e) => e.tentou && !e.entregou);
+  const semEntrega = vendasRecentes.filter((e) => e.tentou && !e.aceitoPeloProvedor);
 
   /**
    * Veredito em texto: a leitura correta de cada combinação, pra quem abre

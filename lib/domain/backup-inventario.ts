@@ -160,6 +160,18 @@ export const INVENTARIO: readonly ItemDeBackup[] = [
     perda: "Nada operacional — some junto com notification_events e pelo mesmo motivo.",
   },
   {
+    colecao: "notification_outbox",
+    classe: "efemero",
+    conteudo: "O que cada push agendado precisa pra ser enviado: payload completo, audiência e validade.",
+    perda: "Nada operacional — avisos pendentes deixam de ser reenviados; o histórico está em notification_events.",
+  },
+  {
+    colecao: "notification_entregas",
+    classe: "efemero",
+    conteudo: "O estado de entrega de cada aviso em cada aparelho (pendente, aceito, suprimido, vencido, falha).",
+    perda: "Nada operacional — só o rastro de quem recebeu o quê; é apagado sozinho depois de 14 dias.",
+  },
+  {
     colecao: "pushTokens",
     classe: "efemero",
     conteudo: "Tokens de push por dispositivo.",

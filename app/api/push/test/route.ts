@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAccess } from "@/lib/api-auth";
-import { sendPushToUser } from "@/lib/push-send";
-import { createNotificationEventIdempotent, markPushAttempted, markPushDelivered, markPushError } from "@/lib/notification-events";
+import { enviarEPersistirEntrega } from "@/lib/notification-dispatch";
+import { createNotificationEventIdempotent } from "@/lib/notification-events";
 import {
   buildCancelContent,
   buildGroupedSalesContent,
@@ -116,19 +116,16 @@ export async function POST(req: Request) {
     timestamp: horario,
   };
 
-  await markPushAttempted(eventId);
-  try {
-    const { enviados } = await sendPushToUser(gate.email, payload);
-    if (enviados > 0) await markPushDelivered(eventId);
-    return NextResponse.json({
-      ok: true, scenario, eventId, orderId,
-      title: cenario.content.title, body: cenario.content.body,
-      enviados, horario,
-      bloqueioMotivo: enviados === 0 ? "Nenhum dispositivo seu está registrado — ative notificações neste aparelho primeiro." : null,
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    await markPushError(eventId, msg.slice(0, 160));
-    return NextResponse.json({ ok: false, error: msg, scenario, eventId, orderId, horario }, { status: 500 });
-  }
+  // Só pros aparelhos de quem pediu o teste: audiência de UMA pessoa. Nunca o time.
+  const enviados = await enviarEPersistirEntrega(eventId, cenario.type, payload, false, {
+    audiencia: [gate.email], origem: "teste", validadeMs: 10 * 60_000,
+  });
+  return NextResponse.json({
+    ok: true, scenario, eventId, orderId,
+    title: cenario.content.title, body: cenario.content.body,
+    enviados, horario,
+    bloqueioMotivo: enviados === 0
+      ? "Nenhum aparelho seu aceitou o envio: nenhum está registrado, a preferência bloqueou este tipo, ou o provedor recusou. Ative as notificações neste aparelho e confira as preferências."
+      : null,
+  });
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAccess } from "@/lib/api-auth";
-import { createNotificationEventIdempotent, markPushAttempted, markPushDelivered, markPushError } from "@/lib/notification-events";
-import { sendPushToUserIfAllowed } from "@/lib/push-send";
+import { createNotificationEventIdempotent } from "@/lib/notification-events";
+import { enviarEPersistirEntrega } from "@/lib/notification-dispatch";
 import {
   buildTaskAssignedContent,
   buildTaskDeepLink,
@@ -16,7 +16,7 @@ import {
  * gatilho de servidor pra interceptar. Autenticado (requireAccess) pra não
  * virar um jeito de qualquer um mandar push pra qualquer e-mail.
  *
- * Vai só pro destinatário (sendPushToUserIfAllowed), nunca pro time inteiro
+ * Vai só pro destinatário (audiência do outbox), nunca pro time inteiro
  * — diferente de venda, que é informação de todo mundo.
  */
 export async function POST(req: Request) {
@@ -62,15 +62,8 @@ export async function POST(req: Request) {
     tag: `task-${taskId}`, deepLink: buildTaskDeepLink(taskId), timestamp: new Date().toISOString(),
   };
 
-  await markPushAttempted(eventId);
-  try {
-    const { enviados, bloqueadoPorPreferencia } = await sendPushToUserIfAllowed(assigneeEmail, payload, "task_assigned");
-    if (enviados > 0) await markPushDelivered(eventId);
-    else await markPushError(eventId, bloqueadoPorPreferencia ? "destinatário bloqueou por preferência/horário silencioso" : "nenhum dispositivo registrado");
-    return NextResponse.json({ ok: true, eventId, enviados });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    await markPushError(eventId, msg.slice(0, 160));
-    return NextResponse.json({ ok: false, error: msg, eventId }, { status: 500 });
-  }
+  const enviados = await enviarEPersistirEntrega(eventId, "task_assigned", payload, false, {
+    audiencia: [assigneeEmail], origem: "tarefa:atribuida",
+  });
+  return NextResponse.json({ ok: true, eventId, enviados });
 }

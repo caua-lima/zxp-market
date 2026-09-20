@@ -9,6 +9,7 @@ import { verificarDevolucoes } from "@/lib/devolucoes-run";
 import { verificarEstoqueBaixo } from "@/lib/estoque-alerta-run";
 import { podarWebhookLog } from "@/lib/webhook-log-prune";
 import { registrarExecucaoDoCron } from "@/lib/cron-heartbeat";
+import { varrerEntregasPendentes } from "@/lib/notification-dispatch";
 
 export const maxDuration = 60;
 
@@ -180,6 +181,17 @@ export async function GET(req: Request) {
     });
 
     /**
+     * Varredura do outbox de push: reenvia o que ficou pendente (retry vencido,
+     * concessão de worker que morreu, fan-out incompleto), refaz espelhos
+     * pendentes e apaga o que já passou da retenção. Depois de tudo que PRODUZ
+     * aviso, pra pegar também o que acabou de ser publicado. Best-effort.
+     */
+    const entregasPush = await varrerEntregasPendentes({ limpar: true }).catch((err) => {
+      console.error("[cron] varredura do outbox de push falhou", err);
+      return null;
+    });
+
+    /**
      * Poda da trilha do webhook. Por ultimo de proposito: e manutencao, e
      * nao pode competir por tempo com nada que o usuario percebe.
      */
@@ -215,6 +227,7 @@ export async function GET(req: Request) {
       marcos,
       devolucoes,
       estoqueBaixo,
+      entregasPush,
       syncFalhas: syncFalhas.length > 0 ? syncFalhas : undefined,
       atual: { orders: ordensAtual, returns: devAtual, claims: claimsAtual, range: atual },
       anterior: { orders: ordensAnterior, returns: devAnterior, claims: claimsAnterior, range: anterior },

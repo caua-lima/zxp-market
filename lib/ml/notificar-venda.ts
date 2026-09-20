@@ -7,14 +7,8 @@ import { fatiaDoPedidoNoEnvio, type ItemDoEnvio } from "@/lib/domain/frete-pacot
 
 const ML_API = "https://api.mercadolibre.com";
 import { getMlAccessToken } from "@/app/api/ml/token";
-import { sendSalePushToAll } from "@/lib/push-send";
-import { aplicarPatchEntrega, createNotificationEventIdempotent, lerEntrega } from "@/lib/notification-events";
-import {
-  avaliarPendencia,
-  patchDesistencia,
-  patchResultado,
-  patchTentando,
-} from "@/lib/domain/entrega-pendente";
+import { createNotificationEventIdempotent } from "@/lib/notification-events";
+import { enviarEPersistirEntrega } from "@/lib/notification-dispatch";
 import { registrarVendaNaJanela } from "@/lib/notification-groups";
 import {
   buildGroupedSalesContent,
@@ -140,63 +134,6 @@ export function buildPayload(eventId: string, type: NotificationEventType, title
       : undefined,
     timestamp: new Date().toISOString(),
   };
-}
-
-/**
- * Envia o push do evento já persistido, registrando tentativa/entrega/erro na
- * trilha do próprio evento (nunca o token ou payload completo).
- */
-/**
- * Entrega o aviso, tratando-a como uma PENDÊNCIA com tentativas.
- *
- * ─── POR QUE ISTO NÃO É SÓ "MANDAR" ─────────────────────────────────────
- *
- * A entrega estava grudada na criação do evento. Se o evento nascia e o envio
- * falhava logo depois — FCM fora do ar, rede caindo, a função encerrada no
- * meio — o documento ficava sem entrega, e a tentativa seguinte recebia
- * `created: false`, devolvia "já existia" e não tentava de novo.
- *
- * O push sumia. Não com erro: em silêncio, e pra sempre. A rede de segurança
- * do sync tinha o mesmo furo, porque checava se o EVENTO existia, não se ele
- * havia sido entregue.
- *
- * Agora cada envio consulta o estado: já entregue não repete, alguém tentando
- * cede a vez, e o que falhou volta a ser tentado — até o teto, ou até o aviso
- * vencer. As regras estão em lib/domain/entrega-pendente.
- */
-export async function enviarEPersistirEntrega(eventId: string, type: NotificationEventType, payload: SalePushPayload, isSummary = false) {
-  const { existe, delivery, criadoEm } = await lerEntrega(eventId);
-  const agora = Date.now();
-  const decisao = avaliarPendencia(delivery, existe ? criadoEm : agora, agora);
-
-  if (decisao.acao === "ja_entregue" || decisao.acao === "outro_entregando") return 0;
-  if (decisao.acao === "desistir") {
-    // Desistir é uma DECISÃO registrada, não um esquecimento.
-    await aplicarPatchEntrega(eventId, patchDesistencia(decisao.motivo, agora));
-    return 0;
-  }
-
-  // A concessão é gravada ANTES da chamada ao FCM: gravar depois deixaria a
-  // janela em que dois processos acham que ninguém está entregando.
-  await aplicarPatchEntrega(eventId, patchTentando(decisao.tentativa, agora));
-
-  try {
-    const { enviados, bloqueadosPorPreferencia } = await sendSalePushToAll(payload, type, isSummary);
-    await aplicarPatchEntrega(eventId, patchResultado(
-      enviados,
-      Date.now(),
-      enviados > 0 ? undefined
-        : bloqueadosPorPreferencia > 0
-          ? "todos os destinatários bloquearam por preferência/horário silencioso"
-          : "nenhum dispositivo registrado",
-    ));
-    return enviados;
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    // Erro NÃO carimba entrega: fica pendente e volta a ser tentado.
-    await aplicarPatchEntrega(eventId, patchResultado(0, Date.now(), msg));
-    return 0;
-  }
 }
 
 export type ResultadoNotificacao =
@@ -419,8 +356,15 @@ export async function notificarMarco(marco: { chave: string; titulo: string; cor
     // pessoa quer ver depois de saber que bateu.
     deepLink: "/?tab=desempenho",
   });
-  if (!created) return false;
-
+  /**
+   * Publica SEMPRE. `if (!created) return false` tratava "já existe" como "já foi
+   * avisado", e um marco cujo envio falhou logo depois de criar o evento nunca
+   * mais chegava — a única notícia boa do app se perdia em silêncio. Publicar é
+   * idempotente: o que já foi aceito não é reenviado.
+   *
+   * O retorno continua sendo "este marco é NOVO", que é o que quem chama usa
+   * pra contar o que foi comemorado agora.
+   */
   await enviarEPersistirEntrega(
     eventId,
     "milestone",
@@ -428,6 +372,8 @@ export async function notificarMarco(marco: { chave: string; titulo: string; cor
       orderId: "",
       tag: marco.chave,
     }),
+    false,
+    { origem: "marco" },
   );
-  return true;
+  return created;
 }

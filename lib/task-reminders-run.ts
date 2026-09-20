@@ -1,6 +1,6 @@
 import { getAdminDb } from "@/lib/firebase/admin";
-import { createNotificationEventIdempotent, markPushAttempted, markPushDelivered, markPushError } from "@/lib/notification-events";
-import { sendPushToUserIfAllowed } from "@/lib/push-send";
+import { createNotificationEventIdempotent } from "@/lib/notification-events";
+import { enviarEPersistirEntrega } from "@/lib/notification-dispatch";
 import { buildTaskDeepLink, type SalePushPayload } from "@/lib/domain/notifications";
 import { agruparLembretes, textoLembrete, type TarefaPrazo } from "@/lib/domain/task-reminders";
 
@@ -67,7 +67,7 @@ export async function enviarLembretesDeTarefa(diaForcado?: string): Promise<Resu
     const dedupeKey = `task_due:${grupo.email}:${dia}`;
     const destaque = grupo.atrasadas[0] ?? grupo.venceHoje[0];
 
-    const { created, eventId } = await createNotificationEventIdempotent({
+    const { eventId } = await createNotificationEventIdempotent({
       type: "task_assigned",
       severity: grupo.atrasadas.length > 0 ? "warning" : "info",
       entityType: "task", entityId: destaque.id, dedupeKey,
@@ -76,23 +76,24 @@ export async function enviarLembretesDeTarefa(diaForcado?: string): Promise<Resu
       financialState: "unavailable",
     });
 
-    if (!created) { jaAvisadoHoje++; continue; }
-
     const payload: SalePushPayload = {
       eventId, type: "task_assigned", title: texto.title, body: texto.body,
       tag: `task-due-${dia}`, deepLink: buildTaskDeepLink(destaque.id),
       timestamp: new Date().toISOString(),
     };
 
-    await markPushAttempted(eventId);
-    try {
-      const { enviados: n, bloqueadoPorPreferencia } = await sendPushToUserIfAllowed(grupo.email, payload, "task_assigned");
-      if (n > 0) { await markPushDelivered(eventId); enviados += n; }
-      else await markPushError(eventId, bloqueadoPorPreferencia ? "bloqueado por preferência/horário silencioso" : "nenhum dispositivo registrado");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      await markPushError(eventId, msg.slice(0, 160));
-    }
+    /**
+     * Publica mesmo quando o evento do dia já existia. O `continue` que havia
+     * aqui tratava "já existe" como "já foi avisado": se o primeiro envio
+     * falhasse, a segunda execução do dia (retry do cron, disparo manual) não
+     * tentava de novo e a pessoa ficava sem o lembrete. O outbox garante que o
+     * que já foi aceito não é reenviado.
+     */
+    const n = await enviarEPersistirEntrega(eventId, "task_assigned", payload, false, {
+      audiencia: [grupo.email], origem: "tarefa:lembrete",
+    });
+    if (n > 0) enviados += n;
+    else jaAvisadoHoje++;
   }
 
   return { dia, pessoas: grupos.length, enviados, jaAvisadoHoje };

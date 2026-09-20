@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CAMPOS_PUBLICOS_DO_EVENTO,
   contemFinanceiro,
+  espelhoDivergente,
   nivelDoDestinatario,
   nivelEfetivoDoPush,
   redigirEvento,
@@ -257,5 +258,31 @@ describe("redigirEvento — o espelho que o member lê", () => {
     const r = redigirEvento(evento({ type: "sale_cancelled", severity: "danger" }));
     expect(r.type).toBe("sale_cancelled");
     expect(r.severity).toBe("danger");
+  });
+});
+
+describe("espelhoDivergente — a migração só mexe no que precisa", () => {
+  const evento = (): Partial<NotificationEvent> => ({
+    id: "sale_paid:1", type: "sale_negative_margin", severity: "danger", entityType: "order", entityId: "1",
+    dedupeKey: "sale_paid:1", title: "x", body: "Menta · prejuízo de R$ 1,00", productName: "Menta",
+    grossAmount: 10, deepLink: "/", createdAt: 1,
+  });
+
+  it("espelho ausente diverge (tem que ser criado)", () => {
+    expect(espelhoDivergente(redigirEvento(evento()), undefined)).toBe(true);
+  });
+
+  it("espelho que já é a projeção de hoje NÃO diverge — a marca de lido não conta", () => {
+    const atual = { ...redigirEvento(evento()), readBy: { "a@zxp.com": 5 }, dismissedBy: {}, createdAt: 999 };
+    expect(espelhoDivergente(redigirEvento(evento()), atual)).toBe(false);
+  });
+
+  it("espelho ANTIGO (gravado pela lista negra) diverge: o type vazava o prejuízo", () => {
+    const antigo = { ...redigirEvento(evento()), type: "sale_negative_margin", severity: "danger", delivery: { pushError: "x" } };
+    expect(espelhoDivergente(redigirEvento(evento()), antigo)).toBe(true);
+  });
+
+  it("campo extra no espelho atual (que a projeção não tem) também diverge", () => {
+    expect(espelhoDivergente(redigirEvento(evento()), { ...redigirEvento(evento()), delivery: {} })).toBe(true);
   });
 });

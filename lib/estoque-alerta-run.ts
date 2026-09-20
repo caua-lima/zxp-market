@@ -10,7 +10,8 @@ import {
   type ProdutoEstoque,
 } from "@/lib/domain/estoque-alerta";
 import { createNotificationEventIdempotent } from "@/lib/notification-events";
-import { buildPayload, enviarEPersistirEntrega } from "@/lib/ml/notificar-venda";
+import { buildPayload } from "@/lib/ml/notificar-venda";
+import { enviarEPersistirEntrega } from "@/lib/notification-dispatch";
 
 const ML_API = "https://api.mercadolibre.com";
 

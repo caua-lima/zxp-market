@@ -1,11 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { fetchML } from "@/lib/ml/fetch-ml";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { getValidMlAccessToken } from "@/lib/ml/getToken";
 import { mapOrderItems } from "@/lib/ml/sync";
 import { createNotificationEventIdempotent } from "@/lib/notification-events";
-import { buildPayload, enviarEPersistirEntrega, notificarVendaConfirmada } from "@/lib/ml/notificar-venda";
+import { buildPayload, notificarVendaConfirmada } from "@/lib/ml/notificar-venda";
+import { enviarEPersistirEntrega, varrerEntregasPendentes } from "@/lib/notification-dispatch";
 import { buildCancelContent, buildOrderDeepLink } from "@/lib/domain/notifications";
 import { rotuloDaRecusa, validarNotificacao } from "@/lib/domain/webhook-ml";
 import { SELLER_ID } from "@/lib/ml/orders";
@@ -239,7 +240,7 @@ export async function POST(req: Request) {
       const dedupeKey = `sale_cancelled:${orderId}`;
       const valorImpacto = Number(order.total_amount ?? antes.data()?.total_amount ?? 0);
       const content = buildCancelContent(primeiro, items.length, valorImpacto);
-      const { created, eventId } = await createNotificationEventIdempotent({
+      const { eventId } = await createNotificationEventIdempotent({
         type: "sale_cancelled", severity: "warning", entityType: "order", entityId: orderId, dedupeKey,
         title: content.title, body: content.body,
         orderId, orderExternalId: orderId,
@@ -247,12 +248,17 @@ export async function POST(req: Request) {
         grossAmount: valorImpacto, financialState: "estimated",
         deepLink: buildOrderDeepLink(orderId),
       });
-      if (created) {
-        const payload = buildPayload(eventId, "sale_cancelled", content.title, content.body, {
-          orderId, productName: primeiro, grossAmount: valorImpacto, financialState: "estimated", tag: `sale-${orderId}`,
-        });
-        await enviarEPersistirEntrega(eventId, "sale_cancelled", payload);
-      }
+      /**
+       * Publica SEMPRE, também quando o evento já existia. O envio só acontecia
+       * com `created: true`: um cancelamento cujo envio falhou logo depois de
+       * criar o evento nunca mais era tentado, e o retry do ML (que traz o mesmo
+       * pedido) recebia "já existia" e desistia. Publicar é idempotente — o que
+       * já foi aceito não é reenviado.
+       */
+      const payload = buildPayload(eventId, "sale_cancelled", content.title, content.body, {
+        orderId, productName: primeiro, grossAmount: valorImpacto, financialState: "estimated", tag: `sale-${orderId}`,
+      });
+      await enviarEPersistirEntrega(eventId, "sale_cancelled", payload, false, { origem: "webhook:cancelamento" });
     }
 
     await registrarChamada({
@@ -261,6 +267,13 @@ export async function POST(req: Request) {
       enviados: "enviados" in resultadoVenda ? resultadoVenda.enviados : null,
       ok: true,
     });
+    /**
+     * Carona: o cron da Vercel só roda uma vez por dia no plano gratuito, e um
+     * retry que espera até o dia seguinte não é retry. Cada webhook é uma chance
+     * barata de varrer o que ficou pendente — DEPOIS de responder ao ML, pra não
+     * atrasar a resposta que ele espera.
+     */
+    after(async () => { await varrerEntregasPendentes({ limite: 30, orcamentoMs: 10_000 }).catch(() => {}); });
     return NextResponse.json({ ok: true, venda: resultadoVenda.estado });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

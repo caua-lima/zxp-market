@@ -1,5 +1,5 @@
 import "server-only";
-import { FieldValue } from "firebase-admin/firestore";
+import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import type { NotificationEvent } from "@/lib/domain/notifications";
 import {
@@ -29,6 +29,53 @@ function sanitizeUndefined<T extends Record<string, unknown>>(obj: T): T {
 export type NewNotificationEvent = Omit<NotificationEvent, "id" | "createdAt" | "readBy" | "dismissedBy" | "delivery">;
 
 /**
+ * Grava o espelho redigido de um evento — criando OU consertando, sem nunca
+ * apagar a marca de lido de quem já leu.
+ *
+ * ─── O QUE ISTO CORRIGE ─────────────────────────────────────────────────
+ *
+ * O espelho era escrito uma vez, logo depois do `create()` do original, com o
+ * erro engolido (`.catch(() => {})`). Se essa escrita falhasse, o evento ficava
+ * sem espelho pra sempre: o retry seguinte recebia ALREADY_EXISTS e não
+ * tentava de novo, e quem só lê o espelho (o `member`) via a Central sem um
+ * aviso que o dono via — sem erro em lugar nenhum.
+ *
+ * ─── COMO PRESERVA O LIDO ───────────────────────────────────────────────
+ *
+ * `readBy`/`dismissedBy` do espelho são de quem lê O ESPELHO; nunca vêm do
+ * original. A escrita é uma transação que lê o espelho atual e o regrava com o
+ * conteúdo público novo E as marcas antigas — um `set` puro apagaria as marcas,
+ * e um `merge` deixaria pra trás campos que a projeção nova já não inclui.
+ * A transação também fecha a janela em que alguém marca como lido entre a
+ * leitura e a escrita.
+ */
+export async function garantirEspelho(
+  db: Firestore,
+  eventId: string,
+  original: Partial<NotificationEvent>,
+): Promise<"criado" | "atualizado"> {
+  const ref = db.collection(COLECAO_EVENTOS_PUBLICA).doc(eventId);
+  const publico = sanitizeUndefined(redigirEvento(original));
+  return db.runTransaction(async (tx) => {
+    const atual = await tx.get(ref);
+    const marcas = atual.data();
+    tx.set(ref, {
+      ...publico,
+      readBy: marcas?.readBy ?? {},
+      dismissedBy: marcas?.dismissedBy ?? {},
+    });
+    return atual.exists ? ("atualizado" as const) : ("criado" as const);
+  });
+}
+
+/** O espelho não pôde ser gravado agora: fica marcado pra ser refeito, em vez de sumir em silêncio. */
+async function marcarEspelhoPendente(db: Firestore, eventId: string, err: unknown): Promise<void> {
+  const code = (err as { code?: unknown })?.code;
+  console.error(`[notificacoes] espelho de ${eventId} nao gravado (codigo ${String(code ?? "desconhecido")}); ficou pendente`);
+  await db.collection(COL).doc(eventId).update({ espelhoPendente: true }).catch(() => {});
+}
+
+/**
  * Cria o evento de forma idempotente: o `dedupeKey` (ex.: "sale_paid:2000123456")
  * É o id do documento, e `DocumentReference.create()` falha se o doc já
  * existir. Isso substitui o padrão antigo de "lê o campo notifiedPush numa
@@ -37,13 +84,16 @@ export type NewNotificationEvent = Omit<NotificationEvent, "id" | "createdAt" | 
  * ler antes.
  *
  * Retorna `created: false` quando o evento já existia (retry do webhook do
- * ML, ou duas chamadas quase simultâneas pro mesmo pedido) — quem chama deve
- * pular o envio de push nesse caso, mas o evento em si já está lá, intacto.
+ * ML, ou duas chamadas quase simultâneas pro mesmo pedido). O evento em si já
+ * está lá, intacto — mas isso NÃO diz que o push foi entregue nem que o espelho
+ * foi gravado: quem chama deve publicar o push de qualquer forma (é
+ * idempotente), e aqui o espelho é conferido e consertado se faltar.
  */
 export async function createNotificationEventIdempotent(
   input: NewNotificationEvent,
+  /** Injetável pra o teste usar o emulador; em produção é sempre o banco do app. */
+  db: Firestore = getAdminDb(),
 ): Promise<{ created: boolean; eventId: string }> {
-  const db = getAdminDb();
   const ref = db.collection(COL).doc(input.dedupeKey);
   const completo = sanitizeUndefined({
     ...input,
@@ -52,81 +102,67 @@ export async function createNotificationEventIdempotent(
   });
   try {
     await ref.create(completo);
-    /**
-     * Espelho redigido, pra quem nao pode ver financeiro.
-     *
-     * As regras do Firestore sao por DOCUMENTO: nao da pra liberar o evento e
-     * esconder grossAmount/estimatedProfit/estimatedMargin dentro dele. Entao
-     * o `member` lia tudo — pela Central e pelo SDK. Aqui nasce a versao sem
-     * dinheiro, que e a unica que ele alcanca.
-     *
-     * Escrito DEPOIS do create original de proposito: o `create()` e o que
-     * garante a idempotencia, e um espelho que falhe nao pode fazer o evento
-     * (e o push) sumirem. `set` sem merge deixa o espelho convergir num
-     * eventual retry.
-     */
-    await db.collection(COLECAO_EVENTOS_PUBLICA).doc(input.dedupeKey)
-      .set(sanitizeUndefined(redigirEvento(completo as Partial<NotificationEvent>)))
-      .catch(() => {});
-    return { created: true, eventId: input.dedupeKey };
   } catch (err) {
     // ALREADY_EXISTS (code 6) é o caso esperado de retry — qualquer outro
     // erro (permissão, rede) precisa subir de verdade pra quem chamou saber.
-    const code = (err as { code?: number })?.code;
-    if (code === 6) return { created: false, eventId: input.dedupeKey };
-    throw err;
+    if ((err as { code?: number })?.code !== 6) throw err;
+    await conferirEspelho(db, input.dedupeKey);
+    return { created: false, eventId: input.dedupeKey };
+  }
+
+  /**
+   * Espelho redigido, pra quem nao pode ver financeiro.
+   *
+   * As regras do Firestore sao por DOCUMENTO: nao da pra liberar o evento e
+   * esconder grossAmount/estimatedProfit/estimatedMargin dentro dele. Entao o
+   * `member` lia tudo — pela Central e pelo SDK. Aqui nasce a versao sem
+   * dinheiro, que e a unica que ele alcanca.
+   *
+   * Escrito DEPOIS do create original de proposito: o `create()` e o que
+   * garante a idempotencia, e um espelho que falhe nao pode fazer o evento (e o
+   * push) sumirem. Mas a falha agora deixa rastro e e refeita.
+   */
+  try {
+    await garantirEspelho(db, input.dedupeKey, completo as Partial<NotificationEvent>);
+  } catch (err) {
+    await marcarEspelhoPendente(db, input.dedupeKey, err);
+  }
+  return { created: true, eventId: input.dedupeKey };
+}
+
+/** Num retry: se o espelho falta (ou ficou marcado pendente), conserta. Nunca lança. */
+async function conferirEspelho(db: Firestore, eventId: string): Promise<void> {
+  try {
+    const [original, espelho] = await Promise.all([
+      db.collection(COL).doc(eventId).get(),
+      db.collection(COLECAO_EVENTOS_PUBLICA).doc(eventId).get(),
+    ]);
+    if (!original.exists) return;
+    if (espelho.exists && !original.data()?.espelhoPendente) return;
+    await garantirEspelho(db, eventId, original.data() as Partial<NotificationEvent>);
+    if (original.data()?.espelhoPendente) {
+      await db.collection(COL).doc(eventId).update({ espelhoPendente: FieldValue.delete() });
+    }
+  } catch (err) {
+    await marcarEspelhoPendente(db, eventId, err);
   }
 }
 
-/** Registra a tentativa de push — chamado ANTES de enviar, pra existir rastro mesmo se o envio falhar no meio do caminho. */
-export async function markPushAttempted(eventId: string): Promise<void> {
-  await getAdminDb().collection(COL).doc(eventId).update({
-    "delivery.pushAttemptedAt": FieldValue.serverTimestamp(),
-  }).catch(() => {});
-}
-
-/** Sucesso: pelo menos um dispositivo recebeu. */
-export async function markPushDelivered(eventId: string): Promise<void> {
-  await getAdminDb().collection(COL).doc(eventId).update({
-    "delivery.pushDeliveredAt": FieldValue.serverTimestamp(),
-  }).catch(() => {});
-}
-
 /**
- * Erro registrado é só um resumo curto (ex.: "sem dispositivos", "3/5 tokens
- * inválidos") — nunca o token FCM nem qualquer payload completo, pra não
- * vazar dado sensível num campo que fica lido por qualquer autorizado.
+ * Refaz os espelhos que ficaram marcados como pendentes. Roda nas varreduras
+ * do outbox, então uma falha passageira não vira ausência permanente.
  */
-export async function markPushError(eventId: string, resumoErro: string): Promise<void> {
-  await getAdminDb().collection(COL).doc(eventId).update({
-    "delivery.pushError": resumoErro.slice(0, 200),
-  }).catch(() => {});
-}
-
-/**
- * O estado de entrega de um evento, pra decidir se ainda há o que enviar.
- *
- * Existe porque criação e ENTREGA eram a mesma coisa: evento criado com o
- * envio falhando logo depois ficava sem entrega, e a tentativa seguinte via
- * `created: false` e desistia. O push sumia em silêncio, pra sempre.
- */
-export async function lerEntrega(eventId: string): Promise<{
-  existe: boolean;
-  delivery: Record<string, unknown> | null;
-  criadoEm: number;
-}> {
-  const snap = await getAdminDb().collection(COL).doc(eventId).get();
-  if (!snap.exists) return { existe: false, delivery: null, criadoEm: 0 };
-  const d = snap.data() ?? {};
-  const criado = d.createdAt;
-  // `createdAt` é serverTimestamp na escrita e Timestamp na leitura.
-  const criadoEm = criado && typeof (criado as { toMillis?: unknown }).toMillis === "function"
-    ? (criado as { toMillis: () => number }).toMillis()
-    : Number(criado ?? 0) || 0;
-  return { existe: true, delivery: (d.delivery as Record<string, unknown>) ?? null, criadoEm };
-}
-
-/** Aplica um patch de entrega. Caminhos com ponto são de propósito: são campos aninhados em `delivery`. */
-export async function aplicarPatchEntrega(eventId: string, patch: Record<string, unknown>): Promise<void> {
-  await getAdminDb().collection(COL).doc(eventId).update(patch).catch(() => {});
+export async function repararEspelhosPendentes(db: Firestore, limite = 50): Promise<number> {
+  const pendentes = await db.collection(COL).where("espelhoPendente", "==", true).limit(limite).get();
+  let refeitos = 0;
+  for (const d of pendentes.docs) {
+    try {
+      await garantirEspelho(db, d.id, d.data() as Partial<NotificationEvent>);
+      await d.ref.update({ espelhoPendente: FieldValue.delete() });
+      refeitos++;
+    } catch (err) {
+      console.error(`[notificacoes] reparo do espelho de ${d.id} falhou (codigo ${String((err as { code?: unknown })?.code ?? "desconhecido")})`);
+    }
+  }
+  return refeitos;
 }

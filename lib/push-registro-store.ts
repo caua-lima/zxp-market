@@ -17,6 +17,28 @@ import {
 
 const COLECAO = "pushTokens";
 
+const ABORTED = 10;
+
+/**
+ * Refaz a operação quando a transação é abortada por contenção.
+ *
+ * O SDK já reexecuta a transação algumas vezes; sob muitos escritores no MESMO
+ * documento (o login e a reconciliação de duas abas, ou de duas contas, no
+ * mesmo navegador) ainda pode esgotar e devolver ABORTED. Isso é contenção, não
+ * erro: esperar um pouco, com jitter, e tentar de novo resolve — e devolver 500
+ * ao navegador só o obrigaria a repetir a chamada.
+ */
+async function comRetentativaDeContencao<T>(fn: () => Promise<T>, tentativas = 6): Promise<T> {
+  for (let i = 1; ; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if ((err as { code?: number })?.code !== ABORTED || i >= tentativas) throw err;
+      await new Promise((ok) => setTimeout(ok, 50 * i + Math.random() * 100));
+    }
+  }
+}
+
 function registroDe(d: QueryDocumentSnapshot): RegistroDePush {
   const x = d.data() ?? {};
   return {
@@ -46,7 +68,7 @@ export async function vincularToken(
   const col = db.collection(COLECAO);
   const dono = email.toLowerCase();
 
-  const removidos = await db.runTransaction(async (tx) => {
+  const removidos = await comRetentativaDeContencao(() => db.runTransaction(async (tx) => {
     // Os dois conjuntos que as invariantes precisam ver: quem já tem ESTE token
     // (troca de dono, legado) e os registros DESTA pessoa (teto por pessoa).
     const [porToken, porEmail] = await Promise.all([
@@ -70,7 +92,7 @@ export async function vincularToken(
     }, { merge: true });
     for (const a of plano.apagar) tx.delete(col.doc(a.docId));
     return plano.apagar.length;
-  });
+  }));
 
   return { removidos };
 }

@@ -296,3 +296,25 @@ export function redigirEvento<T extends Partial<NotificationEvent>>(evento: T): 
   publico.body = texto.body;
   return publico;
 }
+
+/**
+ * O espelho já gravado difere do que a projeção de HOJE produziria?
+ *
+ * Serve à migração: espelhos criados antes da lista de permissão ainda trazem
+ * `type`/`severity` que revelam a classificação da venda, e campos como
+ * `delivery` que nunca foram públicos. As marcas de lido e a data de criação
+ * ficam fora da comparação — são de quem lê o espelho, não da projeção.
+ */
+export function espelhoDivergente(
+  publico: Record<string, unknown>,
+  atual: Record<string, unknown> | undefined,
+): boolean {
+  if (!atual) return true;
+  const ignorar = new Set(["readBy", "dismissedBy", "createdAt"]);
+  const chaves = new Set([...Object.keys(publico), ...Object.keys(atual)]);
+  for (const k of chaves) {
+    if (ignorar.has(k)) continue;
+    if (JSON.stringify(publico[k] ?? null) !== JSON.stringify(atual[k] ?? null)) return true;
+  }
+  return false;
+}

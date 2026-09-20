@@ -61,8 +61,16 @@ export type NotificationEvent = {
   dismissedBy?: Record<string, number>;
   delivery?: {
     pushAttemptedAt?: unknown;
+    /** Quando o provedor (FCM) ACEITOU a primeira mensagem. Não é "exibido no aparelho". */
+    acceptedByProviderAt?: unknown;
+    /** Nome antigo do campo acima, em eventos anteriores ao outbox — mesma coisa, nome enganoso. */
     pushDeliveredAt?: unknown;
     pushError?: string;
+    /** Situação dos destinos (ver lib/domain/entrega-destino). */
+    resumo?: {
+      total: number; aceitos: number; pendentes: number; suprimidos: number; expirados: number; falhas: number;
+      concluido: boolean; atualizadoEm: number;
+    };
   };
 };
 
