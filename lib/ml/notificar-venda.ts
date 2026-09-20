@@ -377,9 +377,13 @@ export async function notificarVendaConfirmada(
   }
   if (decisao.modo === "resumo_dispara") {
     const resumo = buildGroupedSalesContent(decisao.totalNaJanela, decisao.grossAcumulado, decisao.janelaMinutos);
-    const payloadResumo = buildPayload(eventId, type, resumo.title, resumo.body, {
-      orderId: pedido.orderId, tag: `sales-summary-${Math.floor(Date.now() / 90000)}`,
-    });
+    const payloadResumo: SalePushPayload = {
+      ...buildPayload(eventId, type, resumo.title, resumo.body, {
+        orderId: pedido.orderId, tag: `sales-summary-${Math.floor(Date.now() / 90000)}`,
+      }),
+      // Pra a versão sem financeiro dizer "N vendas" sem o faturamento da janela.
+      resumoCount: decisao.totalNaJanela,
+    };
     const enviados = await enviarEPersistirEntrega(eventId, type, payloadResumo, true);
     return { estado: "notificada", eventId, enviados };
   }

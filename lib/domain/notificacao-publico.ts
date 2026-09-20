@@ -1,4 +1,10 @@
-import type { NotificationEvent, NotificationEventType, SalePushPayload } from "@/lib/domain/notifications";
+import {
+  NOTIFICATION_TYPE_META,
+  type NotificationEvent,
+  type NotificationEventSeverity,
+  type NotificationEventType,
+  type SalePushPayload,
+} from "@/lib/domain/notifications";
 import { podeCapacidade } from "@/lib/domain/capacidades";
 import type { Papel, PermissionTab } from "@/lib/domain/types";
 
@@ -31,6 +37,56 @@ export function nivelDoDestinatario(
   permissoesEdicao: PermissionTab[],
 ): NivelConteudo {
   return podeCapacidade(papel, permissoesEdicao, "ver_financeiro") ? "completo" : "sem_financeiro";
+}
+
+/**
+ * O nível que VALE pro push: acesso E preferência.
+ *
+ * `showFinancialValuesInPush` era gravada, mostrada na tela de configuração
+ * e ignorada no envio — quem desligava continuava recebendo lucro e margem na
+ * tela de bloqueio. O acesso continua sendo o teto (ninguém vê mais do que a
+ * função permite), e a preferência só pode REDUZIR: valor financeiro no push
+ * exige as duas coisas ao mesmo tempo.
+ *
+ * O dono continua vendo o dinheiro DENTRO do app; a preferência é sobre o que
+ * aparece na tela de bloqueio, onde qualquer um por perto lê.
+ */
+export function nivelEfetivoDoPush(acesso: NivelConteudo, mostrarValores: boolean): NivelConteudo {
+  return acesso === "completo" && mostrarValores ? "completo" : "sem_financeiro";
+}
+
+/** As três classificações de venda que revelam margem/valor só pelo NOME do tipo. */
+const TIPOS_DE_VENDA_CLASSIFICADA: ReadonlySet<string> = new Set([
+  "sale_high_value",
+  "sale_low_margin",
+  "sale_negative_margin",
+]);
+
+/**
+ * O tipo que o destinatário sem acesso financeiro enxerga.
+ *
+ * `sale_negative_margin` no campo `type` ou no ícone da Central diz "esta
+ * venda deu prejuízo" sem um único número — o mesmo vazamento que o título já
+ * evitava. Toda venda classificada vira `sale_paid`. Tipo desconhecido vira
+ * `system`: melhor um aviso genérico do que um rótulo que ninguém revisou.
+ */
+export function tipoPublico(type: string): NotificationEventType {
+  if (TIPOS_DE_VENDA_CLASSIFICADA.has(type)) return "sale_paid";
+  return type in NOTIFICATION_TYPE_META ? (type as NotificationEventType) : "system";
+}
+
+const SEVERIDADES: ReadonlySet<string> = new Set(["success", "info", "warning", "danger"]);
+
+/**
+ * A severidade pública. Vendas viram "success" — "danger" numa venda é
+ * "prejuízo" e "warning" é "margem baixa", ambos financeiros. Nos outros tipos
+ * (cancelamento, devolução, tarefa) a severidade não carrega dinheiro e fica.
+ */
+export function severidadePublica(type: string, severidade: unknown): NotificationEventSeverity {
+  const publico = tipoPublico(type);
+  if (publico === "sale_paid") return "success";
+  if (typeof severidade === "string" && SEVERIDADES.has(severidade)) return severidade as NotificationEventSeverity;
+  return NOTIFICATION_TYPE_META[publico].severity;
 }
 
 /**
@@ -84,42 +140,53 @@ export function contemFinanceiro(texto: string): boolean {
   return /R\$|\d+(?:[.,]\d+)?\s*%|\d{1,3}(?:\.\d{3})*,\d{2}/.test(texto);
 }
 
-/** Campos do payload que carregam dinheiro e somem na redação. */
-export const CAMPOS_FINANCEIROS_DO_PUSH = [
-  "grossAmount",
-  "estimatedProfit",
-  "estimatedMargin",
-  "financialState",
+/**
+ * Campos que um push SEM financeiro pode carregar. Lista de PERMISSÃO.
+ *
+ * A versão anterior removia quatro campos conhecidos (a lista negra). Campo
+ * novo no payload — e este payload cresce a cada feature — vazava por padrão
+ * até alguém lembrar de acrescentá-lo à lista de remoção. Aqui é o contrário:
+ * o que não está nesta lista não sai, e esquecer é seguro.
+ */
+export const CAMPOS_PUBLICOS_DO_PUSH = [
+  "eventId", "type", "title", "body", "icon", "badge", "tag",
+  "orderId", "deepLink", "productName", "itensJson", "timestamp",
 ] as const;
 
+/** Rede de segurança do texto — ver contemFinanceiro. */
+function textoSeguro(titulo: string, corpo: string): { title: string; body: string } {
+  if (contemFinanceiro(titulo) || contemFinanceiro(corpo)) {
+    return { title: "Novo aviso", body: "Confira a central de avisos" };
+  }
+  return { title: titulo, body: corpo };
+}
+
 /**
- * Devolve o payload como este destinatário pode vê-lo.
+ * Devolve o payload como este destinatário pode vê-lo. `nivel` é o nível
+ * EFETIVO — acesso combinado com a preferência (ver nivelEfetivoDoPush).
  *
  * Não muda `eventId`, `tag` nem `deepLink`: o aparelho precisa deles pra
  * substituir a notificação anterior e pra abrir a tela certa — e a tela do
  * outro lado já barra o que a pessoa não pode ver.
+ *
+ * Resumo agrupado é tratado à parte: o texto pronto traz o faturamento da
+ * janela ("R$ 412,80 em pedidos nos últimos 2 min"), e reescrevê-lo como se
+ * fosse UMA venda esconderia que são várias.
  */
 export function redigirPush(payload: SalePushPayload, nivel: NivelConteudo): SalePushPayload {
   if (nivel === "completo") return payload;
 
-  const { title, body } = textoSemFinanceiro(payload.type, payload.productName ?? "");
-  const redigido: SalePushPayload = {
-    ...payload,
-    title,
-    body,
-    grossAmount: undefined,
-    estimatedProfit: undefined,
-    estimatedMargin: undefined,
-    financialState: undefined,
-    // `itensJson` é nome e quantidade de produto, sem preço — fica.
-  };
+  const texto = payload.resumoCount && payload.resumoCount > 1
+    ? { title: `${payload.resumoCount} novas vendas confirmadas`, body: "Confira na central de avisos" }
+    : textoSemFinanceiro(payload.type, payload.productName ?? "");
+  const seguro = textoSeguro(texto.title, texto.body);
 
-  // Se ainda assim sobrou dinheiro (tipo novo sem tratamento), cai no genérico.
-  if (contemFinanceiro(redigido.title) || contemFinanceiro(redigido.body)) {
-    redigido.title = "Novo aviso";
-    redigido.body = "Confira a central de avisos";
+  const bruto: Record<string, unknown> = { ...payload, type: tipoPublico(payload.type), ...seguro };
+  const redigido: Record<string, unknown> = {};
+  for (const campo of CAMPOS_PUBLICOS_DO_PUSH) {
+    if (bruto[campo] !== undefined) redigido[campo] = bruto[campo];
   }
-  return redigido;
+  return redigido as unknown as SalePushPayload;
 }
 
 export type AcessoDoDestinatario = {
@@ -145,6 +212,12 @@ export type DestinoDoEnvio<T> = {
 export function separarPorAcesso<T extends { email: string }>(
   registros: T[],
   acessos: Map<string, AcessoDoDestinatario>,
+  /**
+   * Se a PESSOA aceita valor financeiro no push. Obrigatório de propósito: um
+   * padrão aqui seria um consentimento inventado, e foi exatamente a omissão
+   * dele que fez a preferência ser ignorada no envio.
+   */
+  mostrarValores: (email: string) => boolean,
 ): DestinoDoEnvio<T> {
   const porNivel = new Map<NivelConteudo, T[]>();
   const semAcesso: T[] = [];
@@ -152,7 +225,11 @@ export function separarPorAcesso<T extends { email: string }>(
   for (const r of registros) {
     const acesso = acessos.get((r.email || "").toLowerCase());
     if (!acesso) { semAcesso.push(r); continue; }
-    const nivel = nivelDoDestinatario(acesso.papel, acesso.permissoesEdicao);
+    const email = (r.email || "").toLowerCase();
+    const nivel = nivelEfetivoDoPush(
+      nivelDoDestinatario(acesso.papel, acesso.permissoesEdicao),
+      mostrarValores(email),
+    );
     const lista = porNivel.get(nivel) ?? [];
     lista.push(r);
     porNivel.set(nivel, lista);
@@ -180,36 +257,42 @@ export function colecaoDoNivel(nivel: NivelConteudo): string {
   return nivel === "completo" ? COLECAO_EVENTOS : COLECAO_EVENTOS_PUBLICA;
 }
 
-/** Campos do evento persistido que carregam dinheiro. */
-export const CAMPOS_FINANCEIROS_DO_EVENTO = [
-  "grossAmount",
-  "returnAmount",
-  "estimatedProfit",
-  "estimatedMargin",
+/**
+ * Campos do evento que o espelho público pode carregar. Lista de PERMISSÃO
+ * pelo mesmo motivo do push: a lista negra de quatro campos deixava passar
+ * qualquer campo financeiro novo, e mantinha `type` e `severity` — que por
+ * si só dizem "esta venda deu prejuízo".
+ *
+ * `delivery` fica de fora: é o estado interno do envio, sem utilidade pra
+ * quem lê a Central e sem motivo pra ser público.
+ */
+export const CAMPOS_PUBLICOS_DO_EVENTO = [
+  "id", "entityType", "entityId", "dedupeKey", "accountId",
+  "orderId", "orderExternalId", "productName", "productCount", "quantity",
+  "itens", "deepLink", "createdAt", "readBy", "dismissedBy",
 ] as const;
 
 /**
  * A versao do evento que vai pro espelho publico.
  *
- * Remove os campos de dinheiro E reescreve titulo/corpo, que vinham prontos
- * com o valor dentro. `financialState` fica de fora tambem: "unavailable" ou
+ * Titulo/corpo sao reescritos (vinham prontos com o valor), `type` e
+ * `severity` sao normalizados (ver tipoPublico) e so os campos da lista de
+ * permissao passam. `financialState` fica de fora: "unavailable" ou
  * "estimated" ja e informacao sobre o calculo financeiro.
  */
 export function redigirEvento<T extends Partial<NotificationEvent>>(evento: T): Record<string, unknown> {
-  const copia: Record<string, unknown> = { ...evento };
-  for (const campo of CAMPOS_FINANCEIROS_DO_EVENTO) delete copia[campo];
-  delete copia.financialState;
+  const tipo = String(evento.type ?? "");
+  const base = textoSemFinanceiro(tipo as NotificationEventType, String(evento.productName ?? ""));
+  const texto = textoSeguro(base.title, base.body);
 
-  const { title, body } = textoSemFinanceiro(
-    (evento.type ?? "") as NotificationEventType,
-    String(evento.productName ?? ""),
-  );
-  copia.title = title;
-  copia.body = body;
-
-  if (contemFinanceiro(String(copia.title)) || contemFinanceiro(String(copia.body))) {
-    copia.title = "Novo aviso";
-    copia.body = "Confira a central de avisos";
+  const origem = evento as Record<string, unknown>;
+  const publico: Record<string, unknown> = {};
+  for (const campo of CAMPOS_PUBLICOS_DO_EVENTO) {
+    if (origem[campo] !== undefined) publico[campo] = origem[campo];
   }
-  return copia;
+  publico.type = tipoPublico(tipo);
+  publico.severity = severidadePublica(tipo, evento.severity);
+  publico.title = texto.title;
+  publico.body = texto.body;
+  return publico;
 }

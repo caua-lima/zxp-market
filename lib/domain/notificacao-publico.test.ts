@@ -159,6 +159,7 @@ describe("separarPorAcesso — revogação", () => {
     const r = separarPorAcesso(
       [{ email: "dono@zxp.com" }, { email: "demitido@zxp.com" }],
       acessos,
+      () => true,
     );
     expect(r.semAcesso).toEqual([{ email: "demitido@zxp.com" }]);
     expect(r.porNivel.get("completo")).toEqual([{ email: "dono@zxp.com" }]);
@@ -168,24 +169,25 @@ describe("separarPorAcesso — revogação", () => {
     const r = separarPorAcesso(
       [{ email: "dono@zxp.com" }, { email: "socio@zxp.com" }],
       acessos,
+      () => true,
     );
     expect(r.porNivel.get("completo")).toHaveLength(1);
     expect(r.porNivel.get("sem_financeiro")).toEqual([{ email: "socio@zxp.com" }]);
   });
 
   it("registro sem e-mail não recebe — órfão não é autorização", () => {
-    const r = separarPorAcesso([{ email: "" }], acessos);
+    const r = separarPorAcesso([{ email: "" }], acessos, () => true);
     expect(r.semAcesso).toHaveLength(1);
   });
 
   it("caixa do e-mail não dribla a lista de acesso", () => {
-    const r = separarPorAcesso([{ email: "Dono@ZXP.com" }], acessos);
+    const r = separarPorAcesso([{ email: "Dono@ZXP.com" }], acessos, () => true);
     expect(r.semAcesso).toHaveLength(0);
     expect(r.porNivel.get("completo")).toHaveLength(1);
   });
 
   it("acesso vazio: ninguém recebe", () => {
-    const r = separarPorAcesso([{ email: "dono@zxp.com" }], new Map());
+    const r = separarPorAcesso([{ email: "dono@zxp.com" }], new Map(), () => true);
     expect(r.semAcesso).toHaveLength(1);
     expect(r.porNivel.size).toBe(0);
   });

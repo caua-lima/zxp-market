@@ -1,14 +1,19 @@
 import "server-only";
 import { getAdminDb, getAdminMessaging } from "@/lib/firebase/admin";
 import type { NotificationEventType, SalePushPayload } from "@/lib/domain/notifications";
-import { isPushAllowedForRecipient } from "@/lib/domain/notification-preferences";
-import { agoraBR, getNotificationPreferencesByEmail } from "@/lib/notification-preferences";
+import {
+  isPushAllowedForRecipient,
+  mostrarValoresNoPush,
+  type LeituraDePreferencias,
+} from "@/lib/domain/notification-preferences";
+import { agoraBR, lerPreferenciasPorEmail } from "@/lib/notification-preferences";
 import {
   redigirPush,
   separarPorAcesso,
   type AcessoDoDestinatario,
   type NivelConteudo,
 } from "@/lib/domain/notificacao-publico";
+import { serializarPayload } from "@/lib/domain/push-payload";
 import { papelDe, type PermissionTab } from "@/lib/domain/types";
 
 /**
@@ -37,10 +42,33 @@ async function lerAcessos(): Promise<Map<string, AcessoDoDestinatario>> {
 }
 
 /**
+ * Preferências de cada e-mail, lidas uma vez por envio.
+ *
+ * Devolve a LEITURA (ok/ausente/inválida/indisponível), não uma preferência
+ * fingida — quem decide o que fazer com uma leitura falha é o chamador, e o
+ * financeiro só aparece quando a leitura foi limpa (ver mostrarValoresNoPush).
+ */
+async function carregarPreferencias(emails: string[]): Promise<Map<string, LeituraDePreferencias>> {
+  const unicos = Array.from(new Set(emails.map((e) => e.toLowerCase()).filter(Boolean)));
+  const mapa = new Map<string, LeituraDePreferencias>();
+  await Promise.all(unicos.map(async (email) => { mapa.set(email, await lerPreferenciasPorEmail(email)); }));
+  return mapa;
+}
+
+/** O consentimento financeiro de quem recebe — sem leitura, sem dinheiro. */
+function consentimentoFinanceiro(prefs: Map<string, LeituraDePreferencias>): (email: string) => boolean {
+  return (email) => {
+    const leitura = prefs.get(email.toLowerCase());
+    return leitura ? mostrarValoresNoPush(leitura) : false;
+  };
+}
+
+/**
  * Envia respeitando acesso e nivel de conteudo.
  *
- * Um multicast por nivel, porque o conteudo agora DIFERE por destinatario: o
- * member recebe a mesma venda sem valor, lucro nem margem.
+ * Um multicast por nivel, porque o conteudo DIFERE por destinatario: quem nao
+ * pode ver financeiro (ou desligou isso nas preferencias) recebe a mesma
+ * venda sem valor, lucro nem margem.
  *
  * Quem perdeu o acesso e apenas pulado, nao apagado — restaurar o acesso nao
  * deve obrigar a pessoa a reativar a notificacao no aparelho.
@@ -48,8 +76,9 @@ async function lerAcessos(): Promise<Map<string, AcessoDoDestinatario>> {
 async function enviarComAcesso(
   registros: Registro[],
   payload: SalePushPayload,
+  mostrarValores: (email: string) => boolean,
 ): Promise<{ enviados: number; semAcesso: number }> {
-  const { porNivel, semAcesso } = separarPorAcesso(registros, await lerAcessos());
+  const { porNivel, semAcesso } = separarPorAcesso(registros, await lerAcessos(), mostrarValores);
   let enviados = 0;
   for (const [nivel, grupo] of porNivel) {
     enviados += await enviarPara(grupo, redigirPush(payload, nivel as NivelConteudo));
@@ -145,34 +174,6 @@ function deduplicarPorDispositivo(docs: FirebaseFirestore.QueryDocumentSnapshot[
 }
 
 /**
- * Serializa o payload normalizado pro formato `data` do FCM — TODOS os
- * valores viram string porque mensagens data-only exigem isso (a API rejeita
- * número/undefined dentro de `data`). Campos ausentes viram string vazia em
- * vez de sumirem, pra quem lê do outro lado (SW, foreground, toast) não
- * precisar tratar "chave ausente" como um caso a mais.
- */
-function serializarPayload(payload: SalePushPayload): Record<string, string> {
-  return {
-    eventId: payload.eventId,
-    type: payload.type,
-    title: payload.title,
-    body: payload.body,
-    icon: payload.icon ?? "/manifest-icon-192",
-    badge: payload.badge ?? "/manifest-icon-192",
-    tag: payload.tag,
-    orderId: payload.orderId ?? "",
-    deepLink: payload.deepLink,
-    productName: payload.productName ?? "",
-    grossAmount: payload.grossAmount ?? "",
-    estimatedProfit: payload.estimatedProfit ?? "",
-    estimatedMargin: payload.estimatedMargin ?? "",
-    financialState: payload.financialState ?? "",
-    itensJson: payload.itensJson ?? "",
-    timestamp: payload.timestamp,
-  };
-}
-
-/**
  * Manda o payload normalizado pros dispositivos em `registros`, com dedupe de
  * `tag`/`collapseKey` (o aparelho SUBSTITUI uma notificação já existente com
  * a mesma tag em vez de empilhar outra — rede de segurança extra, mesmo que
@@ -231,7 +232,8 @@ export async function sendPushToAll(payload: SalePushPayload): Promise<{ enviado
     await batch.commit();
   }
 
-  const { enviados } = await enviarComAcesso(envio, payload);
+  const prefs = await carregarPreferencias(envio.map((r) => r.email));
+  const { enviados } = await enviarComAcesso(envio, payload, consentimentoFinanceiro(prefs));
   return { enviados };
 }
 
@@ -261,20 +263,17 @@ export async function sendSalePushToAll(
     await batch.commit();
   }
 
-  const emails = Array.from(new Set(envio.map((r) => r.email).filter(Boolean)));
+  const prefs = await carregarPreferencias(envio.map((r) => r.email));
   const agora = agoraBR();
   const permitidoPorEmail = new Map<string, boolean>();
-  await Promise.all(
-    emails.map(async (email) => {
-      const prefs = await getNotificationPreferencesByEmail(email);
-      permitidoPorEmail.set(email, isPushAllowedForRecipient(type, prefs, agora, isSummary));
-    }),
-  );
+  for (const [email, leitura] of prefs) {
+    permitidoPorEmail.set(email, isPushAllowedForRecipient(type, leitura.prefs, agora, isSummary));
+  }
 
-  const elegiveis = envio.filter((r) => permitidoPorEmail.get(r.email) !== false);
+  const elegiveis = envio.filter((r) => permitidoPorEmail.get(r.email.toLowerCase()) !== false);
   const bloqueadosPorPreferencia = envio.length - elegiveis.length;
 
-  const { enviados } = await enviarComAcesso(elegiveis, payload);
+  const { enviados } = await enviarComAcesso(elegiveis, payload, consentimentoFinanceiro(prefs));
   return { enviados, elegiveis: elegiveis.length, bloqueadosPorPreferencia };
 }
 
@@ -296,7 +295,8 @@ export async function sendPushToUser(email: string, payload: SalePushPayload): P
     await batch.commit();
   }
 
-  const { enviados } = await enviarComAcesso(envio, payload);
+  const prefs = await carregarPreferencias([email]);
+  const { enviados } = await enviarComAcesso(envio, payload, consentimentoFinanceiro(prefs));
   return { enviados };
 }
 
@@ -312,8 +312,8 @@ export async function sendPushToUserIfAllowed(
   payload: SalePushPayload,
   type: NotificationEventType,
 ): Promise<{ enviados: number; bloqueadoPorPreferencia: boolean }> {
-  const prefs = await getNotificationPreferencesByEmail(email);
-  const permitido = isPushAllowedForRecipient(type, prefs, agoraBR());
+  const leitura = await lerPreferenciasPorEmail(email);
+  const permitido = isPushAllowedForRecipient(type, leitura.prefs, agoraBR());
   if (!permitido) return { enviados: 0, bloqueadoPorPreferencia: true };
   const { enviados } = await sendPushToUser(email, payload);
   return { enviados, bloqueadoPorPreferencia: false };

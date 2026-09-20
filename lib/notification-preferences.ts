@@ -1,8 +1,9 @@
 import "server-only";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
 import {
-  DEFAULT_NOTIFICATION_PREFERENCES,
-  type NotificationPreferences,
+  interpretarPreferencias,
+  preferenciasIndisponiveis,
+  type LeituraDePreferencias,
 } from "@/lib/domain/notification-preferences";
 
 /**
@@ -11,23 +12,25 @@ import {
  * notifications — resolve o uid via Admin Auth (getUserByEmail), sem
  * precisar manter um mapa email→uid próprio.
  *
- * Falha (usuário sem preferências salvas ainda, ou erro de rede) sempre cai
- * pro DEFAULT — aditivo, igual ao resto do app: quem nunca configurou nada
- * continua recebendo exatamente como recebia antes desta feature existir.
+ * Devolve o QUE a leitura encontrou (ver LeituraDePreferencias), não uma
+ * preferência fingida: e-mail sem conta ou sem documento é "ausente" (os
+ * defaults são a preferência da pessoa), mas erro de rede ou de Auth é
+ * "indisponivel" — e indisponível nunca vira permissão pra mostrar dinheiro.
  */
-export async function getNotificationPreferencesByEmail(email: string): Promise<NotificationPreferences> {
+export async function lerPreferenciasPorEmail(email: string): Promise<LeituraDePreferencias> {
+  let uid: string;
   try {
-    const user = await getAdminAuth().getUserByEmail(email);
-    const snap = await getAdminDb().doc(`usuarios/${user.uid}/preferences/notifications`).get();
-    if (!snap.exists) return DEFAULT_NOTIFICATION_PREFERENCES;
-    const data = snap.data() ?? {};
-    return {
-      ...DEFAULT_NOTIFICATION_PREFERENCES,
-      ...data,
-      toggles: { ...DEFAULT_NOTIFICATION_PREFERENCES.toggles, ...(data.toggles ?? {}) },
-    };
-  } catch {
-    return DEFAULT_NOTIFICATION_PREFERENCES;
+    uid = (await getAdminAuth().getUserByEmail(email)).uid;
+  } catch (err) {
+    // Sem conta no Auth não há documento de preferências possível.
+    if ((err as { code?: string })?.code === "auth/user-not-found") return interpretarPreferencias(undefined);
+    return preferenciasIndisponiveis(`auth: ${(err as { code?: string })?.code ?? "erro"}`);
+  }
+  try {
+    const snap = await getAdminDb().doc(`usuarios/${uid}/preferences/notifications`).get();
+    return interpretarPreferencias(snap.exists ? snap.data() : undefined);
+  } catch (err) {
+    return preferenciasIndisponiveis(`firestore: ${(err as { code?: string | number })?.code ?? "erro"}`);
   }
 }
 

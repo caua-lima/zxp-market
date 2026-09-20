@@ -115,8 +115,12 @@ export default function NotificationSettings({ open, onClose }: { open: boolean;
           <div className="config-field" style={{ margin: 0 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
               <input type="checkbox" checked={prefs.showFinancialValuesInPush} onChange={() => setPrefs((p) => ({ ...p, showFinancialValuesInPush: !p.showFinancialValuesInPush }))} />
-              Mostrar valores financeiros no push (desative pra ver só &quot;Nova venda&quot;)
+              Mostrar valores financeiros no push
             </label>
+            <div className="hint">
+              Desligado, o push traz só o aviso (&quot;Nova venda confirmada&quot; e o produto), sem valor, lucro nem margem —
+              é o que aparece na tela de bloqueio. Dentro do app você continua vendo tudo.
+            </div>
           </div>
 
           <hr className="config-sep" />

@@ -129,3 +129,120 @@ export function isPushAllowedForRecipient(
 
   return true;
 }
+
+// ── Leitura das preferências: ausente, inválida e indisponível NÃO são a mesma coisa ──
+
+/**
+ * O que a leitura das preferências de uma pessoa encontrou.
+ *
+ * Antes qualquer falha — documento inexistente, usuário sem conta, erro de
+ * rede, campo com tipo errado — devolvia os DEFAULTS, e os defaults têm
+ * `showFinancialValuesInPush: true`. Uma queda do Firestore virava, em
+ * silêncio, consentimento pra mandar lucro e margem pra tela de bloqueio de
+ * quem tinha desligado isso. As quatro situações pedem tratamentos diferentes:
+ *
+ *  - ausente: a pessoa nunca configurou nada. Os defaults SÃO a preferência
+ *    dela, e é o que faz o app continuar como sempre foi pra quem não mexeu.
+ *  - ok: preferência lida e válida.
+ *  - invalida: o documento existe mas tem campo com tipo errado. Cada campo
+ *    ruim cai no default — menos o do financeiro, que cai em NÃO mostrar.
+ *  - indisponivel: não deu pra ler (rede, permissão, Auth). Não se sabe o que
+ *    a pessoa quer; o envio adia e, esgotadas as tentativas, segue SEM
+ *    financeiro.
+ */
+export type LeituraDePreferencias =
+  | { estado: "ok"; prefs: NotificationPreferences }
+  | { estado: "ausente"; prefs: NotificationPreferences }
+  | { estado: "invalida"; prefs: NotificationPreferences; problemas: string[] }
+  | { estado: "indisponivel"; prefs: NotificationPreferences; motivo: string };
+
+function copiaDosDefaults(): NotificationPreferences {
+  const base = DEFAULT_NOTIFICATION_PREFERENCES;
+  return { ...base, toggles: { ...base.toggles }, quietHoursDays: [...base.quietHoursDays] };
+}
+
+/** Defaults com o financeiro DESLIGADO — o que se usa quando não se sabe o que a pessoa quer. */
+export function preferenciasSeguras(): NotificationPreferences {
+  return { ...copiaDosDefaults(), showFinancialValuesInPush: false };
+}
+
+const HHMM = /^([01]d|2[0-3]):[0-5]d$/;
+
+function ehBooleano(v: unknown): v is boolean {
+  return typeof v === "boolean";
+}
+
+/**
+ * Valida o documento cru de preferências, campo a campo.
+ *
+ * Não é tudo-ou-nada: um `highValueThreshold` corrompido não deve calar os
+ * avisos da pessoa. O campo ruim volta ao default e vira um `problema`
+ * registrado; o único campo que cai pro lado CONSERVADOR é o financeiro.
+ */
+export function interpretarPreferencias(cru: unknown): LeituraDePreferencias {
+  if (cru === undefined || cru === null) {
+    return { estado: "ausente", prefs: copiaDosDefaults() };
+  }
+  if (typeof cru !== "object" || Array.isArray(cru)) {
+    return { estado: "invalida", prefs: preferenciasSeguras(), problemas: ["documento não é um objeto"] };
+  }
+  const d = cru as Record<string, unknown>;
+  const problemas: string[] = [];
+  const prefs = copiaDosDefaults();
+
+  if (d.toggles !== undefined) {
+    if (typeof d.toggles !== "object" || d.toggles === null || Array.isArray(d.toggles)) {
+      problemas.push("toggles");
+    } else {
+      for (const chave of Object.keys(DEFAULT_NOTIFICATION_PREFERENCES.toggles) as NotificationTogglesKey[]) {
+        const v = (d.toggles as Record<string, unknown>)[chave];
+        if (v === undefined) continue;
+        if (ehBooleano(v)) prefs.toggles[chave] = v;
+        else problemas.push(`toggles.${chave}`);
+      }
+    }
+  }
+  for (const chave of ["quietHoursEnabled", "groupFastSales", "onlyCritical"] as const) {
+    if (d[chave] === undefined) continue;
+    if (ehBooleano(d[chave])) prefs[chave] = d[chave] as boolean;
+    else problemas.push(chave);
+  }
+  for (const chave of ["quietHoursStart", "quietHoursEnd"] as const) {
+    if (d[chave] === undefined) continue;
+    if (typeof d[chave] === "string" && HHMM.test(d[chave] as string)) prefs[chave] = d[chave] as string;
+    else problemas.push(chave);
+  }
+  if (d.quietHoursDays !== undefined) {
+    const dias = d.quietHoursDays;
+    if (Array.isArray(dias) && dias.every((x) => Number.isInteger(x) && x >= 0 && x <= 6)) {
+      prefs.quietHoursDays = [...new Set(dias as number[])];
+    } else problemas.push("quietHoursDays");
+  }
+  if (d.highValueThreshold !== undefined) {
+    const v = d.highValueThreshold;
+    if (typeof v === "number" && Number.isFinite(v) && v >= 0) prefs.highValueThreshold = v;
+    else problemas.push("highValueThreshold");
+  }
+  // O financeiro cai pro lado conservador: campo ilegível NÃO é consentimento.
+  if (d.showFinancialValuesInPush !== undefined) {
+    if (ehBooleano(d.showFinancialValuesInPush)) {
+      prefs.showFinancialValuesInPush = d.showFinancialValuesInPush;
+    } else {
+      prefs.showFinancialValuesInPush = false;
+      problemas.push("showFinancialValuesInPush");
+    }
+  }
+
+  return problemas.length > 0 ? { estado: "invalida", prefs, problemas } : { estado: "ok", prefs };
+}
+
+/** Leitura que falhou: nada se sabe da pessoa, então o financeiro fica DESLIGADO. */
+export function preferenciasIndisponiveis(motivo: string): LeituraDePreferencias {
+  return { estado: "indisponivel", prefs: preferenciasSeguras(), motivo };
+}
+
+/** A pessoa aceita valor financeiro no push? Só se a leitura foi limpa (ok/ausente) e ela deixou ligado. */
+export function mostrarValoresNoPush(leitura: LeituraDePreferencias): boolean {
+  if (leitura.estado === "indisponivel") return false;
+  return leitura.prefs.showFinancialValuesInPush === true;
+}

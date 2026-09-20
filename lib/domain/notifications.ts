@@ -88,6 +88,13 @@ export type SalePushPayload = {
    * evento persistido (NotificationEvent.itens), sem passar por aqui.
    */
   itensJson?: string;
+  /**
+   * Quantas vendas este push RESUME, quando é um resumo agrupado. Existe pra a
+   * versão sem financeiro dizer "N novas vendas" — o texto pronto traz o
+   * faturamento da janela e não pode ser reaproveitado. Não vai no `data` do
+   * FCM: só o servidor usa, ao projetar o payload por destinatário.
+   */
+  resumoCount?: number;
   timestamp: string;
 };
 
