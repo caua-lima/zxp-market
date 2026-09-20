@@ -9,9 +9,9 @@ const ML_API = "https://api.mercadolibre.com";
 import { getMlAccessToken } from "@/app/api/ml/token";
 import { createNotificationEventIdempotent } from "@/lib/notification-events";
 import { enviarEPersistirEntrega } from "@/lib/notification-dispatch";
-import { registrarVendaNaJanela } from "@/lib/notification-groups";
+import { dependenciasReais } from "@/lib/notification-outbox";
+import { publicarVendaComRajada } from "@/lib/notification-rajada";
 import {
-  buildGroupedSalesContent,
   buildOrderDeepLink,
   buildSaleContent,
   classifySale,
@@ -43,7 +43,9 @@ const norm = (s: string) => s.trim().toLowerCase();
 const normId = (s: string) => s.trim().toUpperCase().replace(/^MLB/, "");
 
 /**
- * Idade máxima de um pedido para ainda valer push de "venda confirmada".
+ * Idade máxima de uma venda (medida desde a APROVAÇÃO do pagamento, ou desde a
+ * criação quando o pedido não informa a aprovação) para ainda valer push de
+ * "venda confirmada".
  *
  * O webhook dispara a cada mudança do pedido — inclusive de ENVIO, dias depois
  * da venda — e o sync varre o mês inteiro. Sem este teto, pedido antigo que
@@ -147,6 +149,12 @@ export type PedidoParaNotificar = {
   orderId: string;
   status: string;
   dateCreated: string;
+  /**
+   * Quando o pagamento foi APROVADO (ISO), se o pedido informa. É esta data — não
+   * a da criação — que diz se a venda é "nova": um pedido criado ontem e pago agora
+   * é uma venda de agora (ver lib/domain/confirmacao-de-venda).
+   */
+  datePaid?: string;
   items: ItemPedido[];
   /**
    * Envio do pedido, pra apurar o frete que o VENDEDOR paga.
@@ -227,19 +235,24 @@ async function fatiaDoEnvio(token: string, shippingId: string, orderId: string):
 }
 
 /**
- * Cria o evento de "venda confirmada" e dispara o push, se ainda não existir.
+ * Cria o evento de "venda confirmada" e publica o push, se ainda não existir.
  *
  * Idempotente por construção: `dedupeKey` é `sale_paid:{orderId}` e o
  * documento é criado com `create()`, que falha se já existir. Webhook e sync
  * podem chamar ao mesmo tempo sem risco de push duplicado — é justamente essa
  * garantia que permite ter dois caminhos.
+ *
+ * Evento que já existia NÃO significa entregue: o mesmo caminho roda de novo, e o
+ * outbox reenvia só o que ficou pendente (e nada do que já foi aceito).
  */
 export async function notificarVendaConfirmada(
   pedido: PedidoParaNotificar,
   ctx?: { porMlb: Map<string, ProdutoCusto>; porSku: Map<string, ProdutoCusto>; metaMargem: number | null },
 ): Promise<ResultadoNotificacao> {
   if (pedido.status !== "paid") return { estado: "nao_paga" };
-  if (!vendaRecente(pedido.dateCreated)) return { estado: "antiga" };
+  // A idade que conta é a da APROVAÇÃO do pagamento quando o pedido a informa: pedido criado
+  // ontem e pago agora é venda de agora. Sem ela, cai na criação (o comportamento anterior).
+  if (!vendaRecente(pedido.datePaid || pedido.dateCreated)) return { estado: "antiga" };
 
   const db = getAdminDb();
   const { porMlb, porSku } = ctx ?? await carregarProdutos(db);
@@ -274,58 +287,34 @@ export async function notificarVendaConfirmada(
     deepLink: buildOrderDeepLink(pedido.orderId),
   });
 
-  if (!created) {
-    /**
-     * O evento já existe — mas isso não diz que ele foi ENTREGUE.
-     *
-     * Era aqui que o push se perdia: `return { estado: "ja_existia" }` e
-     * pronto. Um evento criado cujo envio falhou nunca mais era tentado.
-     *
-     * `enviarEPersistirEntrega` decide sozinho se há o que fazer: entregue
-     * não repete, e vencido ou estourado desiste com registro.
-     */
-    const payloadRetry = buildPayload(eventId, type, content.title, content.body, {
-      orderId: pedido.orderId, productName: finance.productName, grossAmount: finance.grossAmount,
-      estimatedProfit: finance.estimatedProfit ?? undefined, estimatedMargin: finance.estimatedMargin ?? undefined,
-      financialState, tag: `sale-${pedido.orderId}`, itens: finance.itens,
-    });
-    const enviados = await enviarEPersistirEntrega(eventId, type, payloadRetry);
-    return enviados > 0
-      ? { estado: "notificada", eventId, enviados }
-      : { estado: "ja_existia", eventId };
-  }
-
   const payload = buildPayload(eventId, type, content.title, content.body, {
     orderId: pedido.orderId, productName: finance.productName, grossAmount: finance.grossAmount,
     estimatedProfit: finance.estimatedProfit ?? undefined, estimatedMargin: finance.estimatedMargin ?? undefined,
     financialState, tag: `sale-${pedido.orderId}`, itens: finance.itens,
   });
 
-  // Prejuízo NUNCA agrupa — é o aviso que não pode se perder num resumo.
-  if (type === "sale_negative_margin") {
-    const enviados = await enviarEPersistirEntrega(eventId, type, payload);
-    return { estado: "notificada", eventId, enviados };
+  // A posição na rajada e a publicação do aviso avulso e dos resumos (ver lib/notification-rajada).
+  // Falha de ENTREGA nunca derruba o webhook que a disparou: o que não saiu fica no outbox e a
+  // varredura tenta de novo.
+  let resultado: Awaited<ReturnType<typeof publicarVendaComRajada>>;
+  try {
+    resultado = await publicarVendaComRajada(dependenciasReais(), {
+      eventId, type, payload, gross: finance.grossAmount,
+      montarResumo: (pushId, titulo, corpo, tag) => ({
+        ...buildPayload(pushId, "sale_paid", titulo, corpo, { orderId: "", tag }),
+        // A rajada não é UM pedido, então não há deep link de pedido: abre a lista.
+        deepLink: "/?tab=pedidos",
+      }),
+    });
+  } catch (err) {
+    console.error(`[notificacoes] falha ao publicar a venda ${eventId} (${String((err as { code?: unknown })?.code ?? "erro")})`);
+    return created ? { estado: "notificada", eventId, enviados: 0 } : { estado: "ja_existia", eventId };
   }
 
-  const decisao = await registrarVendaNaJanela(finance.grossAmount);
-  if (decisao.modo === "individual") {
-    const enviados = await enviarEPersistirEntrega(eventId, type, payload);
-    return { estado: "notificada", eventId, enviados };
-  }
-  if (decisao.modo === "resumo_dispara") {
-    const resumo = buildGroupedSalesContent(decisao.totalNaJanela, decisao.grossAcumulado, decisao.janelaMinutos);
-    const payloadResumo: SalePushPayload = {
-      ...buildPayload(eventId, type, resumo.title, resumo.body, {
-        orderId: pedido.orderId, tag: `sales-summary-${Math.floor(Date.now() / 90000)}`,
-      }),
-      // Pra a versão sem financeiro dizer "N vendas" sem o faturamento da janela.
-      resumoCount: decisao.totalNaJanela,
-    };
-    const enviados = await enviarEPersistirEntrega(eventId, type, payloadResumo, true);
-    return { estado: "notificada", eventId, enviados };
-  }
-  // "resumo_silencioso": o resumo já saiu na venda que disparou o agrupamento.
-  return { estado: "agrupada", eventId };
+  if (resultado.aceitas > 0) return { estado: "notificada", eventId, enviados: resultado.aceitas };
+  // Nada foi aceito agora: ou a rajada absorveu a venda (todos agrupam), ou já estava entregue/pendente.
+  if (resultado.agrupada) return { estado: "agrupada", eventId };
+  return created ? { estado: "notificada", eventId, enviados: 0 } : { estado: "ja_existia", eventId };
 }
 
 // ── Marcos comemorativos ───────────────────────────────────────────

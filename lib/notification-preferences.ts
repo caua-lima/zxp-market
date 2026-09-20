@@ -33,9 +33,3 @@ export async function lerPreferenciasPorEmail(email: string): Promise<LeituraDeP
     return preferenciasIndisponiveis(`firestore: ${(err as { code?: string | number })?.code ?? "erro"}`);
   }
 }
-
-/** Minutos desde 00:00 e dia da semana (0=domingo) no fuso BR (-03:00), sem depender de Intl/timezone do servidor. */
-export function agoraBR(agora = Date.now()): { minutosDoDia: number; diaSemana: number } {
-  const d = new Date(agora - 3 * 3600 * 1000);
-  return { minutosDoDia: d.getUTCHours() * 60 + d.getUTCMinutes(), diaSemana: d.getUTCDay() };
-}

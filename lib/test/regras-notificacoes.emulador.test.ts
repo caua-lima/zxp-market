@@ -154,3 +154,97 @@ describe("preferências de notificação — cada um só alcança as próprias",
     await assertFails(setDoc(dele, { showFinancialValuesInPush: true }));
   });
 });
+
+describe("preferências de notificação — só no formato que o servidor espera", () => {
+  const meu = () => doc(ctx(DONO), "usuarios", DONO.uid, "preferences", "notifications");
+
+  const completo = {
+    toggles: {
+      sale_paid: true, sale_high_value: true, sale_low_margin: true, sale_negative_margin: true, sale_cancelled: true,
+      return_opened: true, return_completed: true, sales_summary: true, sync_warning: true, task_assigned: true,
+      stock_low: true, milestone: true,
+    },
+    quietHoursStart: "22:30", quietHoursEnd: "07:30", quietHoursEnabled: true, quietHoursDays: [0, 1, 2, 3, 4, 5, 6],
+    quietHoursTimezone: "America/Sao_Paulo", quietHoursCriticalBypass: true, highValueThreshold: 250,
+    groupFastSales: true, showFinancialValuesInPush: false, onlyCritical: false,
+  };
+
+  it("o documento COMPLETO que a tela grava passa", async () => {
+    await assertSucceeds(setDoc(meu(), completo));
+  });
+
+  it("um documento parcial e válido passa", async () => {
+    await assertSucceeds(setDoc(meu(), { groupFastSales: false }));
+  });
+
+  it("campo desconhecido é recusado", async () => {
+    await assertFails(setDoc(meu(), { ...completo, campoNovo: 1 }));
+  });
+
+  it("toggle que não é booleano é recusado", async () => {
+    await assertFails(setDoc(meu(), { ...completo, toggles: { ...completo.toggles, sale_paid: "sim" } }));
+  });
+
+  it("toggle desconhecido é recusado", async () => {
+    await assertFails(setDoc(meu(), { ...completo, toggles: { ...completo.toggles, tipo_novo: true } }));
+  });
+
+  it("showFinancialValuesInPush com tipo errado é recusado — não vira consentimento", async () => {
+    await assertFails(setDoc(meu(), { ...completo, showFinancialValuesInPush: "true" }));
+    await assertFails(setDoc(meu(), { ...completo, showFinancialValuesInPush: null }));
+  });
+
+  it("limiar de alto valor: string, negativo e absurdo são recusados; zero e decimal passam", async () => {
+    await assertFails(setDoc(meu(), { ...completo, highValueThreshold: "250" }));
+    await assertFails(setDoc(meu(), { ...completo, highValueThreshold: -1 }));
+    await assertFails(setDoc(meu(), { ...completo, highValueThreshold: 1e12 }));
+    await assertSucceeds(setDoc(meu(), { ...completo, highValueThreshold: 0 }));
+    await assertSucceeds(setDoc(meu(), { ...completo, highValueThreshold: 199.9 }));
+  });
+
+  it("horário fora de HH:MM é recusado", async () => {
+    await assertFails(setDoc(meu(), { ...completo, quietHoursStart: "25:00" }));
+    await assertFails(setDoc(meu(), { ...completo, quietHoursEnd: "7:30" }));
+    await assertFails(setDoc(meu(), { ...completo, quietHoursStart: 2230 }));
+  });
+
+  it("dias: null, fora de 0–6 ou repetidos demais são recusados (o null derrubava o .includes no servidor)", async () => {
+    await assertFails(setDoc(meu(), { ...completo, quietHoursDays: null }));
+    await assertFails(setDoc(meu(), { ...completo, quietHoursDays: [1, 9] }));
+    await assertFails(setDoc(meu(), { ...completo, quietHoursDays: [0, 1, 2, 3, 4, 5, 6, 6] }));
+    await assertSucceeds(setDoc(meu(), { ...completo, quietHoursDays: [] }));
+  });
+
+  it("fuso: só string curta", async () => {
+    await assertFails(setDoc(meu(), { ...completo, quietHoursTimezone: 3 }));
+    await assertFails(setDoc(meu(), { ...completo, quietHoursTimezone: "x".repeat(65) }));
+  });
+
+  it("a regra ampla de usuarios/{uid}/** NÃO reabre as preferências: o formato vale mesmo por ela", async () => {
+    // Regras somam (OR): antes, usuarios/{uid}/{document=**} liberava qualquer formato.
+    await assertFails(setDoc(meu(), { qualquer: "coisa" }));
+  });
+
+  it("outros subdocumentos da própria pessoa continuam funcionando", async () => {
+    await assertSucceeds(setDoc(doc(ctx(DONO), "usuarios", DONO.uid, "outros", "x"), { qualquer: "coisa" }));
+  });
+
+  it("apagar a própria preferência é permitido", async () => {
+    await assertSucceeds(deleteDoc(meu()));
+  });
+
+  it("ninguém escreve a preferência de outra pessoa, mesmo válida", async () => {
+    await assertFails(setDoc(doc(ctx(MEMBRO), "usuarios", DONO.uid, "preferences", "notifications"), completo));
+  });
+});
+
+describe("coleções internas do servidor — ninguém alcança pelo cliente", () => {
+  for (const colecao of ["notification_outbox", "notification_entregas", "notification_janelas", "notification_limites"]) {
+    it(`${colecao}: nem o dono lê, nem escreve`, async () => {
+      await env.withSecurityRulesDisabled(async (c) => { await setDoc(doc(c.firestore(), colecao, "x"), { a: 1 }); });
+      await assertFails(getDoc(doc(ctx(DONO), colecao, "x")));
+      await assertFails(setDoc(doc(ctx(DONO), colecao, "y"), { a: 1 }));
+      await assertFails(deleteDoc(doc(ctx(DONO), colecao, "x")));
+    });
+  }
+});

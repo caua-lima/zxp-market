@@ -160,6 +160,18 @@ export const INVENTARIO: readonly ItemDeBackup[] = [
     perda: "Nada operacional — some junto com notification_events e pelo mesmo motivo.",
   },
   {
+    colecao: "notification_janelas",
+    classe: "efemero",
+    conteudo: "A janela de vendas rápidas em curso e as anteriores: quais vendas entraram em cada rajada.",
+    perda: "Nada operacional — a próxima venda abre uma janela nova; só o resumo de uma rajada em andamento se perderia.",
+  },
+  {
+    colecao: "notification_limites",
+    classe: "efemero",
+    conteudo: "Contadores de taxa das rotas de notificação (quantas atribuições de tarefa uma pessoa disparou na janela).",
+    perda: "Nada — o contador recomeça do zero.",
+  },
+  {
     colecao: "notification_outbox",
     classe: "efemero",
     conteudo: "O que cada push agendado precisa pra ser enviado: payload completo, audiência e validade.",

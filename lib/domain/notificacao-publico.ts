@@ -177,7 +177,7 @@ export function redigirPush(payload: SalePushPayload, nivel: NivelConteudo): Sal
   if (nivel === "completo") return payload;
 
   const texto = payload.resumoCount && payload.resumoCount > 1
-    ? { title: `${payload.resumoCount} novas vendas confirmadas`, body: "Confira na central de avisos" }
+    ? { title: `${payload.resumoCount} vendas confirmadas em poucos minutos`, body: "Confira na central de avisos" }
     : textoSemFinanceiro(payload.type, payload.productName ?? "");
   const seguro = textoSeguro(texto.title, texto.body);
 

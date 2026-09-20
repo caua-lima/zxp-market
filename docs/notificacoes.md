@@ -54,6 +54,40 @@ O evento em `notification_events` mostra o resumo em `delivery.resumo`
   sistema, Service Worker antigo ou economia de bateria fazem o aparelho
   descartar sem o servidor saber.
 
+## Políticas que o usuário controla (e o que cada uma faz de verdade)
+
+| Controle | O que muda | Onde vale |
+|---|---|---|
+| Mostrar valores financeiros no push | Desligado: o push traz só "Nova venda confirmada" e o produto | envio (acesso ∩ preferência); dentro do app o dono continua vendo tudo |
+| Venda de alto valor a partir de R$ X | O **mesmo evento** vira "alto valor" ou "venda comum" conforme X **da pessoa** (e segue o toggle do tipo que ela vê) | só no push; a Central guarda a classificação da operação (R$ 250) |
+| Agrupar vendas rápidas | Ligado: da 4ª venda de uma janela de 90 s o aviso avulso é suprimido e a pessoa recebe o resumo; desligado: cada venda chega sozinha | por pessoa, no momento do envio |
+| Horário silencioso | Avisos comuns **não viram push** dentro da janela (não há fila nem reenvio às 7h); os críticos atravessam se a opção estiver ligada | por pessoa, no fuso escolhido |
+
+**Rajada de vendas.** As 3 primeiras vendas da janela saem uma a uma. A partir da 4ª,
+quem agrupa recebe um resumo de abertura ("4 vendas confirmadas em 2 min") e, se a
+rajada continuou, um de fechamento no fim da janela com o número final — mesma
+`tag`, então o aparelho substitui em vez de empilhar. A posição de cada venda na
+janela é gravada (`notification_janelas`) e reusada no retry: dez vendas com retry
+continuam sendo dez, e uma venda suprimida por agrupamento não reaparece como avulsa.
+Suprimir por agrupamento **não é falha de entrega** (`suppressed / agrupada_em_resumo`).
+
+**Horário silencioso.** Início inclusivo, fim exclusivo. Uma janela que cruza a
+meia-noite pertence ao dia em que **começa** ("seg" com 22:30–07:30 cobre a
+madrugada de terça). Início = fim não silencia nada. Críticos: prejuízo,
+cancelamento e devolução concluída — sempre sujeitos ao toggle do próprio tipo.
+
+**Tarefas.** `POST /api/notify/task-assigned` recebe só o `taskId`. O responsável, o
+texto e a prioridade saem da tarefa gravada, e o aviso só existe se o rastro da
+tarefa registra que **quem pediu** atribuiu há menos de 15 min. A identidade é
+`task_assigned:{tarefa}:{instante da atribuição}`: retry não duplica, reatribuição
+avisa de novo. Limite de 20 avisos por pessoa a cada 10 min.
+
+**Pagamento tardio.** "Venda nova" mede a **aprovação do pagamento**
+(`payments[].date_approved`), não a criação do pedido: pedido criado ontem e pago
+agora avisa uma vez. Uma importação de pedidos antigos já pagos continua sem
+disparar nada (a aprovação deles também é antiga), e um sync avisa no máximo 25
+pedidos por execução.
+
 ## Retry sem cron frequente
 
 O plano gratuito da Vercel só aceita cron **diário** — e um cron mais frequente

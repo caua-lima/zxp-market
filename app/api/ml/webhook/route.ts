@@ -1,4 +1,5 @@
 import { NextResponse, after } from "next/server";
+import { instanteDaConfirmacao } from "@/lib/domain/confirmacao-de-venda";
 import { fetchML } from "@/lib/ml/fetch-ml";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
@@ -216,6 +217,8 @@ export async function POST(req: Request) {
       orderId,
       status,
       dateCreated: dataCriacao,
+      // A aprovação do pagamento, não a criação, é o que diz se a venda é nova.
+      datePaid: instanteDaConfirmacao(order),
       items,
       // O ID do envio, não o valor: `order.shipping_cost` é o que o comprador
       // pagou (zero em frete grátis), e usá-lo inflava a margem do aviso.

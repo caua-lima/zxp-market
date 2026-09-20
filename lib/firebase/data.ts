@@ -829,11 +829,18 @@ function prefsDoc(uid: string) {
   return doc(db, "usuarios", uid, "preferences", "notifications");
 }
 
+/**
+ * `onErro` existe porque "não consegui ler" e "não há preferência salva" são
+ * situações diferentes: sem ele, uma leitura que falhava deixava a tela em
+ * "Carregando…" pra sempre, ou — pior — mostrando os padrões como se fossem o
+ * que a pessoa tinha configurado, e o próximo "Salvar" gravava por cima.
+ */
 export function watchNotificationPreferences(
   uid: string,
   cb: (prefs: Record<string, unknown> | null) => void,
+  onErro?: (err: unknown) => void,
 ): () => void {
-  return onSnapshot(prefsDoc(uid), (snap) => cb(snap.exists() ? snap.data() : null));
+  return onSnapshot(prefsDoc(uid), (snap) => cb(snap.exists() ? snap.data() : null), (err) => onErro?.(err));
 }
 
 export async function saveNotificationPreferences(uid: string, prefs: Record<string, unknown>): Promise<void> {

@@ -191,13 +191,17 @@ function nomeDoPedido(input: SaleContentInput): string {
   return `${nomes[0]} e outros ${nomes.length - 1}`;
 }
 
+/** Os dois títulos "padrão" de venda saudável. Personalizar por limiar de alto valor troca um pelo outro (ver personalizacao-push). */
+export const TITULO_VENDA_PADRAO = "Nova venda confirmada";
+export const TITULO_ALTO_VALOR = "Venda de alto valor 🚀";
+
 export function buildSaleContent(input: SaleContentInput): SaleContent {
   const produto = nomeDoPedido(input);
   const valor = fmtBRL(input.grossAmount);
 
   switch (input.type) {
     case "sale_high_value":
-      return { title: "Venda de alto valor 🚀", body: `${valor} · ${produto}` };
+      return { title: TITULO_ALTO_VALOR, body: `${valor} · ${produto}` };
     case "sale_low_margin":
       return {
         title: "Venda confirmada · margem em atenção",
@@ -239,7 +243,7 @@ export function buildSaleContent(input: SaleContentInput): SaleContent {
         }
         return { title: "Nova venda confirmada", body: `${produto} · cálculo financeiro em atualização` };
       }
-      return { title: "Nova venda confirmada", body: `${produto} · ${valor}` };
+      return { title: TITULO_VENDA_PADRAO, body: `${produto} · ${valor}` };
   }
 }
 
@@ -271,11 +275,16 @@ export function taskAssignedSeverity(priority: string): NotificationEventSeverit
   return priority === "critica" || priority === "alta" ? "warning" : "info";
 }
 
-/** N vendas agrupadas numa janela curta (anti-spam) — ver lib/notification-groups.ts. */
+/**
+ * Resumo de uma rajada de vendas (anti-spam) — ver lib/domain/janela-de-vendas.
+ *
+ * Relata a RAJADA, não "novas vendas": as primeiras já foram avisadas uma a
+ * uma, e chamá-las de novas contaria a mesma venda duas vezes.
+ */
 export function buildGroupedSalesContent(count: number, totalGross: number, windowMinutes: number): SaleContent {
   return {
-    title: `${count} novas vendas confirmadas`,
-    body: `${fmtBRL(totalGross)} em pedidos nos últimos ${windowMinutes} min`,
+    title: `${count} vendas confirmadas em ${windowMinutes} min`,
+    body: `${fmtBRL(totalGross)} em pedidos nesta rajada`,
   };
 }
 

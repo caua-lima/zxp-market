@@ -354,12 +354,86 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    /**
+     * O formato das preferências de notificação.
+     *
+     * O servidor lê este documento na hora de decidir quem recebe o quê (e se o
+     * push mostra dinheiro na tela de bloqueio). A escrita era livre: um campo
+     * com o tipo errado — `quietHoursDays: null`, `highValueThreshold: "x"` —
+     * ia pro banco e só era descoberto na hora de enviar. Aqui o documento só é
+     * aceito se cada campo tem o tipo e o intervalo que o servidor espera; o
+     * servidor valida DE NOVO ao ler (lib/domain/notification-preferences), que
+     * é quem protege contra um documento gravado por outro caminho.
+     *
+     * Campo desconhecido é recusado: `hasOnly` é o que impede um campo novo de
+     * entrar sem alguém decidir o que ele significa.
+     */
+    function prefsDeNotificacaoValidas(d) {
+      return d.keys().hasOnly([
+          'toggles', 'quietHoursStart', 'quietHoursEnd', 'quietHoursEnabled', 'quietHoursDays',
+          'quietHoursTimezone', 'quietHoursCriticalBypass', 'highValueThreshold', 'groupFastSales',
+          'showFinancialValuesInPush', 'onlyCritical'
+        ])
+        && d.get('toggles', {}) is map
+        && d.get('toggles', {}).keys().hasOnly([
+          'sale_paid', 'sale_high_value', 'sale_low_margin', 'sale_negative_margin', 'sale_cancelled',
+          'return_opened', 'return_completed', 'sales_summary', 'sync_warning', 'task_assigned',
+          'stock_low', 'milestone'
+        ])
+        && d.get('toggles', {}).get('sale_paid', true) is bool
+        && d.get('toggles', {}).get('sale_high_value', true) is bool
+        && d.get('toggles', {}).get('sale_low_margin', true) is bool
+        && d.get('toggles', {}).get('sale_negative_margin', true) is bool
+        && d.get('toggles', {}).get('sale_cancelled', true) is bool
+        && d.get('toggles', {}).get('return_opened', true) is bool
+        && d.get('toggles', {}).get('return_completed', true) is bool
+        && d.get('toggles', {}).get('sales_summary', true) is bool
+        && d.get('toggles', {}).get('sync_warning', true) is bool
+        && d.get('toggles', {}).get('task_assigned', true) is bool
+        && d.get('toggles', {}).get('stock_low', true) is bool
+        && d.get('toggles', {}).get('milestone', true) is bool
+        && d.get('quietHoursEnabled', false) is bool
+        && d.get('quietHoursCriticalBypass', true) is bool
+        && d.get('groupFastSales', true) is bool
+        && d.get('showFinancialValuesInPush', true) is bool
+        && d.get('onlyCritical', false) is bool
+        && d.get('quietHoursStart', '00:00') is string
+        && d.get('quietHoursStart', '00:00').matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
+        && d.get('quietHoursEnd', '00:00') is string
+        && d.get('quietHoursEnd', '00:00').matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
+        && d.get('quietHoursDays', []) is list
+        && d.get('quietHoursDays', []).size() <= 7
+        && d.get('quietHoursDays', []).hasOnly([0, 1, 2, 3, 4, 5, 6])
+        && d.get('quietHoursTimezone', 'America/Sao_Paulo') is string
+        && d.get('quietHoursTimezone', 'America/Sao_Paulo').size() <= 64
+        && d.get('highValueThreshold', 0) is number
+        && d.get('highValueThreshold', 0) >= 0
+        && d.get('highValueThreshold', 0) <= 1000000000;
+    }
+
     // Preferências de notificação por usuário — cada um só lê/escreve as
     // próprias (mais restrito que o /usuarios/{uid}/** legado abaixo, que
     // permite leitura por qualquer autorizado; aqui nem owner lê a do
-    // colaborador, e vice-versa).
+    // colaborador, e vice-versa). O documento de notificações só é aceito no
+    // formato que o servidor espera (ver prefsDeNotificacaoValidas).
     match /usuarios/{uid}/preferences/{docId} {
-      allow read, write: if signedIn() && request.auth.uid == uid;
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow delete: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && (docId != 'notifications' || prefsDeNotificacaoValidas(request.resource.data));
+    }
+
+    /**
+     * A janela de vendas rapidas e os limites de taxa das rotas de notificacao:
+     * NINGUEM alcanca pelo cliente. Sao contadores do servidor (ver
+     * lib/notification-janelas e app/api/notify/task-assigned); o `false`
+     * explicito impede uma regra ampla, adicionada depois, de abri-los.
+     */
+    match /notification_janelas/{janelaId} {
+      allow read, write: if false;
+    }
+    match /notification_limites/{limiteId} {
+      allow read, write: if false;
     }
 
     // Trilha de auditoria: qualquer autorizado registra a PRÓPRIA ação
@@ -402,8 +476,20 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    match /usuarios/{uid}/{document=**} {
+    /**
+     * O resto de usuarios/{uid}, SEM as preferencias.
+     *
+     * Esta regra era `usuarios/{uid}/{document=**}` e cobria tambem
+     * `preferences`. As regras do Firestore se somam (OR): ela liberava a escrita
+     * de `preferences/notifications` em QUALQUER formato e anulava a validacao
+     * de prefsDeNotificacaoValidas — a regra estrita existia no papel e nao
+     * valia. Agora o subdocumento de preferencias so passa pela regra dele.
+     */
+    match /usuarios/{uid} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    match /usuarios/{uid}/{sub}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid && sub != 'preferences';
     }
   }
 }

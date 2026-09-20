@@ -425,7 +425,7 @@ describe("acesso, preferência e conteúdo por destinatário", () => {
     await registrar(MEMBRO, "dev-1", "tok-membro");
     await publicarPush(c.deps, spec());
     await processarEntregas(c.deps, { pushId: "sale_paid:2000123456" });
-    expect((await entregas())[0]).toMatchObject({ status: "suppressed", motivo: "preferencia" });
+    expect((await entregas())[0]).toMatchObject({ status: "suppressed", motivo: "preferencia_toggle" });
     expect(c.chamadas).toHaveLength(0);
   });
 

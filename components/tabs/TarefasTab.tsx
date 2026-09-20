@@ -428,7 +428,9 @@ function TaskModal({ pessoas, minhaEmail, task, onClose }: {
         authedFetch("/api/notify/task-assigned", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ taskId: next.id, assigneeEmail: assignedTo, title: next.title, priority: next.priority, dueDate: next.dueDate }),
+          // Só o id: quem recebe, o texto e a prioridade o SERVIDOR lê da tarefa gravada
+          // (ver app/api/notify/task-assigned) — o navegador não decide o que o outro vê.
+          body: JSON.stringify({ taskId: next.id }),
         }).catch(() => {});
       }
 

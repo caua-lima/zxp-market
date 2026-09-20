@@ -9,6 +9,7 @@ import {
   notificarVendaConfirmada,
   vendaRecente,
 } from "@/lib/ml/notificar-venda";
+import { MAX_AVISOS_POR_SYNC, instanteDaConfirmacao } from "@/lib/domain/confirmacao-de-venda";
 
 const ML_API = "https://api.mercadolibre.com";
 const MP_API = "https://api.mercadopago.com";
@@ -526,9 +527,14 @@ export async function syncOrdersRange(
  * dispare avisos de vendas antigas.
  */
 async function notificarVendasPendentes(orders: unknown[]): Promise<void> {
+  // A idade que conta é a da APROVAÇÃO do pagamento (ver lib/domain/confirmacao-de-venda): pedido criado
+  // ontem e pago agora é venda de agora, e uma importação de pedidos antigos já pagos continua sem avisar.
+  // Mais recentes primeiro e com teto por execução — segunda trava contra um enxame de pushes.
   const candidatos = orders
     .map((o) => o as Record<string, unknown>)
-    .filter((o) => String(o.status ?? "") === "paid" && vendaRecente(String(o.date_created ?? "")));
+    .filter((o) => String(o.status ?? "") === "paid" && vendaRecente(instanteDaConfirmacao(o)))
+    .sort((a, b) => Date.parse(instanteDaConfirmacao(b)) - Date.parse(instanteDaConfirmacao(a)))
+    .slice(0, MAX_AVISOS_POR_SYNC);
   if (candidatos.length === 0) return;
 
   const db = getAdminDb();
@@ -545,6 +551,7 @@ async function notificarVendasPendentes(orders: unknown[]): Promise<void> {
         orderId: String(o.id),
         status: "paid",
         dateCreated: String(o.date_created ?? ""),
+        datePaid: instanteDaConfirmacao(o),
         items: mapOrderItems(o),
         shippingId: String((o.shipping as Record<string, unknown>)?.id ?? "").trim() || null,
       }, { porMlb, porSku, metaMargem });

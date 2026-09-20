@@ -151,7 +151,7 @@ describe("matriz de privacidade do push (destinatário × preferência × tipo)"
 
   it("o resumo agrupado diz quantas vendas sem dizer quanto faturaram", () => {
     const s = saida(RESUMO, DESTINATARIOS[3]);
-    expect(s.title).toBe("4 novas vendas confirmadas");
+    expect(s.title).toBe("4 vendas confirmadas em poucos minutos");
     expect(s.body).not.toContain("R$");
   });
 

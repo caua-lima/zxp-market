@@ -6,7 +6,11 @@ import { redigirPush, type AcessoDoDestinatario, type NivelConteudo } from "@/li
 import { serializarPayload, ajustarAoOrcamento } from "@/lib/domain/push-payload";
 import { dividirEmLotes, mapearRespostas, ttlSegundos, type RespostaDeEnvio } from "@/lib/domain/push-envio";
 import { planejarDestinos, type RegistroDeDestino } from "@/lib/domain/push-destinos";
-import { decidirDestinatario } from "@/lib/domain/decisao-destinatario";
+import { decidirDestinatario, type ContextoDeRajada } from "@/lib/domain/decisao-destinatario";
+import { personalizarPayload } from "@/lib/domain/personalizacao-push";
+import { minutosDaJanela } from "@/lib/domain/janela-de-vendas";
+import { buildGroupedSalesContent, type NotificationEventType as TipoDeEvento } from "@/lib/domain/notifications";
+import { lerJanela } from "@/lib/notification-janelas";
 import { preferenciasSeguras, type LeituraDePreferencias } from "@/lib/domain/notification-preferences";
 import {
   VALIDADE_PADRAO_MS,
@@ -18,7 +22,7 @@ import {
   type ResultadoDoEnvio,
   type StatusEntrega,
 } from "@/lib/domain/entrega-destino";
-import { agoraBR, lerPreferenciasPorEmail } from "@/lib/notification-preferences";
+import { lerPreferenciasPorEmail } from "@/lib/notification-preferences";
 import { papelDe, type PermissionTab } from "@/lib/domain/types";
 import { COLECAO_EVENTOS } from "@/lib/domain/notificacao-publico";
 
@@ -75,6 +79,21 @@ export type EspecPush = {
   origem: string;
   /** Se o estado de entrega deve ser refletido no evento. Padrão: só quando pushId === eventId. */
   atualizaEvento?: boolean;
+  /** Onde este push está numa rajada de vendas — decide quem o recebe (ver decidirDestinatario). */
+  rajada?: ContextoDeRajada;
+  /**
+   * Conteúdo calculado NO MOMENTO DE ENVIAR, não no de agendar. O resumo de uma
+   * rajada precisa do número FINAL de vendas, que só existe quando a janela fecha.
+   */
+  conteudo?: { tipo: "resumo_janela"; janelaId: string } | null;
+  /** Não enviar antes deste instante (ms). O fechamento de uma rajada espera o fim da janela. A validade conta a partir dele. */
+  entregarApos?: number;
+  /**
+   * A decisão de agrupamento tomada quando a venda entrou na janela. Vive AQUI, no
+   * push individual, porque é ele que o retry relê: reprocessar a venda reusa a
+   * mesma posição na rajada em vez de contá-la de novo.
+   */
+  agrupamento?: { janelaId: string; n: number };
 };
 
 export type MensagemDeLote = {
@@ -209,7 +228,7 @@ function registroDe(d: FirebaseFirestore.QueryDocumentSnapshot): RegistroDeDesti
 async function fazerFanout(
   deps: Dependencias,
   outbox: DocumentReference,
-  dados: { pushId: string; eventId: string; audiencia: string[] | null; expiraEm: number },
+  dados: { pushId: string; eventId: string; audiencia: string[] | null; expiraEm: number; entregarApos?: number },
 ): Promise<number> {
   const { db } = deps;
   const agora = deps.agora();
@@ -233,8 +252,9 @@ async function fazerFanout(
       adiamentos: 0,
       criadoEm: agora,
       expiraEm: dados.expiraEm,
-      // Devido desde já: é por este campo que o worker acha o destino.
-      proximaTentativaEm: agora,
+      // É por este campo que o worker acha o destino: devido já, ou quando o push
+      // agendado pode sair.
+      proximaTentativaEm: dados.entregarApos ?? agora,
     },
   }));
 
@@ -282,9 +302,15 @@ export async function publicarPush(deps: Dependencias, spec: EspecPush): Promise
     payloadJson: JSON.stringify(spec.payload),
     audiencia: spec.audiencia ?? null,
     criadoEm: agora,
-    expiraEm: agora + (spec.validadeMs ?? VALIDADE_PADRAO_MS),
+    entregarApos: spec.entregarApos ?? agora,
+    // A validade conta do momento em que o envio PODE acontecer: um push agendado
+    // pra daqui a 90 s não nasce com 90 s a menos de vida.
+    expiraEm: (spec.entregarApos ?? agora) + (spec.validadeMs ?? VALIDADE_PADRAO_MS),
     origem: spec.origem,
     atualizaEvento: spec.atualizaEvento ?? spec.pushId === spec.eventId,
+    rajada: spec.rajada ?? null,
+    conteudo: spec.conteudo ?? null,
+    agrupamento: spec.agrupamento ?? null,
     // Só vira false quando os destinos foram criados: se o processo morrer entre
     // uma coisa e outra, a varredura acha o push por este campo e completa.
     fanoutPendente: true,
@@ -307,6 +333,7 @@ export async function publicarPush(deps: Dependencias, spec: EspecPush): Promise
       eventId: String(existente.eventId ?? spec.eventId),
       audiencia: (existente.audiencia as string[] | null) ?? null,
       expiraEm: num(existente.expiraEm),
+      entregarApos: num(existente.entregarApos) || undefined,
     });
     return { criado, destinos, concluido: false, doc: existente };
   }
@@ -443,6 +470,25 @@ async function removerTokenMorto(deps: Dependencias, registroDocId: string, toke
   }).catch(() => {});
 }
 
+/**
+ * O payload no momento de ENVIAR. Pra maioria dos pushes é o que foi agendado;
+ * o resumo de uma rajada é recalculado a partir da janela, pra dizer o número
+ * FINAL de vendas — não o que valia quando o push foi agendado.
+ */
+async function resolverPayload(
+  deps: Dependencias,
+  outbox: FirebaseFirestore.DocumentData,
+  agendado: SalePushPayload,
+): Promise<SalePushPayload> {
+  const c = outbox.conteudo as { tipo?: string; janelaId?: string } | null;
+  if (c?.tipo !== "resumo_janela" || !c.janelaId) return agendado;
+  const janela = await lerJanela(deps.db, c.janelaId);
+  if (!janela) return agendado;
+  const membros = Object.values(janela.membros);
+  const texto = buildGroupedSalesContent(membros.length, membros.reduce((s, m) => s + m.gross, 0), minutosDaJanela(janela));
+  return { ...agendado, title: texto.title, body: texto.body, resumoCount: membros.length };
+}
+
 async function processarGrupo(
   deps: Dependencias,
   ctx: Contexto,
@@ -459,9 +505,11 @@ async function processarGrupo(
     for (const i of itens) await gravarResultado(deps, i, { tipo: "permanente", codigo: "outbox_ausente" }, contadores);
     return;
   }
-  const payload = JSON.parse(String(outbox.payloadJson)) as SalePushPayload;
+  const payloadAgendado = JSON.parse(String(outbox.payloadJson)) as SalePushPayload;
+  const payload = await resolverPayload(deps, outbox, payloadAgendado);
   const type = outbox.type as NotificationEventType;
   const isSummary = Boolean(outbox.isSummary);
+  const rajada = (outbox.rajada as ContextoDeRajada | null) ?? undefined;
   const expiraEm = num(outbox.expiraEm);
 
   if (agora >= expiraEm) {
@@ -477,9 +525,10 @@ async function processarGrupo(
 
   ctx.acessos ??= deps.lerAcessos();
   const acessos = await ctx.acessos;
-  const relogio = agoraBR(agora);
-
-  const porNivel = new Map<NivelConteudo, (Reivindicada & { token: string })[]>();
+  type Destinatario = Reivindicada & { token: string };
+  // Um envio por (nível de conteúdo, tipo que a pessoa vê): o limiar de alto valor
+  // é pessoal, então dois destinatários do mesmo nível podem receber títulos diferentes.
+  const porVariante = new Map<string, { nivel: NivelConteudo; tipo: TipoDeEvento; itens: Destinatario[] }>();
 
   for (const i of itens) {
     const token = tokenDe.get(i.registroDocId);
@@ -496,25 +545,26 @@ async function processarGrupo(
     }
 
     const decisao = decidirDestinatario({
-      type, isSummary, acesso: acessos.get(email), leitura: await leitura,
-      agoraBR: relogio, adiamentos: i.adiamentos, agora,
+      type, isSummary, rajada, payload, acesso: acessos.get(email), leitura: await leitura,
+      adiamentos: i.adiamentos, agora,
     });
 
     if (decisao.acao === "suprimir") { await gravarResultado(deps, i, { tipo: "suprimido", motivo: decisao.motivo }, contadores); continue; }
     if (decisao.acao === "adiar") { await gravarResultado(deps, i, { tipo: "adiar", ate: decisao.ate, motivo: decisao.motivo }, contadores); continue; }
 
-    const lista = porNivel.get(decisao.nivel) ?? [];
-    lista.push({ ...i, token });
-    porNivel.set(decisao.nivel, lista);
+    const chave = `${decisao.nivel}|${decisao.tipo}`;
+    const variante = porVariante.get(chave) ?? { nivel: decisao.nivel, tipo: decisao.tipo, itens: [] };
+    variante.itens.push({ ...i, token });
+    porVariante.set(chave, variante);
   }
 
   const ttl = ttlSegundos(deps.agora(), expiraEm);
-  for (const [nivel, grupo] of porNivel) {
+  for (const { nivel, tipo, itens: grupo } of porVariante.values()) {
     if (ttl <= 0) {
       for (const i of grupo) await gravarResultado(deps, i, { tipo: "expirado" }, contadores);
       continue;
     }
-    const { data } = ajustarAoOrcamento(serializarPayload(redigirPush(payload, nivel)));
+    const { data } = ajustarAoOrcamento(serializarPayload(redigirPush(personalizarPayload(payload, tipo), nivel)));
 
     for (const lote of dividirEmLotes(grupo)) {
       let respostas: RespostaDeEnvio[];
@@ -605,6 +655,7 @@ export async function processarEntregas(deps: Dependencias, opcoes: OpcoesDeProc
       await fazerFanout(deps, d.ref, {
         pushId: String(x.pushId), eventId: String(x.eventId),
         audiencia: (x.audiencia as string[] | null) ?? null, expiraEm: num(x.expiraEm),
+        entregarApos: num(x.entregarApos) || undefined,
       }).catch(() => {});
     }
   }

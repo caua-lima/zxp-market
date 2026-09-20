@@ -1,7 +1,9 @@
 import "server-only";
 import type { NotificationEventType, SalePushPayload } from "@/lib/domain/notifications";
+import type { ContextoDeRajada } from "@/lib/domain/decisao-destinatario";
 import { dependenciasReais, limparEntregasAntigas, processarEntregas, publicarEEntregar } from "@/lib/notification-outbox";
 import { repararEspelhosPendentes } from "@/lib/notification-events";
+import { limparJanelasAntigas } from "@/lib/notification-janelas";
 
 /**
  * A porta de entrada que os produtores usam pra mandar push.
@@ -21,7 +23,17 @@ export async function enviarEPersistirEntrega(
   type: NotificationEventType,
   payload: SalePushPayload,
   isSummary = false,
-  opcoes: { audiencia?: string[] | null; origem?: string; validadeMs?: number; pushId?: string } = {},
+  opcoes: {
+    audiencia?: string[] | null;
+    origem?: string;
+    validadeMs?: number;
+    pushId?: string;
+    rajada?: ContextoDeRajada;
+    agrupamento?: { janelaId: string; n: number };
+    conteudo?: { tipo: "resumo_janela"; janelaId: string } | null;
+    entregarApos?: number;
+    atualizaEvento?: boolean;
+  } = {},
 ): Promise<number> {
   try {
     const r = await publicarEEntregar(dependenciasReais(), {
@@ -33,6 +45,11 @@ export async function enviarEPersistirEntrega(
       audiencia: opcoes.audiencia,
       validadeMs: opcoes.validadeMs,
       origem: opcoes.origem ?? "produtor",
+      rajada: opcoes.rajada,
+      agrupamento: opcoes.agrupamento,
+      conteudo: opcoes.conteudo,
+      entregarApos: opcoes.entregarApos,
+      atualizaEvento: opcoes.atualizaEvento,
     });
     return r.aceitas;
   } catch (err) {
@@ -54,6 +71,8 @@ export async function varrerEntregasPendentes(opcoes: { limite?: number; orcamen
   const deps = dependenciasReais();
   const entregas = await processarEntregas(deps, { limite: opcoes.limite ?? 100, orcamentoMs: opcoes.orcamentoMs ?? 15_000 });
   const espelhos = await repararEspelhosPendentes(deps.db).catch(() => 0);
-  const limpos = opcoes.limpar ? await limparEntregasAntigas(deps).catch(() => 0) : 0;
+  const limpos = opcoes.limpar
+    ? (await limparEntregasAntigas(deps).catch(() => 0)) + (await limparJanelasAntigas(deps.db).catch(() => 0))
+    : 0;
   return { ...entregas, espelhosRefeitos: espelhos, antigosRemovidos: limpos };
 }
