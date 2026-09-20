@@ -262,13 +262,17 @@ service cloud.firestore {
       allow read, write: if veOperacao();
     }
 
-    // Tokens de notificação push (um doc por dispositivo, id = o próprio
-    // token). Cada usuário só mexe no que é dele — o servidor lê a lista
-    // inteira pra mandar aviso de venda, mas isso é via Admin SDK, que
-    // ignora estas regras (não precisa de allow list aqui pra isso).
+    // Registro de push: um doc por (pessoa, instalação), id = "email__deviceId".
+    //
+    // O navegador só LÊ o próprio registro (o diagnóstico precisa saber se ele
+    // existe) e pode apagá-lo. Criar e alterar é só do servidor, pela rota
+    // /api/push/vincular: as invariantes (um token pertence a uma pessoa, teto
+    // de instalações) precisam apagar documentos de OUTRA conta quando o
+    // aparelho troca de dono, e nenhuma regra por documento deixaria o
+    // navegador fazer isso. Admin SDK ignora estas regras.
     match /pushTokens/{token} {
       allow read: if isAuthorized() && resource.data.email == request.auth.token.email;
-      allow create, update: if isAuthorized() && request.resource.data.email == request.auth.token.email;
+      allow create, update: if false;
       allow delete: if isAuthorized() && resource.data.email == request.auth.token.email;
     }
 

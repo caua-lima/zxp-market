@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { authedFetch } from "@/lib/api/authed-fetch";
-import { disablePushNotifications, enablePushNotifications, getPushStatus, versaoServiceWorkerAtivo } from "@/lib/firebase/push";
+import { aoMudarVinculoDoPush, disablePushNotifications, enablePushNotifications, getPushStatus, versaoServiceWorkerAtivo } from "@/lib/firebase/push";
 import NotificationSettings from "@/components/NotificationSettings";
 import Modal from "@/components/Modal";
 
@@ -51,9 +51,16 @@ export function PushNotificationToggle() {
   const [diagnosticando, setDiagnosticando] = useState(false);
   const [diagnostico, setDiagnostico] = useState<{ linhas: string[]; bruto: Record<string, unknown> | null } | null>(null);
 
+  // O estado é DA PESSOA na tela neste aparelho: recalcula quando ela muda e
+  // quando o registro é reconciliado (login, troca de conta, token rodado).
+  const emailAtual = user?.email ?? null;
   useEffect(() => {
-    getPushStatus().then(setStatus);
-  }, []);
+    let vivo = true;
+    const atualizar = () => { getPushStatus(emailAtual).then((s) => { if (vivo) setStatus(s); }); };
+    atualizar();
+    const solta = aoMudarVinculoDoPush(atualizar);
+    return () => { vivo = false; solta(); };
+  }, [emailAtual]);
 
   async function toggle() {
     if (!user?.email || busy) return;
@@ -62,15 +69,22 @@ export function PushNotificationToggle() {
     setResultado(null);
     try {
       if (status === "on") {
-        await disablePushNotifications(user.email.toLowerCase());
-        setStatus("off");
+        const res = await disablePushNotifications(user.email.toLowerCase());
+        if (res.ok) {
+          setStatus("off");
+          if (res.pendente) setError("Desativado neste aparelho. O servidor será atualizado quando houver conexão.");
+        } else {
+          // Continua ativo: dizer "desligado" com o registro ainda no servidor
+          // era o que fazia o push seguir chegando depois de a pessoa desligar.
+          setError(res.error);
+        }
       } else {
         const res = await enablePushNotifications(user.email.toLowerCase());
         if (res.ok) {
           setStatus("on");
         } else {
           setError(res.error);
-          setStatus(await getPushStatus());
+          setStatus(await getPushStatus(user.email));
         }
       }
     } finally {

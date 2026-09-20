@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:critical": "vitest run lib/domain",
+    "test:emulador": "npx -y firebase-tools@latest emulators:exec --only firestore --project zxp-teste-emulador \"vitest run --config vitest.emulador.config.ts\"",
     "backup": "node scripts/backup-firestore.mjs --saida ./backups",
     "backup:conferir": "node scripts/restore-firestore.mjs --conferir --dump",
     "backup:podar": "node scripts/podar-backups.mjs"
@@ -25,6 +26,7 @@
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
