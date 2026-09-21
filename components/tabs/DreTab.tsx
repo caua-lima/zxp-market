@@ -8,7 +8,6 @@ import { Delta } from "@/components/dashboard/ExecutiveKpis";
 import CustosColetaFull, { type RemessaCusto } from "@/components/tabs/full/CustosColetaFull";
 import ApresentacaoDre from "@/components/tabs/dre/ApresentacaoDre";
 import CustoForm from "@/components/custos/CustoForm";
-import Modal from "@/components/Modal";
 import { useAccess } from "@/components/tabs/AccessGuard";
 import type { DadosDre } from "@/lib/domain/dre-apresentacao";
 import {
@@ -877,19 +876,17 @@ export default function DreTab() {
       </div>
 
       {novoCusto && (
-        <Modal open onClose={() => setNovoCusto(false)}>
-          <CustoForm
-            inicial={null}
-            escopoPadrao="dre"
-            onCancelar={() => setNovoCusto(false)}
-            onSalvo={() => {
-              setNovoCusto(false);
-              // true = fura o cache da rota; sem isso o custo novo demorava
-              // até um minuto pra aparecer, e parecia não ter salvo.
-              load(true);
-            }}
-          />
-        </Modal>
+        <CustoForm
+          inicial={null}
+          escopoPadrao="dre"
+          onCancelar={() => setNovoCusto(false)}
+          onSalvo={() => {
+            setNovoCusto(false);
+            // true = fura o cache da rota; sem isso o custo novo demorava
+            // até um minuto pra aparecer, e parecia não ter salvo.
+            load(true);
+          }}
+        />
       )}
 
       {/* A apresentacao se monta num portal direto no body (ver

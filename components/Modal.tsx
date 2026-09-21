@@ -3,6 +3,28 @@
 import { useCallback, useEffect, useId, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 
+/**
+ * A pilha de modais abertos, do mais antigo ao mais novo.
+ *
+ * O Escape e o Tab são ouvidos no `document`, e cada modal aberto registra o
+ * seu ouvinte. Com um modal aberto por cima de outro (o formulário de custo e,
+ * por cima, uma confirmação), o mesmo Escape fechava OS DOIS, e o Tab era
+ * disputado por duas contenções de foco. Só o do topo responde.
+ */
+const pilhaDeModais: symbol[] = [];
+
+/**
+ * Diz ao resto da página que há um diálogo aberto: `data-modal-aberto` no <body>.
+ * Quem não pode cobrir um formulário (os toasts de venda) escuta isso e se
+ * recolhe — ver SaleNotificationProvider. Um atributo, e não um contexto React,
+ * porque quem escuta vive fora da árvore do Modal.
+ */
+function sinalizarModalAberto() {
+  if (typeof document === "undefined") return;
+  if (pilhaDeModais.length > 0) document.body.setAttribute("data-modal-aberto", "true");
+  else document.body.removeAttribute("data-modal-aberto");
+}
+
 /** O que o teclado consegue alcançar dentro do diálogo. */
 const FOCAVEIS = [
   "a[href]", "button:not([disabled])", "input:not([disabled])",
@@ -37,6 +59,8 @@ export default function Modal({
   titulo?: string;
 }) {
   const caixaRef = useRef<HTMLDivElement | null>(null);
+  /** A identidade deste modal na pilha. */
+  const meuId = useRef<symbol>(Symbol("modal"));
   /** Quem tinha o foco antes de abrir — é pra cá que ele volta. */
   const focoAnterior = useRef<HTMLElement | null>(null);
   const tituloId = useId();
@@ -50,9 +74,24 @@ export default function Modal({
   // funcionava se o foco já estivesse DENTRO do modal — mas ao abrir por
   // clique, o foco costuma continuar no botão que abriu (fora do modal), e
   // Escape não fazia nada. Mesmo padrão do CommandPalette/DateRangePicker.
+  // Entra na pilha ao abrir e sai ao fechar/desmontar.
+  useEffect(() => {
+    if (!open) return;
+    const id = meuId.current;
+    pilhaDeModais.push(id);
+    sinalizarModalAberto();
+    return () => {
+      const i = pilhaDeModais.indexOf(id);
+      if (i >= 0) pilhaDeModais.splice(i, 1);
+      sinalizarModalAberto();
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e: KeyboardEvent) {
+      // Só o modal do topo da pilha responde: os de baixo estão inertes.
+      if (pilhaDeModais[pilhaDeModais.length - 1] !== meuId.current) return;
       if (e.key === "Escape") { fechar(); return; }
 
       /**
@@ -177,6 +216,33 @@ export default function Modal({
     () => false,  // no servidor
   );
 
+  /**
+   * O nome do diálogo, quando o chamador não passou `titulo`.
+   *
+   * Antes o leitor de tela anunciava sempre "Diálogo": o `aria-labelledby`
+   * apontava pra um <span hidden> com esse texto, e o título de verdade
+   * (`.modal-title`, que quase todo modal deste app renderiza) ficava sem
+   * ligação. Agora o diálogo passa a apontar pro próprio título visível — o
+   * que se lê é o que se vê ("Editar custo", "Novo produto").
+   *
+   * Imperativo de propósito: o título é conteúdo dos filhos, que este
+   * componente não controla. Sem título nenhum, "Diálogo" é melhor que nada.
+   */
+  useEffect(() => {
+    if (!open || titulo) return;
+    const caixa = caixaRef.current;
+    if (!caixa) return;
+    const t = caixa.querySelector<HTMLElement>(".modal-title, [data-modal-title]");
+    if (t) {
+      if (!t.id) t.id = tituloId;
+      caixa.setAttribute("aria-labelledby", t.id);
+      caixa.removeAttribute("aria-label");
+    } else {
+      caixa.removeAttribute("aria-labelledby");
+      caixa.setAttribute("aria-label", "Diálogo");
+    }
+  });
+
   if (!open || !montado) return null;
 
   return createPortal(
@@ -197,11 +263,10 @@ export default function Modal({
          * sabe o que abriu. Prefere o `titulo` explícito; senão, aponta pro
          * `.modal-title` que quase todo modal deste app já renderiza.
          */
-        {...(titulo ? { "aria-label": titulo } : { "aria-labelledby": tituloId })}
+        {...(titulo ? { "aria-label": titulo } : {})}
         // Foco inicial cai aqui quando o diálogo não tem nada focável dentro.
         tabIndex={-1}
       >
-        <span id={tituloId} hidden>{titulo ?? "Diálogo"}</span>
         {children}
       </div>
     </div>,

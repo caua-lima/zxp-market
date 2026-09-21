@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { explicarFonte } from "@/lib/domain/estado-fonte";
 import { CUSTO_FAIXA_SENTINELA, custoNaData, impostoNaData, TIPO_MOVIMENTO_LABEL, type EstoqueMovimento, type MovimentoTipo, type Product } from "@/lib/domain/types";
-import { salvarSemPerder } from "@/lib/domain/salvar-formulario";
+import { mensagemDeErroDeSalvamento, salvarSemPerder } from "@/lib/domain/salvar-formulario";
+import { useFormularioSujo } from "@/components/useFormularioSujo";
 import { addMovimento, deleteMovimento, deleteProduct, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas, recalcularProduto } from "@/lib/firebase/data";
 import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas";
 import { fmtBRL, fmtPct } from "@/lib/domain/calc";
@@ -1261,11 +1262,16 @@ function MovimentoModal({ product, tipo, estoqueML, onClose, onSaved }: { produc
    * torna repetir o salvamento idempotente. Ver handleSave.
    */
   const idDoLancamento = useRef(newMovId());
+  /** A mensagem fica no formulário até a próxima tentativa (o `alert` sumia e deixava só a dúvida). */
+  const [erro, setErro] = useState<string | null>(null);
+  const sujo = useFormularioSujo({ qtd, custo, obs, data });
 
   async function handleSave() {
-    if (!qNum || (!isAjuste && qNum <= 0)) { alert("Informe a quantidade."); return; }
-    if (precisaCusto && cNum <= 0) { alert("Informe o custo unitário."); return; }
-    if (!obs.trim()) { alert("Informe o motivo desta movimentação — fica registrado no histórico do produto."); return; }
+    if (saving) return;
+    setErro(null);
+    if (!qNum || (!isAjuste && qNum <= 0)) { setErro("Informe a quantidade."); return; }
+    if (precisaCusto && cNum <= 0) { setErro("Informe o custo unitário."); return; }
+    if (!obs.trim()) { setErro("Informe o motivo desta movimentação — fica registrado no histórico do produto."); return; }
     // Ajuste negativo tira estoque sem ser nem venda nem envio — a confirmação
     // extra existe pra não zerar produto por engano digitando o sinal errado.
     if (isAjuste && qNum < 0 && !confirm(`Confirma a baixa de ${Math.abs(qNum)} unidade(s) de "${product.name || "produto"}"?\n\nMotivo: ${obs.trim()}`)) {
@@ -1319,14 +1325,15 @@ function MovimentoModal({ product, tipo, estoqueML, onClose, onSaved }: { produc
       }).catch(() => {});
       onSaved();
     } catch (err: unknown) {
-      alert("Erro ao salvar movimentação: " + (err instanceof Error ? err.message : String(err)));
+      // O id do lançamento é fixo por abertura: tentar de novo regrava o MESMO documento.
+      setErro(mensagemDeErroDeSalvamento(err));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose}>
+    <Modal open onClose={onClose} titulo={titulo} confirmarDescarte={sujo && !saving}>
       <div className="modal-title">{titulo}</div>
       <div className="modal-sub">{product.name || "Produto"} · estoque atual: <b>{estoqueAtual} un</b>{avgAtual > 0 && <> · custo médio {fmtBRL(avgAtual)}</>}</div>
 
@@ -1372,9 +1379,18 @@ function MovimentoModal({ product, tipo, estoqueML, onClose, onSaved }: { produc
         <input type="text" placeholder="Ex: fornecedor João, NF 123 / quebra no transporte / contagem física" value={obs} onChange={(e) => setObs(e.target.value)} />
       </div>
 
+      {erro && <div className="note note-danger" role="alert" style={{ marginBottom: 10 }}>{erro}</div>}
+
       <div className="modal-btns">
-        <button type="button" className="btn btn-success" onClick={handleSave} disabled={saving || !obs.trim()}>{saving ? "Salvando…" : "Lançar"}</button>
-        <button type="button" className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+        <button type="button" className="btn btn-success" onClick={handleSave} disabled={saving || !obs.trim()}>
+          {saving ? "Salvando…" : erro ? "Tentar lançar de novo" : "Lançar"}
+        </button>
+        <button
+          type="button" className="btn btn-ghost" disabled={saving}
+          onClick={() => { if (sujo && !confirm("Descartar as alterações não salvas?")) return; onClose(); }}
+        >
+          Cancelar
+        </button>
       </div>
     </Modal>
   );
@@ -1720,7 +1736,12 @@ export function ProductModal({ product: initial, isNew, onClose, onSave }: { pro
         <button type="button" className="btn btn-success" onClick={handleSave} disabled={saving}>
           {saving ? "Salvando…" : erroSalvar ? "Tentar salvar de novo" : "Salvar Produto"}
         </button>
-        <button type="button" className="btn btn-ghost" onClick={onClose} disabled={saving}>Cancelar</button>
+        <button
+          type="button" className="btn btn-ghost" disabled={saving}
+          onClick={() => { if (sujo && !confirm("Descartar as alterações não salvas?")) return; onClose(); }}
+        >
+          Cancelar
+        </button>
       </div>
     </Modal>
   );

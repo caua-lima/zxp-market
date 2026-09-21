@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { explicarFonte } from "@/lib/domain/estado-fonte";
 import { patchArquivar, patchReativar } from "@/lib/domain/vigencia-custo";
-import Modal from "@/components/Modal";
 import CustoForm from "@/components/custos/CustoForm";
 import { diasNoMes, fmtBRL, mesAtual, parseBRNumber, fmtPct } from "@/lib/domain/calc";
 import { COST_CATEGORIA_LABEL, type Cost } from "@/lib/domain/types";
@@ -577,18 +576,16 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
       */}
 
       {edicao && (
-        <Modal open onClose={() => setEdicao(null)}>
-          <CustoForm
-            inicial={edicao.custo}
-            escopoPadrao={edicao.escopo}
-            onCancelar={() => setEdicao(null)}
-            onSalvo={(c) => {
-              setEdicao(null);
-              avisar({ tipo: "ok", texto: edicao.custo ? `"${c.nome}" atualizado.` : `"${c.nome}" cadastrado.` });
-              carregarRef(true);
-            }}
-          />
-        </Modal>
+        <CustoForm
+          inicial={edicao.custo}
+          escopoPadrao={edicao.escopo}
+          onCancelar={() => setEdicao(null)}
+          onSalvo={(c) => {
+            setEdicao(null);
+            avisar({ tipo: "ok", texto: edicao.custo ? `"${c.nome}" atualizado.` : `"${c.nome}" cadastrado.` });
+            carregarRef(true);
+          }}
+        />
       )}
     </div>
   );

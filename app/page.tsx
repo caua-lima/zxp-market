@@ -213,6 +213,13 @@ function AppShell() {
   const [openTaskId, setOpenTaskId] = useState<string | undefined>(
     () => (inicial.tipoDoItem === "tarefa" ? inicial.item ?? undefined : undefined),
   );
+  /**
+   * Sobe a cada navegação DELIBERADA (clique numa notificação, Voltar, Avançar).
+   * É o que separa "chegou dado novo" de "a pessoa pediu isto de novo" para o
+   * deep link de pedido/tarefa: sem ela, um link já aberto e fechado nunca mais
+   * abriria, e com o efeito antigo abria a cada atualização da lista.
+   */
+  const [navKey, setNavKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [swappingAccount, setSwappingAccount] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -272,6 +279,7 @@ function AppShell() {
       setTab((c.aba as Tab) ?? "dashboard");
       setOpenOrderId(c.tipoDoItem === "pedido" ? c.item ?? undefined : undefined);
       setOpenTaskId(c.tipoDoItem === "tarefa" ? c.item ?? undefined : undefined);
+      setNavKey((n) => n + 1);
     }
     window.addEventListener("popstate", aoVoltar);
     return () => window.removeEventListener("popstate", aoVoltar);
@@ -281,12 +289,14 @@ function AppShell() {
   function navigateToOrder(orderId: string) {
     setTab("pedidos");
     setOpenOrderId(orderId);
+    setNavKey((n) => n + 1);
   }
 
   /** Mesma ideia, pra tarefa atribuída: pula pra Tarefas com o modal já aberto. */
   function navigateToTask(taskId: string) {
     setTab("tarefas");
     setOpenTaskId(taskId);
+    setNavKey((n) => n + 1);
   }
 
   /**
@@ -725,7 +735,7 @@ function AppShell() {
                     onNavigate={(t) => setTab(t as Tab)}
                   />
                 )}
-                {activeTab === "pedidos" && <PedidosTab metaMargem={data.goals?.metaMargem ?? undefined} openOrderId={openOrderId} />}
+                {activeTab === "pedidos" && <PedidosTab metaMargem={data.goals?.metaMargem ?? undefined} openOrderId={openOrderId} chaveDeNavegacao={navKey} />}
                 {activeTab === "ads" && <AdsTab metaMargem={data.goals?.metaMargem ?? undefined} products={data.products} />}
                 {activeTab === "preco" && <PrecoTab products={data.products} />}
                 {activeTab === "metas" && <MetasTab uid={user.uid} data={data} />}
@@ -734,7 +744,7 @@ function AppShell() {
                 {activeTab === "full" && <FullTab products={data.products} />}
                 {activeTab === "desempenho" && <DesempenhoTab />}
                 {activeTab === "dre" && <DreTab />}
-                {activeTab === "tarefas" && <TarefasTab openTaskId={openTaskId} />}
+                {activeTab === "tarefas" && <TarefasTab openTaskId={openTaskId} chaveDeNavegacao={navKey} />}
                 {activeTab === "acesso" && isOwner && <AccessControlTab uid={user.uid} data={data} />}
               </>
             )}

@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useFormularioSujo } from "@/components/useFormularioSujo";
+import { mensagemDeErroDeSalvamento } from "@/lib/domain/salvar-formulario";
+import { useDeepLinkConsumido } from "@/components/useDeepLinkConsumido";
 import {
   DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors,
   type DragEndEvent, type DragStartEvent,
@@ -49,7 +52,7 @@ const isAtrasada = isTaskAtrasada;
 
 type Filtro = "todas" | "pra-mim" | "criei-eu";
 
-export default function TarefasTab({ openTaskId }: { openTaskId?: string } = {}) {
+export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openTaskId?: string; chaveDeNavegacao?: number } = {}) {
   const { email } = useAccess();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [pessoas, setPessoas] = useState<AccessEntry[]>([]);
@@ -71,13 +74,20 @@ export default function TarefasTab({ openTaskId }: { openTaskId?: string } = {})
    * de prop. `editTask` também é do usuário — ele fecha o modal, e uma
    * derivação o reabriria no render seguinte.
    */
-  useEffect(() => {
-    if (openTaskId) {
-      const t = tasks.find((x) => x.id === openTaskId);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- evento (deep link); ver o comentario acima
-      if (t) setEditTask(t);
-    }
-  }, [openTaskId, tasks]);
+  /**
+   * ─── AGORA O LINK É CONSUMIDO, NÃO REPETIDO ──────────────────────────
+   *
+   * Este efeito dependia de `[openTaskId, tasks]`: enquanto o id ficasse na
+   * URL, cada snapshot da lista abria o modal DE NOVO — a pessoa fechava e ele
+   * voltava sozinho. Agora `useDeepLinkConsumido` abre uma vez por navegação
+   * (dado novo não é intenção nova), e um novo clique no mesmo link, ou
+   * Voltar/Avançar, muda `chaveDeNavegacao` e abre outra vez.
+   */
+  const abrirTarefaDoLink = useCallback((id: string) => {
+    const alvo = tasks.find((x) => x.id === id);
+    if (alvo) setEditTask(alvo);
+  }, [tasks]);
+  useDeepLinkConsumido(openTaskId, chaveDeNavegacao, !!openTaskId && tasks.some((x) => x.id === openTaskId), abrirTarefaDoLink);
 
   useEffect(() => {
     const u1 = watchTasks((ts) => { setTasks(ts); setLoading(false); });
@@ -377,10 +387,18 @@ function TaskModal({ pessoas, minhaEmail, task, onClose }: {
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? "todo");
   const [priority, setPriority] = useState<TaskPriority>(task ? prioridadeDe(task) : "media");
   const [saving, setSaving] = useState(false);
+  /** Falha do salvamento fica no formulário; antes o erro virava rejeição sem tratamento e a tela não dizia nada. */
+  const [erro, setErro] = useState<string | null>(null);
+  const [semTitulo, setSemTitulo] = useState(false);
+  const sujo = useFormularioSujo({ title, description, assignedTo, dueDate, status, priority });
+  const uid = useId();
+  const id = (campo: string) => `tarefa-${uid}-${campo}`;
 
   async function onSave() {
-    if (!title.trim()) { alert("Dê um título pra tarefa."); return; }
+    if (saving) return;
+    if (!title.trim()) { setSemTitulo(true); return; }
     setSaving(true);
+    setErro(null);
     try {
       const pessoa = pessoas.find((p) => p.email === assignedTo);
       const eu = pessoas.find((p) => p.email === minhaEmail);
@@ -435,29 +453,36 @@ function TaskModal({ pessoas, minhaEmail, task, onClose }: {
       }
 
       onClose();
+    } catch (err) {
+      setErro(mensagemDeErroDeSalvamento(err));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose}>
+    <Modal open onClose={onClose} titulo={task ? "Editar tarefa" : "Nova tarefa"} confirmarDescarte={sujo && !saving}>
       <div className="modal-title">{task ? "Editar Tarefa" : "Nova Tarefa"}</div>
 
       <div className="config-field">
-        <label>Título</label>
-        <input type="text" placeholder="Ex: Responder cliente sobre devolução" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+        <label htmlFor={id("titulo")}>Título</label>
+        <input
+          id={id("titulo")} type="text" placeholder="Ex: Responder cliente sobre devolução" value={title}
+          onChange={(e) => { setTitle(e.target.value); if (semTitulo) setSemTitulo(false); }} autoFocus
+          aria-invalid={semTitulo || undefined} aria-describedby={semTitulo ? id("titulo-erro") : undefined}
+        />
+        {semTitulo && <div id={id("titulo-erro")} className="hint" role="alert" style={{ color: "var(--red-text)" }}>Dê um título pra tarefa.</div>}
       </div>
 
       <div className="config-field">
-        <label>Descrição (opcional)</label>
-        <input type="text" placeholder="Detalhes da tarefa…" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <label htmlFor={id("desc")}>Descrição (opcional)</label>
+        <input id={id("desc")} type="text" placeholder="Detalhes da tarefa…" value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
 
       <div className="form-grid">
         <div className="config-field" style={{ margin: 0 }}>
-          <label>Atribuir pra</label>
-          <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
+          <label htmlFor={id("resp")}>Atribuir pra</label>
+          <select id={id("resp")} value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
             <option value="">— ninguém —</option>
             {pessoas.map((p) => (
               <option key={p.email} value={p.email}>
@@ -467,14 +492,14 @@ function TaskModal({ pessoas, minhaEmail, task, onClose }: {
           </select>
         </div>
         <div className="config-field" style={{ margin: 0 }}>
-          <label>Prazo (opcional)</label>
-          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+          <label htmlFor={id("prazo")}>Prazo (opcional)</label>
+          <input id={id("prazo")} type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
         </div>
       </div>
 
       <div className="config-field">
-        <label>Prioridade</label>
-        <select value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)}>
+        <label htmlFor={id("prio")}>Prioridade</label>
+        <select id={id("prio")} value={priority} onChange={(e) => setPriority(e.target.value as TaskPriority)}>
           {(["critica", "alta", "media", "baixa"] as const).map((p) => (
             <option key={p} value={p}>{PRIORIDADE_META[p].label}</option>
           ))}
@@ -482,8 +507,8 @@ function TaskModal({ pessoas, minhaEmail, task, onClose }: {
       </div>
 
       <div className="config-field">
-        <label>Status</label>
-        <select value={status} onChange={(e) => setStatus(e.target.value as TaskStatus)}>
+        <label htmlFor={id("status")}>Status</label>
+        <select id={id("status")} value={status} onChange={(e) => setStatus(e.target.value as TaskStatus)}>
           {COLS.map((c) => <option key={c.status} value={c.status}>{c.label}</option>)}
         </select>
       </div>
@@ -502,11 +527,18 @@ function TaskModal({ pessoas, minhaEmail, task, onClose }: {
         </details>
       )}
 
+      {erro && <div className="note note-danger" role="alert" style={{ marginBottom: 10 }}>{erro}</div>}
+
       <div className="modal-btns">
         <button type="button" className="btn btn-success" onClick={onSave} disabled={saving}>
-          {saving ? "Salvando…" : "Salvar Tarefa"}
+          {saving ? "Salvando…" : erro ? "Tentar salvar de novo" : "Salvar Tarefa"}
         </button>
-        <button type="button" className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+        <button
+          type="button" className="btn btn-ghost" disabled={saving}
+          onClick={() => { if (sujo && !confirm("Descartar as alterações não salvas?")) return; onClose(); }}
+        >
+          Cancelar
+        </button>
       </div>
     </Modal>
   );

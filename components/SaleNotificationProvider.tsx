@@ -14,6 +14,8 @@ import {
   prioridadeDoTipo,
   proximoPrazo,
   retomar,
+  retomarSuspensos,
+  suspender,
   type ConfigDeToasts,
   type EstadoDeToasts,
   type NovoToast,
@@ -45,7 +47,9 @@ type Acao =
   | { tipo: "dispensar"; id: string; agora: number; cfg: ConfigDeToasts }
   | { tipo: "pausar"; id: string; agora: number }
   | { tipo: "retomar"; id: string; agora: number }
-  | { tipo: "passar"; agora: number; cfg: ConfigDeToasts };
+  | { tipo: "passar"; agora: number; cfg: ConfigDeToasts }
+  | { tipo: "suspender"; agora: number }
+  | { tipo: "retomarSuspensos"; agora: number };
 
 /**
  * PURO: o instante vem na ação, nunca de `Date.now()` aqui dentro, e nada é
@@ -61,10 +65,24 @@ function reduzir(e: EstadoDeToasts<ForegroundPushEvent>, a: Acao): EstadoDeToast
     case "pausar": return pausar(e, a.id, a.agora);
     case "retomar": return retomar(e, a.id, a.agora);
     case "passar": return passar(ajustarLimite(e, a.agora, a.cfg), a.agora, a.cfg);
+    case "suspender": return suspender(e, a.agora);
+    case "retomarSuspensos": return retomarSuspensos(e, a.agora);
   }
 }
 
 const CONSULTA_CELULAR = "(max-width: 640px)";
+
+/** Há um diálogo aberto? O Modal marca o <body> (ver `sinalizarModalAberto`). */
+function modalEstaAberto(): boolean {
+  return document.body.hasAttribute("data-modal-aberto");
+}
+
+/** Avisa quando o <body> ganha ou perde a marca de diálogo aberto. */
+function observarModal(aoMudar: (aberto: boolean) => void): () => void {
+  const obs = new MutationObserver(() => aoMudar(modalEstaAberto()));
+  obs.observe(document.body, { attributes: true, attributeFilter: ["data-modal-aberto"] });
+  return () => obs.disconnect();
+}
 
 /** Celular? Lido do navegador por useSyncExternalStore — sem estado espelhado nem efeito. */
 function useCelular(): boolean {
@@ -96,6 +114,21 @@ function Toasts({ onNavigate }: { onNavigate: (deepLink: string) => void }) {
 
   // No celular, um toast principal e um contador do resto — três empilhados cobririam a tela.
   const cfg = useMemo<ConfigDeToasts>(() => ({ ...CONFIG_PADRAO, maxVisiveis: celular ? 1 : CONFIG_PADRAO.maxVisiveis }), [celular]);
+
+  /**
+   * ─── FORMULÁRIO ABERTO: OS AVISOS ESPERAM ────────────────────────────
+   *
+   * A região de toasts tinha z-index acima do modal: dez vendas chegando enquanto
+   * se editava um custo cobriam o título, o campo ativo e o botão de salvar. Agora,
+   * com um diálogo aberto, os prazos congelam e a região some; ao fechar, os avisos
+   * voltam de onde pararam. O que a fila descartar segue na Central (🔔).
+   */
+  useEffect(() => {
+    if (modalEstaAberto()) dispatch({ tipo: "suspender", agora: Date.now() });
+    return observarModal((aberto) => {
+      dispatch(aberto ? { tipo: "suspender", agora: Date.now() } : { tipo: "retomarSuspensos", agora: Date.now() });
+    });
+  }, []);
 
   useEffect(() => {
     return onForegroundPush((evt) => {
@@ -130,7 +163,7 @@ function Toasts({ onNavigate }: { onNavigate: (deepLink: string) => void }) {
   if (visiveis.length === 0) return null;
 
   return (
-    <div className="sale-toast-region" aria-label="Notificações">
+    <div className="sale-toast-region" aria-label="Notificações" data-suspensa={estado.suspenso ? "true" : undefined}>
       {visiveis.map((t) => (
         <SaleNotificationToast
           key={t.id}

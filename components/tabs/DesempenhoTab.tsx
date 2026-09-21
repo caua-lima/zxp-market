@@ -10,6 +10,7 @@ import HeatmapVendas from "./desempenho/HeatmapVendas";
 import EntregasPanel from "./desempenho/EntregasPanel";
 import BackfillHistorico from "./desempenho/BackfillHistorico";
 import type { DesempenhoResponse } from "./desempenho/desempenho-types";
+import { dataBR, diasCobrindoMesPassado, diasDesdeInicioDoMes, hojeNaOperacao, limitesDoMes, rotuloDesdeMesPassado } from "@/lib/domain/periodos";
 
 const OPCOES_MESES = [3, 6, 12, 24];
 /**
@@ -21,30 +22,12 @@ const OPCOES_MESES = [3, 6, 12, 24];
 const OPCOES_DIAS = [7, 15, 30];
 
 
-/**
- * Dias do 1º do mês até hoje.
- *
- * O período aqui é expresso em DIAS PRA TRÁS (a rota recebe `dias=N`), então
- * "este mês" precisa virar uma contagem — e não um intervalo de datas. Fuso BR
- * de propósito: em UTC, no começo da madrugada, o dia 1º cairia no mês anterior.
+/*
+ * Os períodos "este mês" e "desde o mês passado" vêm de lib/domain/periodos, que conta o
+ * dia em Brasília e não depende do relógio do navegador. A rota recebe `dias=N` (dias pra
+ * trás a partir de hoje), então "mês passado" NÃO é um intervalo fechado: cobre o mês
+ * passado inteiro MAIS o mês em curso até hoje. O botão diz isso no próprio rótulo.
  */
-function diasDesdeInicioDoMes(): number {
-  const br = new Date(Date.now() - 3 * 3600 * 1000);
-  return br.getUTCDate();
-}
-
-/**
- * Dias suficientes pra alcançar o 1º do mês PASSADO.
- *
- * A janela sempre conta a partir de hoje, então "mês passado" inclui também o
- * mês corrente — não há como pedir um intervalo fechado nesta rota. O rótulo
- * diz "cobre", não "é", justamente por isso.
- */
-function diasCobrindoMesPassado(): number {
-  const br = new Date(Date.now() - 3 * 3600 * 1000);
-  const diasDoMesPassado = new Date(Date.UTC(br.getUTCFullYear(), br.getUTCMonth(), 0)).getUTCDate();
-  return br.getUTCDate() + diasDoMesPassado;
-}
 
 /**
  * Uma seção da aba, com o título e — o que importa — a ORIGEM do que vem
@@ -106,6 +89,12 @@ export default function DesempenhoTab() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregar(); }, [carregar]);
 
+  // O dia em Brasília, lido a cada pintura: o botão "ativo" acompanha a virada do dia.
+  const hoje = hojeNaOperacao();
+  const diasEsteMes = diasDesdeInicioDoMes(hoje);
+  const diasDesdeMesPassado = diasCobrindoMesPassado(hoje);
+  const rotuloMesPassado = rotuloDesdeMesPassado(hoje);
+
   return (
     <div className="dash">
       <div className="tab-head">
@@ -119,19 +108,21 @@ export default function DesempenhoTab() {
           <div className="seg">
             <button
               type="button"
-              className={`seg-btn ${dias === diasDesdeInicioDoMes() ? "active" : ""}`}
-              onClick={() => setDias(diasDesdeInicioDoMes())}
-              title="Do dia 1º até hoje"
+              className={`seg-btn ${dias === diasEsteMes ? "active" : ""}`}
+              aria-pressed={dias === diasEsteMes}
+              onClick={() => setDias(diasEsteMes)}
+              title={`De ${dataBR(limitesDoMes(hoje).de)} até hoje (${dataBR(hoje)})`}
             >
               Este mês
             </button>
             <button
               type="button"
-              className={`seg-btn ${dias === diasCobrindoMesPassado() ? "active" : ""}`}
-              onClick={() => setDias(diasCobrindoMesPassado())}
-              title="Cobre o mês anterior inteiro (a janela conta pra trás a partir de hoje)"
+              className={`seg-btn ${dias === diasDesdeMesPassado ? "active" : ""}`}
+              aria-pressed={dias === diasDesdeMesPassado}
+              onClick={() => setDias(diasDesdeMesPassado)}
+              title={rotuloMesPassado.longo}
             >
-              Mês passado
+              {rotuloMesPassado.curto}
             </button>
           </div>
           <div className="seg">

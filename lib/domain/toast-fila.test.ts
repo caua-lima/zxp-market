@@ -11,6 +11,8 @@ import {
   prioridadeDoTipo,
   proximoPrazo,
   retomar,
+  retomarSuspensos,
+  suspender,
   type ConfigDeToasts,
   type EstadoDeToasts,
   type NovoToast,
@@ -279,5 +281,60 @@ describe("prioridadeDoTipo", () => {
     expect(prioridadeDoTipo("sale_cancelled")).toBe(3);
     expect(prioridadeDoTipo("sale_paid")).toBe(0);
     expect(prioridadeDoTipo("qualquer_coisa")).toBe(0);
+  });
+});
+
+describe("suspender / retomarSuspensos — formulário aberto (U16)", () => {
+  it("congela o prazo de tudo que estava na tela", () => {
+    const e = suspender(chegadas(["a", "b"]), T0 + 3000);
+    expect(e.suspenso).toBe(true);
+    expect(e.visiveis.every((t) => t.expiraEm == null && (t.restanteMs ?? 0) > 0)).toBe(true);
+    // nada agendado: o temporizador não acorda enquanto o formulário está aberto
+    expect(proximoPrazo(e)).toBeNull();
+  });
+
+  it("durante a suspensão nada expira, por mais que o relógio ande", () => {
+    let e = suspender(chegadas(["a", "b"]), T0 + 1000);
+    e = passar(e, T0 + 60 * 60 * 1000);
+    expect(e.visiveis.map((t) => t.id).sort()).toEqual(["a", "b"]);
+  });
+
+  it("aviso que chega DURANTE a edição entra congelado — não gasta o tempo escondido", () => {
+    let e = suspender(estadoInicial<D>(), T0);
+    e = chegou(e, novo("x"), T0 + 500);
+    expect(e.visiveis).toHaveLength(1);
+    expect(e.visiveis[0].expiraEm).toBeNull();
+    expect(e.visiveis[0].restanteMs).toBe(8000);
+  });
+
+  it("dez avisos durante a edição: o teto continua valendo e o resto espera na fila", () => {
+    let e = suspender(estadoInicial<D>(), T0);
+    for (let i = 0; i < 10; i++) e = chegou(e, novo(`n${i}`), T0 + i * 10);
+    expect(e.visiveis.length).toBeLessThanOrEqual(CONFIG_PADRAO.maxVisiveis);
+    expect(e.visiveis.length + e.fila.length).toBe(10);
+  });
+
+  it("ao fechar o formulário, o prazo volta de onde parou (não recomeça nem zera)", () => {
+    let e = chegadas(["a"]);                       // duração 8000, chegou em T0
+    e = suspender(e, T0 + 3000);                   // faltavam 5000
+    e = retomarSuspensos(e, T0 + 60_000);          // ficou uma hora aberto
+    expect(e.suspenso).toBe(false);
+    expect(e.visiveis[0].expiraEm).toBe(T0 + 60_000 + 5000);
+    expect(e.visiveis[0].restanteMs).toBeNull();
+  });
+
+  it("promovido da fila durante a suspensão também retoma corretamente", () => {
+    let e = suspender(estadoInicial<D>(), T0);
+    for (let i = 0; i < 5; i++) e = chegou(e, novo(`n${i}`), T0 + i);
+    e = dispensar(e, e.visiveis[0].id, T0 + 10);   // (só por teste: libera uma vaga)
+    expect(e.visiveis.every((t) => t.expiraEm == null)).toBe(true);
+    e = retomarSuspensos(e, T0 + 5000);
+    expect(e.visiveis.every((t) => t.expiraEm != null)).toBe(true);
+  });
+
+  it("a substituição por tag não perde o estado de suspensão", () => {
+    let e = suspender(chegadas(["a"]), T0 + 100);
+    e = chegou(e, novo("a2", { tag: "tag-a" }), T0 + 200);
+    expect(e.suspenso).toBe(true);
   });
 });

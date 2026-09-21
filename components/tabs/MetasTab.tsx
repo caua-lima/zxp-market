@@ -1,5 +1,7 @@
 "use client";
 
+import { useFormularioSujo } from "@/components/useFormularioSujo";
+import { mensagemDeErroDeSalvamento } from "@/lib/domain/salvar-formulario";
 import { useEffect, useMemo, useState } from "react";
 import { tom } from "@/lib/ui-cor";
 import Modal from "@/components/Modal";
@@ -465,10 +467,15 @@ function GoalEntryModal({
   const [margem, setMargem] = useState(entry?.metaMargem != null ? String(entry.metaMargem) : "10");
   const [metaLucro, setMetaLucro] = useState(entry?.metaLucro != null ? String(entry.metaLucro) : "");
   const [label, setLabel] = useState(entry?.label ?? "");
+  const [erro, setErro] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const sujo = useFormularioSujo({ mes, m1, m2, m3, margem, metaLucro, label });
 
   async function onSave() {
+    if (saving) return;
+    setErro(null);
     const v1 = parseFloat(m1) || 0;
-    if (!v1) { alert("Informe pelo menos a Meta 1."); return; }
+    if (!v1) { setErro("Informe pelo menos a Meta 1."); return; }
     const newEntry: GoalEntry = {
       id: entry?.id || `goal_${Date.now()}`,
       mes: mes || mesAtual(),
@@ -484,18 +491,26 @@ function GoalEntryModal({
       // Firebase setDoc não aceita undefined em campos — usar null para ausência
       label: label || undefined,
     };
-    if (entry) {
-      await updateGoalEntry(uid, entry.id, newEntry);
-      logAudit({ acao: "editar", entidade: "meta", entidadeId: entry.id, entidadeLabel: formatMesBR(newEntry.mes) }).catch(() => {});
-    } else {
-      await saveGoalEntry(uid, newEntry);
-      logAudit({ acao: "criar", entidade: "meta", entidadeId: newEntry.id, entidadeLabel: formatMesBR(newEntry.mes) }).catch(() => {});
+    setSaving(true);
+    try {
+      if (entry) {
+        await updateGoalEntry(uid, entry.id, newEntry);
+        logAudit({ acao: "editar", entidade: "meta", entidadeId: entry.id, entidadeLabel: formatMesBR(newEntry.mes) }).catch(() => {});
+      } else {
+        await saveGoalEntry(uid, newEntry);
+        logAudit({ acao: "criar", entidade: "meta", entidadeId: newEntry.id, entidadeLabel: formatMesBR(newEntry.mes) }).catch(() => {});
+      }
+      onClose();
+    } catch (err) {
+      // Antes a rejeição escapava sem tratamento e o modal ficava parado, sem dizer nada.
+      setErro(mensagemDeErroDeSalvamento(err));
+    } finally {
+      setSaving(false);
     }
-    onClose();
   }
 
   return (
-    <Modal open={open} onClose={onClose}>
+    <Modal open={open} onClose={onClose} titulo={entry ? "Editar meta" : "Nova meta"} confirmarDescarte={sujo && !saving}>
       <div className="modal-title">
         {entry ? "Editar Meta" : "Nova Meta"}
       </div>
@@ -551,11 +566,16 @@ function GoalEntryModal({
         </div>
       </div>
 
+      {erro && <div className="note note-danger" role="alert" style={{ marginBottom: 10 }}>{erro}</div>}
+
       <div className="modal-btns">
-        <button type="button" className="btn btn-success" onClick={onSave}>
-          Salvar Meta
+        <button type="button" className="btn btn-success" onClick={onSave} disabled={saving}>
+          {saving ? "Salvando…" : erro ? "Tentar salvar de novo" : "Salvar Meta"}
         </button>
-        <button type="button" className="btn btn-ghost" onClick={onClose}>
+        <button
+          type="button" className="btn btn-ghost" disabled={saving}
+          onClick={() => { if (sujo && !confirm("Descartar as alterações não salvas?")) return; onClose(); }}
+        >
           Cancelar
         </button>
       </div>

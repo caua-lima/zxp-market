@@ -55,6 +55,12 @@ export type EstadoDeToasts<T> = {
   fila: ToastItem<T>[];
   /** id → até quando lembrar que já foi visto (dedupe com retenção LIMITADA). */
   vistos: Record<string, number>;
+  /**
+   * A pessoa está fazendo outra coisa que não pode ser coberta (um formulário
+   * aberto). Enquanto isso, NENHUM prazo corre: o que já estava na tela congela
+   * e o que for promovido nasce congelado. Ao voltar, tudo retoma de onde parou.
+   */
+  suspenso?: boolean;
 };
 
 export type ConfigDeToasts = {
@@ -100,7 +106,10 @@ function promover<T>(e: EstadoDeToasts<T>, agora: number, cfg: ConfigDeToasts): 
   const fila = [...e.fila].sort(porUrgencia);
   while (visiveis.length < cfg.maxVisiveis && fila.length > 0) {
     const proximo = fila.shift()!;
-    visiveis.push({ ...proximo, expiraEm: agora + proximo.duracaoMs, restanteMs: null });
+    // Suspenso (formulário aberto): nasce com a duração cheia guardada e o relógio parado.
+    visiveis.push(e.suspenso
+      ? { ...proximo, expiraEm: null, restanteMs: proximo.duracaoMs }
+      : { ...proximo, expiraEm: agora + proximo.duracaoMs, restanteMs: null });
   }
   return { ...e, visiveis, fila };
 }
@@ -122,6 +131,7 @@ export function chegou<T>(e: EstadoDeToasts<T>, n: NovoToast<T>, agora: number, 
     const jaHavia = [...e.visiveis, ...e.fila].some((t) => t.tag === n.tag);
     if (jaHavia) {
       return {
+        ...e,
         visiveis: e.visiveis.map(noLugar),
         fila: e.fila.map(noLugar),
         vistos: podarVistos({ ...e.vistos, [n.id]: agora + cfg.retencaoDeVistosMs }, agora, cfg),
@@ -183,6 +193,32 @@ export function passar<T>(e: EstadoDeToasts<T>, agora: number, cfg: ConfigDeToas
     fila: e.fila.filter((t) => agora - t.chegouEm <= cfg.ttlNaFilaMs),
     vistos: podarVistos(e.vistos, agora, cfg),
   }, agora, cfg);
+}
+
+/**
+ * Um formulário abriu: congela TODOS os prazos e passa a promover avisos já
+ * congelados. O toast tinha z-index acima do modal e três avisos cobriam o
+ * título, o campo ativo e o botão de salvar de quem estava editando; agora eles
+ * esperam (a região some da tela — ver o CSS) e voltam quando o formulário fecha.
+ * Nada se perde: o que a fila descartar segue na Central de Notificações.
+ */
+export function suspender<T>(e: EstadoDeToasts<T>, agora: number): EstadoDeToasts<T> {
+  return {
+    ...e,
+    suspenso: true,
+    visiveis: e.visiveis.map((t) =>
+      t.expiraEm != null ? { ...t, restanteMs: Math.max(0, t.expiraEm - agora), expiraEm: null } : t),
+  };
+}
+
+/** O formulário fechou: os prazos voltam a correr de onde pararam. */
+export function retomarSuspensos<T>(e: EstadoDeToasts<T>, agora: number): EstadoDeToasts<T> {
+  return {
+    ...e,
+    suspenso: false,
+    visiveis: e.visiveis.map((t) =>
+      t.expiraEm == null && t.restanteMs != null ? { ...t, expiraEm: agora + t.restanteMs, restanteMs: null } : t),
+  };
 }
 
 /** O limite mudou (girou o celular, redimensionou): o que passa do novo teto volta pra fila. */

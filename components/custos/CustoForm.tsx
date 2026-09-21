@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import Modal from "@/components/Modal";
 import { patchNovaVersao } from "@/lib/domain/vigencia-custo";
 import { diasNoMes, fmtBRL, todayStr } from "@/lib/domain/calc";
 import { COST_CATEGORIA_LABEL, type Cost, type CostCategoria } from "@/lib/domain/types";
@@ -55,10 +56,13 @@ const ORDEM_FREQ: Frequencia[] = ["mensal", "diario", "avulso"];
 const ORDEM_ESCOPO: Escopo[] = ["dash", "dre"];
 
 const rotuloCampo: React.CSSProperties = {
-  fontSize: ".75rem", color: "var(--muted)", textTransform: "uppercase",
-  letterSpacing: ".05em", fontWeight: 700, marginBottom: 5, display: "block",
+  fontSize: ".8125rem", color: "var(--muted)", textTransform: "uppercase",
+  letterSpacing: ".03em", fontWeight: 700, marginBottom: 5, display: "block",
 };
-const textoErro: React.CSSProperties = { color: "var(--red-text)", fontSize: ".75rem", marginTop: 4 };
+const textoErro: React.CSSProperties = { color: "var(--red-text)", fontSize: ".8rem", marginTop: 4 };
+const tituloEtapa: React.CSSProperties = {
+  fontSize: ".8rem", fontWeight: 800, color: "var(--accent)", letterSpacing: ".02em", margin: "4px 0 -6px",
+};
 
 export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onCancelar }: {
   /** O custo a editar. `null` = cadastrar um novo. */
@@ -79,6 +83,13 @@ export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onC
   const [tentouSalvar, setTentouSalvar] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erroGravacao, setErroGravacao] = useState<string | null>(null);
+  /** A primeira gravação da troca de versão deu certo e a segunda não: o estado NÃO é "nada foi gravado". */
+  const [gravacaoParcial, setGravacaoParcial] = useState(false);
+  /** Criado uma vez: tentar de novo depois de uma falha regrava a MESMA versão, não cria outra. */
+  const idNovaVersao = useRef<string | null>(null);
+  /** Foto do rascunho ao abrir — pra saber se há alteração a perder. */
+  const [aoAbrir] = useState(() => JSON.stringify(r));
+  const sujo = JSON.stringify(r) !== aoAbrir;
   const [maisDetalhes, setMaisDetalhes] = useState(
     () => Boolean(inicial?.categoria || inicial?.centroCusto || inicial?.observacao),
   );
@@ -100,6 +111,8 @@ export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onC
     if (salvando || !podeSalvar(r)) return;
     setSalvando(true);
     setErroGravacao(null);
+    setGravacaoParcial(false);
+    let fechouAnterior = false;
     try {
       const id = r.id ?? novoIdDeCusto();
       const custo = custoDe(r, id, inicial ?? undefined);
@@ -133,8 +146,9 @@ export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onC
           const { fecharAnterior, novaVigencia } = patchNovaVersao(hoje);
           // Fecha a versão anterior no dia de ontem, preservando o valor dela.
           await upsertCost("", { ...inicial!, ...fecharAnterior } as Cost);
+          fechouAnterior = true;
           // E grava a nova como outro registro, vigente a partir de hoje.
-          const novoId = novoIdDeCusto();
+          const novoId = (idNovaVersao.current ??= novoIdDeCusto());
           const versaoNova = { ...custo, id: novoId, ...novaVigencia } as Cost;
           await upsertCost("", versaoNova);
           logAudit({
@@ -157,11 +171,24 @@ export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onC
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setErroGravacao(msg);
+      setGravacaoParcial(fechouAnterior);
       setSalvando(false);
     }
   }
 
+  /**
+   * Cancelar avisa quando há o que perder — o botão, o Escape e o clique no
+   * fundo seguem a MESMA regra (o Modal cuida dos dois últimos). Formulário
+   * intacto fecha na hora, sem pergunta desnecessária.
+   */
+  function cancelar() {
+    if (salvando) return;
+    if (sujo && !confirm("Descartar as alterações não salvas?")) return;
+    onCancelar();
+  }
+
   return (
+    <Modal open onClose={onCancelar} titulo={novo ? "Novo custo" : "Editar custo"} confirmarDescarte={sujo && !salvando}>
     <form onSubmit={salvar} noValidate>
       <div className="modal-title">{novo ? "Novo custo" : "Editar custo"}</div>
       <div className="modal-sub">Nada é gravado até você clicar em Salvar.</div>
@@ -179,6 +206,42 @@ export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onC
           {erros.nome && <div style={textoErro}>{erros.nome}</div>}
         </div>
 
+        <div style={tituloEtapa}>1 · O que é e onde conta</div>
+        {/* ── Onde conta ──
+            Duas escolhas grandes, cada uma com o exemplo do lado. Era um
+            select com "Desconta no Dashboard / Só na DRE" e a explicação num
+            quadro longe do campo — quem precisava entender a diferença tinha
+            que achar o quadro primeiro. */}
+        <div>
+          <span style={rotuloCampo}>Onde esse custo conta</span>
+          <div role="group" aria-label="Onde o custo conta" style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(min(210px,100%),1fr))" }}>
+            {ORDEM_ESCOPO.map((esc) => {
+              const ativo = r.escopo === esc;
+              return (
+                <button
+                  key={esc} type="button" aria-pressed={ativo}
+                  onClick={() => muda("escopo", esc)}
+                  style={{
+                    textAlign: "left", padding: "10px 12px", borderRadius: 10, cursor: "pointer",
+                    background: ativo ? "var(--surface2)" : "transparent",
+                    border: `1px solid ${ativo ? "var(--accent)" : "var(--border)"}`,
+                    color: "var(--text)", font: "inherit",
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: ".86rem", display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ color: ativo ? "var(--accent)" : "var(--muted)" }}>{ativo ? "●" : "○"}</span>
+                    {ESCOPO_META[esc].rotulo}
+                  </div>
+                  <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 3, lineHeight: 1.4 }}>
+                    {ESCOPO_META[esc].explica}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={tituloEtapa}>2 · Valor e frequência</div>
         {/* ── Quanto ── */}
         <div>
           <label style={rotuloCampo} htmlFor="custo-valor">Quanto</label>
@@ -203,10 +266,10 @@ export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onC
         {/* ── Com que frequência ── */}
         <div>
           <span style={rotuloCampo}>Com que frequência</span>
-          <div className="seg" role="radiogroup" aria-label="Frequência do custo">
+          <div className="seg" role="group" aria-label="Frequência do custo">
             {ORDEM_FREQ.map((f) => (
               <button
-                key={f} type="button" role="radio" aria-checked={r.freq === f}
+                key={f} type="button" aria-pressed={r.freq === f}
                 className={`seg-btn ${r.freq === f ? "active" : ""}`}
                 onClick={() => muda("freq", f)}
               >
@@ -230,40 +293,6 @@ export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onC
             {erros.data && <div style={textoErro}>{erros.data}</div>}
           </div>
         )}
-
-        {/* ── Onde conta ──
-            Duas escolhas grandes, cada uma com o exemplo do lado. Era um
-            select com "Desconta no Dashboard / Só na DRE" e a explicação num
-            quadro longe do campo — quem precisava entender a diferença tinha
-            que achar o quadro primeiro. */}
-        <div>
-          <span style={rotuloCampo}>Onde esse custo conta</span>
-          <div role="radiogroup" aria-label="Onde o custo conta" style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(min(210px,100%),1fr))" }}>
-            {ORDEM_ESCOPO.map((esc) => {
-              const ativo = r.escopo === esc;
-              return (
-                <button
-                  key={esc} type="button" role="radio" aria-checked={ativo}
-                  onClick={() => muda("escopo", esc)}
-                  style={{
-                    textAlign: "left", padding: "10px 12px", borderRadius: 10, cursor: "pointer",
-                    background: ativo ? "var(--surface2)" : "transparent",
-                    border: `1px solid ${ativo ? "var(--accent)" : "var(--border)"}`,
-                    color: "var(--text)", font: "inherit",
-                  }}
-                >
-                  <div style={{ fontWeight: 700, fontSize: ".86rem", display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ color: ativo ? "var(--accent)" : "var(--muted)" }}>{ativo ? "●" : "○"}</span>
-                    {ESCOPO_META[esc].rotulo}
-                  </div>
-                  <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 3, lineHeight: 1.4 }}>
-                    {ESCOPO_META[esc].explica}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
 
         {/* ── A prévia ──
             A consequência antes do clique. É o que responde "o que isso vai
@@ -301,6 +330,8 @@ export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onC
             </>
           )}
         </div>
+
+        <div style={tituloEtapa}>3 · Detalhes</div>
 
         {/* ── Opcional, recolhido ──
             Categoria, centro de custo e observação não mudam número nenhum.
@@ -347,7 +378,15 @@ export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onC
 
         {erroGravacao && (
           <div className="note note-danger" style={{ margin: 0 }} role="alert">
-            <b>Não consegui salvar — nada foi gravado.</b> Seus dados continuam aqui; tente de novo.
+            {gravacaoParcial ? (
+              <>
+                <b>Salvou pela metade.</b> A versão anterior deste custo já foi encerrada, mas a nova <b>não</b> foi
+                gravada — até completar, ele não conta a partir de hoje. Seus dados continuam aqui: tente salvar de
+                novo pra concluir.
+              </>
+            ) : (
+              <><b>Não consegui salvar — nada foi gravado.</b> Seus dados continuam aqui; tente de novo.</>
+            )}
             <div style={{ marginTop: 4, fontFamily: "ui-monospace, monospace", fontSize: ".75rem", overflowWrap: "anywhere" }}>
               {erroGravacao}
             </div>
@@ -356,13 +395,14 @@ export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onC
       </div>
 
       <div className="modal-btns">
-        <button type="button" className="btn btn-ghost" onClick={onCancelar} disabled={salvando}>
+        <button type="button" className="btn btn-ghost" onClick={cancelar} disabled={salvando}>
           Cancelar
         </button>
         <button type="submit" className="btn btn-primary" disabled={salvando}>
-          {salvando ? "Salvando…" : novo ? "Salvar custo" : "Salvar alterações"}
+          {salvando ? "Salvando…" : erroGravacao ? "Tentar salvar de novo" : novo ? "Salvar custo" : "Salvar alterações"}
         </button>
       </div>
     </form>
+    </Modal>
   );
 }

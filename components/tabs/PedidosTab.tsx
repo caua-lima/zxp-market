@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useDeepLinkConsumido } from "@/components/useDeepLinkConsumido";
 import { statusDeEntrega } from "@/lib/domain/entrega-status";
 
 /** Hoje no fuso de Brasilia — base do "chega hoje/amanha" (ver entrega-status). */
@@ -331,7 +332,7 @@ function DetalhePedido({ pedido: p }: { pedido: Pedido }) {
   );
 }
 
-export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMargem?: number; openOrderId?: string }) {
+export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavegacao = 0 }: { metaMargem?: number; openOrderId?: string; chaveDeNavegacao?: number }) {
   const [range, setRange] = useState(() => monthRange());
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
@@ -366,12 +367,11 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
    * "aconteceu isto, reaja" — que é o que a própria documentação da regra
    * diz.
    */
-  useEffect(() => {
-    if (openOrderId && pedidos.some((p) => p.order_id === openOrderId)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- evento (deep link), nao espelhamento de prop; ver o comentario acima
-      setDetalhe(openOrderId);
-    }
-  }, [openOrderId, pedidos]);
+  // O efeito antigo dependia de [openOrderId, pedidos] e reabria o drawer a cada
+  // atualização da lista, mesmo depois de a pessoa fechá-lo. Agora o link é
+  // consumido uma vez por navegação (ver lib/domain/deep-link-consumo).
+  const abrirPedidoDoLink = useCallback((id: string) => setDetalhe(id), []);
+  useDeepLinkConsumido(openOrderId, chaveDeNavegacao, !!openOrderId && pedidos.some((p) => p.order_id === openOrderId), abrirPedidoDoLink);
   const [adsByItem, setAdsByItem] = useState<Record<string, number>>({});
   // Fecha o drawer com Esc — sem isso, teclado só fecha clicando no X ou fora.
   useEffect(() => {

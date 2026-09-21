@@ -48,6 +48,9 @@ export default function LoginCard() {
   const [err, setErr] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [verSenha, setVerSenha] = useState(false);
+  /** O erro do formulário de e-mail fica perto dos campos; o do Google, perto dos botões. */
+  const [errForm, setErrForm] = useState<string | null>(null);
 
   async function handleGoogle(useAccountSelection: boolean) {
     setBusy(true);
@@ -65,25 +68,21 @@ export default function LoginCard() {
   async function handleEmail(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim() || !password) {
-      setErr("Informe e-mail e senha.");
+      setErrForm("Informe e-mail e senha.");
       return;
     }
     setBusy(true);
     setErr(null);
+    setErrForm(null);
     try {
       await signInWithEmail(email, password);
     } catch (e) {
-      setErr(mensagemErroLogin(e));
+      // O e-mail digitado fica: quem errou a senha não deve digitar tudo de novo.
+      setErrForm(mensagemErroLogin(e));
     } finally {
       setBusy(false);
     }
   }
-
-  const inputStyle: React.CSSProperties = {
-    width: "100%", background: "var(--surface2)", border: "1px solid var(--border)",
-    borderRadius: 8, padding: "10px 12px", color: "var(--text)", fontSize: ".9rem", outline: "none",
-    marginBottom: 10, boxSizing: "border-box",
-  };
 
   return (
     <div className="login-wrap">
@@ -100,9 +99,39 @@ export default function LoginCard() {
         <p style={{ marginBottom: 2 }}>Dashboard da VAZXPRESS no Mercado Livre</p>
         <p style={{ fontSize: ".8rem" }}>Entre com e-mail e senha ou com sua conta Google.</p>
 
-        <form onSubmit={handleEmail} style={{ textAlign: "left", marginBottom: 6 }}>
-          <input type="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} style={inputStyle} autoComplete="username" />
-          <input type="password" placeholder="Senha" value={password} onChange={(e) => setPassword(e.target.value)} style={inputStyle} autoComplete="current-password" />
+        {/*
+          Rótulos VISÍVEIS e associados. Eram só `placeholder`, que some ao
+          digitar (quem preenche à noite não lembra qual campo é qual) e não é
+          um nome confiável pra leitor de tela. O `outline: none` inline também
+          saiu: quem navega por teclado não via onde estava o foco.
+        */}
+        <form onSubmit={handleEmail} noValidate style={{ textAlign: "left", marginBottom: 6 }}>
+          <div className="login-field">
+            <label htmlFor="login-email">E-mail</label>
+            <input
+              id="login-email" name="email" type="email" className="login-input" value={email}
+              onChange={(e) => setEmail(e.target.value)} autoComplete="username" inputMode="email"
+              autoCapitalize="none" spellCheck={false}
+              aria-invalid={errForm ? true : undefined} aria-describedby={errForm ? "login-erro" : undefined}
+            />
+          </div>
+          <div className="login-field">
+            <label htmlFor="login-senha">Senha</label>
+            <div className="login-senha">
+              <input
+                id="login-senha" name="password" type={verSenha ? "text" : "password"} className="login-input"
+                value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password"
+                aria-invalid={errForm ? true : undefined} aria-describedby={errForm ? "login-erro" : undefined}
+              />
+              <button
+                type="button" className="login-ver" onClick={() => setVerSenha((v) => !v)}
+                aria-pressed={verSenha} aria-label={verSenha ? "Ocultar senha" : "Mostrar senha"}
+              >
+                {verSenha ? "Ocultar" : "Mostrar"}
+              </button>
+            </div>
+          </div>
+          {errForm && <p id="login-erro" role="alert" className="login-erro">{errForm}</p>}
           <button type="submit" className="btn btn-primary" disabled={busy} style={{ width: "100%", justifyContent: "center" }}>
             {busy ? "Entrando…" : "Entrar"}
           </button>
@@ -121,7 +150,7 @@ export default function LoginCard() {
           Usar outra conta Google
         </button>
 
-        {err && <p style={{ color: "var(--red-text)", fontSize: ".82rem", marginTop: 12 }}>{err}</p>}
+        {err && <p role="alert" className="login-erro" style={{ marginTop: 12 }}>{err}</p>}
       </div>
     </div>
   );
