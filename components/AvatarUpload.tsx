@@ -121,7 +121,7 @@ export function AvatarUpload({ size = 28 }: { size?: number }) {
       <input ref={inputRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
 
       {error && (
-        <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 6, fontSize: ".75rem", color: "var(--red)", width: 150, textAlign: "center", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 6px", zIndex: 5 }}>
+        <div style={{ position: "absolute", top: "100%", left: "50%", transform: "translateX(-50%)", marginTop: 6, fontSize: ".75rem", color: "var(--red-text)", width: 150, textAlign: "center", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 6px", zIndex: 5 }}>
           {error}
         </div>
       )}

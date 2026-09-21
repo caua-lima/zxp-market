@@ -256,7 +256,7 @@ export function PushNotificationToggle() {
           )}
         </button>
         {error && (
-          <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, fontSize: ".75rem", color: "var(--red)", width: 220, textAlign: "right", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px", zIndex: 20 }}>
+          <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, fontSize: ".75rem", color: "var(--red-text)", width: 220, textAlign: "right", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 8px", zIndex: 20 }}>
             {error}
           </div>
         )}
@@ -385,7 +385,7 @@ export function PushNotificationToggle() {
                 </div>
               )}
               {observacao?.estado === "recebido_sem_exibir" && (
-                <div role="alert" style={{ color: "var(--red)", fontSize: ".84rem" }}>
+                <div role="alert" style={{ color: "var(--red-text)", fontSize: ".84rem" }}>
                   O aparelho recebeu, mas o sistema não deixou exibir ({observacao.erro}). Confira a permissão de notificações do app nas configurações do sistema.
                 </div>
               )}
@@ -399,7 +399,7 @@ export function PushNotificationToggle() {
               {resultado.horario && <div style={{ color: "var(--muted)", fontSize: ".8rem", marginTop: 8 }}>{new Date(resultado.horario).toLocaleTimeString("pt-BR")}</div>}
             </div>
           ) : (
-            <div style={{ fontSize: ".88rem", color: "var(--red)", lineHeight: 1.6 }}>Falha ao enviar: {resultado.error}</div>
+            <div style={{ fontSize: ".88rem", color: "var(--red-text)", lineHeight: 1.6 }}>Falha ao enviar: {resultado.error}</div>
           )}
           <div className="modal-btns">
             <button type="button" className="btn btn-ghost" onClick={() => { setResultado(null); setObservacao(null); }}>Fechar</button>

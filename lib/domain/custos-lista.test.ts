@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   acumuladoEProjetado, impactoDaLista, rotuloDaVigencia,
   filtrarCustos, ordenarCustos, filtrosAtivos, FILTRO_VAZIO,
+  situacaoDoCusto, contarPorSituacao, vistaDaLista, temFiltroRestritivo,
 } from "./custos-lista";
 import type { Cost } from "./types";
 
@@ -207,5 +208,45 @@ describe("filtrosAtivos", () => {
 
   it("busca só com espaço não conta", () => {
     expect(filtrosAtivos({ ...FILTRO_VAZIO, busca: "  " })).toBe(0);
+  });
+});
+
+describe("situacaoDoCusto — futuro não é arquivado", () => {
+  const HOJE = "2026-09-20";
+  it("vigente e sem arquivar é ativo", () => {
+    expect(situacaoDoCusto(custo(), HOJE)).toBe("ativo");
+  });
+  it("a vigência começa depois de hoje: futuro", () => {
+    expect(situacaoDoCusto(custo({ vigenteDe: "2026-10-01" }), HOJE)).toBe("futuro");
+  });
+  it("vigência que já acabou: encerrado", () => {
+    expect(situacaoDoCusto(custo({ vigenteAte: "2026-03-31" }), HOJE)).toBe("encerrado");
+  });
+  it("marcado como arquivado é encerrado, mesmo com a vigência ainda aberta hoje", () => {
+    expect(situacaoDoCusto(custo({ ativo: false, vigenteAte: HOJE }), HOJE)).toBe("encerrado");
+  });
+  it("conta cada situação", () => {
+    const lista = [custo({ id: "a" }), custo({ id: "b", vigenteDe: "2026-12-01" }), custo({ id: "c", ativo: false })];
+    expect(contarPorSituacao(lista, HOJE)).toEqual({ ativo: 1, futuro: 1, encerrado: 1 });
+  });
+});
+
+describe("vistaDaLista — quatro situações, quatro mensagens", () => {
+  const base = { totalCadastrado: 5, visiveis: 0, incluirArquivados: false, filtroRestritivo: false };
+  it("nada cadastrado", () => {
+    expect(vistaDaLista({ ...base, totalCadastrado: 0 })).toBe("sem-cadastro");
+  });
+  it("cinco cadastrados, nenhum ativo, encerrados escondidos: sem-ativos (não 'nenhum cadastrado')", () => {
+    expect(vistaDaLista(base)).toBe("sem-ativos");
+  });
+  it("cinco arquivados e o filtro os mostra: há o que listar", () => {
+    expect(vistaDaLista({ ...base, visiveis: 5, incluirArquivados: true })).toBe("com-itens");
+  });
+  it("busca que esconde tudo é filtro-vazio, não cadastro vazio", () => {
+    expect(vistaDaLista({ ...base, filtroRestritivo: true })).toBe("filtro-vazio");
+  });
+  it("'incluir arquivados' sozinho não é filtro restritivo", () => {
+    expect(temFiltroRestritivo({ ...FILTRO_VAZIO, incluirArquivados: true })).toBe(false);
+    expect(temFiltroRestritivo({ ...FILTRO_VAZIO, busca: " aluguel " })).toBe(true);
   });
 });

@@ -58,7 +58,7 @@ const rotuloCampo: React.CSSProperties = {
   fontSize: ".75rem", color: "var(--muted)", textTransform: "uppercase",
   letterSpacing: ".05em", fontWeight: 700, marginBottom: 5, display: "block",
 };
-const textoErro: React.CSSProperties = { color: "var(--red)", fontSize: ".75rem", marginTop: 4 };
+const textoErro: React.CSSProperties = { color: "var(--red-text)", fontSize: ".75rem", marginTop: 4 };
 
 export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onCancelar }: {
   /** O custo a editar. `null` = cadastrar um novo. */
@@ -238,7 +238,7 @@ export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onC
             que achar o quadro primeiro. */}
         <div>
           <span style={rotuloCampo}>Onde esse custo conta</span>
-          <div role="radiogroup" aria-label="Onde o custo conta" style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))" }}>
+          <div role="radiogroup" aria-label="Onde o custo conta" style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(min(210px,100%),1fr))" }}>
             {ORDEM_ESCOPO.map((esc) => {
               const ativo = r.escopo === esc;
               return (

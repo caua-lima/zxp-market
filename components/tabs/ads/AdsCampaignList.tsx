@@ -93,7 +93,7 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
                 <td data-label="ROAS obj." style={{ whiteSpace: "nowrap", fontWeight: 600, color: c.roasTarget > 0 ? "var(--text)" : "var(--muted)" }}>
                   {c.roasTarget > 0 ? `${num(c.roasTarget, 2)}x` : "—"}
                 </td>
-                <td data-label="Investido" style={{ color: "var(--red)", fontWeight: 600, whiteSpace: "nowrap" }}>{fmtBRL(c.cost)}</td>
+                <td data-label="Investido" style={{ color: "var(--red-text)", fontWeight: 600, whiteSpace: "nowrap" }}>{fmtBRL(c.cost)}</td>
                 <td data-label="Receita" style={{ color: "var(--green)", whiteSpace: "nowrap" }}>{fmtBRL(c.receita)}</td>
                 {/* Dois ROAS de propósito: o do modo escolhido e o do painel do
                     Mercado Ads (receita atribuída total). Sem o segundo, o

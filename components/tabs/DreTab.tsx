@@ -866,7 +866,7 @@ export default function DreTab() {
                   <tr key={`${c.nome}-${i}`}>
                     <td style={{ textAlign: "left", fontWeight: 600 }}>{c.nome}</td>
                     <td data-label="Frequência" style={{ textAlign: "left", color: "var(--muted)", fontSize: ".8rem" }}>{c.freq}</td>
-                    <td data-label="No período" style={{ textAlign: "right", color: "var(--red)", whiteSpace: "nowrap" }}>−{fmtBRL(c.valor)}</td>
+                    <td data-label="No período" style={{ textAlign: "right", color: "var(--red-text)", whiteSpace: "nowrap" }}>−{fmtBRL(c.valor)}</td>
                     <td data-label="% da receita" style={{ textAlign: "right", color: "var(--muted)" }}>{fmtPct(margem(c.valor), 1)}</td>
                   </tr>
                 ))}

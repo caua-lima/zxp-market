@@ -216,3 +216,62 @@ export function filtrosAtivos(f: FiltroCustos): number {
     + f.frequencias.length
     + (f.incluirArquivados ? 1 : 0);
 }
+
+/**
+ * ─── ATIVO, FUTURO E ENCERRADO NÃO SÃO A MESMA COISA ──────────────────────
+ *
+ * A tela tratava tudo o que não vale hoje como "arquivado". Um custo que só
+ * começa em outubro e um que foi encerrado em março apareciam no mesmo saco, e
+ * o botão "Mostrar arquivados" só funcionava se existisse ao menos um ativo.
+ *
+ *   ativo     — vale hoje e não foi arquivado.
+ *   futuro    — a vigência ainda não começou. Vai contar; ainda não contou.
+ *   encerrado — foi arquivado ou a vigência acabou. Continua no histórico.
+ */
+export type SituacaoDoCusto = "ativo" | "futuro" | "encerrado";
+
+export function situacaoDoCusto(c: Cost, hojeISO: string): SituacaoDoCusto {
+  if (c.ativo === false) return "encerrado";
+  const j = janelaDeVigencia(paraVigencia(c), hojeISO);
+  if (hojeISO < j.de) return "futuro";
+  if (hojeISO > j.ate) return "encerrado";
+  return "ativo";
+}
+
+/** Quantos custos há em cada situação — pra o botão dizer o que ele revela. */
+export function contarPorSituacao(custos: readonly Cost[], hojeISO: string): Record<SituacaoDoCusto, number> {
+  const n: Record<SituacaoDoCusto, number> = { ativo: 0, futuro: 0, encerrado: 0 };
+  for (const c of custos) n[situacaoDoCusto(c, hojeISO)]++;
+  return n;
+}
+
+/**
+ * O que a lista está dizendo, e por quê. Quatro situações que tinham a mesma
+ * mensagem ("nenhum custo cadastrado") e são coisas diferentes:
+ *
+ *   sem-cadastro — não existe custo nenhum (ou a fonte não carregou: quem chama
+ *                  decide o texto a partir do estado da fonte).
+ *   sem-ativos   — existem custos, mas nenhum vale hoje e os encerrados/futuros
+ *                  estão escondidos. A saída é MOSTRÁ-LOS, não cadastrar outro.
+ *   filtro-vazio — busca ou filtro esconderam tudo. A saída é limpar o filtro.
+ *   com-itens    — há o que listar.
+ */
+export type VistaDaLista = "sem-cadastro" | "sem-ativos" | "filtro-vazio" | "com-itens";
+
+export function vistaDaLista(a: {
+  totalCadastrado: number;
+  visiveis: number;
+  incluirArquivados: boolean;
+  /** Busca, categoria ou recorrência ativas (não conta "incluir arquivados"). */
+  filtroRestritivo: boolean;
+}): VistaDaLista {
+  if (a.totalCadastrado === 0) return "sem-cadastro";
+  if (a.visiveis > 0) return "com-itens";
+  if (a.filtroRestritivo) return "filtro-vazio";
+  return a.incluirArquivados ? "filtro-vazio" : "sem-ativos";
+}
+
+/** Há busca, categoria ou recorrência restringindo a lista? */
+export function temFiltroRestritivo(f: FiltroCustos): boolean {
+  return f.busca.trim() !== "" || f.categorias.length > 0 || f.frequencias.length > 0;
+}

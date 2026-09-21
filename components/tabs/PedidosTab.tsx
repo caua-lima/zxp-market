@@ -172,7 +172,7 @@ function DetalhePedido({ pedido: p }: { pedido: Pedido }) {
   ];
 
   return (
-    <div style={{ padding: "12px 16px", display: "grid", gap: 18, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+    <div style={{ padding: "12px 16px", display: "grid", gap: 18, gridTemplateColumns: "repeat(auto-fit, minmax(min(260px,100%),1fr))" }}>
       <div>
         <div style={{ fontSize: ".75rem", textTransform: "uppercase", letterSpacing: ".04em", color: "var(--muted)", marginBottom: 4 }}>
           Da venda até o seu bolso
@@ -766,7 +766,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
                 <div className="ped-card-grid">
                   <div className="ped-card-cell"><span>Faturamento</span><b>{fmtBRL(r.valor)}</b></div>
                   <div className="ped-card-cell"><span>Retorno</span><b>{fmtBRL(r.retorno)}</b></div>
-                  <div className="ped-card-cell"><span>Custos</span><b style={{ color: "var(--red)" }}>−{fmtBRL(r.custos)}</b></div>
+                  <div className="ped-card-cell"><span>Custos</span><b style={{ color: "var(--red-text)" }}>−{fmtBRL(r.custos)}</b></div>
                 </div>
               </div>
             ))}
@@ -798,7 +798,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
                     <td style={{ textAlign: "right", fontWeight: 700, color: "var(--accent)", whiteSpace: "nowrap" }}>{r.qtd}</td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{fmtBRL(r.valor)}</td>
                     <td style={{ textAlign: "right", fontWeight: 600, whiteSpace: "nowrap" }}>{fmtBRL(r.retorno)}</td>
-                    <td style={{ textAlign: "right", color: "var(--red)", whiteSpace: "nowrap" }}>−{fmtBRL(r.custos)}</td>
+                    <td style={{ textAlign: "right", color: "var(--red-text)", whiteSpace: "nowrap" }}>−{fmtBRL(r.custos)}</td>
                     <td style={{ textAlign: "right", fontWeight: 800, whiteSpace: "nowrap", color: r.lucro >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(r.lucro)}</td>
                     <td><span className={`tag ${margemTag(r.margem)}`}>{fmtPct(r.margem, 1)}</span></td>
                   </tr>
@@ -811,7 +811,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
                   <td style={{ textAlign: "right", fontWeight: 800, color: "var(--accent)" }}>{porProduto.reduce((s, r) => s + r.qtd, 0)}</td>
                   <td style={{ textAlign: "right", fontWeight: 700 }}>{fmtBRL(porProduto.reduce((s, r) => s + r.valor, 0))}</td>
                   <td style={{ textAlign: "right", fontWeight: 700 }}>{fmtBRL(porProduto.reduce((s, r) => s + r.retorno, 0))}</td>
-                  <td style={{ textAlign: "right", fontWeight: 700, color: "var(--red)" }}>−{fmtBRL(porProduto.reduce((s, r) => s + r.custos, 0))}</td>
+                  <td style={{ textAlign: "right", fontWeight: 700, color: "var(--red-text)" }}>−{fmtBRL(porProduto.reduce((s, r) => s + r.custos, 0))}</td>
                   <td style={{ textAlign: "right", fontWeight: 800, color: totalLucro >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(porProduto.reduce((s, r) => s + r.lucro, 0))}</td>
                   <td />
                 </tr>
@@ -845,7 +845,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
                   <div className="ped-card-grid">
                     <div className="ped-card-cell"><span>Valor</span><b>{fmtBRL(p.valor)}</b></div>
                     <div className="ped-card-cell"><span>Retorno</span><b>{fmtBRL(p.retorno)}</b></div>
-                    <div className="ped-card-cell"><span>Custos</span><b style={{ color: "var(--red)" }}>−{fmtBRL(custos)}</b></div>
+                    <div className="ped-card-cell"><span>Custos</span><b style={{ color: "var(--red-text)" }}>−{fmtBRL(custos)}</b></div>
                     <div className="ped-card-cell"><span style={{ color: "var(--accent)" }}>▾ detalhes</span></div>
                   </div>
                 </div>
@@ -898,7 +898,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId }: { metaMarge
                       <td style={{ color: "var(--muted)" }}>{p.qtd}</td>
                       <td style={{ textAlign: "right", color: "var(--text)", whiteSpace: "nowrap" }}>{fmtBRL(p.valor)}</td>
                       <td style={{ textAlign: "right", color: "var(--text)", fontWeight: 600, whiteSpace: "nowrap" }}>{fmtBRL(p.retorno)}</td>
-                      <td style={{ textAlign: "right", color: "var(--red)", whiteSpace: "nowrap" }}>
+                      <td style={{ textAlign: "right", color: "var(--red-text)", whiteSpace: "nowrap" }}>
                         −{fmtBRL(custos)}
                         <span style={{ marginLeft: 5, color: "var(--muted)", fontSize: ".75rem" }}>▾</span>
                       </td>

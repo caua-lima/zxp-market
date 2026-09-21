@@ -121,7 +121,7 @@ export default function LoginCard() {
           Usar outra conta Google
         </button>
 
-        {err && <p style={{ color: "var(--red)", fontSize: ".82rem", marginTop: 12 }}>{err}</p>}
+        {err && <p style={{ color: "var(--red-text)", fontSize: ".82rem", marginTop: 12 }}>{err}</p>}
       </div>
     </div>
   );

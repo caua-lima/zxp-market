@@ -47,6 +47,10 @@
   --focus:#FFD76A;--focus-bg:rgba(255,215,106,0.14);
   --green:#36B37E;--green-bg:rgba(54,179,126,0.12);
   --red:#D65A4A;--red-bg:rgba(214,90,74,0.12);
+  /* Vermelho de TEXTO. --red (#D65A4A) fica pra preenchimento, borda e barras: como
+     texto ele dá 4,13:1 sobre --surface e 3,63:1 sobre --surface2, abaixo dos 4,5:1
+     de texto pequeno. Este dá 5,09:1 sobre --surface2 e é da mesma família. */
+  --red-text:#EC7B69;
   /* --yellow segue dourado (usado em destaques decorativos: cards de meta,
      barras de progresso). Onde o significado é "atenção operacional" de
      verdade, os componentes usam --warning (laranja), não este. */
@@ -72,7 +76,7 @@
 
   --text-primary:#F7F3E8;
   --text-secondary:#B5B2A6;
-  --text-muted:#838278;
+  --text-muted:#9C9A8D;   /* era #838278: 3,63:1 sobre --surface2. Este dá 4,96:1. */
 
   --brand-strong:#E8A91D;
   --brand-soft:rgba(var(--brand-rgb),0.12);
@@ -177,14 +181,14 @@ header p{color:var(--muted);font-size:.9rem;margin-top:4px}
 .btn-primary:hover{background:var(--accent-hover);color:var(--bg);transform:translateY(-1px)}
 .btn-success{background:var(--green);color:var(--bg)}
 .btn-success:hover{background:#2A9367;transform:translateY(-1px)}
-.btn-danger{background:transparent;border:1px solid var(--red);color:var(--red)}
+.btn-danger{background:transparent;border:1px solid var(--red);color:var(--red-text)}
 .btn-danger:hover{background:var(--red-bg)}
 .btn-ghost{background:var(--surface2);border:1px solid var(--border);color:var(--text)}
 .btn-ghost:hover{background:var(--border)}
 .btn-warning{background:var(--warning);color:var(--bg);font-weight:700}
 .btn-warning:hover{background:#DB7714}
-.btn-purple{background:var(--purple);color:var(--text)}
-.btn-purple:hover{background:#7E52A8}
+.btn-purple{background:#7E4FB5;color:var(--text)} /* --purple #9B6BCE dava 3,51:1 com texto marfim; este dá 5,15:1 */
+.btn-purple:hover{background:#6F42A8}
 .btn-sm{padding:6px 14px;font-size:.82rem}
 .btn-xs{padding:4px 10px;font-size:.75rem}
 
@@ -202,7 +206,7 @@ header p{color:var(--muted);font-size:.9rem;margin-top:4px}
 .ad-title-input::placeholder{color:var(--muted);font-weight:400}
 .fields-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px}
 .field-group{display:flex;flex-direction:column;gap:4px;min-width:0}
-.field-group label{display:flex;align-items:baseline;gap:6px;flex-wrap:nowrap;min-width:0;font-size:clamp(.58rem,1.05vw,.72rem);color:var(--muted);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.field-group label{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0;font-size:.8125rem;line-height:1.35;color:var(--muted);text-transform:uppercase;letter-spacing:.02em;white-space:normal;overflow-wrap:anywhere}
 .field-group input[type=number],.field-group input[type=text]{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-size:.95rem;outline:none;width:100%;transition:border-color .18s;appearance:textfield;-webkit-appearance:textfield;-moz-appearance:textfield}
 .field-group input[type=number]::-webkit-outer-spin-button,
 .field-group input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none}
@@ -235,7 +239,7 @@ tbody tr:hover{background:var(--surface2)}
 tbody td{padding:11px 13px;white-space:nowrap}
 .td-name{font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis}
 .positive{color:var(--green);font-weight:600}
-.negative{color:var(--red);font-weight:600}
+.negative{color:var(--red-text);font-weight:600}
 .neutral{color:var(--muted)}
 
 /* Summary cards */
@@ -259,7 +263,7 @@ tbody td{padding:11px 13px;white-space:nowrap}
 /* Metas mensais */
 .metas-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px}
 .metas-header h2{font-size:1.1rem;font-weight:700}
-.meta-cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.meta-cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:16px}
 .meta-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;position:relative;overflow:hidden;transition:border-color .2s}
 .meta-card.locked{opacity:.42;pointer-events:none}
 .meta-card.achieved{border-color:var(--green)}
@@ -282,7 +286,7 @@ tbody td{padding:11px 13px;white-space:nowrap}
 .meta-stat-label{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
 .meta-stat-value{font-size:.9rem;font-weight:700}
 .meta-projecao{margin-top:12px;padding:10px 12px;border-radius:8px;font-size:.8rem;border:1px solid}
-.projecao-atras{background:rgba(214,90,74,.08);border-color:rgba(214,90,74,.3);color:var(--red)}
+.projecao-atras{background:rgba(214,90,74,.08);border-color:rgba(214,90,74,.3);color:var(--red-text)}
 .projecao-frente{background:rgba(54,179,126,.08);border-color:rgba(54,179,126,.3);color:var(--green)}
 .meta-achieved-banner{margin-top:12px;padding:10px 12px;border-radius:8px;background:var(--green-bg);border:1px solid var(--green);color:var(--green);font-size:.82rem;font-weight:600;text-align:center}
 
@@ -308,7 +312,7 @@ tbody td{padding:11px 13px;white-space:nowrap}
 .history-day-pills{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .pill{padding:3px 10px;border-radius:20px;font-size:.82rem;font-weight:600;background:var(--surface2);border:1px solid var(--border)}
 .pill-green{background:var(--green-bg);border-color:var(--green);color:var(--green)}
-.pill-red{background:var(--red-bg);border-color:var(--red);color:var(--red)}
+.pill-red{background:var(--red-bg);border-color:var(--red);color:var(--red-text)}
 .pill-yellow{background:var(--warning-soft);border-color:var(--warning);color:var(--warning)}
 .history-day-actions{display:flex;gap:6px;align-items:center}
 .chevron{display:inline-block;transition:transform .2s;color:var(--muted);font-size:.8rem}
@@ -320,7 +324,7 @@ tbody td{padding:11px 13px;white-space:nowrap}
 .edit-ad-title{font-weight:600;font-size:.9rem;margin-bottom:10px;color:var(--accent);display:flex;align-items:center;justify-content:space-between}
 .edit-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
 .edit-field{display:flex;flex-direction:column;gap:3px}
-.edit-field label{display:flex;align-items:baseline;gap:6px;flex-wrap:nowrap;min-width:0;font-size:clamp(.6rem,1.05vw,.7rem);color:var(--muted);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.edit-field label{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0;font-size:.8125rem;line-height:1.35;color:var(--muted);text-transform:uppercase;letter-spacing:.02em;white-space:normal;overflow-wrap:anywhere}
 .edit-field input,.edit-name-input{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:7px 10px;color:var(--text);font-size:.88rem;outline:none;width:100%;appearance:textfield;-webkit-appearance:textfield;-moz-appearance:textfield}
 .edit-field input::-webkit-outer-spin-button,.edit-field input::-webkit-inner-spin-button{-webkit-appearance:none}
 .edit-field input:focus,.edit-name-input:focus{border-color:var(--focus);box-shadow:0 0 0 3px var(--focus-bg)}
@@ -328,7 +332,7 @@ tbody td{padding:11px 13px;white-space:nowrap}
 
 /* Config modal */
 .config-field{margin-bottom:16px}
-.config-field label{display:flex;align-items:baseline;gap:6px;flex-wrap:nowrap;min-width:0;font-size:clamp(.62rem,1.15vw,.8rem);color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.config-field label{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0;font-size:.8125rem;line-height:1.35;color:var(--muted);text-transform:none;letter-spacing:0;font-weight:600;margin-bottom:6px;white-space:normal;overflow-wrap:anywhere}
 .config-field input,.config-field select{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-size:.95rem;outline:none;width:100%;appearance:textfield;-webkit-appearance:textfield;-moz-appearance:textfield;transition:border-color .18s}
 .config-field input::-webkit-outer-spin-button,.config-field input::-webkit-inner-spin-button{-webkit-appearance:none}
 .config-field input:focus,.config-field select:focus{border-color:var(--focus);box-shadow:0 0 0 3px var(--focus-bg)}
@@ -337,7 +341,7 @@ tbody td{padding:11px 13px;white-space:nowrap}
 .config-section-title{font-size:.82rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:14px;font-weight:700}
 
 /* Generic field labels */
-.field-group label{display:flex;align-items:baseline;gap:6px;flex-wrap:nowrap;min-width:0;font-size:clamp(.62rem,1.15vw,.72rem);color:var(--muted);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.field-group label{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0;font-size:.8125rem;line-height:1.35;color:var(--muted);text-transform:uppercase;letter-spacing:.02em;white-space:normal;overflow-wrap:anywhere}
 
 /* Chart */
 .chart-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:24px}
@@ -459,7 +463,7 @@ canvas.chart-canvas{width:100%!important;height:100%!important}
 .tag{display:inline-block;padding:2px 9px;border-radius:6px;font-size:.75rem;font-weight:800}
 .tag-g{background:var(--green-bg);color:var(--green)}
 .tag-y{background:var(--warning-soft);color:var(--warning)}
-.tag-r{background:var(--red-bg);color:var(--red)}
+.tag-r{background:var(--red-bg);color:var(--red-text)}
 
 /* daily goal bar */
 .dgoal-bar{height:10px;border-radius:99px;background:var(--surface2);overflow:hidden}
@@ -675,7 +679,7 @@ canvas.chart-canvas{width:100%!important;height:100%!important}
 .chip-green{background:var(--green-bg);border-color:var(--green);color:var(--green)}
 .chip-yellow{background:var(--warning-soft);border-color:var(--warning);color:var(--warning)}
 .chip-purple{background:rgba(var(--brand-rgb),.16);border-color:var(--purple);color:var(--purple)}
-.chip-red{background:var(--red-bg);border-color:var(--red);color:var(--red)}
+.chip-red{background:var(--red-bg);border-color:var(--red);color:var(--red-text)}
 
 /* ---- Formulários em grade ---- */
 .form-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
@@ -691,7 +695,7 @@ canvas.chart-canvas{width:100%!important;height:100%!important}
    daqui era simplesmente ignorado dentro de um .field, o texto começava nos
    12px do padding genérico e o número ficava POR BAIXO do cifrão.
    Medido no navegador: "R$" a .85rem ocupa 17,5px e termina em ~29,5px. */
-.field .inp-money,.inp-money{padding-left:40px;font-weight:700;color:var(--red)}
+.field .inp-money,.inp-money{padding-left:40px;font-weight:700;color:var(--red-text)}
 .inp-wrap{position:relative;min-width:0}
 .inp-prefix{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.85rem;pointer-events:none}
 .search-inp{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:11px 14px;color:var(--text);font-size:.9rem;outline:none;transition:border-color .15s,box-shadow .15s}
@@ -845,7 +849,7 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
 .kanban-card-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:9px;border-top:1px solid var(--border);padding-left:6px}
 .kanban-move-btns{display:flex;gap:4px}
 .kanban-empty{text-align:center;padding:22px 10px;color:var(--muted);font-size:.82rem;border:1px dashed var(--border);border-radius:10px}
-.kanban-overdue{color:var(--red)!important;font-weight:700}
+.kanban-overdue{color:var(--red-text)!important;font-weight:700}
 
 /* =========================================================================
    Topbar — barra fixa do topo (hamburger, marca, título da aba, ações)
@@ -985,7 +989,7 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
 .ac-filter-btn:not(.active):hover{background:var(--surface-hover);color:var(--text-primary)}
 .ac-filter-btn:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
 
-.ac-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.ac-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(260px,100%),1fr));gap:12px}
 .ac-card{background:var(--surface-raised);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;min-width:0}
 .ac-card-critical{border-left:3px solid var(--danger)}
 .ac-card-warning{border-left:3px solid var(--warning)}
@@ -1164,10 +1168,10 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
 .apres-num-lbl{font-size:9pt;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2mm}
 .apres-num-val{font-size:24pt;font-weight:800;letter-spacing:-.02em;line-height:1.1}
 .apres-num-val.bom{color:var(--green)}
-.apres-num-val.ruim{color:var(--red)}
+.apres-num-val.ruim{color:var(--red-text)}
 .apres-var{display:block;font-size:8.5pt;margin-top:1.5mm}
 .apres-var.sobe{color:var(--green)}
-.apres-var.desce{color:var(--red)}
+.apres-var.desce{color:var(--red-text)}
 .apres-var.neutra{color:var(--muted)}
 .apres-capa-pe{font-size:8.5pt;color:var(--muted)}
 
@@ -1183,10 +1187,10 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
 .apres-casc-barra.fecha{background:var(--green)}
 .apres-casc-barra.fecha-neg{background:var(--red)}
 .apres-casc-val{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
-.apres-casc-val.neg{color:var(--red)}
+.apres-casc-val.neg{color:var(--red-text)}
 .apres-casc-pct{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
 .apres-aviso{margin-top:5mm;padding:3mm 4mm;border-radius:4px;font-size:9pt;
-  background:var(--red-bg);border:1px solid var(--red);color:var(--red)}
+  background:var(--red-bg);border:1px solid var(--red);color:var(--red-text)}
 
 /* ── Leitura do período ───────────────────────────────────────────── */
 .apres-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:5mm;margin-bottom:7mm}
@@ -1194,7 +1198,7 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
 .apres-kpis span{display:block;font-size:8.5pt;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:1.5mm}
 .apres-kpis b{font-size:16pt;font-weight:800;letter-spacing:-.01em}
 .apres-kpis b.bom{color:var(--green)}
-.apres-kpis b.ruim{color:var(--red)}
+.apres-kpis b.ruim{color:var(--red-text)}
 .apres-destaques{display:flex;flex-direction:column;justify-content:space-evenly;gap:3.5mm;flex:1;padding-bottom:4mm}
 /* A borda colorida à esquerda é o que deixa "foi bom" e "foi ruim" legível
    antes mesmo de ler a frase. */
@@ -1339,3 +1343,42 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
   .paginacao-botoes{justify-content:center}
   .paginacao-botoes .btn{min-width:38px;min-height:34px}
 }
+
+/* ─── ADS: FILTROS, FAIXAS E ORDENAÇÃO (components/tabs/ads/AdsFilters.tsx) ───
+   Cada faixa é um <fieldset> com legenda, pra o mínimo e o máximo terem nome. Os
+   controles quebram de linha em vez de estourar: 320px cabe uma faixa por linha. */
+.ads-filtros{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+.ads-filtros-linha{display:flex;gap:12px 16px;flex-wrap:wrap;align-items:flex-end}
+.ads-busca{display:flex;flex-direction:column;gap:4px;flex:1 1 220px;min-width:0}
+.ads-busca label,.ads-ordenar label{font-size:.8rem;font-weight:700;color:var(--muted)}
+.ads-busca input{width:100%;min-width:0}
+.ads-ordenar{display:flex;gap:6px 8px;flex-wrap:wrap;align-items:center;flex:1 1 280px;min-width:0}
+.ads-ordenar select{min-width:0;max-width:100%}
+.ads-ordenar-ativa{flex:1 1 100%;font-size:.8rem;color:var(--muted)}
+.ads-faixa{border:0;margin:0;padding:0;min-width:0}
+.ads-faixa legend{font-size:.8rem;font-weight:700;color:var(--muted);padding:0 0 4px}
+.ads-faixa-un{font-weight:400}
+.ads-faixa-campos{display:flex;align-items:center;gap:6px}
+.ads-faixa-campos input{min-width:0}
+.ads-faixa input[aria-invalid="true"]{border-color:var(--red)}
+.ads-faixa-erro{margin-top:4px;font-size:.8rem;color:var(--red-text);max-width:260px}
+.ads-filtros-resumo{display:flex;gap:8px 12px;flex-wrap:wrap;align-items:center;font-size:.82rem;color:var(--muted)}
+.ads-quick{display:flex;gap:6px;flex-wrap:wrap}
+.ads-quick-btn{font-size:.8rem;font-weight:700;padding:4px 10px;min-height:32px;border-radius:8px;border:1px solid transparent;cursor:pointer;font-family:inherit}
+.ads-quick-limpar{color:var(--muted);background:none;text-decoration:underline;border-color:transparent}
+@media(pointer:coarse){
+  /* Filtro rápido é ação frequente: no toque, alvo de 44px. */
+  .ads-quick-btn{min-height:44px;padding:6px 14px}
+}
+
+/* ─── LEITURA: rótulos e grids ────────────────────────────────────────────────
+   Os rótulos dos formulários tinham `clamp(.58rem…)` (≈9px no celular), `nowrap`
+   e reticências: o nome do campo e a unidade sumiam justo onde mais importam.
+   Agora são 13px, quebram de linha e nunca perdem a unidade.
+
+   Filho de grid tem `min-width:auto` por padrão: um texto sem espaço (SKU, MLB,
+   nome longo) estica a trilha além do contêiner. `min-width:0` deixa a trilha
+   encolher e o conteúdo quebrar — em vez de estourar a tela. */
+[style*="grid-template-columns"] > *,
+.kpi-grid > *,.hero-grid > *,.fields-grid > *,.summary-grid > *,.form-grid > *,
+.edit-fields > *,.meta-cards-grid > *,.ac-list > *{min-width:0}

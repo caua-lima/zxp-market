@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { tom } from "@/lib/ui-cor";
 import Modal from "@/components/Modal";
 import { fmtBRL, formatMesBR, mesAtual, diasNoMes, diaAtualNoMes, projetarMes, scenariosDeProjecao, fmtPct } from "@/lib/domain/calc";
 import type { GoalEntry } from "@/lib/domain/types";
@@ -416,7 +417,7 @@ function GoalEntryRow({
 }) {
   const chip = (label: string, valor: number | null, cor: string) =>
     valor ? (
-      <span className="chip" style={{ background: `${cor}1f`, borderColor: cor, color: cor }}>
+      <span className="chip" style={{ background: tom(cor, 12), borderColor: cor, color: cor }}>
         <span style={{ opacity: .7, fontWeight: 600 }}>{label}</span> {fmtBRL(valor)}
       </span>
     ) : null;

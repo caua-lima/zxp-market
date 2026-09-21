@@ -209,12 +209,12 @@ export default function EntradaMassaModal({ produtos, estoqueML, onClose, onSave
       </div>
 
       {resultado.erros.length > 0 && (
-        <div className="hint" style={{ color: "var(--red)", marginTop: 8 }}>
+        <div className="hint" style={{ color: "var(--red-text)", marginTop: 8 }}>
           {resultado.erros.map((e) => <div key={e}>• {e}</div>)}
         </div>
       )}
       {falhas.length > 0 && (
-        <div className="hint" style={{ color: "var(--red)", marginTop: 8 }}>
+        <div className="hint" style={{ color: "var(--red-text)", marginTop: 8 }}>
           <b>Estes NÃO foram lançados (os demais entraram):</b>
           {falhas.map((e) => <div key={e}>• {e}</div>)}
         </div>

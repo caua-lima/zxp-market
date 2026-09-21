@@ -123,7 +123,7 @@ export default function HistoricoMovimentos({ movimentos, products }: { moviment
                   <tr key={m.id}>
                     <td style={{ color: "var(--muted)" }}>{m.data}</td>
                     <td data-label="Produto" style={{ textAlign: "left", fontWeight: 600 }}>
-                      {nomePorId.get(m.productId) ?? <em style={{ color: "var(--red)" }}>produto removido</em>}
+                      {nomePorId.get(m.productId) ?? <em style={{ color: "var(--red-text)" }}>produto removido</em>}
                     </td>
                     <td data-label="Tipo" style={{ textAlign: "left" }}>
                       <span style={{ color: cor, fontWeight: 700 }}>{TIPO_MOVIMENTO_LABEL[m.tipo]}</span>

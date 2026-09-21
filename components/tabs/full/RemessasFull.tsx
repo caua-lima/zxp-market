@@ -333,7 +333,7 @@ export default function RemessasFull({ movimentos }: { movimentos: EstoqueMovime
                                     {" · "}{dif > 0 ? `+${dif}` : dif} a mais que o recebido
                                   </span>
                                 )}</>
-                              : <span style={{ color: "var(--red)" }}>sem cadastro no Estoque — não dá baixa</span>}
+                              : <span style={{ color: "var(--red-text)" }}>sem cadastro no Estoque — não dá baixa</span>}
                         </div>
                       </div>
                       <input

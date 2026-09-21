@@ -163,7 +163,7 @@ export default function DesempenhoTab() {
       {loading ? (
         <div style={{ padding: 60, textAlign: "center", color: "var(--muted)" }}>Carregando…</div>
       ) : erro || !dados ? (
-        <div style={{ padding: 20, color: "var(--red)", fontSize: ".85rem" }}>
+        <div style={{ padding: 20, color: "var(--red-text)", fontSize: ".85rem" }}>
           Não consegui carregar os dados de desempenho agora. Tente atualizar.
         </div>
       ) : (
@@ -171,7 +171,7 @@ export default function DesempenhoTab() {
           {/*
             ─── A ORDEM VIROU PRECEDÊNCIA, E NÃO O QUE O VIEWPORT DECIDIR ──
 
-            Os quatro painéis viviam num `auto-fit` de minmax(320px, 1fr):
+            Os quatro painéis viviam num `auto-fit` de minmax(min(320px,100%),1fr):
             numa tela larga viravam quatro colunas lado a lado, todas com o
             mesmo peso; numa estreita, uma fila. Em nenhum dos dois casos a
             tela dizia qual ler primeiro.
@@ -222,7 +222,7 @@ export default function DesempenhoTab() {
             titulo="Cálculo local"
             origem="apurado aqui, a partir dos pedidos sincronizados — pode divergir do painel do ML"
           >
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px,100%),1fr))", gap: 16 }}>
               <CompradoresPanel
                 compradores={dados.compradores}
                 months={dados.months}

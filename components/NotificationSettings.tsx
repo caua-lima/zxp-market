@@ -111,7 +111,7 @@ export default function NotificationSettings({ open, onClose }: { open: boolean;
 
       {erroDeLeitura ? (
         <div role="alert" style={{ padding: 16, display: "grid", gap: 10 }}>
-          <div style={{ color: "var(--red)", fontWeight: 600 }}>Não consegui ler suas preferências.</div>
+          <div style={{ color: "var(--red-text)", fontWeight: 600 }}>Não consegui ler suas preferências.</div>
           <div className="hint">
             Sem isso não dá pra mostrar o que você configurou — e salvar agora apagaria as suas escolhas sem
             você ver. Confira a conexão e tente de novo. Enquanto isso, o servidor segue usando o que está salvo.
@@ -260,7 +260,7 @@ export default function NotificationSettings({ open, onClose }: { open: boolean;
             </>
           )}
 
-          {erroAoSalvar && <div role="alert" style={{ color: "var(--red)", fontSize: ".85rem" }}>{erroAoSalvar}</div>}
+          {erroAoSalvar && <div role="alert" style={{ color: "var(--red-text)", fontSize: ".85rem" }}>{erroAoSalvar}</div>}
           <div className="modal-btns">
             <button type="button" className="btn btn-success" onClick={salvar} disabled={saving}>{saving ? "Salvando…" : "Salvar preferências"}</button>
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancelar</button>

@@ -1,6 +1,11 @@
 "use client";
 
 import type { Modo, StatusAnuncio } from "./ads-types";
+import { faixaAtiva, faixaInvertida, resumoDaFaixa } from "@/lib/domain/ads-faixas";
+import {
+  COLUNAS_ORDENAVEIS, ORDEM_DAS_OPCOES, descreverOrdem, escolherColuna,
+  type ColunaOrdenavel, type OrdemAds,
+} from "@/lib/domain/ads-ordenacao";
 
 export type FiltrosAdsState = {
   busca: string; setBusca: (v: string) => void;
@@ -30,7 +35,7 @@ export function AdsStatusQuickFilters({
   };
   if (items.length === 0) return null;
   return (
-    <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+    <span className="ads-quick" role="group" aria-label="Filtros rápidos por status e resultado">
       {(["ativo", "pausado", "config_indisponivel", "sem_campanha"] as const).map((s) => {
         const n = items.filter((i) => i.status === s).length;
         if (!n) return null;
@@ -39,11 +44,9 @@ export function AdsStatusQuickFilters({
         return (
           <button
             key={s} type="button" title={`Filtrar: só ${m.label.toLowerCase()}`}
+            className="ads-quick-btn" aria-pressed={ativo}
             onClick={() => setStatusFiltro(ativo ? "" : s)}
-            style={{
-              fontSize: ".75rem", fontWeight: 700, color: m.cor, background: m.bg, padding: "1px 7px",
-              borderRadius: 5, border: ativo ? `1px solid ${m.cor}` : "1px solid transparent", cursor: "pointer",
-            }}
+            style={{ color: m.cor, background: m.bg, borderColor: ativo ? m.cor : "transparent" }}
           >
             {n} {m.label.toLowerCase()}
           </button>
@@ -54,18 +57,16 @@ export function AdsStatusQuickFilters({
         const cor = f === "lucro" ? "var(--success,var(--green))" : "var(--danger,var(--red))";
         return (
           <button
-            key={f} type="button" onClick={() => setLucroFiltro(ativo ? "" : f)}
-            style={{
-              fontSize: ".75rem", fontWeight: 700, color: cor, background: "transparent", padding: "1px 7px",
-              borderRadius: 5, border: `1px solid ${ativo ? cor : "var(--border)"}`, cursor: "pointer",
-            }}
+            key={f} type="button" className="ads-quick-btn" aria-pressed={ativo}
+            onClick={() => setLucroFiltro(ativo ? "" : f)}
+            style={{ color: cor, background: "transparent", borderColor: ativo ? cor : "var(--border)" }}
           >
             {f === "lucro" ? "lucrativos" : "prejuízo"}
           </button>
         );
       })}
       {(statusFiltro || lucroFiltro) && (
-        <button type="button" onClick={() => { setStatusFiltro(""); setLucroFiltro(""); }} style={{ fontSize: ".75rem", color: "var(--muted)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
+        <button type="button" className="ads-quick-btn ads-quick-limpar" onClick={() => { setStatusFiltro(""); setLucroFiltro(""); }}>
           limpar filtro
         </button>
       )}
@@ -73,33 +74,118 @@ export function AdsStatusQuickFilters({
   );
 }
 
-export default function AdsFilters({ modo, f }: { modo: Modo; f: FiltrosAdsState }) {
-  const inputStyle = { background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "5px 8px", color: "var(--text)", fontSize: ".82rem", outline: "none" };
+/**
+ * "Ordenar por" FORA da tabela.
+ *
+ * No celular a tabela vira cartões e o cabeçalho — onde ficavam os botões de
+ * ordenar — some. Este seletor é a ordenação daquela tela, e vale nos dois
+ * tamanhos: mexe no MESMO estado que os botões do cabeçalho.
+ */
+export function AdsOrdenar({ ordem, onOrdem }: { ordem: OrdemAds; onOrdem: (o: OrdemAds) => void }) {
+  const m = COLUNAS_ORDENAVEIS[ordem.col];
   return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
-      <input
-        type="text" placeholder="Buscar produto…" value={f.busca} onChange={(e) => f.setBusca(e.target.value)}
-        style={{ ...inputStyle, minWidth: 160, padding: "5px 10px" }}
-      />
-      <span style={{ fontSize: ".75rem", color: "var(--muted)", fontWeight: 600 }}>ROAS:</span>
-      <input type="number" inputMode="decimal" placeholder="mín." value={f.roasMin} onChange={(e) => f.setRoasMin(e.target.value)} style={{ ...inputStyle, width: 64 }} />
-      <span style={{ color: "var(--muted)" }}>–</span>
-      <input type="number" inputMode="decimal" placeholder="máx." value={f.roasMax} onChange={(e) => f.setRoasMax(e.target.value)} style={{ ...inputStyle, width: 64 }} />
+    <div className="ads-ordenar">
+      <label htmlFor="ads-ordenar-coluna">Ordenar por</label>
+      <select
+        id="ads-ordenar-coluna" value={ordem.col}
+        onChange={(e) => onOrdem(escolherColuna(ordem, e.target.value as ColunaOrdenavel))}
+      >
+        {ORDEM_DAS_OPCOES.map((c) => <option key={c} value={c}>{COLUNAS_ORDENAVEIS[c].rotulo}</option>)}
+      </select>
+      <button
+        type="button" className="btn btn-ghost btn-sm"
+        onClick={() => onOrdem({ col: ordem.col, dir: (ordem.dir * -1) as 1 | -1 })}
+        aria-label={`Sentido da ordem: ${ordem.dir === 1 ? m.crescente : m.decrescente}. Tocar para inverter.`}
+      >
+        {ordem.dir === 1 ? "↑" : "↓"} {ordem.dir === 1 ? m.crescente : m.decrescente}
+      </button>
+      {/* Lido pelo leitor de tela quando a ordem muda; visível como a "ordem ativa". */}
+      <span className="ads-ordenar-ativa" role="status">
+        Ordem atual: {descreverOrdem(ordem)}. Sem dado vai sempre pro fim.
+      </span>
+    </div>
+  );
+}
 
-      <span style={{ fontSize: ".75rem", color: "var(--muted)", fontWeight: 600, marginLeft: 6 }}>{modo === "pub" ? "ACOS" : "TACOS"} %:</span>
-      <input type="number" inputMode="decimal" placeholder="mín." value={f.acosMin} onChange={(e) => f.setAcosMin(e.target.value)} style={{ ...inputStyle, width: 64 }} />
-      <span style={{ color: "var(--muted)" }}>–</span>
-      <input type="number" inputMode="decimal" placeholder="máx." value={f.acosMax} onChange={(e) => f.setAcosMax(e.target.value)} style={{ ...inputStyle, width: 64 }} />
+/** Um par mínimo/máximo, com nome, unidade e aviso de faixa invertida. */
+function CampoFaixa({ id, nome, unidade, min, max, onMin, onMax, larg }: {
+  id: string; nome: string; unidade: string;
+  min: string; max: string; onMin: (v: string) => void; onMax: (v: string) => void;
+  larg?: number;
+}) {
+  const invertida = faixaInvertida({ min, max });
+  const erroId = `${id}-erro`;
+  return (
+    <fieldset className="ads-faixa" aria-describedby={invertida ? erroId : undefined}>
+      <legend>{nome} <span className="ads-faixa-un">({unidade})</span></legend>
+      <div className="ads-faixa-campos">
+        <input
+          type="number" inputMode="decimal" step="any" min="0" placeholder="mín."
+          aria-label={`${nome} mínimo, em ${unidade}`} aria-invalid={invertida || undefined}
+          value={min} onChange={(e) => onMin(e.target.value)} style={larg ? { width: larg } : undefined}
+        />
+        <span aria-hidden="true">–</span>
+        <input
+          type="number" inputMode="decimal" step="any" min="0" placeholder="máx."
+          aria-label={`${nome} máximo, em ${unidade}`} aria-invalid={invertida || undefined}
+          value={max} onChange={(e) => onMax(e.target.value)} style={larg ? { width: larg } : undefined}
+        />
+      </div>
+      {invertida && (
+        <div id={erroId} className="ads-faixa-erro" role="alert">
+          O mínimo é maior que o máximo — nenhum anúncio passa por esta faixa.
+        </div>
+      )}
+    </fieldset>
+  );
+}
 
-      <span style={{ fontSize: ".75rem", color: "var(--muted)", fontWeight: 600, marginLeft: 6 }}>Investido R$:</span>
-      <input type="number" inputMode="decimal" placeholder="mín." value={f.investMin} onChange={(e) => f.setInvestMin(e.target.value)} style={{ ...inputStyle, width: 74 }} />
-      <span style={{ color: "var(--muted)" }}>–</span>
-      <input type="number" inputMode="decimal" placeholder="máx." value={f.investMax} onChange={(e) => f.setInvestMax(e.target.value)} style={{ ...inputStyle, width: 74 }} />
+export default function AdsFilters({
+  modo, f, ordem, onOrdem,
+}: {
+  modo: Modo; f: FiltrosAdsState; ordem: OrdemAds; onOrdem: (o: OrdemAds) => void;
+}) {
+  const acosNome = modo === "pub" ? "ACOS" : "TACOS";
+  const roas = { min: f.roasMin, max: f.roasMax };
+  const acos = { min: f.acosMin, max: f.acosMax };
+  const invest = { min: f.investMin, max: f.investMax };
 
-      {(f.roasMin || f.roasMax || f.acosMin || f.acosMax || f.investMin || f.investMax) && (
-        <button type="button" className="btn btn-xs btn-ghost" onClick={() => { f.setRoasMin(""); f.setRoasMax(""); f.setAcosMin(""); f.setAcosMax(""); f.setInvestMin(""); f.setInvestMax(""); }}>
-          Limpar faixas
-        </button>
+  const aplicados = [
+    resumoDaFaixa("ROAS", roas, { depois: "x" }),
+    resumoDaFaixa(acosNome, acos, { depois: "%" }),
+    resumoDaFaixa("Investido", invest, { antes: "R$ " }),
+  ].filter(Boolean);
+  const algumaFaixa = faixaAtiva(roas) || faixaAtiva(acos) || faixaAtiva(invest);
+
+  return (
+    <div className="ads-filtros">
+      <div className="ads-filtros-linha">
+        <div className="ads-busca">
+          <label htmlFor="ads-busca">Buscar produto</label>
+          <input
+            id="ads-busca" type="search" placeholder="Nome do produto ou código MLB…" value={f.busca}
+            onChange={(e) => f.setBusca(e.target.value)} autoComplete="off"
+          />
+        </div>
+        <AdsOrdenar ordem={ordem} onOrdem={onOrdem} />
+      </div>
+
+      <div className="ads-filtros-linha ads-faixas">
+        <CampoFaixa id="ads-roas" nome="ROAS" unidade="x" min={f.roasMin} max={f.roasMax} onMin={f.setRoasMin} onMax={f.setRoasMax} larg={78} />
+        <CampoFaixa id="ads-acos" nome={acosNome} unidade="%" min={f.acosMin} max={f.acosMax} onMin={f.setAcosMin} onMax={f.setAcosMax} larg={78} />
+        <CampoFaixa id="ads-invest" nome="Investido" unidade="R$" min={f.investMin} max={f.investMax} onMin={f.setInvestMin} onMax={f.setInvestMax} larg={92} />
+      </div>
+
+      {algumaFaixa && (
+        <div className="ads-filtros-resumo" role="status">
+          <span><b>Faixas aplicadas:</b> {aplicados.join(" · ")}</span>
+          <button
+            type="button" className="btn btn-xs btn-ghost"
+            onClick={() => { f.setRoasMin(""); f.setRoasMax(""); f.setAcosMin(""); f.setAcosMax(""); f.setInvestMin(""); f.setInvestMax(""); }}
+          >
+            Limpar faixas
+          </button>
+        </div>
       )}
     </div>
   );

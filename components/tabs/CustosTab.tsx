@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { explicarFonte } from "@/lib/domain/estado-fonte";
-import { patchArquivar, patchReativar, vigenteHoje } from "@/lib/domain/vigencia-custo";
+import { patchArquivar, patchReativar } from "@/lib/domain/vigencia-custo";
 import Modal from "@/components/Modal";
 import CustoForm from "@/components/custos/CustoForm";
 import { diasNoMes, fmtBRL, mesAtual, parseBRNumber, fmtPct } from "@/lib/domain/calc";
@@ -17,6 +17,7 @@ import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
 import {
   filtrarCustos, ordenarCustos, filtrosAtivos, impactoDaLista, acumuladoEProjetado,
   rotuloDaVigencia, FILTRO_VAZIO, type FiltroCustos, type OrdemCustos,
+  situacaoDoCusto, contarPorSituacao, vistaDaLista, temFiltroRestritivo, type SituacaoDoCusto,
 } from "@/lib/domain/custos-lista";
 
 /**
@@ -108,8 +109,9 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
   const hojeISO = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
   }).format(new Date());
-  const ativos = data.costs.filter((c) => vigenteHoje(c, hojeISO));
-  const arquivados = data.costs.filter((c) => !vigenteHoje(c, hojeISO));
+  const porSituacao = useMemo(() => contarPorSituacao(data.costs, hojeISO), [data.costs, hojeISO]);
+  const ativos = useMemo(() => data.costs.filter((c) => situacaoDoCusto(c, hojeISO) === "ativo"), [data.costs, hojeISO]);
+  const foraDeVigor = porSituacao.futuro + porSituacao.encerrado;
 
   /**
    * A lista visível: filtrada e ordenada ANTES de separar por escopo.
@@ -117,13 +119,15 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
    * Filtrar depois da separação daria dois filtros pra manter em sincronia,
    * e o contador do botão teria que somar os dois — é assim que dois
    * números do mesmo filtro passam a discordar.
+   *
+   * A base é a COLEÇÃO, não a lista de ativos: quando "mostrar arquivados"
+   * está ligado, o que vale é o que existe — e não o que existe entre os
+   * ativos, que podem ser zero.
    */
   const visiveis = useMemo(() => {
     const base = filtro.incluirArquivados ? data.costs : ativos;
     return ordenarCustos(filtrarCustos(base, filtro), ordem, mesAtual(), hojeISO);
-    // `ativos` deriva de data.costs e hojeISO — já nas dependências.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.costs, filtro, ordem, hojeISO]);
+  }, [data.costs, ativos, filtro, ordem, hojeISO]);
 
   const daOperacao = visiveis.filter((c) => (c.escopo ?? "dash") === "dash");
   const daEmpresa = visiveis.filter((c) => c.escopo === "dre");
@@ -137,16 +141,40 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
    * Acumulado é o que se compara com o extrato; projeção é o que se usa pra
    * decidir preço. Mostrar só a projeção faz o mês em curso parecer pior do
    * que está; só o acumulado faz parecer melhor.
+   *
+   * ─── OS NÚMEROS DO TOPO NÃO OBEDECEM À BUSCA ────────────────────────
+   *
+   * Eles eram somados sobre a lista FILTRADA: digitar "aluguel" mudava o
+   * número chamado "Operação — projeção do mês" e parecia que o gasto do mês
+   * tinha caído. Agora o topo soma a COLEÇÃO inteira (a mesma conta que o
+   * Dashboard e a DRE fazem, por vigência), e o que a busca mostra vira um
+   * subtotal próprio, escrito como tal, junto da lista.
    */
-  const impactoOperacao = useMemo(() => impactoDaLista(daOperacao, mesAtual(), hojeISO), [daOperacao, hojeISO]);
-  const impactoEmpresa = useMemo(() => impactoDaLista(daEmpresa, mesAtual(), hojeISO), [daEmpresa, hojeISO]);
+  const impactoOperacao = useMemo(
+    () => impactoDaLista(data.costs.filter((c) => (c.escopo ?? "dash") === "dash"), mesAtual(), hojeISO),
+    [data.costs, hojeISO],
+  );
+  const impactoEmpresa = useMemo(
+    () => impactoDaLista(data.costs.filter((c) => c.escopo === "dre"), mesAtual(), hojeISO),
+    [data.costs, hojeISO],
+  );
   const totalOperacao = impactoOperacao.projetado;
   const totalEmpresa = impactoEmpresa.projetado;
   const mesEmCurso = !impactoOperacao.mesFechado;
 
+  const filtroRestritivo = temFiltroRestritivo(filtro);
+  const subtotalFiltrado = useMemo(
+    () => impactoDaLista(visiveis, mesAtual(), hojeISO),
+    [visiveis, hojeISO],
+  );
+  const vista = vistaDaLista({
+    totalCadastrado: data.costs.length, visiveis: visiveis.length,
+    incluirArquivados: filtro.incluirArquivados, filtroRestritivo,
+  });
+
   // Contexto: quanto os custos da operação comem do faturamento e do lucro do
   // mês. Mesma rota que o Dashboard usa.
-  const [ref, setRef] = useState<{ faturamentoLiquido: number; lucroSemCustos: number } | null>(null);
+  const [ref, setRef] = useState<{ faturamentoLiquido: number; lucroSemCustos: number; carregadoEm: number } | null>(null);
 
   /**
    * SYNC-03: mexer em custo invalida esta referência.
@@ -167,7 +195,7 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
       );
       if (!r.ok) return;
       const j = await r.json();
-      if (j && !j.error) setRef({ faturamentoLiquido: j.faturamentoLiquido ?? 0, lucroSemCustos: j.lucroSemCustos ?? 0 });
+      if (j && !j.error) setRef({ faturamentoLiquido: j.faturamentoLiquido ?? 0, lucroSemCustos: j.lucroSemCustos ?? 0, carregadoEm: Date.now() });
     } catch { /* a referência é contexto, não pode derrubar a aba */ }
   }, []);
 
@@ -177,8 +205,21 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
     // (react-hooks/set-state-in-effect).
     void (async () => { await carregarRef(false); })();
   }, [carregarRef]);
-  const pctFaturamento = ref && ref.faturamentoLiquido > 0 ? (totalOperacao / ref.faturamentoLiquido) * 100 : null;
-  const pctLucro = ref && ref.lucroSemCustos > 0 ? (totalOperacao / ref.lucroSemCustos) * 100 : null;
+  /**
+   * ─── MESMA BASE NOS DOIS LADOS DA DIVISÃO ────────────────────────────
+   *
+   * O faturamento e o lucro que a rota devolve são os do mês ATÉ AGORA (1º até
+   * hoje). Dividir a PROJEÇÃO do mês inteiro por eles compara um mês cheio com
+   * um mês pela metade e superestima o peso do custo. Acumulado sobre
+   * acumulado: o custo apropriado até hoje, sobre a venda feita até hoje. Num
+   * mês fechado os dois são iguais.
+   */
+  const apropriadoOperacao = impactoOperacao.acumulado;
+  const pctFaturamento = ref && ref.faturamentoLiquido > 0 ? (apropriadoOperacao / ref.faturamentoLiquido) * 100 : null;
+  const pctLucro = ref && ref.lucroSemCustos > 0 ? (apropriadoOperacao / ref.lucroSemCustos) * 100 : null;
+  const horaDaReferencia = ref
+    ? new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(new Date(ref.carregadoEm))
+    : null;
 
   /**
    * O estado dos dados, pro selo do cabeçalho.
@@ -250,7 +291,7 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
       <TelaHeader
         titulo="Custos"
         periodo={{ de: `${mesAtual()}-01`, ate: `${mesAtual()}-${diasNoMes(mesAtual())}` }}
-        subtitulo={`${ativos.length} ativo(s)`}
+        subtitulo={`${porSituacao.ativo} ativo(s)${foraDeVigor ? ` · ${foraDeVigor} fora de vigor` : ""}`}
         estado={estadoDaTela}
         acao={canEdit ? {
           rotulo: "＋ Novo custo",
@@ -260,8 +301,8 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
         secundarias={[
           {
             rotulo: filtro.incluirArquivados
-              ? "Esconder arquivados"
-              : `Mostrar arquivados (${arquivados.length})`,
+              ? "Esconder arquivados e futuros"
+              : `Mostrar arquivados e futuros (${foraDeVigor})`,
             onClick: () => setFiltro((f) => ({ ...f, incluirArquivados: !f.incluirArquivados })),
           },
           ...(canEdit ? [{
@@ -280,33 +321,43 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
           {/*
             O rótulo diz QUAL dos dois números é. "Pesa no mês" com o valor
             do mês inteiro, no dia 8, era uma afirmação falsa com cara de fato.
+            "Apropriado" é o que a operação já reconhece como custo do período
+            — não é pagamento confirmado: a tela não sabe quando o dinheiro saiu.
           */}
           <div className="k-lbl">{mesEmCurso ? "Operação — projeção do mês" : "Operação no mês"}</div>
-          <div className="k-val" style={{ color: "var(--red)" }}>{fmtBRL(totalOperacao)}</div>
+          <div className="k-val" style={{ color: "var(--red-text)" }}>{fmtBRL(totalOperacao)}</div>
           <div className="k-sub">
             {mesEmCurso
-              ? <>já saiu <b>{fmtBRL(impactoOperacao.acumulado)}</b> · {daOperacao.length} custo(s)</>
-              : <>{daOperacao.length} custo(s) da operação</>}
+              ? <>apropriado até hoje <b>{fmtBRL(impactoOperacao.acumulado)}</b></>
+              : <>custos da operação</>}
           </div>
         </div>
         <div className="kpi k-acc">
           <div className="k-lbl">{mesEmCurso ? "Só na DRE — projeção" : "Só na DRE"}</div>
-          <div className="k-val" style={{ color: daEmpresa.length ? "var(--text)" : "var(--muted)" }}>{fmtBRL(totalEmpresa)}</div>
+          <div className="k-val" style={{ color: totalEmpresa ? "var(--text)" : "var(--text-muted)" }}>{fmtBRL(totalEmpresa)}</div>
           <div className="k-sub">
-            {mesEmCurso && daEmpresa.length
-              ? <>já saiu <b>{fmtBRL(impactoEmpresa.acumulado)}</b> · {daEmpresa.length} despesa(s)</>
-              : <>{daEmpresa.length} despesa(s) da empresa</>}
+            {mesEmCurso && totalEmpresa
+              ? <>apropriado até hoje <b>{fmtBRL(impactoEmpresa.acumulado)}</b></>
+              : <>despesas da empresa</>}
           </div>
         </div>
         <div className="kpi k-warn">
           <div className="k-lbl">% do faturamento</div>
           <div className="k-val" style={{ color: "var(--yellow)" }}>{pctFaturamento != null ? `${fmtPct(pctFaturamento, 1)}` : "—"}</div>
-          <div className="k-sub">custos da operação ÷ faturamento do mês</div>
+          <div className="k-sub">
+            {pctFaturamento != null
+              ? <>apropriado da operação ÷ faturamento líquido, ambos de 1º até hoje{horaDaReferencia ? ` · faturamento das ${horaDaReferencia}` : ""}</>
+              : "faturamento do mês indisponível — sem base pra dividir"}
+          </div>
         </div>
         <div className="kpi k-neg">
           <div className="k-lbl">% do lucro</div>
-          <div className="k-val" style={{ color: "var(--red)" }}>{pctLucro != null ? `${fmtPct(pctLucro, 1)}` : "—"}</div>
-          <div className="k-sub">quanto do lucro, antes deles, eles consomem</div>
+          <div className="k-val" style={{ color: "var(--red-text)" }}>{pctLucro != null ? `${fmtPct(pctLucro, 1)}` : "—"}</div>
+          <div className="k-sub">
+            {pctLucro != null
+              ? <>apropriado da operação ÷ lucro antes dos custos, ambos de 1º até hoje</>
+              : "lucro do mês indisponível ou não positivo — sem base pra dividir"}
+          </div>
         </div>
       </div>
 
@@ -332,7 +383,7 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
         "sumiu um custo": com um filtro ativo e a lista curta, a explicação
         tem que estar visível sem abrir nada.
       */}
-      {ativos.length > 0 && (
+      {data.costs.length > 0 && (
         <div className="panel" style={{ padding: "10px 12px" }}>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <input
@@ -430,15 +481,10 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
             isto a tela mostra "nenhum cadastrado" e a pessoa procura um
             custo que está bem ali, escondido por um filtro que ela esqueceu.
           */}
-          {filtrosAtivos(filtro) > 0 && visiveis.length === 0 && (
-            <div style={{ marginTop: 10, fontSize: ".82rem", color: "var(--muted)" }}>
-              Nenhum custo passa pelos filtros atuais. Existem <b>{ativos.length}</b> custos ativos.
-            </div>
-          )}
         </div>
       )}
 
-      {ativos.length === 0 ? (
+      {vista === "sem-cadastro" ? (
         <div className="panel">
           <div className="empty-state">
             <span className="empty-ico">💸</span>
@@ -463,14 +509,63 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
         </div>
       ) : (
         <>
-          <GrupoCustos
-            escopo="dash" custos={daOperacao} total={totalOperacao} canEdit={canEdit} hojeISO={hojeISO}
-            onNovo={abrirNovo} onEditar={abrirEdicao} onArquivar={arquivar} onExcluir={excluir}
-          />
-          <GrupoCustos
-            escopo="dre" custos={daEmpresa} total={totalEmpresa} canEdit={canEdit} hojeISO={hojeISO}
-            onNovo={abrirNovo} onEditar={abrirEdicao} onArquivar={arquivar} onExcluir={excluir}
-          />
+          {/*
+            O recorte, dito como recorte. Com busca ou filtro ligados, a lista
+            mostra parte dos custos e o total do topo continua sendo o do mês
+            inteiro — esta faixa é o número DO QUE ESTÁ NA TELA.
+          */}
+          {filtroRestritivo && visiveis.length > 0 && (
+            <div className="note" role="status">
+              <b>{visiveis.length}</b> de {data.costs.length} custos na lista · impacto do recorte:{" "}
+              <b>{fmtBRL(subtotalFiltrado.projetado)}</b>{mesEmCurso ? <> (projeção) · apropriado até hoje <b>{fmtBRL(subtotalFiltrado.acumulado)}</b></> : " no mês"}.
+              {" "}Os números do topo continuam somando todos os custos.
+            </div>
+          )}
+
+          {vista === "filtro-vazio" && (
+            <div className="panel">
+              <div className="empty-state">
+                <span className="empty-ico">🔎</span>
+                Nenhum custo passa pelos filtros atuais. Existem <b>{data.costs.length}</b> cadastrados
+                {filtro.incluirArquivados ? "" : <> ({porSituacao.ativo} ativos)</>} — o que sumiu foi escondido pelo filtro, não apagado.
+                <div style={{ marginTop: 10 }}>
+                  <button type="button" className="btn btn-primary btn-sm" onClick={() => setFiltro((f) => ({ ...FILTRO_VAZIO, incluirArquivados: f.incluirArquivados }))}>
+                    Limpar busca e filtros
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {vista === "sem-ativos" && (
+            <div className="panel">
+              <div className="empty-state">
+                <span className="empty-ico">🗄️</span>
+                Nenhum custo vale hoje. Há <b>{porSituacao.encerrado}</b> encerrado(s) e <b>{porSituacao.futuro}</b> futuro(s) escondidos.
+                <div style={{ marginTop: 10, display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                  <button type="button" className="btn btn-primary btn-sm" onClick={() => setFiltro((f) => ({ ...f, incluirArquivados: true }))}>
+                    Mostrar arquivados e futuros
+                  </button>
+                  {canEdit && (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirNovo("dash")}>＋ Novo custo</button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {vista === "com-itens" && (
+            <>
+              <GrupoCustos
+                escopo="dash" custos={daOperacao} canEdit={canEdit} hojeISO={hojeISO}
+                onNovo={abrirNovo} onEditar={abrirEdicao} onArquivar={arquivar} onExcluir={excluir}
+              />
+              <GrupoCustos
+                escopo="dre" custos={daEmpresa} canEdit={canEdit} hojeISO={hojeISO}
+                onNovo={abrirNovo} onEditar={abrirEdicao} onArquivar={arquivar} onExcluir={excluir}
+              />
+            </>
+          )}
         </>
       )}
 
@@ -499,10 +594,9 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
   );
 }
 
-function GrupoCustos({ escopo, custos, total, canEdit, hojeISO, onNovo, onEditar, onArquivar, onExcluir }: {
+function GrupoCustos({ escopo, custos, canEdit, hojeISO, onNovo, onEditar, onArquivar, onExcluir }: {
   escopo: Escopo;
   custos: Cost[];
-  total: number;
   canEdit: boolean;
   hojeISO: string;
   onNovo: (escopo: Escopo) => void;
@@ -511,17 +605,21 @@ function GrupoCustos({ escopo, custos, total, canEdit, hojeISO, onNovo, onEditar
   onExcluir: (c: Cost) => void;
 }) {
   const meta = ESCOPO_META[escopo];
+  // O subtotal do GRUPO, da lista que está na tela — a soma das linhas abaixo.
+  const impacto = impactoDaLista(custos, mesAtual(), hojeISO);
   return (
     <div className="panel">
       <div className="panel-head" style={{ marginBottom: 4 }}>
         <span className="panel-title">{escopo === "dash" ? "Custos da operação" : "Despesas da empresa"}</span>
-        <span className="panel-sub">{fmtBRL(total)} no mês</span>
+        <span className="panel-sub">
+          {custos.length} na lista · {fmtBRL(impacto.projetado)} {impacto.mesFechado ? "no mês" : "de projeção no mês"}
+        </span>
       </div>
       <div style={{ fontSize: ".82rem", color: "var(--muted)", marginBottom: 12 }}>{meta.explica}</div>
 
       {custos.length === 0 ? (
         <div style={{ fontSize: ".84rem", color: "var(--muted)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          Nenhum cadastrado.
+          Nenhum nesta lista.
           {canEdit && (
             <button type="button" className="btn btn-ghost btn-xs" onClick={() => onNovo(escopo)}>
               ＋ Adicionar {escopo === "dash" ? "custo da operação" : "despesa da empresa"}
@@ -542,6 +640,12 @@ function GrupoCustos({ escopo, custos, total, canEdit, hojeISO, onNovo, onEditar
   );
 }
 
+const ROTULO_DA_SITUACAO: Record<SituacaoDoCusto, { texto: string; explica: string }> = {
+  ativo: { texto: "Ativo", explica: "Vale hoje e conta no mês." },
+  futuro: { texto: "Futuro", explica: "A vigência ainda não começou: conta só a partir da data de início." },
+  encerrado: { texto: "Encerrado", explica: "Arquivado ou com vigência vencida: o que já contou fica no histórico dos meses." },
+};
+
 function LinhaCusto({ custo: c, canEdit, hojeISO, onEditar, onArquivar, onExcluir }: {
   custo: Cost;
   canEdit: boolean;
@@ -550,15 +654,25 @@ function LinhaCusto({ custo: c, canEdit, hojeISO, onEditar, onArquivar, onExclui
   onArquivar: (c: Cost, ativo: boolean) => void;
   onExcluir: (c: Cost) => void;
 }) {
+  const situacao = situacaoDoCusto(c, hojeISO);
+  const foraDeVigor = situacao !== "ativo";
   const arquivado = c.ativo === false;
+  // O impacto REAL no mês, também pros que não valem hoje: um custo encerrado
+  // no dia 12 pesou 12 dias neste mês, e a soma das linhas tem que bater com o
+  // subtotal do grupo. Zerar o encerrado escondia esse peso.
   const impacto = pesoNoMes(c, hojeISO);
-  const peso = arquivado ? 0 : impacto.projetado;
+  const semPesoNoMes = impacto.projetado === 0 && impacto.acumulado === 0;
   return (
-    <div className="list-row" style={{ padding: "12px 14px", opacity: arquivado ? 0.6 : 1 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+    <div className="list-row" style={{ padding: "12px 14px", opacity: foraDeVigor ? 0.75 : 1 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
         <div style={{ minWidth: 0, flex: "1 1 220px" }}>
           <div style={{ fontWeight: 700, overflowWrap: "anywhere" }}>{c.nome || "(sem nome)"}</div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4, fontSize: ".75rem", color: "var(--muted)" }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4, fontSize: ".8rem", color: "var(--muted)" }}>
+            {foraDeVigor && (
+              <span className="chip" title={ROTULO_DA_SITUACAO[situacao].explica} style={{ fontWeight: 700 }}>
+                {ROTULO_DA_SITUACAO[situacao].texto}
+              </span>
+            )}
             <span className="chip">{FREQUENCIA_META[c.freq]?.rotulo ?? c.freq}</span>
             {c.categoria && <span className="chip">{COST_CATEGORIA_LABEL[c.categoria]}</span>}
             {/*
@@ -573,19 +687,25 @@ function LinhaCusto({ custo: c, canEdit, hojeISO, onEditar, onArquivar, onExclui
             {c.observacao && <span>· {c.observacao}</span>}
           </div>
         </div>
-        <div style={{ textAlign: "right", flexShrink: 0 }}>
-          <div style={{ fontWeight: 800, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+        <div style={{ textAlign: "right", flex: "0 1 auto", minWidth: 0, maxWidth: "100%" }}>
+          <div style={{ fontWeight: 800, fontVariantNumeric: "tabular-nums", overflowWrap: "anywhere" }}>
             {fmtBRL(parseBRNumber(c.valor))}{" "}
-            <span style={{ fontWeight: 400, fontSize: ".75rem", color: "var(--muted)" }}>{sufixoDaFrequencia(c)}</span>
+            <span style={{ fontWeight: 400, fontSize: ".8rem", color: "var(--muted)" }}>{sufixoDaFrequencia(c)}</span>
           </div>
-          <div style={{ fontSize: ".75rem", color: arquivado ? "var(--muted)" : "var(--red)", whiteSpace: "nowrap" }}>
-            {arquivado
-              ? "arquivado — não conta"
+          {/*
+            Cada número numa linha, com o NOME do que é. "projeção R$ x · já saiu
+            R$ y" numa linha só, sem quebra, era cortada com valores de sete
+            dígitos — e "já saiu" afirmava um pagamento que a tela não conhece.
+          */}
+          <div style={{ fontSize: ".8rem", color: semPesoNoMes || foraDeVigor ? "var(--muted)" : "var(--red-text)", fontVariantNumeric: "tabular-nums", marginTop: 2, lineHeight: 1.5 }}>
+            {semPesoNoMes
+              ? (situacao === "futuro" ? "ainda não conta neste mês" : arquivado ? "arquivado — não conta neste mês" : "sem peso neste mês")
               : impacto.mesFechado
-                ? `pesou ${fmtBRL(peso)} no mês`
-                /* No mês em curso o rótulo diz que o número é projeção — e
-                   mostra ao lado quanto já saiu de fato. */
-                : `projeção ${fmtBRL(peso)} · já saiu ${fmtBRL(impacto.acumulado)}`}
+                ? <>pesou {fmtBRL(impacto.projetado)} no mês</>
+                : <>
+                    <div>projeção do mês: {fmtBRL(impacto.projetado)}</div>
+                    <div>apropriado até hoje: {fmtBRL(impacto.acumulado)}</div>
+                  </>}
           </div>
         </div>
       </div>
@@ -593,8 +713,8 @@ function LinhaCusto({ custo: c, canEdit, hojeISO, onEditar, onArquivar, onExclui
       {canEdit && (
         <div className="row-actions" style={{ marginTop: 10, justifyContent: "flex-end", alignItems: "center" }}>
           <button type="button" className="btn btn-ghost btn-xs" onClick={() => onEditar(c)}>Editar</button>
-          <button type="button" className="btn btn-ghost btn-xs" onClick={() => onArquivar(c, arquivado)}>
-            {arquivado ? "Reativar" : "Arquivar"}
+          <button type="button" className="btn btn-ghost btn-xs" onClick={() => onArquivar(c, situacao === "encerrado")}>
+            {situacao === "encerrado" ? "Reativar" : "Arquivar"}
           </button>
 
           {/*

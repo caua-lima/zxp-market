@@ -1,6 +1,7 @@
 "use client";
 
 import { fmtBRL } from "@/lib/domain/calc";
+import { tom } from "@/lib/ui-cor";
 import type { AdsAlteracao } from "@/lib/domain/types";
 import { formatarResumoAlteracao } from "@/lib/domain/ads-changelog";
 import { num, type LinhaAds } from "./ads-types";
@@ -105,7 +106,7 @@ export default function AdsDecisionPanel({
         <span className="panel-title">Decisões de Ads</span>
         <span className="panel-sub">o que fazer agora, e por quê</span>
       </div>
-      <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+      <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(min(280px,100%),1fr))" }}>
         <GrupoEscalar itens={grupos.escalar.slice(0, MAX_POR_GRUPO)} base={baseDe} onAbrir={onAbrirAnuncio} />
         <GrupoRevisar itens={grupos.revisar.slice(0, MAX_POR_GRUPO)} base={baseDe} onAbrir={onAbrirAnuncio} />
         <GrupoSemRetorno itens={grupos["sem-retorno"].slice(0, MAX_POR_GRUPO)} base={baseDe} changelog={changelog} onAbrir={onAbrirAnuncio} />
@@ -117,7 +118,7 @@ export default function AdsDecisionPanel({
 
 function Cartao({ titulo, cor, vazio, children }: { titulo: string; cor: string; vazio: boolean; children: React.ReactNode }) {
   return (
-    <div style={{ border: `1px solid ${cor}44`, borderRadius: 10, padding: "10px 12px", background: "var(--surface2)" }}>
+    <div style={{ border: "1px solid var(--border)", borderColor: tom(cor, 27), borderRadius: 10, padding: "10px 12px", background: "var(--surface2)" }}>
       <div style={{ fontSize: ".82rem", fontWeight: 800, color: cor, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".03em" }}>{titulo}</div>
       {vazio ? (
         <div style={{ fontSize: ".82rem", color: "var(--muted)" }}>Nenhum anúncio exige ação crítica neste período.</div>
@@ -204,7 +205,7 @@ function GrupoRevisar({ itens, base, onAbrir }: { itens: LinhaAds[]; base: (l: L
           <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 4 }}>
             Impacto {fmtBRL(l.lucroAtual ?? -l.i.cost)} · ROAS {l.i.cost > 0 ? `${num(l.r, 2)}x` : "—"}{l.breakEven != null ? ` · break-even ${num(l.breakEven, 2)}x` : ""}
           </div>
-          <div style={{ fontSize: ".75rem", color: "var(--red)", marginTop: 4 }}>
+          <div style={{ fontSize: ".75rem", color: "var(--red-text)", marginTop: 4 }}>
             {l.breakEven != null && l.abaixoDoBreakEven
               ? `ROAS ${num(l.r, 2)}x abaixo do break-even de ${num(l.breakEven, 2)}x. Verificar preço, criativo, segmentação ou orçamento.`
               : l.lucroAtual != null && l.lucroAtual < 0

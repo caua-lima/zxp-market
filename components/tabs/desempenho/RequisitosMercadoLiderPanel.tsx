@@ -11,7 +11,7 @@ function diasDesde(iso: string | null): number | null {
 
 function IconeStatus({ status }: { status: RequisitoMercadoLider["status"] }) {
   if (status === "ok") return <span style={{ color: "var(--green)", fontWeight: 700 }}>✓</span>;
-  if (status === "atencao") return <span style={{ color: "var(--red)", fontWeight: 700 }}>✗</span>;
+  if (status === "atencao") return <span style={{ color: "var(--red-text)", fontWeight: 700 }}>✗</span>;
   return <span style={{ color: "var(--muted)", fontWeight: 700 }}>?</span>;
 }
 

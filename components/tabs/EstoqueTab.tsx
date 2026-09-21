@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { explicarFonte } from "@/lib/domain/estado-fonte";
 import { CUSTO_FAIXA_SENTINELA, custoNaData, impostoNaData, TIPO_MOVIMENTO_LABEL, type EstoqueMovimento, type MovimentoTipo, type Product } from "@/lib/domain/types";
+import { salvarSemPerder } from "@/lib/domain/salvar-formulario";
 import { addMovimento, deleteMovimento, deleteProduct, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas, recalcularProduto } from "@/lib/firebase/data";
 import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas";
 import { fmtBRL, fmtPct } from "@/lib/domain/calc";
@@ -702,22 +703,22 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
           onClose={() => setEditProduct(null)}
           onSave={async (prod) => {
             const ehNovo = !data.products.some((p) => p.id === prod.id);
-            try {
-              await upsertProduct(uid, prod);
-              // Trilha de auditoria: mexer no custo médio de um produto muda a
-              // margem de vendas passadas (ver custoNaData) — precisa de rastro.
-              logAudit({
-                acao: ehNovo ? "criar" : "editar",
-                entidade: "produto",
-                entidadeId: prod.id,
-                entidadeLabel: prod.name || "(sem nome)",
-                detalhe: `custo ${fmtBRL(prod.custoMedio ?? parseNum(prod.custo))} · imposto ${prod.imposto ?? 0}%`,
-              }).catch(() => {});
-            } catch (err: unknown) {
-              alert("Erro ao salvar produto: " + (err instanceof Error ? err.message : String(err)));
-            } finally {
-              setEditProduct(null);
-            }
+            // LANÇA se falhar: quem chama (ProductModal) mostra o erro dentro do
+            // formulário, com o que foi digitado intacto. O modal só fecha aqui,
+            // depois de a gravação principal ter dado certo.
+            await upsertProduct(uid, prod);
+            // Trilha de auditoria: mexer no custo médio de um produto muda a
+            // margem de vendas passadas (ver custoNaData) — precisa de rastro.
+            // É secundária: se ela falhar, o produto JÁ foi salvo e a pessoa não
+            // deve ser mandada refazer nada.
+            logAudit({
+              acao: ehNovo ? "criar" : "editar",
+              entidade: "produto",
+              entidadeId: prod.id,
+              entidadeLabel: prod.name || "(sem nome)",
+              detalhe: `custo ${fmtBRL(prod.custoMedio ?? parseNum(prod.custo))} · imposto ${prod.imposto ?? 0}%`,
+            }).catch(() => {});
+            setEditProduct(null);
           }}
         />
       )}
@@ -948,7 +949,7 @@ function ProductRow({
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3 }}>
                 {product.sku
                   ? <span style={{ background: "rgba(233,169,45,.12)", color: "#E9A92D", padding: "1px 7px", borderRadius: 6, fontWeight: 700, fontSize: ".75rem" }}>SKU {product.sku}</span>
-                  : <span style={{ color: "var(--red)", fontSize: ".75rem" }}>sem SKU</span>}
+                  : <span style={{ color: "var(--red-text)", fontSize: ".75rem" }}>sem SKU</span>}
                 {anuncios.map(({ mlb, item }) => (
                   <span key={mlb} style={{ fontSize: ".75rem", background: "var(--surface2)", border: "1px solid var(--border)", padding: "1px 6px", borderRadius: 5, color: "var(--muted)" }}>
                     {mlb}
@@ -1564,6 +1565,12 @@ export function ProductModal({ product: initial, isNew, onClose, onSave }: { pro
     initial.custoMedio != null ? String(Math.round(initial.custoMedio * 100) / 100) : (initial.custo ?? ""),
   );
   const [saving, setSaving] = useState(false);
+  /** Falha do salvamento: fica NO formulário até a próxima tentativa. */
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null);
+  const [erroNome, setErroNome] = useState(false);
+  /** Foto do que foi aberto — pra saber se há alteração a perder. */
+  const [aoAbrir] = useState(() => JSON.stringify({ p, custoStr }));
+  const sujo = JSON.stringify({ p, custoStr }) !== aoAbrir;
 
   function set(patch: Partial<Product>) {
     setP((prev) => ({ ...prev, ...patch }));
@@ -1581,7 +1588,9 @@ export function ProductModal({ product: initial, isNew, onClose, onSave }: { pro
   }
 
   async function handleSave() {
-    if (!p.name.trim()) { alert("Informe o nome do produto."); return; }
+    if (saving) return;
+    if (!p.name.trim()) { setErroNome(true); return; }
+    setErroNome(false);
     const cleaned = mlbs.map((m) => m.trim()).filter(Boolean);
     // O custo digitado vira o custo médio efetivo (base do estoque atual).
     const saveObj: Product = { ...p, mlbs: cleaned, mlb: cleaned[0] ?? "", custo: custoStr };
@@ -1615,27 +1624,31 @@ export function ProductModal({ product: initial, isNew, onClose, onSave }: { pro
       saveObj.custoMedioFaixas = faixas;
     }
     setSaving(true);
-    try {
-      await onSave(saveObj);
-    } catch (err: unknown) {
-      alert("Erro ao salvar produto: " + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setSaving(false);
-    }
+    setErroSalvar(null);
+    const r = await salvarSemPerder(() => onSave(saveObj));
+    // Sucesso: o pai fecha o modal (e este componente é desmontado). Falha: fica
+    // aberto, com os valores como estavam e a mensagem visível.
+    if (!r.ok) setErroSalvar(r.mensagem);
+    setSaving(false);
   }
 
   return (
-    <Modal open onClose={onClose}>
+    <Modal open onClose={onClose} titulo={isNew ? "Novo produto" : "Editar produto"} confirmarDescarte={sujo && !saving}>
       <div className="modal-title">{isNew ? "Novo Produto" : "Editar Produto"}</div>
 
       <div className="config-field">
-        <label>Nome do produto</label>
-        <input type="text" placeholder="Ex: Kit Erva Mate Trot's 1,25kg" value={p.name} onChange={(e) => set({ name: e.target.value })} />
+        <label htmlFor="produto-nome">Nome do produto</label>
+        <input
+          id="produto-nome" type="text" placeholder="Ex: Kit Erva Mate Trot's 1,25kg" value={p.name}
+          onChange={(e) => { set({ name: e.target.value }); if (erroNome) setErroNome(false); }}
+          aria-invalid={erroNome || undefined} aria-describedby={erroNome ? "produto-nome-erro" : undefined}
+        />
+        {erroNome && <div id="produto-nome-erro" className="hint" role="alert" style={{ color: "var(--red-text)" }}>Informe o nome do produto.</div>}
       </div>
 
       <div className="config-field">
-        <label>SKU (código interno)</label>
-        <input type="text" placeholder="Ex: 250" value={p.sku ?? ""} onChange={(e) => set({ sku: e.target.value })} />
+        <label htmlFor="produto-sku">SKU (código interno)</label>
+        <input id="produto-sku" type="text" placeholder="Ex: 250" value={p.sku ?? ""} onChange={(e) => set({ sku: e.target.value })} />
         <div className="hint">Deve ser <strong>idêntico</strong> ao <code>sku</code> que aparece nos pedidos do ML.</div>
       </div>
 
@@ -1699,9 +1712,15 @@ export function ProductModal({ product: initial, isNew, onClose, onSave }: { pro
         </select>
       </div>
 
+      {erroSalvar && (
+        <div className="note note-danger" role="alert" style={{ marginBottom: 10 }}>{erroSalvar}</div>
+      )}
+
       <div className="modal-btns">
-        <button type="button" className="btn btn-success" onClick={handleSave} disabled={saving}>{saving ? "Salvando…" : "Salvar Produto"}</button>
-        <button type="button" className="btn btn-ghost" onClick={onClose}>Cancelar</button>
+        <button type="button" className="btn btn-success" onClick={handleSave} disabled={saving}>
+          {saving ? "Salvando…" : erroSalvar ? "Tentar salvar de novo" : "Salvar Produto"}
+        </button>
+        <button type="button" className="btn btn-ghost" onClick={onClose} disabled={saving}>Cancelar</button>
       </div>
     </Modal>
   );
@@ -2019,7 +2038,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
           abas, e cor sem legenda vira adivinhacao. */}
       <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: ".75rem", color: "var(--muted)", marginBottom: 10 }}>
         <span>Dias de cobertura:</span>
-        <span><b style={{ color: "var(--red)" }}>ate 3d</b> critico</span>
+        <span><b style={{ color: "var(--red-text)" }}>ate 3d</b> critico</span>
         <span><b style={{ color: "var(--warning)" }}>4 a 10d</b> repor agora</span>
         <span><b style={{ color: "var(--text)" }}>11 a 20d</b> atencao</span>
         <span><b style={{ color: "var(--green)" }}>21d+</b> folga</span>

@@ -111,7 +111,7 @@ export default function AdsChangelogPanel({
             <span className="panel-title">Registrar alteração</span>
             <span className="panel-sub">alterações registradas pela equipe — não vem do Mercado Livre</span>
           </div>
-          <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+          <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(min(220px,100%),1fr))" }}>
             <div className="config-field">
               <label>Campanha</label>
               <select value={campaignId} onChange={(e) => selecionarCampanha(e.target.value)}>

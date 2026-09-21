@@ -186,7 +186,7 @@ export default function ReputacaoPanel({
             <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Avaliações</div>
             <div style={{ fontSize: ".85rem", fontWeight: 700 }}>
               {positivas && <span style={{ color: "var(--green)" }}>{positivas} pos</span>}
-              {negativas && <span style={{ color: "var(--red)", marginLeft: 8 }}>{negativas} neg</span>}
+              {negativas && <span style={{ color: "var(--red-text)", marginLeft: 8 }}>{negativas} neg</span>}
               {neutras && <span style={{ color: "var(--muted)", marginLeft: 8 }}>{neutras} neutra</span>}
             </div>
           </div>

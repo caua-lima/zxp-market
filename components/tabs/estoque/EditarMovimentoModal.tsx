@@ -141,7 +141,7 @@ export default function EditarMovimentoModal({
               value={qtd} onChange={(e) => setQtd(e.target.value)}
             />
             {!qtdValida && qtd.trim() !== "" && (
-              <span style={{ fontSize: ".75rem", color: "var(--red)" }}>
+              <span style={{ fontSize: ".75rem", color: "var(--red-text)" }}>
                 {aceitaNegativo ? "Informe um número diferente de zero." : "Informe um número maior que zero."}
               </span>
             )}

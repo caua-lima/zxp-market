@@ -21,6 +21,7 @@ import AdsChat from "@/components/tabs/ads/AdsChat";
 import AdsDataQuality from "@/components/tabs/ads/AdsDataQuality";
 import AdsFilters, { AdsStatusQuickFilters, type FiltrosAdsState } from "@/components/tabs/ads/AdsFilters";
 import AdsTable from "@/components/tabs/ads/AdsTable";
+import { ORDEM_INICIAL, type OrdemAds } from "@/lib/domain/ads-ordenacao";
 import AdDetailDrawer from "@/components/tabs/ads/AdDetailDrawer";
 import { num, type AdItem, type LinhaAds, type Modo, type StatusAnuncio } from "@/components/tabs/ads/ads-types";
 
@@ -121,6 +122,9 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
   }, [range]);
 
   const [busca, setBusca] = useState("");
+  // A ordem da tabela mora aqui: o seletor "Ordenar por" e o cabeçalho mexem no mesmo estado,
+  // e ela não se perde quando a tabela desmonta (filtro que zera a lista, por exemplo).
+  const [ordemAds, setOrdemAds] = useState<OrdemAds>(ORDEM_INICIAL);
   const [statusFiltro, setStatusFiltro] = useState<StatusAnuncio | "">("");
   const [lucroFiltro, setLucroFiltro] = useState<"" | "lucro" | "prejuizo">("");
   const [roasMin, setRoasMin] = useState("");
@@ -310,8 +314,12 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
       if (statusFiltro && l.i.status !== statusFiltro) return false;
       if (lucroFiltro === "lucro" && (l.lucroAtual == null || l.lucroAtual <= 0)) return false;
       if (lucroFiltro === "prejuizo" && (l.lucroAtual == null || l.lucroAtual >= 0)) return false;
-      if (rMin != null && !Number.isNaN(rMin) && l.r < rMin) return false;
-      if (rMax != null && !Number.isNaN(rMax) && l.r > rMax) return false;
+      // O ROAS filtrado é o que a COLUNA exibe (`roasMlAds`, o do painel do Mercado Ads),
+      // não o `r` do modo escolhido: filtrar por um número e mostrar outro escondia anúncios
+      // que estavam dentro da faixa na tela. Sem ROAS (sem investimento) não cabe em faixa.
+      const roasVisivel = l.roasMlAds;
+      if (rMin != null && !Number.isNaN(rMin) && (roasVisivel == null || roasVisivel < rMin)) return false;
+      if (rMax != null && !Number.isNaN(rMax) && (roasVisivel == null || roasVisivel > rMax)) return false;
       if (acMin != null && !Number.isNaN(acMin) && l.a < acMin) return false;
       if (acMax != null && !Number.isNaN(acMax) && l.a > acMax) return false;
       if (invMin != null && !Number.isNaN(invMin) && l.i.cost < invMin) return false;
@@ -426,7 +434,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
           )}
 
           {erro ? (
-            <div style={{ padding: "12px 14px", background: "rgba(214,90,74,.08)", border: "1px solid rgba(214,90,74,.3)", borderRadius: 8, fontSize: ".8rem", color: "var(--red)" }}>
+            <div style={{ padding: "12px 14px", background: "rgba(214,90,74,.08)", border: "1px solid rgba(214,90,74,.3)", borderRadius: 8, fontSize: ".8rem", color: "var(--red-text)" }}>
               {(() => {
                 const adv = diag?.advertisersStatus;
                 const it = diag?.itemsStatus;
@@ -578,6 +586,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
                 {items.length > 0 && (
                   <AdsFilters
                     modo={modo}
+                    ordem={ordemAds} onOrdem={setOrdemAds}
                     f={{
                       busca, setBusca, statusFiltro, setStatusFiltro, lucroFiltro, setLucroFiltro,
                       roasMin, setRoasMin, roasMax, setRoasMax, acosMin, setAcosMin, acosMax, setAcosMax,
@@ -593,7 +602,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
                 ) : linhasFiltradas.length === 0 ? (
                   <div className="empty-state"><span className="empty-ico">📣</span>Nenhum anúncio bate com esse filtro.</div>
                 ) : (
-                  <AdsTable modo={modo} linhas={linhasFiltradas} onAbrirAnuncio={abrirAnuncio} />
+                  <AdsTable modo={modo} linhas={linhasFiltradas} onAbrirAnuncio={abrirAnuncio} ordem={ordemAds} onOrdem={setOrdemAds} />
                 )}
 
                 <div style={{ marginTop: 10, fontSize: ".75rem", color: "var(--muted)", lineHeight: 1.6 }}>

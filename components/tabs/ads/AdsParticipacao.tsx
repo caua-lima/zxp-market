@@ -85,7 +85,7 @@ export default function AdsParticipacao({
             </div>
             <div>
               <div style={{ fontSize: ".75rem", color: "var(--muted)" }}>Investido no período</div>
-              <div style={{ fontWeight: 700, color: "var(--red)" }}>{fmtBRL(investimento)}</div>
+              <div style={{ fontWeight: 700, color: "var(--red-text)" }}>{fmtBRL(investimento)}</div>
             </div>
           </div>
 

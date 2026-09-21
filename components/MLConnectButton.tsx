@@ -128,7 +128,7 @@ export function MLConnectButton({ aviso }: { aviso?: string | null } = {}) {
       {connecting ? '⏳ Conectando...' : '🛒 Conectar ML'}
     </button>
     {error && (
-      <span style={{ color: "var(--red)", fontSize: ".75rem", maxWidth: 220 }}>{error}</span>
+      <span style={{ color: "var(--red-text)", fontSize: ".75rem", maxWidth: 220 }}>{error}</span>
     )}
     </span>
   );

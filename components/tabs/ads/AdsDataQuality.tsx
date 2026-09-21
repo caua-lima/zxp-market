@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { tom } from "@/lib/ui-cor";
 import { fmtBRL } from "@/lib/domain/calc";
 import { calculateAdsReconciliation, getAdsDataQualityLabel, type AdsDataQualityStatus } from "@/lib/domain/ads-reconciliation";
 
@@ -31,7 +32,7 @@ export default function AdsDataQuality({
   const cor = STATUS_COR[r.status];
 
   return (
-    <div style={{ border: `1px solid ${cor.cor}55`, background: cor.bg, borderRadius: 10, overflow: "hidden" }}>
+    <div style={{ border: "1px solid var(--border)", borderColor: tom(cor.cor, 33), background: cor.bg, borderRadius: 10, overflow: "hidden" }}>
       <button
         type="button" onClick={() => setAberto((v) => !v)}
         style={{
@@ -59,7 +60,7 @@ export default function AdsDataQuality({
           <Item label="Última atualização" valor={atualizadoEm ? atualizadoEm.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—"} />
           <Item label="Fonte" valor="API Mercado Ads + cálculo interno (custo médio, imposto, frete)" />
           {anunciosContagemFalhou && (
-            <div style={{ color: "var(--red)", fontWeight: 600, marginTop: 4 }}>
+            <div style={{ color: "var(--red-text)", fontWeight: 600, marginTop: 4 }}>
               A contagem de anúncios cadastrados por campanha falhou — o gasto por campanha continua confiável, só a
               contagem total de anúncios que não veio.
             </div>

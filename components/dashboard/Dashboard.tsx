@@ -514,7 +514,7 @@ function DevolucoesPanel({ total, emAndamento, detalhe }: { total: number; emAnd
     <div className="panel">
       <div className="panel-head" style={{ marginBottom: 10 }}>
         <span className="panel-title">Devoluções</span>
-        <span className="panel-sub">Concluídas: <b style={{ color: "var(--red)" }}>{fmtBRL(total)}</b> · {detalhe.length} caso(s)</span>
+        <span className="panel-sub">Concluídas: <b style={{ color: "var(--red-text)" }}>{fmtBRL(total)}</b> · {detalhe.length} caso(s)</span>
       </div>
 
       {(emAndamento ?? 0) > 0 && (
@@ -712,17 +712,17 @@ function VendasDoDiaHero({ hoje, ontem, rotulo, rotuloAnterior }: {
       label: "ROAS de equilíbrio", value: bkEven, color: "var(--warning)", fmt: roasFmt,
       hint: "O ROAS mínimo pra o ADS não dar prejuízo hoje, com os custos reais do dia (receita ÷ lucro antes do ADS). Abaixo disso, cada real investido tira do lucro.",
     },
-    { label: "CMV (produto)", value: h.totalCMV, color: "var(--red)", anterior: dOntem?.totalCMV, subirEhRuim: true },
+    { label: "CMV (produto)", value: h.totalCMV, color: "var(--red-text)", anterior: dOntem?.totalCMV, subirEhRuim: true },
     {
-      label: "Custo por pedido", value: custoPorPedido(d), color: "var(--red)",
+      label: "Custo por pedido", value: custoPorPedido(d), color: "var(--red-text)",
       anterior: dOntem ? custoPorPedido(dOntem) : undefined,
       subirEhRuim: true,
       hint: "CMV + frete + taxas + imposto, dividido pelos pedidos. Não inclui ADS. É o piso pra pensar preço.",
     },
-    { label: "Frete/Full", value: h.totalEnvio, color: "var(--red)", anterior: dOntem?.totalEnvio, subirEhRuim: true },
-    { label: "Taxas ML", value: h.totalTaxasML, color: "var(--red)", anterior: dOntem?.totalTaxasML, subirEhRuim: true },
-    { label: "Imposto", value: h.totalImposto, color: "var(--red)", anterior: dOntem?.totalImposto, subirEhRuim: true },
-    { label: "Gasto com ADS", value: h.totalAds, color: "var(--red)", anterior: dOntem?.totalAds, subirEhRuim: true },
+    { label: "Frete/Full", value: h.totalEnvio, color: "var(--red-text)", anterior: dOntem?.totalEnvio, subirEhRuim: true },
+    { label: "Taxas ML", value: h.totalTaxasML, color: "var(--red-text)", anterior: dOntem?.totalTaxasML, subirEhRuim: true },
+    { label: "Imposto", value: h.totalImposto, color: "var(--red-text)", anterior: dOntem?.totalImposto, subirEhRuim: true },
+    { label: "Gasto com ADS", value: h.totalAds, color: "var(--red-text)", anterior: dOntem?.totalAds, subirEhRuim: true },
     {
       label: "Margem sem ADS", value: semAds, color: "var(--text)", fmt: pctFmt,
       hint: "A margem que o dia teria sem nenhum investimento em publicidade. A diferença pra margem real é o custo do ADS em pontos de margem — que é como se decide verba.",
@@ -1362,11 +1362,11 @@ function TabelaAnuncios({ anuncios }: { anuncios: AnuncioResult[] }) {
                 <td data-label="Vendas" style={{ fontWeight: 700 }}>{a.vendas || "—"}</td>
                 <td data-label="Un" style={{ color: "var(--muted)" }}>{a.qty}</td>
                 <td data-label="Retorno" style={{ color: "var(--green)", fontWeight: 600 }}>{fmtBRL(a.retorno)}</td>
-                <td data-label="CMV" style={{ color: "var(--red)" }}>{fmtBRL(a.custoProduto)}</td>
-                <td data-label="Frete" style={{ color: "var(--red)" }}>{fmtBRL(a.envioFull)}</td>
-                <td data-label="Taxa ML" style={{ color: "var(--red)" }}>{fmtBRL(a.taxaML)}</td>
-                <td data-label="Imposto" style={{ color: "var(--red)" }}>{fmtBRL(a.imposto)}</td>
-                <td data-label="ADS" style={{ color: "var(--red)" }}>{fmtBRL(a.ads)}</td>
+                <td data-label="CMV" style={{ color: "var(--red-text)" }}>{fmtBRL(a.custoProduto)}</td>
+                <td data-label="Frete" style={{ color: "var(--red-text)" }}>{fmtBRL(a.envioFull)}</td>
+                <td data-label="Taxa ML" style={{ color: "var(--red-text)" }}>{fmtBRL(a.taxaML)}</td>
+                <td data-label="Imposto" style={{ color: "var(--red-text)" }}>{fmtBRL(a.imposto)}</td>
+                <td data-label="ADS" style={{ color: "var(--red-text)" }}>{fmtBRL(a.ads)}</td>
                 <td data-label="ROAS" style={{ color: roas.color, fontWeight: 700 }}>{roas.txt}</td>
                 <td data-label="Lucro bruto" style={{ color: a.lucroBruto >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(a.lucroBruto)}</td>
                 <td data-label="Lucro líq." style={{ fontWeight: 700, color: a.lucro >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(a.lucro)}</td>
@@ -1381,11 +1381,11 @@ function TabelaAnuncios({ anuncios }: { anuncios: AnuncioResult[] }) {
             <td data-label="Vendas" style={{ fontWeight: 700 }}>{sum((a) => a.vendas)}</td>
             <td data-label="Un" style={{ color: "var(--muted)" }}>{sum((a) => a.qty)}</td>
             <td data-label="Retorno" style={{ color: "var(--green)" }}>{fmtBRL(totalRet)}</td>
-            <td data-label="CMV" style={{ color: "var(--red)" }}>{fmtBRL(sum((a) => a.custoProduto))}</td>
-            <td data-label="Frete" style={{ color: "var(--red)" }}>{fmtBRL(sum((a) => a.envioFull))}</td>
-            <td data-label="Taxa ML" style={{ color: "var(--red)" }}>{fmtBRL(sum((a) => a.taxaML))}</td>
-            <td data-label="Imposto" style={{ color: "var(--red)" }}>{fmtBRL(sum((a) => a.imposto))}</td>
-            <td data-label="ADS" style={{ color: "var(--red)" }}>{fmtBRL(totalAds)}</td>
+            <td data-label="CMV" style={{ color: "var(--red-text)" }}>{fmtBRL(sum((a) => a.custoProduto))}</td>
+            <td data-label="Frete" style={{ color: "var(--red-text)" }}>{fmtBRL(sum((a) => a.envioFull))}</td>
+            <td data-label="Taxa ML" style={{ color: "var(--red-text)" }}>{fmtBRL(sum((a) => a.taxaML))}</td>
+            <td data-label="Imposto" style={{ color: "var(--red-text)" }}>{fmtBRL(sum((a) => a.imposto))}</td>
+            <td data-label="ADS" style={{ color: "var(--red-text)" }}>{fmtBRL(totalAds)}</td>
             <td data-label="ROAS" style={{ color: totalRoas.color }}>{totalRoas.txt}</td>
             <td data-label="Lucro bruto" style={{ color: totalBruto >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(totalBruto)}</td>
             <td data-label="Lucro líq." style={{ color: totalLucro >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(totalLucro)}</td>
@@ -1467,7 +1467,7 @@ function LucroPorAnuncioPanel({ anuncios, from, to }: { anuncios: AnuncioResult[
           : "Lucro líq. = Retorno − CMV − Frete − Taxa ML − Imposto − ADS · o frete é o que você paga no envio (Full ou próprio)"}
       </div>
       {erro ? (
-        <div style={{ color: "var(--red)", fontSize: ".82rem", padding: "12px 0" }}>
+        <div style={{ color: "var(--red-text)", fontSize: ".82rem", padding: "12px 0" }}>
           Não consegui carregar os anúncios desse período. Tente de novo.
         </div>
       ) : loading ? (
@@ -2331,7 +2331,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
                         <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
                           <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                             <span style={{ fontSize: ".75rem", color: "var(--text-muted,var(--muted))", fontWeight: 600 }}>{fmtPct(participacao, 0)}</span>
-                            <span style={{ color: "var(--red)", fontWeight: 700 }}>{fmtBRL(r.value)}</span>
+                            <span style={{ color: "var(--red-text)", fontWeight: 700 }}>{fmtBRL(r.value)}</span>
                           </span>
                           <Delta current={r.value} previous={r.prevValue} mode="pct" invert />
                         </span>
@@ -2341,7 +2341,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
               })}
               <div className="cost-total">
                 <span>Total de custos{adsFalhou && <span style={{ color: "var(--warning)", fontWeight: 400, fontSize: ".75rem" }}> (sem ADS)</span>}</span>
-                <span style={{ color: "var(--red)" }}>{fmtBRL(totalCustos)}</span>
+                <span style={{ color: "var(--red-text)" }}>{fmtBRL(totalCustos)}</span>
               </div>
             </div>
             <div className="panel">

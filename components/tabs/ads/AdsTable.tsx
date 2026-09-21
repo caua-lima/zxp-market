@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { fmtBRL } from "@/lib/domain/calc";
-import { rotuloCampanha } from "@/lib/domain/ads-campaigns";
 import { corAcos, corMargem, num, STATUS_META, type LinhaAds, type Modo } from "./ads-types";
-import { chaveOrdenacao, corDoRoas } from "@/lib/domain/ads-cores";
+import { rotuloCampanha } from "@/lib/domain/ads-campaigns";
+import { corDoRoas } from "@/lib/domain/ads-cores";
+import { alternarOrdem, ariaSort, ordenarLinhas, type ColunaOrdenavel, type OrdemAds } from "@/lib/domain/ads-ordenacao";
 
 /**
  * Visão analítica — uma linha por ANÚNCIO, com tudo que a decisão pede.
@@ -35,9 +36,6 @@ import { chaveOrdenacao, corDoRoas } from "@/lib/domain/ads-cores";
  * CAMPANHA — pausar, mudar orçamento, ajustar ROAS objetivo. Ler nome de
  * produto e agir em campanha obriga a traduzir de cabeça linha por linha.
  */
-
-type ColunaOrdenavel =
-  | "campanha" | "investido" | "lucro" | "roas" | "roasobj" | "margem" | "viaads" | "decisao";
 
 function StatusTag({ l }: { l: LinhaAds }) {
   const m = STATUS_META[l.i.status];
@@ -109,8 +107,6 @@ function Identidade({ l }: { l: LinhaAds }) {
   );
 }
 
-type OrdemAds = { col: ColunaOrdenavel; dir: 1 | -1 };
-
 /**
  * Cabeçalho ordenável — acessível.
  *
@@ -133,26 +129,26 @@ type OrdemAds = { col: ColunaOrdenavel; dir: 1 | -1 };
  * Fica FORA do componente de propósito — declarado dentro do render, ele
  * seria recriado a cada pintura e perderia estado (o lint pega isso).
  */
-function ThOrdenavel({ col, asc = -1, titulo, children, alinhar, ordem, onOrdenar }: {
+function ThOrdenavel({ col, titulo, children, alinhar, ordem, onOrdenar }: {
   col: ColunaOrdenavel;
-  asc?: 1 | -1;
   titulo: string;
   children: React.ReactNode;
   alinhar?: "left";
   ordem: OrdemAds;
-  onOrdenar: (col: ColunaOrdenavel, asc: 1 | -1) => void;
+  onOrdenar: (col: ColunaOrdenavel) => void;
 }) {
   const ativa = ordem.col === col;
   return (
     <th
       style={alinhar ? { textAlign: alinhar } : undefined}
       // Diz a QUAL coluna a ordenação se aplica e em que sentido — a seta
-      // visual sozinha não tem equivalente sonoro.
-      aria-sort={ativa ? (ordem.dir === asc ? "ascending" : "descending") : "none"}
+      // visual sozinha não tem equivalente sonoro. O sentido vem de `ariaSort`
+      // (1 = crescente, -1 = decrescente, em todas as colunas).
+      aria-sort={ariaSort(ordem, col)}
     >
       <button
         type="button"
-        onClick={() => onOrdenar(col, asc)}
+        onClick={() => onOrdenar(col)}
         title={titulo}
         style={{
           background: "none", border: "none", padding: 0, font: "inherit",
@@ -160,72 +156,26 @@ function ThOrdenavel({ col, asc = -1, titulo, children, alinhar, ordem, onOrdena
           alignItems: "center", gap: 2,
         }}
       >
-        {children}{ativa ? (ordem.dir === asc ? " ↓" : " ↑") : ""}
+        {children}{ativa ? (ordem.dir === 1 ? " ↑" : " ↓") : ""}
       </button>
     </th>
   );
 }
 export default function AdsTable({
-  modo, linhas, onAbrirAnuncio,
+  modo, linhas, onAbrirAnuncio, ordem, onOrdem,
 }: {
   modo: Modo; linhas: LinhaAds[]; onAbrirAnuncio: (itemId: string) => void;
+  /**
+   * A ordem vem de FORA: o mesmo estado é mexido pelo seletor "Ordenar por"
+   * (que existe também no celular, onde o cabeçalho da tabela some) e pelos
+   * botões do cabeçalho. Guardada aqui, ela se perdia sempre que a tabela
+   * desmontava — um filtro que zerava a lista voltava a ordenar por investimento.
+   */
+  ordem: OrdemAds; onOrdem: (o: OrdemAds) => void;
 }) {
   const pub = modo === "pub";
-  const [ordem, setOrdem] = useState<{ col: ColunaOrdenavel; dir: 1 | -1 }>({ col: "investido", dir: -1 });
-
-  const linhasOrdenadas = useMemo(() => {
-    const arr = [...linhas];
-    /**
-     * Ordenar por campanha agrupa os anúncios da mesma verba um embaixo do
-     * outro — é assim que se decide onde mexer, e a ordem por investimento
-     * espalhava a mesma campanha pela tabela inteira.
-     */
-    if (ordem.col === "campanha") {
-      arr.sort((x, y) => rotuloCampanha(x.i.campaignName).localeCompare(rotuloCampanha(y.i.campaignName), "pt-BR") * ordem.dir
-        // Dentro da campanha, o maior investimento primeiro: é a linha que decide.
-        || y.i.cost - x.i.cost);
-      return arr;
-    }
-    /**
-     * A chave de ordenação tem que ser o número que está NA TELA.
-     *
-     * A coluna ROAS ordenava por `l.r` — o ROAS do modo escolhido — enquanto a
-     * célula exibe `l.roasMlAds`, o do painel do Mercado Ads. São duas
-     * definições diferentes, as duas corretas, e o próprio código registra um
-     * caso real de 4,71x aqui contra 10,77x lá no MESMO anúncio.
-     *
-     * Ou seja: clicar em ROAS pra achar o pior anúncio ordenava por um número
-     * invisível que podia diferir do visível por mais de 2x. É erro de decisão,
-     * não de exibição — corta-se a campanha errada.
-     *
-     * "Sem dado" vai pro fim nos DOIS sentidos (ver chaveOrdenacao): com
-     * -Infinity fixo, inverter a ordem trazia os vazios pro topo e eles
-     * ocupavam o lugar dos piores de verdade.
-     */
-    const chave = (l: LinhaAds): number => {
-      switch (ordem.col) {
-        case "investido": return l.i.cost;
-        case "lucro": return chaveOrdenacao(l.lucroAtual, ordem.dir);
-        case "roas": return chaveOrdenacao(l.roasMlAds, ordem.dir);
-        // Campanha sem meta configurada vai pro fim: "sem meta" não é meta
-        // baixa, e ordenar como zero misturaria as duas coisas.
-        case "roasobj": return chaveOrdenacao(l.i.roasTarget > 0 ? l.i.roasTarget : null, ordem.dir);
-        case "margem": return chaveOrdenacao(l.margemAtual, ordem.dir);
-        // Sem venda no anúncio não há dependência a medir — vai pro fim em
-        // vez de posar de 0%, que leria como "não depende de verba".
-        case "viaads": return chaveOrdenacao(l.i.totalSales > 0 ? l.pctAds : null, ordem.dir);
-        // "impacto negativo primeiro" — usa o próprio lucro (menor = pior) como ordenação de impacto.
-        case "decisao": return l.lucroAtual ?? -l.i.cost;
-        default: return 0;
-      }
-    };
-    arr.sort((x, y) => (chave(x) - chave(y)) * ordem.dir);
-    return arr;
-  }, [linhas, ordem]);
-
-  function alternarOrdem(col: ColunaOrdenavel, direcaoPadrao: 1 | -1) {
-    setOrdem((o) => (o.col === col ? { col, dir: (o.dir * -1) as 1 | -1 } : { col, dir: direcaoPadrao }));
-  }
+  const linhasOrdenadas = useMemo(() => ordenarLinhas(linhas, ordem), [linhas, ordem]);
+  const alternar = (col: ColunaOrdenavel) => onOrdem(alternarOrdem(ordem, col));
 
   /** Alguma campanha tem meta abaixo do ROAS ideal? Só então a legenda aparece. */
   const temMetaCurta = linhasOrdenadas.some(
@@ -235,29 +185,29 @@ export default function AdsTable({
   return (
     <div>
       <div style={{ fontSize: ".75rem", color: "var(--muted)", marginBottom: 6 }}>
-        Clique no cabeçalho pra ordenar — <b>Campanha</b> agrupa os anúncios da mesma verba.
-        Passe o mouse em qualquer número pra ver a conta por trás.
+        Ordene pelo cabeçalho ou por &quot;Ordenar por&quot; acima — <b>Campanha</b> agrupa os anúncios da mesma verba.
+        Passe o mouse em um número, ou abra os detalhes do anúncio, pra ver a conta por trás.
       </div>
 
       <div className="table-wrapper" style={{ border: "none" }}>
         <table className="tbl-modern tbl-cards" style={{ fontVariantNumeric: "tabular-nums" }}>
           <thead>
             <tr>
-              <ThOrdenavel ordem={ordem} onOrdenar={alternarOrdem} col="campanha" asc={1} alinhar="left" titulo="Ordenar por campanha — agrupa os anúncios da mesma verba">Campanha</ThOrdenavel>
+              <ThOrdenavel ordem={ordem} onOrdenar={alternar} col="campanha" alinhar="left" titulo="Ordenar por campanha — agrupa os anúncios da mesma verba">Campanha</ThOrdenavel>
               <th title="Orçamento diário configurado na campanha deste anúncio, no painel do Mercado Ads.">Orçamento</th>
               {/* ROAS objetivo em coluna propria, ao lado do orcamento: sao os
                   dois numeros que se ajusta no ML, e ve-los junto do ROAS real
                   e o que responde "a meta que eu pus esta sendo batida?". */}
-              <ThOrdenavel ordem={ordem} onOrdenar={alternarOrdem} col="roasobj" titulo="ROAS Objetivo que VOCÊ configurou na campanha, no painel do Mercado Ads. É a meta; a coluna ROAS ao lado é o resultado.">ROAS obj.</ThOrdenavel>
-              <ThOrdenavel ordem={ordem} onOrdenar={alternarOrdem} col="investido" titulo="Quanto a campanha gastou com este anúncio no período. No tooltip de cada valor: impressões, cliques, CTR e CPC.">Investido</ThOrdenavel>
+              <ThOrdenavel ordem={ordem} onOrdenar={alternar} col="roasobj" titulo="ROAS Objetivo que VOCÊ configurou na campanha, no painel do Mercado Ads. É a meta; a coluna ROAS ao lado é o resultado.">ROAS obj.</ThOrdenavel>
+              <ThOrdenavel ordem={ordem} onOrdenar={alternar} col="investido" titulo="Quanto a campanha gastou com este anúncio no período. No tooltip de cada valor: impressões, cliques, CTR e CPC.">Investido</ThOrdenavel>
               <th title="Receita atribuída pelo Mercado Ads (clique direto + venda assistida) — a mesma coluna 'Receita' do painel do ML. No tooltip: vendas atribuídas e ACOS.">
                 Receita
               </th>
-              <ThOrdenavel ordem={ordem} onOrdenar={alternarOrdem} col="roas" titulo="ROAS do painel do Mercado Ads. No tooltip: o ROAS do modo escolhido e as metas de equilíbrio e ideal.">ROAS</ThOrdenavel>
-              <ThOrdenavel ordem={ordem} onOrdenar={alternarOrdem} col="lucro" titulo="Ordenar por lucratividade. No tooltip: quanto sobraria no ROAS ideal.">Lucro após Ads</ThOrdenavel>
-              <ThOrdenavel ordem={ordem} onOrdenar={alternarOrdem} col="margem" titulo="Lucro ÷ receita.">Margem</ThOrdenavel>
-              <ThOrdenavel ordem={ordem} onOrdenar={alternarOrdem} col="viaads" titulo="Quanto da venda deste anúncio o Mercado Ads ATRIBUI à campanha. Alto significa que boa parte da venda passa por anúncio pago — é o teto do que se perde ao pausar, não a previsão.">Via Ads</ThOrdenavel>
-              <ThOrdenavel ordem={ordem} onOrdenar={alternarOrdem} col="decisao" asc={1} alinhar="left" titulo="Ordenar por impacto — pior impacto primeiro">Decisão</ThOrdenavel>
+              <ThOrdenavel ordem={ordem} onOrdenar={alternar} col="roas" titulo="ROAS do painel do Mercado Ads. No tooltip: o ROAS do modo escolhido e as metas de equilíbrio e ideal.">ROAS</ThOrdenavel>
+              <ThOrdenavel ordem={ordem} onOrdenar={alternar} col="lucro" titulo="Ordenar por lucratividade. No tooltip: quanto sobraria no ROAS ideal.">Lucro após Ads</ThOrdenavel>
+              <ThOrdenavel ordem={ordem} onOrdenar={alternar} col="margem" titulo="Lucro ÷ receita.">Margem</ThOrdenavel>
+              <ThOrdenavel ordem={ordem} onOrdenar={alternar} col="viaads" titulo="Quanto da venda deste anúncio o Mercado Ads ATRIBUI à campanha. Alto significa que boa parte da venda passa por anúncio pago — é o teto do que se perde ao pausar, não a previsão.">Via Ads</ThOrdenavel>
+              <ThOrdenavel ordem={ordem} onOrdenar={alternar} col="decisao" alinhar="left" titulo="Ordenar por impacto — pior impacto primeiro">Decisão</ThOrdenavel>
               <th></th>
             </tr>
           </thead>
@@ -310,7 +260,7 @@ export default function AdsTable({
                   <td
                     data-label="Investido"
                     title={`${num(l.i.prints)} impressões e ${num(l.i.clicks)} cliques — CTR de ${num(l.ctr, 2)}%. CPC médio ${fmtBRL(l.cpc)}.`}
-                    style={{ color: "var(--red)", fontWeight: 600, whiteSpace: "nowrap", cursor: "help" }}
+                    style={{ color: "var(--red-text)", fontWeight: 600, whiteSpace: "nowrap", cursor: "help" }}
                   >
                     {fmtBRL(l.i.cost)}
                   </td>
