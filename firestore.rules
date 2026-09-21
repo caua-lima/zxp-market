@@ -355,6 +355,26 @@ service cloud.firestore {
     }
 
     /**
+     * O feed de avisos DIRECIONADOS de UMA pessoa: notification_feed/{email}/itens/{id}.
+     *
+     * Tarefa atribuida, lembrete de prazo e teste sao de quem os recebe. Antes
+     * caiam na colecao compartilhada e o time todo lia "Nova tarefa atribuida a
+     * voce" de outra pessoa — e nenhuma regra por documento consegue esconder
+     * isso, porque a decisao era um filtro no React. Aqui o CAMINHO decide: so o
+     * dono do e-mail le, e a Central de outra pessoa nunca alcanca este feed.
+     *
+     * Cada pessoa tem o proprio documento, entao o "lido" e so dela (`lidoEm`), e
+     * a unica escrita do cliente e marcar lido/dispensado. Criar e apagar e do
+     * servidor (Admin SDK).
+     */
+    match /notification_feed/{email}/itens/{eventId} {
+      allow read: if isAuthorized() && request.auth.token.email == email;
+      allow create, delete: if false;
+      allow update: if isAuthorized() && request.auth.token.email == email
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lidoEm', 'dispensadoEm']);
+    }
+
+    /**
      * O formato das preferências de notificação.
      *
      * O servidor lê este documento na hora de decidir quem recebe o quê (e se o

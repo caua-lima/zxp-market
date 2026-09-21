@@ -18,9 +18,13 @@ export type NotificationEventType =
   | "return_completed"
   | "sync_warning"
   | "task_assigned"
+  /** Lembrete de PRAZO de tarefa — antes saía como "task_assigned", e a Central não distinguia "te atribuíram" de "vence hoje". */
+  | "task_due"
   | "stock_low"
   /** Conquista: meta de faturamento batida, subida de nível no ML. */
   | "milestone"
+  /** Push de teste: conteúdo sintético, só do próprio aparelho, com selo TESTE. Nunca é um aviso operacional. */
+  | "test"
   | "system";
 
 export type NotificationEventSeverity = "success" | "info" | "warning" | "danger";
@@ -56,6 +60,12 @@ export type NotificationEvent = {
   financialState: "estimated" | "confirmed" | "unavailable";
   deepLink: string;
   createdAt: unknown; // FieldValue.serverTimestamp() na escrita, Timestamp na leitura
+  /**
+   * Quem pode ver este evento, quando ele é DIRECIONADO (tarefa, lembrete, teste). Ausente = do time.
+   * Eventos direcionados vivem no feed da própria pessoa (notification_feed/{email}/itens), não nas
+   * coleções compartilhadas: filtrar no React não é privacidade, as regras é que decidem quem lê.
+   */
+  audiencia?: string[];
   /** email -> timestamp (ms) de quando cada pessoa leu/dispensou. */
   readBy?: Record<string, number>;
   dismissedBy?: Record<string, number>;
@@ -301,6 +311,8 @@ export const NOTIFICATION_TYPE_META: Record<
   return_completed: { label: "Devolução concluída", severity: "warning", group: "alertas" },
   sync_warning: { label: "Aviso de sincronização", severity: "warning", group: "sistema" },
   task_assigned: { label: "Tarefa atribuída", severity: "info", group: "alertas" },
+  task_due: { label: "Prazo de tarefa", severity: "warning", group: "alertas" },
+  test: { label: "Teste", severity: "info", group: "sistema" },
   stock_low: { label: "Full no mínimo (agendar coleta)", severity: "warning", group: "alertas" },
   /**
    * Conquista tem tipo próprio, e não "system", porque as duas coisas pedem

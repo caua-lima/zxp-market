@@ -67,17 +67,19 @@ export async function enviarLembretesDeTarefa(diaForcado?: string): Promise<Resu
     const dedupeKey = `task_due:${grupo.email}:${dia}`;
     const destaque = grupo.atrasadas[0] ?? grupo.venceHoje[0];
 
+    // Tipo PRÓPRIO ("task_due"): "vence hoje" e "te atribuíram" são coisas diferentes, e o feed
+    // é da pessoa — o lembrete dela não aparece na Central de ninguém mais.
     const { eventId } = await createNotificationEventIdempotent({
-      type: "task_assigned",
+      type: "task_due",
       severity: grupo.atrasadas.length > 0 ? "warning" : "info",
       entityType: "task", entityId: destaque.id, dedupeKey,
       title: texto.title, body: texto.body,
       deepLink: buildTaskDeepLink(destaque.id),
       financialState: "unavailable",
-    });
+    }, undefined, { audiencia: [grupo.email] });
 
     const payload: SalePushPayload = {
-      eventId, type: "task_assigned", title: texto.title, body: texto.body,
+      eventId, type: "task_due", title: texto.title, body: texto.body,
       tag: `task-due-${dia}`, deepLink: buildTaskDeepLink(destaque.id),
       timestamp: new Date().toISOString(),
     };
@@ -89,8 +91,8 @@ export async function enviarLembretesDeTarefa(diaForcado?: string): Promise<Resu
      * tentava de novo e a pessoa ficava sem o lembrete. O outbox garante que o
      * que já foi aceito não é reenviado.
      */
-    const n = await enviarEPersistirEntrega(eventId, "task_assigned", payload, false, {
-      audiencia: [grupo.email], origem: "tarefa:lembrete",
+    const n = await enviarEPersistirEntrega(eventId, "task_due", payload, false, {
+      audiencia: [grupo.email], origem: "tarefa:lembrete", atualizaEvento: false,
     });
     if (n > 0) enviados += n;
     else jaAvisadoHoje++;

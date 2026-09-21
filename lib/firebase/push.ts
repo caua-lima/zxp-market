@@ -10,6 +10,8 @@ import {
   situacaoDoVinculo,
   type VinculoLocal,
 } from "@/lib/domain/push-registro";
+import type { DiagnosticoLocal } from "@/lib/domain/diagnostico-push";
+import { CACHE_DO_LOG_DE_PUSH, CHAVE_DO_LOG_DE_PUSH, SW_VERSAO } from "@/lib/push-sw-versao";
 import { getFirebase } from "./client";
 
 const SW_PATH = "/firebase-messaging-sw.js";
@@ -457,4 +459,113 @@ export async function initForegroundPush(): Promise<void> {
     };
     foregroundListeners.forEach((cb) => cb(evt));
   });
+}
+
+const CLIQUES_JA_ENVIADOS = new Set<string>();
+
+/**
+ * Diz ao servidor que a pessoa TOCOU na notificação (recibo de clique). É o app —
+ * que tem a sessão — quem reporta, não o Service Worker. Fire-and-forget e
+ * idempotente: falhar aqui nunca atrapalha abrir o aviso.
+ */
+export function registrarCliqueDoAviso(eventId: string): void {
+  if (!eventId || CLIQUES_JA_ENVIADOS.has(eventId)) return;
+  CLIQUES_JA_ENVIADOS.add(eventId);
+  authedFetch("/api/push/clique", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ eventId, deviceId: getDeviceId() }),
+  }).catch(() => { CLIQUES_JA_ENVIADOS.delete(eventId); });
+}
+
+// ── Diagnóstico do aparelho ─────────────────────────────────────────────
+
+export type RegistroDeRecebimento = { eventId: string; tipo: string; recebidoEm: number; exibidoEm: number | null; erro: string | null };
+
+/** O que o Service Worker DESTE aparelho registrou ter recebido (Cache API; ver app/firebase-messaging-sw.js). */
+export async function lerLogDePush(): Promise<RegistroDeRecebimento[]> {
+  try {
+    if (typeof caches === "undefined") return [];
+    const cache = await caches.open(CACHE_DO_LOG_DE_PUSH);
+    const r = await cache.match(CHAVE_DO_LOG_DE_PUSH);
+    if (!r) return [];
+    const lista = await r.json();
+    return Array.isArray(lista) ? lista : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Espera o Service Worker registrar o recebimento de `eventId`. É a única
+ * evidência automática de que o push CHEGOU ao aparelho e foi exibido — o
+ * servidor só sabe que o Firebase o aceitou.
+ */
+export async function aguardarRecebimento(eventId: string, limiteMs = 12_000): Promise<RegistroDeRecebimento | null> {
+  const fim = Date.now() + limiteMs;
+  while (Date.now() < fim) {
+    const achado = (await lerLogDePush()).find((r) => r.eventId === eventId);
+    if (achado) return achado;
+    await new Promise((ok) => setTimeout(ok, 500));
+  }
+  return null;
+}
+
+function ehIOS(): boolean {
+  if (typeof navigator === "undefined") return false;
+  // iPadOS 13+ se anuncia como Mac: o toque é o que o entrega.
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function estaInstalado(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia?.("(display-mode: standalone)").matches === true
+    || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+}
+
+/** O que só ESTE aparelho sabe: suporte, permissão, Service Worker, vínculo, registro e o que ele observou. */
+export async function coletarDiagnosticoLocal(email: string): Promise<DiagnosticoLocal> {
+  const suportadoDeFato = suportado() && (await isSupported().catch(() => false));
+  const permissao = typeof Notification !== "undefined" ? Notification.permission : "indisponivel";
+
+  let swRegistrado = false;
+  try { swRegistrado = Boolean(await navigator.serviceWorker?.getRegistration(SW_PATH)); } catch { /* navegador sem SW */ }
+  const swVersao = swRegistrado ? await versaoServiceWorkerAtivo() : null;
+
+  const vinculo = lerVinculo();
+  const situacao = situacaoDoVinculo(vinculo, email);
+
+  // O token de AGORA contra o guardado: só se pergunta com permissão e vínculo ativo.
+  let tokenConfere: boolean | null = null;
+  if (permissao === "granted" && situacao === "ativo" && vinculo) {
+    const atual = await obterToken().catch(() => null);
+    tokenConfere = atual == null ? null : atual === vinculo.token;
+  }
+
+  let registroNoServidor: boolean | null = null;
+  try {
+    const { db } = getFirebase();
+    registroNoServidor = (await getDoc(doc(db, "pushTokens", idDoRegistro(email, getDeviceId())))).exists();
+  } catch { /* sem leitura: fica "não deu pra verificar" */ }
+
+  const [ultimo] = await lerLogDePush();
+
+  return {
+    suportado: suportadoDeFato,
+    permissao,
+    standalone: estaInstalado(),
+    ios: ehIOS(),
+    swRegistrado,
+    swVersao,
+    swEsperada: SW_VERSAO,
+    vinculo: situacao,
+    tokenConfere,
+    registroNoServidor,
+    ultimoRecebimento: ultimo ?? null,
+  };
+}
+
+/** Este aparelho precisa da instrução do iOS (app na Tela de Início + gesto)? */
+export function precisaDeOrientacaoIOS(): boolean {
+  return ehIOS() && !estaInstalado();
 }

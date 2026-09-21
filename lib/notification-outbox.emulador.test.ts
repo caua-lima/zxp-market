@@ -9,6 +9,7 @@ import {
   processarEntregas,
   publicarEEntregar,
   publicarPush,
+  registrarClique,
   situacaoDoPush,
   type Dependencias,
   type EspecPush,
@@ -569,5 +570,56 @@ describe("retenção", () => {
 
   it("idDaEntrega é determinístico", () => {
     expect(idDaEntrega("p", "r")).toBe("p__r");
+  });
+});
+
+describe("recibo de clique — um fato à parte de 'aceito' e de 'lido'", () => {
+  it("o clique num destino ACEITO é registrado uma vez", async () => {
+    const c = novoCenario();
+    const id = await registrar(DONO, "dev-1", "tok-1");
+    await publicarEEntregar(c.deps, spec());
+    expect(await registrarClique(db, { pushId: "sale_paid:2000123456", registroDocId: id }, T0 + 5000)).toBe("registrado");
+    expect((await entregas())[0]).toMatchObject({ status: "accepted", clicadoEm: T0 + 5000 });
+  });
+
+  it("clicar de novo (reabrir pelo mesmo link) é idempotente: o primeiro clique vale", async () => {
+    const c = novoCenario();
+    const id = await registrar(DONO, "dev-1", "tok-1");
+    await publicarEEntregar(c.deps, spec());
+    await registrarClique(db, { pushId: "sale_paid:2000123456", registroDocId: id }, T0 + 5000);
+    expect(await registrarClique(db, { pushId: "sale_paid:2000123456", registroDocId: id }, T0 + 9000)).toBe("ja_registrado");
+    expect((await entregas())[0].clicadoEm).toBe(T0 + 5000);
+  });
+
+  it("dez cliques SIMULTÂNEOS resultam em UM registro", async () => {
+    const c = novoCenario();
+    const id = await registrar(DONO, "dev-1", "tok-1");
+    await publicarEEntregar(c.deps, spec());
+    const rs = await Promise.all(Array.from({ length: 10 }, (_, i) => registrarClique(db, { pushId: "sale_paid:2000123456", registroDocId: id }, T0 + i)));
+    expect(rs.filter((r) => r === "registrado")).toHaveLength(1);
+  });
+
+  it("clique num aviso que NÃO foi aceito naquele aparelho não é registrado", async () => {
+    const c = novoCenario();
+    const id = await registrar(DONO, "dev-1", "tok-1");
+    c.respostas.set("tok-1", { success: false, error: { code: "messaging/internal-error" } });
+    await publicarEEntregar(c.deps, spec());
+    expect(await registrarClique(db, { pushId: "sale_paid:2000123456", registroDocId: id })).toBe("sem_entrega");
+  });
+
+  it("o aparelho de OUTRA pessoa não ganha o clique — o id do destino é montado com o e-mail da sessão", async () => {
+    const c = novoCenario();
+    await registrar(DONO, "dev-1", "tok-1");
+    await publicarEEntregar(c.deps, spec());
+    expect(await registrarClique(db, { pushId: "sale_paid:2000123456", registroDocId: `${MEMBRO}__dev-1` })).toBe("sem_entrega");
+  });
+
+  it("clicar não marca como lido: são fatos separados", async () => {
+    const c = novoCenario();
+    const id = await registrar(DONO, "dev-1", "tok-1");
+    await db.collection("notification_events").doc("sale_paid:2000123456").set({ id: "sale_paid:2000123456", type: "sale_paid", readBy: {} });
+    await publicarEEntregar(c.deps, spec());
+    await registrarClique(db, { pushId: "sale_paid:2000123456", registroDocId: id });
+    expect((await db.collection("notification_events").doc("sale_paid:2000123456").get()).data()?.readBy).toEqual({});
   });
 });

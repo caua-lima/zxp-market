@@ -2,8 +2,24 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/firebase/auth-context";
+import { useAccess } from "@/components/tabs/AccessGuard";
 import { authedFetch } from "@/lib/api/authed-fetch";
-import { aoMudarVinculoDoPush, disablePushNotifications, enablePushNotifications, getPushStatus, versaoServiceWorkerAtivo } from "@/lib/firebase/push";
+import {
+  aguardarRecebimento,
+  aoMudarVinculoDoPush,
+  coletarDiagnosticoLocal,
+  disablePushNotifications,
+  enablePushNotifications,
+  getDeviceId,
+  getPushStatus,
+  precisaDeOrientacaoIOS,
+} from "@/lib/firebase/push";
+import {
+  montarDiagnostico,
+  type DiagnosticoLocal,
+  type DiagnosticoServidor,
+  type SecaoDoDiagnostico,
+} from "@/lib/domain/diagnostico-push";
 import NotificationSettings from "@/components/NotificationSettings";
 import Modal from "@/components/Modal";
 
@@ -21,8 +37,25 @@ const CENARIOS: { id: string; label: string }[] = [
 type ResultadoTeste = {
   ok: boolean;
   scenario: string;
-  title?: string; body?: string; enviados?: number; horario?: string;
-  bloqueioMotivo?: string | null; error?: string;
+  eventId?: string;
+  title?: string; body?: string; horario?: string;
+  resultado?: "aceito" | "pendente" | "suprimido" | "falha" | "sem_registro";
+  explicacao?: string;
+  error?: string;
+};
+
+/** O que o SERVICE WORKER deste aparelho viu do push do teste. */
+type Observacao =
+  | { estado: "aguardando" }
+  | { estado: "exibido"; em: number }
+  | { estado: "recebido_sem_exibir"; erro: string }
+  | { estado: "nao_observado" };
+
+const COR_DO_NIVEL: Record<SecaoDoDiagnostico["nivel"], string> = {
+  ok: "var(--green)",
+  atencao: "var(--warning)",
+  problema: "var(--red)",
+  desconhecido: "var(--muted)",
 };
 
 /**
@@ -41,15 +74,18 @@ type ResultadoTeste = {
  */
 export function PushNotificationToggle() {
   const { user } = useAuth();
+  const { isOwner } = useAccess();
   const [status, setStatus] = useState<"unsupported" | "off" | "on" | "denied" | "loading">("loading");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [menuAberto, setMenuAberto] = useState(false);
   const [enviando, setEnviando] = useState<string | null>(null);
   const [resultado, setResultado] = useState<ResultadoTeste | null>(null);
+  const [observacao, setObservacao] = useState<Observacao | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [diagnosticando, setDiagnosticando] = useState(false);
-  const [diagnostico, setDiagnostico] = useState<{ linhas: string[]; bruto: Record<string, unknown> | null } | null>(null);
+  const [diagnostico, setDiagnostico] = useState<{ secoes: SecaoDoDiagnostico[]; bruto: Record<string, unknown> } | null>(null);
+  const [admin, setAdmin] = useState<{ carregando: boolean; dados: Record<string, unknown> | null } | null>(null);
 
   // O estado é DA PESSOA na tela neste aparelho: recalcula quando ela muda e
   // quando o registro é reconciliado (login, troca de conta, token rodado).
@@ -93,121 +129,81 @@ export function PushNotificationToggle() {
   }
 
   /**
-   * Dispara um cenário de teste real (evento + push, só pro seu aparelho) —
-   * prova que o pipeline inteiro funciona (token salvo → FCM aceita →
-   * aparelho mostra o aviso) sem esperar a próxima venda de verdade. Mostra
-   * em tela exatamente o que a Fase 7 pediu: evento criado, quantos
-   * dispositivos, se enviou ou por que não.
-   */
-  /** Versão que ESTE build publica — comparada com a que o SW ativo responde. */
-  const SW_VERSAO_ESPERADA = "2026-08-21-push-nativo";
-
-  async function coletarEstadoAparelho() {
-    const versao = await versaoServiceWorkerAtivo();
-    let temSW = false;
-    try {
-      temSW = Boolean(await navigator.serviceWorker?.getRegistration("/firebase-messaging-sw.js"));
-    } catch { /* navegador sem SW */ }
-    return {
-      permissao: typeof Notification !== "undefined" ? Notification.permission : "indisponível",
-      serviceWorkerRegistrado: temSW,
-      serviceWorkerVersao: versao,
-      versaoEsperada: SW_VERSAO_ESPERADA,
-      standalone: typeof window !== "undefined" && window.matchMedia?.("(display-mode: standalone)").matches,
-    };
-  }
-
-  /**
-   * O que só o APARELHO sabe. O servidor enxerga até o FCM aceitar a
-   * mensagem — daí pra frente (permissão do sistema, qual Service Worker
-   * está no comando) só dá pra perguntar aqui.
-   */
-  async function diagnosticarAparelho(): Promise<string[]> {
-    const e = await coletarEstadoAparelho();
-    const linhas: string[] = [];
-
-    if (e.permissao === "denied") {
-      linhas.push(
-        "PERMISSÃO BLOQUEADA neste aparelho. O servidor manda e o sistema descarta em silêncio — "
-        + "é por isso que o diagnóstico do servidor diz que entregou. Libere as notificações do app "
-        + "nas configurações do celular e ative de novo aqui.",
-      );
-    } else if (e.permissao !== "granted") {
-      linhas.push("As notificações ainda não foram autorizadas neste aparelho. Toque em 📱 para ativar.");
-    }
-
-    if (!e.serviceWorkerRegistrado) {
-      linhas.push("Nenhum Service Worker registrado — sem ele não existe notificação na barra. Toque em 📱 para ativar.");
-    } else if (e.serviceWorkerVersao == null) {
-      linhas.push(
-        "O Service Worker que está tratando os pushes é ANTIGO (anterior à correção) e não respondeu à checagem de versão. "
-        + "É o motivo clássico de 'publiquei a correção e continua igual': o navegador mantém o Service Worker "
-        + "velho no comando até todas as janelas do app fecharem. Toque em 📱 (desativar e ativar de novo) — "
-        + "isso força a troca imediata.",
-      );
-    } else if (e.serviceWorkerVersao !== e.versaoEsperada) {
-      linhas.push(`Service Worker desatualizado (${e.serviceWorkerVersao}; esperado ${e.versaoEsperada}). Desative e ative as notificações em 📱 para trocar.`);
-    }
-
-    return linhas;
-  }
-
-  /**
-   * Diagnóstico da cadeia de push.
-   *
-   * "Não chega notificação" tem causas que pedem correções opostas — o ML não
-   * chamar o webhook, nenhum aparelho registrado, preferência bloqueando, ou
-   * o push sair e o aparelho não exibir. A rota mede cada uma; aqui só
-   * mostramos o veredito em texto.
+   * Diagnóstico por CAMADA: aparelho, vínculo, conta, outros aparelhos, servidor e
+   * o que este aparelho observou. Cada uma diz o que sabe e o que não sabe — e
+   * nenhuma manda reinstalar como primeiro passo (isso apaga o armazenamento do
+   * aparelho e não corrige erro do servidor).
    */
   async function rodarDiagnostico() {
-    if (diagnosticando) return;
+    if (diagnosticando || !user?.email) return;
     setDiagnosticando(true);
     setMenuAberto(false);
     try {
-      const res = await authedFetch("/api/ml/diagnostico-push", { cache: "no-store" });
-      const json = await res.json().catch(() => null);
-
-      /**
-       * O lado do SERVIDOR só sabe que o FCM aceitou a mensagem — aceitar não
-       * é exibir. Quando o servidor diz "entregou" e o aparelho não mostra
-       * nada, a resposta está aqui: permissão revogada depois de ativada, ou
-       * um Service Worker velho ainda no comando.
-       */
-      const doAparelho = await diagnosticarAparelho();
-      const linhas = [...doAparelho, ...((json?.diagnostico as string[]) ?? [])];
-
-      setDiagnostico({
-        linhas: linhas.length ? linhas : ["Não consegui ler o diagnóstico agora."],
-        bruto: json ? { aparelho: await coletarEstadoAparelho(), servidor: json } : null,
-      });
+      const local: DiagnosticoLocal = await coletarDiagnosticoLocal(user.email);
+      let servidor: DiagnosticoServidor | null = null;
+      try {
+        const res = await authedFetch(`/api/push/diagnostico?deviceId=${encodeURIComponent(getDeviceId())}`, { cache: "no-store" });
+        if (res.ok) servidor = (await res.json()) as DiagnosticoServidor;
+        // 403: o servidor recusou por falta de acesso — é uma resposta, e é a certa.
+        else if (res.status === 403) servidor = { acesso: "sem_acesso", preferencias: "ausente", aparelhos: { total: 0, esteRegistrado: null }, ultimosEnvios: [] };
+      } catch { /* sem resposta: as camadas do servidor ficam "desconhecido" */ }
+      setDiagnostico({ secoes: montarDiagnostico(local, servidor), bruto: { aparelho: local, servidor } });
     } catch (err) {
-      setDiagnostico({ linhas: [err instanceof Error ? err.message : "Falha ao consultar."], bruto: null });
+      setDiagnostico({
+        secoes: [{ id: "aparelho", titulo: "Diagnóstico", nivel: "desconhecido", linhas: [err instanceof Error ? err.message : "Falha ao diagnosticar."] }],
+        bruto: {},
+      });
     } finally {
       setDiagnosticando(false);
     }
   }
 
+  /** Só o dono: o diagnóstico da CADEIA de vendas (webhook do ML, cron, aparelhos do time). Não é sobre este aparelho. */
+  async function rodarDiagnosticoDoSistema() {
+    setAdmin({ carregando: true, dados: null });
+    try {
+      const res = await authedFetch("/api/ml/diagnostico-push", { cache: "no-store" });
+      setAdmin({ carregando: false, dados: res.ok ? await res.json() : { erro: `HTTP ${res.status}` } });
+    } catch {
+      setAdmin({ carregando: false, dados: { erro: "sem resposta" } });
+    }
+  }
+
+  /**
+   * Dispara um push de TESTE — só pro aparelho que você está usando —, e mostra o
+   * que aconteceu com ESSE aparelho: o que o servidor fez, e depois o que o
+   * aparelho observou (o Service Worker recebeu? exibiu?). Não é uma venda: é um
+   * aviso do tipo "teste", marcado como TESTE, que não vai pra Central do time.
+   */
   async function testarCenario(scenario: string) {
     if (enviando) return;
     setEnviando(scenario);
     setMenuAberto(false);
+    setObservacao(null);
     try {
       const res = await authedFetch("/api/push/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scenario }),
+        body: JSON.stringify({ scenario, deviceId: getDeviceId() }),
       });
       const json = (await res.json().catch(() => null)) as ResultadoTeste | null;
       setResultado(json ?? { ok: false, scenario, error: "Resposta inválida" });
+
+      // O servidor só sabe que o Firebase ACEITOU. Quem sabe se chegou é o aparelho.
+      if (json?.ok && json.resultado === "aceito" && json.eventId) {
+        setObservacao({ estado: "aguardando" });
+        const visto = await aguardarRecebimento(json.eventId);
+        setObservacao(!visto ? { estado: "nao_observado" }
+          : visto.erro ? { estado: "recebido_sem_exibir", erro: visto.erro }
+          : { estado: "exibido", em: visto.exibidoEm ?? visto.recebidoEm });
+      }
     } catch (err) {
       setResultado({ ok: false, scenario, error: err instanceof Error ? err.message : "Falha ao enviar" });
     } finally {
       setEnviando(null);
-      // Sem auto-fechar: agora é um Modal de verdade (não a caixinha
-      // flutuante de antes, que sumia sozinha em 12s e podia levar o usuário
-      // a achar que "não apareceu nada" quando na real só piscou rápido
-      // demais). Fecha só quando o usuário tocar em "Fechar".
+      // Sem auto-fechar: é um Modal de verdade (não a caixinha flutuante de antes,
+      // que sumia sozinha em 12s e podia levar o usuário a achar que "não apareceu
+      // nada" quando na real só piscou rápido demais). Fecha só quando tocar em "Fechar".
     }
   }
 
@@ -226,6 +222,9 @@ export function PushNotificationToggle() {
 
   // Cor da bolinha: verde = ativo, vermelho = bloqueado, cinza = ainda não ativado.
   const corBolinha = status === "on" ? "var(--green)" : status === "denied" ? "var(--red)" : "var(--muted)";
+
+  const veredito = resultado?.resultado;
+  const corDoVeredito = veredito === "aceito" ? "var(--green)" : veredito === "pendente" ? "var(--warning)" : "var(--red)";
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -288,6 +287,14 @@ export function PushNotificationToggle() {
         <Modal open onClose={() => setMenuAberto(false)}>
           <div className="modal-title">Notificações</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
+            {/* iOS: o web push só existe no app instalado E pede um gesto na hora de ativar (WebKit). */}
+            {precisaDeOrientacaoIOS() && (
+              <div role="note" style={{ fontSize: ".8rem", lineHeight: 1.5, padding: "10px 12px", borderRadius: 8, background: "var(--surface-raised,var(--surface2))", borderLeft: "3px solid var(--warning)" }}>
+                <b>iPhone/iPad:</b> as notificações só funcionam com o app na Tela de Início. Toque em Compartilhar →
+                <i> Adicionar à Tela de Início</i>, abra o app por lá e toque em 📱 — o iOS só permite ativar
+                notificações a partir de um toque seu dentro do app instalado (iOS 16.4 ou superior).
+              </div>
+            )}
             <button
               type="button"
               onClick={() => testarCenario("sale_paid")}
@@ -297,15 +304,13 @@ export function PushNotificationToggle() {
             >
               {enviando === "sale_paid" ? "Enviando…" : "🔔 Testar agora"}
             </button>
-            {status !== "on" && (
-              <div style={{ fontSize: ".8rem", color: "var(--warning)", lineHeight: 1.4 }}>
-                Este aparelho ainda não está com notificações ativas — o teste roda mesmo assim
-                e mostra o motivo exato se não chegar.
-              </div>
-            )}
+            <div style={{ fontSize: ".78rem", color: "var(--muted)", lineHeight: 1.4 }}>
+              O teste vai só pra ESTE aparelho, aparece marcado como TESTE e não entra na Central do time.
+              {status !== "on" && " Este aparelho ainda não está ativo — o teste roda mesmo assim e diz o motivo se não chegar."}
+            </div>
 
             <div style={{ fontSize: ".75rem", fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase", color: "var(--muted)", marginTop: 8 }}>
-              Outros cenários
+              Ver como fica cada tipo de aviso
             </div>
             {CENARIOS.map((c) => (
               <button
@@ -321,9 +326,6 @@ export function PushNotificationToggle() {
             ))}
 
             <hr className="config-sep" style={{ margin: "4px 0" }} />
-            {/* A rota de diagnóstico exige token de acesso, então abrir a URL
-                direto no navegador devolve "unauthorized" — é daqui que ela
-                precisa ser chamada, com o authedFetch que já manda o token. */}
             <button
               type="button"
               onClick={rodarDiagnostico}
@@ -353,81 +355,105 @@ export function PushNotificationToggle() {
           da tela ou ficava atrás de outro elemento — resultado do teste
           parecia "não aparece nada" mesmo quando o servidor respondeu certo. */}
       {resultado && (
-        <Modal open onClose={() => setResultado(null)}>
-          <div className="modal-title">{resultado.ok ? "Teste de notificação" : "Falha no teste"}</div>
+        <Modal open onClose={() => { setResultado(null); setObservacao(null); }}>
+          <div className="modal-title">{resultado.ok ? "Resultado do teste" : "Falha no teste"}</div>
           {resultado.ok ? (
             <div style={{ fontSize: ".88rem", lineHeight: 1.6 }}>
               <div style={{ marginBottom: 10 }}>
                 <div style={{ fontWeight: 700 }}>{resultado.title}</div>
                 <div style={{ color: "var(--muted)" }}>{resultado.body}</div>
               </div>
-              <div style={{
-                padding: "10px 12px", borderRadius: 8, marginBottom: 10,
-                background: resultado.enviados && resultado.enviados > 0 ? "var(--success-soft,rgba(60,203,131,.12))" : "var(--warning-soft)",
-                border: `1px solid ${resultado.enviados && resultado.enviados > 0 ? "rgba(60,203,131,.35)" : "rgba(255,138,31,.35)"}`,
-                color: resultado.enviados && resultado.enviados > 0 ? "var(--success,var(--green))" : "var(--warning)",
-                fontWeight: 600,
-              }}>
-                {resultado.enviados && resultado.enviados > 0
-                  ? `Push enviado a ${resultado.enviados} dispositivo(s) registrado(s) neste e-mail.`
-                  : (resultado.bloqueioMotivo || "Nenhum dispositivo seu está registrado pra receber.")}
-              </div>
-              {resultado.enviados && resultado.enviados > 0 ? (
-                <div style={{ color: "var(--muted)", fontSize: ".82rem" }}>
-                  O servidor confirmou o envio. Se mesmo assim não apareceu nada no celular em alguns
-                  segundos, o problema está entre o Firebase e o sistema operacional — normalmente resolve
-                  reinstalando o app (remova da tela inicial e adicione de novo) ou conferindo se a permissão
-                  de notificação do site/app ainda está em &quot;Permitir&quot; nas configurações do aparelho.
+
+              <div style={{ padding: "10px 12px", borderRadius: 8, marginBottom: 10, border: `1px solid ${corDoVeredito}`, borderLeftWidth: 3 }}>
+                <div style={{ fontWeight: 700, color: corDoVeredito }}>
+                  {veredito === "aceito" ? "O servidor entregou ao Firebase"
+                    : veredito === "pendente" ? "O Firebase não aceitou ainda"
+                    : veredito === "suprimido" ? "O servidor não enviou"
+                    : veredito === "sem_registro" ? "Este aparelho não está registrado"
+                    : "O envio falhou"}
                 </div>
-              ) : (
-                <div style={{ color: "var(--muted)", fontSize: ".82rem" }}>
-                  Toque no ícone 📱 pra ativar notificações neste aparelho — isso registra um token novo.
-                  Depois repita o teste.
+                <div style={{ marginTop: 4 }}>{resultado.explicacao}</div>
+              </div>
+
+              {/* O que ESTE APARELHO viu. É a única prova de que chegou — o servidor só sabe que o Firebase aceitou. */}
+              {observacao?.estado === "aguardando" && (
+                <div role="status" style={{ color: "var(--muted)", fontSize: ".84rem" }}>Aguardando este aparelho confirmar o recebimento…</div>
+              )}
+              {observacao?.estado === "exibido" && (
+                <div role="status" style={{ color: "var(--green)", fontSize: ".84rem", fontWeight: 600 }}>
+                  ✓ O Service Worker deste aparelho recebeu e exibiu a notificação às {new Date(observacao.em).toLocaleTimeString("pt-BR")}.
                 </div>
               )}
+              {observacao?.estado === "recebido_sem_exibir" && (
+                <div role="alert" style={{ color: "var(--red)", fontSize: ".84rem" }}>
+                  O aparelho recebeu, mas o sistema não deixou exibir ({observacao.erro}). Confira a permissão de notificações do app nas configurações do sistema.
+                </div>
+              )}
+              {observacao?.estado === "nao_observado" && (
+                <div role="status" style={{ color: "var(--warning)", fontSize: ".84rem" }}>
+                  O Firebase aceitou, mas este aparelho não registrou o recebimento em 12 s. Pode ter demorado (rede, economia de bateria) ou
+                  o Service Worker está antigo — rode 🩺 Diagnosticar antes de qualquer outra coisa.
+                </div>
+              )}
+
               {resultado.horario && <div style={{ color: "var(--muted)", fontSize: ".8rem", marginTop: 8 }}>{new Date(resultado.horario).toLocaleTimeString("pt-BR")}</div>}
             </div>
           ) : (
             <div style={{ fontSize: ".88rem", color: "var(--red)", lineHeight: 1.6 }}>Falha ao enviar: {resultado.error}</div>
           )}
           <div className="modal-btns">
-            <button type="button" className="btn btn-ghost" onClick={() => setResultado(null)}>Fechar</button>
+            <button type="button" className="btn btn-ghost" onClick={() => { setResultado(null); setObservacao(null); }}>Fechar</button>
           </div>
         </Modal>
       )}
 
       {diagnostico && (
-        <Modal open onClose={() => setDiagnostico(null)}>
+        <Modal open onClose={() => { setDiagnostico(null); setAdmin(null); }}>
           <div className="modal-title">Diagnóstico das notificações</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
-            {diagnostico.linhas.map((l, i) => (
+            {diagnostico.secoes.map((s) => (
               <div
-                key={i}
+                key={s.id}
                 style={{
                   padding: "10px 12px", borderRadius: 8, fontSize: ".84rem", lineHeight: 1.55,
                   background: "var(--surface-raised,var(--surface2))",
-                  borderLeft: "3px solid var(--warning)",
+                  borderLeft: `3px solid ${COR_DO_NIVEL[s.nivel]}`,
                 }}
               >
-                {l}
+                <div style={{ fontWeight: 700, marginBottom: 2 }}>
+                  {s.nivel === "ok" ? "✓ " : s.nivel === "problema" ? "✕ " : s.nivel === "atencao" ? "⚠ " : "? "}{s.titulo}
+                </div>
+                {s.linhas.map((l, i) => <div key={i}>{l}</div>)}
               </div>
             ))}
           </div>
-          {diagnostico.bruto != null && (
-            <details style={{ marginTop: 12 }}>
-              <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: ".82rem" }}>
-                Dados completos (pra copiar num relato)
-              </summary>
-              <pre style={{
-                marginTop: 8, maxHeight: 260, overflow: "auto", fontSize: ".75rem",
-                background: "var(--surface)", padding: 10, borderRadius: 8, whiteSpace: "pre-wrap", wordBreak: "break-word",
-              }}>
-                {JSON.stringify(diagnostico.bruto, null, 2)}
-              </pre>
-            </details>
+
+          {isOwner && (
+            <div style={{ marginTop: 12 }}>
+              <button type="button" className="btn btn-ghost btn-xs" onClick={rodarDiagnosticoDoSistema} disabled={admin?.carregando}>
+                {admin?.carregando ? "Consultando…" : "Diagnóstico do sistema (webhook do ML, cron, time) — administrador"}
+              </button>
+              {admin?.dados && (
+                <pre style={{ marginTop: 8, maxHeight: 220, overflow: "auto", fontSize: ".75rem", background: "var(--surface)", padding: 10, borderRadius: 8, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                  {JSON.stringify(admin.dados, null, 2)}
+                </pre>
+              )}
+            </div>
           )}
+
+          <details style={{ marginTop: 12 }}>
+            <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: ".82rem" }}>
+              Dados completos (pra copiar num relato)
+            </summary>
+            <pre style={{
+              marginTop: 8, maxHeight: 260, overflow: "auto", fontSize: ".75rem",
+              background: "var(--surface)", padding: 10, borderRadius: 8, whiteSpace: "pre-wrap", wordBreak: "break-word",
+            }}>
+              {JSON.stringify(diagnostico.bruto, null, 2)}
+            </pre>
+          </details>
           <div className="modal-btns">
-            <button type="button" className="btn btn-ghost" onClick={() => setDiagnostico(null)}>Fechar</button>
+            <button type="button" className="btn btn-ghost" onClick={() => { setDiagnostico(null); setAdmin(null); }}>Fechar</button>
           </div>
         </Modal>
       )}

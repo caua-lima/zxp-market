@@ -1,10 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useReducer, useSyncExternalStore } from "react";
+import { useAuth } from "@/lib/firebase/auth-context";
 import { onForegroundPush, type ForegroundPushEvent } from "@/lib/firebase/push";
+import {
+  CONFIG_PADRAO,
+  ajustarLimite,
+  chegou,
+  dispensar,
+  estadoInicial,
+  passar,
+  pausar,
+  prioridadeDoTipo,
+  proximoPrazo,
+  retomar,
+  type ConfigDeToasts,
+  type EstadoDeToasts,
+  type NovoToast,
+} from "@/lib/domain/toast-fila";
 import { SaleNotificationToast } from "./SaleNotificationToast";
-
-const MAX_VISIVEIS = 3;
 
 /**
  * Duração antes do fechamento automático, por tipo — margem negativa fica
@@ -21,61 +35,117 @@ const DURACAO_MS: Partial<Record<string, number>> = {
   sale_cancelled: 12000,
   return_completed: 12000,
   return_opened: 12000,
+  task_assigned: 10000,
+  task_due: 12000,
 };
 const DURACAO_PADRAO = 8000;
 
-type ToastItem = ForegroundPushEvent & { _key: string };
+type Acao =
+  | { tipo: "chegou"; novo: NovoToast<ForegroundPushEvent>; agora: number; cfg: ConfigDeToasts }
+  | { tipo: "dispensar"; id: string; agora: number; cfg: ConfigDeToasts }
+  | { tipo: "pausar"; id: string; agora: number }
+  | { tipo: "retomar"; id: string; agora: number }
+  | { tipo: "passar"; agora: number; cfg: ConfigDeToasts };
 
+/**
+ * PURO: o instante vem na ação, nunca de `Date.now()` aqui dentro, e nada é
+ * mutado. O React pode executar este redutor mais de uma vez (Strict Mode faz de
+ * propósito) e o resultado tem que ser o mesmo — era exatamente o que a versão
+ * com `filaRef.current.push` dentro do atualizador não garantia.
+ */
+function reduzir(e: EstadoDeToasts<ForegroundPushEvent>, a: Acao): EstadoDeToasts<ForegroundPushEvent> {
+  switch (a.tipo) {
+    // O limite pode ter mudado (girou o celular): aplica antes de tratar a ação.
+    case "chegou": return chegou(ajustarLimite(e, a.agora, a.cfg), a.novo, a.agora, a.cfg);
+    case "dispensar": return dispensar(ajustarLimite(e, a.agora, a.cfg), a.id, a.agora, a.cfg);
+    case "pausar": return pausar(e, a.id, a.agora);
+    case "retomar": return retomar(e, a.id, a.agora);
+    case "passar": return passar(ajustarLimite(e, a.agora, a.cfg), a.agora, a.cfg);
+  }
+}
+
+const CONSULTA_CELULAR = "(max-width: 640px)";
+
+/** Celular? Lido do navegador por useSyncExternalStore — sem estado espelhado nem efeito. */
+function useCelular(): boolean {
+  return useSyncExternalStore(
+    (avisar) => {
+      const m = window.matchMedia(CONSULTA_CELULAR);
+      m.addEventListener("change", avisar);
+      return () => m.removeEventListener("change", avisar);
+    },
+    () => window.matchMedia(CONSULTA_CELULAR).matches,
+    () => false,
+  );
+}
+
+/**
+ * Os toasts de primeiro plano.
+ *
+ * É REMONTADO a cada troca de conta (a `key` abaixo): fila, ids vistos e prazos
+ * são da pessoa que estava na tela, e nada disso pode aparecer pra próxima.
+ */
 export function SaleNotificationProvider({ onNavigate }: { onNavigate: (deepLink: string) => void }) {
-  const [visiveis, setVisiveis] = useState<ToastItem[]>([]);
-  const filaRef = useRef<ToastItem[]>([]);
-  const vistosRef = useRef<Set<string>>(new Set());
+  const { user } = useAuth();
+  return <Toasts key={user?.email ?? "sem-sessao"} onNavigate={onNavigate} />;
+}
+
+function Toasts({ onNavigate }: { onNavigate: (deepLink: string) => void }) {
+  const [estado, dispatch] = useReducer(reduzir, undefined, () => estadoInicial<ForegroundPushEvent>());
+  const celular = useCelular();
+
+  // No celular, um toast principal e um contador do resto — três empilhados cobririam a tela.
+  const cfg = useMemo<ConfigDeToasts>(() => ({ ...CONFIG_PADRAO, maxVisiveis: celular ? 1 : CONFIG_PADRAO.maxVisiveis }), [celular]);
 
   useEffect(() => {
     return onForegroundPush((evt) => {
-      // Nunca dois toasts pro mesmo eventId — mesmo se o SDK entregar a
-      // mesma mensagem duas vezes (reconexão do onMessage, etc.), só o
-      // primeiro vira toast.
-      const chave = evt.eventId || `${evt.tag}-${evt.timestamp}`;
-      if (vistosRef.current.has(chave)) return;
-      vistosRef.current.add(chave);
-
-      const item: ToastItem = { ...evt, _key: chave };
-      setVisiveis((atual) => {
-        if (atual.length < MAX_VISIVEIS) return [...atual, item];
-        filaRef.current.push(item);
-        return atual;
+      dispatch({
+        tipo: "chegou", agora: Date.now(), cfg,
+        novo: {
+          // Sem eventId (payload incompleto), a tag + o instante ainda dão uma identidade estável.
+          id: evt.eventId || `${evt.tag}-${evt.timestamp}`,
+          tag: evt.tag,
+          dados: evt,
+          prioridade: prioridadeDoTipo(evt.type),
+          duracaoMs: DURACAO_MS[evt.type] ?? DURACAO_PADRAO,
+        },
       });
     });
-  }, []);
+  }, [cfg]);
 
-  const fechar = useCallback((chave: string) => {
-    setVisiveis((atual) => {
-      const resto = atual.filter((t) => t._key !== chave);
-      const proximo = filaRef.current.shift();
-      return proximo ? [...resto, proximo] : resto;
-    });
-  }, []);
-
+  // UM temporizador, apontado pro prazo mais próximo. Só é recriado quando esse prazo muda —
+  // antes, qualquer mudança na lista recriava o de TODOS e os toasts ganhavam tempo de novo.
+  const prazo = proximoPrazo(estado, cfg);
   useEffect(() => {
-    const timers = visiveis.map((t) =>
-      setTimeout(() => fechar(t._key), DURACAO_MS[t.type] ?? DURACAO_PADRAO),
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [visiveis, fechar]);
+    if (prazo == null) return;
+    const t = setTimeout(() => dispatch({ tipo: "passar", agora: Date.now(), cfg }), Math.max(0, prazo - Date.now()));
+    return () => clearTimeout(t);
+  }, [prazo, cfg]);
+
+  // O limite é aplicado também na renderização: girar o celular esconde o excesso na hora,
+  // e o redutor o devolve à fila na próxima ação.
+  const visiveis = estado.visiveis.slice(0, cfg.maxVisiveis);
+  const escondidos = estado.visiveis.length - visiveis.length + estado.fila.length;
 
   if (visiveis.length === 0) return null;
 
   return (
-    <div className="sale-toast-region" aria-label="Notificações de venda">
+    <div className="sale-toast-region" aria-label="Notificações">
       {visiveis.map((t) => (
         <SaleNotificationToast
-          key={t._key}
-          event={t}
-          onClose={() => fechar(t._key)}
-          onNavigate={(link) => { onNavigate(link); fechar(t._key); }}
+          key={t.id}
+          event={t.dados}
+          onClose={() => dispatch({ tipo: "dispensar", id: t.id, agora: Date.now(), cfg })}
+          onNavigate={(link) => { onNavigate(link); dispatch({ tipo: "dispensar", id: t.id, agora: Date.now(), cfg }); }}
+          onPausar={() => dispatch({ tipo: "pausar", id: t.id, agora: Date.now() })}
+          onRetomar={() => dispatch({ tipo: "retomar", id: t.id, agora: Date.now() })}
         />
       ))}
+      {escondidos > 0 && (
+        <div className="sale-toast-mais" role="status" style={{ pointerEvents: "auto", fontSize: ".75rem", color: "var(--muted)", textAlign: "center", padding: "2px 0" }}>
+          + {escondidos} {escondidos === 1 ? "aviso" : "avisos"} — veja na 🔔
+        </div>
+      )}
     </div>
   );
 }

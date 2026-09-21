@@ -13,7 +13,6 @@ import {
   setDoc,
   updateDoc,
   where,
-  FieldPath,
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import {
@@ -31,7 +30,6 @@ import {
   type Product,
   type Task,
 } from "@/lib/domain/types";
-import type { NotificationEvent } from "@/lib/domain/notifications";
 import { getFirebase } from "./client";
 import { assinarComCache, invalidar } from "./cache";
 import { faixasAlteradas, reconstruirCusto } from "@/lib/domain/custo-medio";
@@ -773,51 +771,10 @@ export function watchAuditLog(
   );
 }
 
-// ── Central de Notificações (Fase 7) ────────────────────────────
-// O evento em si (criação, classificação, delivery de push) é escrito só
-// pelo backend (ver lib/notification-events.ts) — aqui é só leitura +
-// marcar lido/dispensado, os dois únicos campos que firestore.rules deixa o
-// cliente tocar.
-export function watchNotificationEvents(
-  cb: (events: NotificationEvent[]) => void,
-  max = 50,
-  /**
-   * De qual colecao escutar. Quem nao pode ver financeiro escuta o espelho
-   * redigido — as regras do Firestore sao por documento, entao nao havia como
-   * liberar o evento e esconder lucro e margem dentro dele. Ver
-   * lib/domain/notificacao-publico.
-   */
-  colecao: string = "notification_events",
-): () => void {
-  // limit(50) de propósito — sem isso o listener ficaria cada vez mais caro
-  // conforme o histórico cresce (é o requisito explícito da Fase 7: nunca um
-  // listener global sem limite).
-  const q = query(sCol(colecao), orderBy("createdAt", "desc"), limit(max));
-  return onSnapshot(q, (snap) => {
-    cb(snap.docs.map((d) => d.data() as NotificationEvent));
-  });
-}
-
-/**
- * ─── POR QUE FieldPath, E NAO A CHAVE COM PONTO ─────────────────────────
- *
- * `{ [`readBy.${email}`]: ... }` parece gravar a chave "readBy.fulano@x.com",
- * mas o Firestore le PONTO como separador de caminho. Um e-mail tem pelo
- * menos um ponto no dominio, entao "caua@gmail.com" virava o caminho
- * readBy > caua@gmail > com — tres niveis aninhados, com a marca de lido no
- * lugar errado.
- *
- * O efeito: a notificacao nunca ficava lida de verdade (a tela procura
- * readBy[email], que continua ausente) e o documento acumulava lixo
- * aninhado. FieldPath trata cada argumento como UM segmento, ponto incluso.
- */
-export async function markNotificationRead(eventId: string, email: string, colecao = "notification_events"): Promise<void> {
-  await updateDoc(sDoc(colecao, eventId), new FieldPath("readBy", email), Date.now()).catch(() => {});
-}
-
-export async function markNotificationDismissed(eventId: string, email: string, colecao = "notification_events"): Promise<void> {
-  await updateDoc(sDoc(colecao, eventId), new FieldPath("dismissedBy", email), Date.now()).catch(() => {});
-}
+// ── Central de Notificações ─────────────────────────────────────
+// Leitura e marcação de lido vivem em lib/firebase/notificacoes.ts: são duas
+// fontes (feed do time e feed pessoal), com paginação, estado de erro e
+// marcação que reporta falha. As preferências, abaixo, seguem aqui.
 
 // ── Preferências de notificação por usuário ──────────────────────
 // usuarios/{uid}/preferences/notifications — cada um só lê/escreve a

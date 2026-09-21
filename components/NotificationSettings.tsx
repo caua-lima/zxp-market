@@ -23,7 +23,7 @@ const TOGGLE_LABEL: Record<NotificationTogglesKey, string> = {
   return_completed: "Devolução concluída",
   sales_summary: "Resumo de vendas agrupadas",
   sync_warning: "Alertas de sincronização",
-  task_assigned: "Tarefa atribuída a mim",
+  task_assigned: "Tarefas: atribuídas a mim e prazos",
   stock_low: "Full no mínimo (agendar coleta)",
   milestone: "Marcos e conquistas 🏆",
 };

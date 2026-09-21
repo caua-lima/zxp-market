@@ -97,10 +97,23 @@ export function severidadePublica(type: string, severidade: unknown): Notificati
  * novo passaria despercebido por qualquer filtro. Aqui, tipo desconhecido cai
  * no genérico — que não diz nada.
  */
+/**
+ * Tipos cujo texto NÃO nasce de valores da venda: tarefa, prazo e estoque falam de
+ * trabalho a fazer. Reescrevê-los pelo molde de venda ("Pedido") era o que fazia uma
+ * tarefa aparecer como "Nova tarefa atribuída a você / Pedido", sem dizer qual. O
+ * texto original é mantido — desde que a rede de segurança confirme que não sobrou
+ * dinheiro nele (o título de uma tarefa é texto livre: "cobrar R$ 300").
+ */
+const TIPOS_COM_TEXTO_PROPRIO: ReadonlySet<string> = new Set(["task_assigned", "task_due", "stock_low"]);
+
 function textoSemFinanceiro(
   type: NotificationEventType,
   produto: string,
+  original?: { title: string; body: string },
 ): { title: string; body: string } {
+  if (original && TIPOS_COM_TEXTO_PROPRIO.has(type) && !contemFinanceiro(original.title) && !contemFinanceiro(original.body)) {
+    return original;
+  }
   const alvo = produto || "Pedido";
   switch (type) {
     case "sale_paid":
@@ -117,7 +130,11 @@ function textoSemFinanceiro(
     case "return_completed":
       return { title: "Devolução concluída", body: `${alvo} · venda revertida` };
     case "task_assigned":
-      return { title: "Nova tarefa atribuída a você", body: alvo };
+      return { title: "Nova tarefa atribuída a você", body: "Abra o app para ver os detalhes" };
+    case "task_due":
+      return { title: "Tarefas com prazo", body: "Abra o app para ver os detalhes" };
+    case "test":
+      return { title: "TESTE de notificação", body: "Conteúdo sintético — nenhuma venda real" };
     case "stock_low":
       return { title: "Estoque baixo", body: alvo };
     case "sync_warning":
@@ -178,7 +195,7 @@ export function redigirPush(payload: SalePushPayload, nivel: NivelConteudo): Sal
 
   const texto = payload.resumoCount && payload.resumoCount > 1
     ? { title: `${payload.resumoCount} vendas confirmadas em poucos minutos`, body: "Confira na central de avisos" }
-    : textoSemFinanceiro(payload.type, payload.productName ?? "");
+    : textoSemFinanceiro(payload.type, payload.productName ?? "", { title: payload.title, body: payload.body });
   const seguro = textoSeguro(texto.title, texto.body);
 
   const bruto: Record<string, unknown> = { ...payload, type: tipoPublico(payload.type), ...seguro };
@@ -252,6 +269,12 @@ export function separarPorAcesso<T extends { email: string }>(
  */
 export const COLECAO_EVENTOS = "notification_events";
 export const COLECAO_EVENTOS_PUBLICA = "notification_events_publico";
+/**
+ * O feed de avisos DIRECIONADOS: notification_feed/{email}/itens/{eventId}. Um por
+ * pessoa, então o "lido" é dela sozinha (sem mapa por e-mail) e a regra do Firestore
+ * decide quem lê pelo caminho — a Central de outra pessoa nunca alcança este feed.
+ */
+export const COLECAO_FEED = "notification_feed";
 
 export function colecaoDoNivel(nivel: NivelConteudo): string {
   return nivel === "completo" ? COLECAO_EVENTOS : COLECAO_EVENTOS_PUBLICA;
@@ -282,7 +305,9 @@ export const CAMPOS_PUBLICOS_DO_EVENTO = [
  */
 export function redigirEvento<T extends Partial<NotificationEvent>>(evento: T): Record<string, unknown> {
   const tipo = String(evento.type ?? "");
-  const base = textoSemFinanceiro(tipo as NotificationEventType, String(evento.productName ?? ""));
+  const base = textoSemFinanceiro(tipo as NotificationEventType, String(evento.productName ?? ""), {
+    title: String(evento.title ?? ""), body: String(evento.body ?? ""),
+  });
   const texto = textoSeguro(base.title, base.body);
 
   const origem = evento as Record<string, unknown>;

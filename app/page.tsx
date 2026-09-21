@@ -3,7 +3,8 @@
 import { Suspense, useEffect, useState, useMemo, useRef, Fragment } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/firebase/auth-context";
-import { initForegroundPush } from "@/lib/firebase/push";
+import { initForegroundPush, registrarCliqueDoAviso } from "@/lib/firebase/push";
+import { validarDeepLink } from "@/lib/domain/deep-link";
 import { PushNotificationToggle } from "@/components/PushNotificationToggle";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import AjudaChat from "@/components/AjudaChat";
@@ -303,6 +304,50 @@ function AppShell() {
     if (c.tipoDoItem === "tarefa" && c.item) { navigateToTask(c.item); return; }
     if (c.aba) setTab(c.aba as Tab);
   }
+
+  /**
+   * ─── O CLIQUE NA NOTIFICAÇÃO ─────────────────────────────────────────
+   *
+   * O Service Worker NÃO navega a janela (client.navigate recarrega a página e
+   * destrói um formulário em edição): ele foca a janela e manda uma mensagem, e é
+   * AQUI que se decide. Com uma janela de edição aberta (.modal-overlay), abrir o
+   * destino trocaria de aba e descartaria o que a pessoa está digitando — então
+   * pergunta antes.
+   *
+   * O clique também é REGISTRADO aqui (o app tem a sessão; o Service Worker não),
+   * e é um recibo separado de "lido".
+   */
+  const [linkPendente, setLinkPendente] = useState<{ deepLink: string; eventId: string } | null>(null);
+  const abrirDeepLinkRef = useRef(abrirDeepLink);
+  useEffect(() => { abrirDeepLinkRef.current = abrirDeepLink; });
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    function aoReceber(e: MessageEvent) {
+      const d = e.data as { tipo?: unknown; deepLink?: unknown; eventId?: unknown } | null;
+      if (!d || d.tipo !== "abrir" || typeof d.deepLink !== "string") return;
+      // Valida DE NOVO (a mesma função do Service Worker): uma mensagem não deve levar o app a lugar nenhum além das rotas dele.
+      const destino = validarDeepLink(d.deepLink, window.location.origin);
+      const eventId = typeof d.eventId === "string" ? d.eventId : "";
+      if (eventId) registrarCliqueDoAviso(eventId);
+      if (document.querySelector(".modal-overlay")) { setLinkPendente({ deepLink: destino, eventId }); return; }
+      abrirDeepLinkRef.current(destino);
+    }
+    navigator.serviceWorker.addEventListener("message", aoReceber);
+    return () => navigator.serviceWorker.removeEventListener("message", aoReceber);
+  }, []);
+
+  // App FECHADO no clique: o Service Worker abre a janela já no destino, com o eventId em ?ev=.
+  // Registra o clique e tira o parâmetro do endereço (ele não é parte da tela).
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const ev = p.get("ev");
+    if (!ev) return;
+    registrarCliqueDoAviso(ev);
+    p.delete("ev");
+    const resto = p.toString();
+    window.history.replaceState(window.history.state, "", window.location.pathname + (resto ? `?${resto}` : ""));
+  }, []);
 
   // Ctrl/Cmd+K abre a busca rápida de qualquer lugar do app — atalho comum
   // (VS Code, Linear, Notion) que dispensa clicar na sidebar pra trocar de aba.
@@ -711,6 +756,20 @@ function AppShell() {
       {activeTab !== "ads" && <AjudaChat abaAtual={activeTab} />}
 
       <SaleNotificationProvider onNavigate={abrirDeepLink} />
+
+      {linkPendente && (
+        <div
+          role="alertdialog"
+          aria-label="Abrir notificação"
+          style={{ position: "fixed", left: 16, right: 16, bottom: 16, zIndex: 1300, maxWidth: 520, margin: "0 auto", padding: "12px 14px", borderRadius: 10, background: "var(--surface)", border: "1px solid var(--border)", boxShadow: "0 8px 24px rgba(0,0,0,.35)", fontSize: ".85rem", lineHeight: 1.5 }}
+        >
+          Você abriu uma notificação, mas há uma janela de edição aberta. Abrir agora pode descartar o que está sendo digitado.
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <button type="button" className="btn btn-primary btn-xs" onClick={() => { const l = linkPendente; setLinkPendente(null); abrirDeepLink(l.deepLink); }}>Abrir mesmo assim</button>
+            <button type="button" className="btn btn-ghost btn-xs" onClick={() => setLinkPendente(null)}>Continuar editando</button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -28,13 +28,18 @@ const COLECAO = "notification_janelas";
 const PONTEIRO = "_atual";
 const ABORTED = 10;
 
-async function comRetentativa<T>(fn: () => Promise<T>, tentativas = 6): Promise<T> {
+/**
+ * Refaz a transação abortada por contenção. Todas as vendas de uma rajada disputam
+ * o MESMO par de documentos (ponteiro + janela), então sob rajada de verdade o
+ * SDK pode esgotar as próprias tentativas: espera com jitter crescente e tenta de novo.
+ */
+async function comRetentativa<T>(fn: () => Promise<T>, tentativas = 10): Promise<T> {
   for (let i = 1; ; i++) {
     try {
       return await fn();
     } catch (err) {
       if ((err as { code?: number })?.code !== ABORTED || i >= tentativas) throw err;
-      await new Promise((ok) => setTimeout(ok, 40 * i + Math.random() * 80));
+      await new Promise((ok) => setTimeout(ok, 60 * i + Math.random() * 120 * i));
     }
   }
 }

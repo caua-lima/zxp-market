@@ -7,7 +7,7 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { deleteDoc, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, limit, orderBy, query, setDoc, updateDoc } from "firebase/firestore";
 
 /**
  * Regras de segurança das coleções de notificação, contra o emulador REAL do
@@ -247,4 +247,64 @@ describe("coleções internas do servidor — ninguém alcança pelo cliente", (
       await assertFails(deleteDoc(doc(ctx(DONO), colecao, "x")));
     });
   }
+});
+
+describe("notification_feed — o feed direcionado é lido só por quem é o dono do caminho (N16)", () => {
+  const itemDoDono = () => doc(ctx(DONO), "notification_feed", DONO.email, "itens", "task_assigned:t1:1");
+
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (c) => {
+      const db = c.firestore();
+      await setDoc(doc(db, "notification_feed", DONO.email, "itens", "task_assigned:t1:1"), {
+        id: "task_assigned:t1:1", type: "task_assigned", title: "Nova tarefa atribuída a você", body: "x",
+        audiencia: [DONO.email], lidoEm: null, dispensadoEm: null,
+      });
+    });
+  });
+
+  it("a pessoa lê o PRÓPRIO feed", async () => {
+    await assertSucceeds(getDoc(itemDoDono()));
+    await assertSucceeds(getDocs(query(collection(ctx(DONO), "notification_feed", DONO.email, "itens"), orderBy("createdAt", "desc"), limit(50))));
+  });
+
+  it("OUTRA pessoa não lê o feed do dono — nem um item, nem a lista", async () => {
+    await assertFails(getDoc(doc(ctx(MEMBRO), "notification_feed", DONO.email, "itens", "task_assigned:t1:1")));
+    await assertFails(getDocs(collection(ctx(MEMBRO), "notification_feed", DONO.email, "itens")));
+  });
+
+  it("quem não tem acesso ao app não lê nem o feed do próprio e-mail", async () => {
+    await env.withSecurityRulesDisabled(async (c) => {
+      await setDoc(doc(c.firestore(), "notification_feed", SEM_ACESSO.email, "itens", "x"), { lidoEm: null });
+    });
+    await assertFails(getDoc(doc(ctx(SEM_ACESSO), "notification_feed", SEM_ACESSO.email, "itens", "x")));
+  });
+
+  it("ninguém cria nem apaga pelo cliente", async () => {
+    await assertFails(setDoc(doc(ctx(DONO), "notification_feed", DONO.email, "itens", "novo"), { title: "x" }));
+    await assertFails(deleteDoc(itemDoDono()));
+  });
+
+  it("a pessoa marca o PRÓPRIO lido e dispensado", async () => {
+    await assertSucceeds(updateDoc(itemDoDono(), { lidoEm: 123 }));
+    await assertSucceeds(updateDoc(itemDoDono(), { dispensadoEm: 456 }));
+  });
+
+  it("não altera título, corpo nem audiência", async () => {
+    await assertFails(updateDoc(itemDoDono(), { title: "reescrito" }));
+    await assertFails(updateDoc(itemDoDono(), { audiencia: [MEMBRO.email] }));
+    await assertFails(updateDoc(itemDoDono(), { lidoEm: 1, body: "y" }));
+  });
+
+  it("outra pessoa não marca lido no feed alheio", async () => {
+    await assertFails(updateDoc(doc(ctx(MEMBRO), "notification_feed", DONO.email, "itens", "task_assigned:t1:1"), { lidoEm: 1 }));
+  });
+
+  it("o member lê e marca o PRÓPRIO feed (o teste dele é dele)", async () => {
+    await env.withSecurityRulesDisabled(async (c) => {
+      await setDoc(doc(c.firestore(), "notification_feed", MEMBRO.email, "itens", "test:1"), { type: "test", lidoEm: null, dispensadoEm: null });
+    });
+    const meu = doc(ctx(MEMBRO), "notification_feed", MEMBRO.email, "itens", "test:1");
+    await assertSucceeds(getDoc(meu));
+    await assertSucceeds(updateDoc(meu, { lidoEm: 1 }));
+  });
 });

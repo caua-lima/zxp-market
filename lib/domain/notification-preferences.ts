@@ -105,8 +105,12 @@ const TYPE_TO_TOGGLE: Record<NotificationEventType, NotificationTogglesKey | nul
   return_completed: "return_completed",
   sync_warning: "sync_warning",
   task_assigned: "task_assigned",
+  // O lembrete de prazo é o mesmo assunto ("minhas tarefas"): segue o toggle de tarefas.
+  task_due: "task_assigned",
   stock_low: "stock_low",
   milestone: "milestone",
+  // Teste é pedido explícito de quem está diante do aparelho: nenhum toggle o esconde.
+  test: null,
   system: null, // sistema não é opcional — sempre entra na Central; não é um push de venda
 };
 
@@ -207,6 +211,10 @@ export function avaliarPush(
   relogio: RelogioLocal,
   isSummary = false,
 ): AvaliacaoDoPush {
+  // O push de teste existe pra provar que o caminho até o aparelho funciona. Se uma preferência
+  // (silêncio, "só críticas") o engolisse, o teste diria "não chegou" por um motivo que não é defeito.
+  if (type === "test") return { permitido: true };
+
   if (isSummary) {
     if (!prefs.toggles.sales_summary) return { permitido: false, motivo: "preferencia_resumo_desligado" };
   } else {

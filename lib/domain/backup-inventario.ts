@@ -160,6 +160,12 @@ export const INVENTARIO: readonly ItemDeBackup[] = [
     perda: "Nada operacional — some junto com notification_events e pelo mesmo motivo.",
   },
   {
+    colecao: "notification_feed",
+    classe: "efemero",
+    conteudo: "O feed de avisos direcionados de cada pessoa: tarefa atribuída, lembrete de prazo e testes.",
+    perda: "Nada operacional — a tarefa em si está em tarefas; só o histórico do aviso se perde.",
+  },
+  {
     colecao: "notification_janelas",
     classe: "efemero",
     conteudo: "A janela de vendas rápidas em curso e as anteriores: quais vendas entraram em cada rajada.",

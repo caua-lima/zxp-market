@@ -129,10 +129,69 @@ Nada abaixo é destrutivo sem simulação antes, e nada depende de ordem entre s
    Só apaga o que se **prova** sobra: documentos com o mesmo token de outro, e
    registros antigos cujo token o FCM diz estar morto. Registro antigo vivo
    nunca é apagado — o e-mail não prova que é o mesmo aparelho.
+5. Avisos direcionados que estavam nas coleções do time (tarefa atribuída, prazo
+   de tarefa e teste). O aviso antigo não guardou pra quem era, então **não dá
+   pra movê-lo pro feed pessoal — ele é apagado** das duas coleções
+   compartilhadas (a tarefa em si continua em `tarefas`). Simular primeiro; até
+   200 por tipo por chamada, repita até `restantes` vir `false`:
+
+   ```bash
+   curl -s -H "Authorization: Bearer $CRON_SECRET" "https://briefing-master.vercel.app/api/notificacoes/migrar-direcionados"
+   curl -s -X POST -H "Authorization: Bearer $CRON_SECRET" "https://briefing-master.vercel.app/api/notificacoes/migrar-direcionados?aplicar=1"
+   ```
 
 Ninguém precisa reativar o push: quem já o tinha ligado é migrada sozinha na
 próxima abertura do app (o servidor prova que a pessoa registrou aquela
 instalação antes de o navegador herdar o estado antigo).
+
+## Central, avisos pessoais e o clique
+
+**Dois lugares, duas audiências.** Venda e alertas do time ficam em
+`notification_events_publico` (lido por todos com acesso, campos permitidos por
+allowlist). O que é *de uma pessoa* — tarefa atribuída, prazo, teste — nasce em
+`notification_feed/{email}/itens`, cujo caminho já é a proteção: a regra só deixa
+a própria pessoa ler, marcar como lido (`lidoEm`) e dispensar. Por isso não há
+índice composto; a Central junta as duas fontes por data no cliente, com leitura
+paginada ("Carregar avisos mais antigos") e sem prometer "tudo em dia" enquanto
+houver página por ler.
+
+**Teste é da própria pessoa.** `POST /api/push/test` envia só aos aparelhos de
+quem clicou (`apenasRegistros`), grava o aviso no feed dela, tem limite de taxa e
+ignora as preferências de propósito (o teste existe pra provar o caminho). Testes
+com mais de 7 dias são apagados na varredura diária.
+
+**Clique não é leitura.** Ao tocar na notificação, o Service Worker valida o
+destino (mesma origem, caminho `/`, parâmetros permitidos), escolhe a janela em
+foco (ou a visível), e **manda uma mensagem** — nunca `navigate()`, que recarrega
+a página e destrói um formulário em edição. O app decide: com modal ou rascunho
+aberto, mostra uma faixa "Ir para o aviso" em vez de arrancar a pessoa da tela. Com o
+app fechado, abre já no destino com `?ev=<eventId>`. O clique grava `clicadoEm` no
+recibo da entrega (`POST /api/push/clique`) — separado de "aceito pelo FCM" e de
+"lido na Central".
+
+**Diagnóstico em camadas (🩺 no ⋯ da Central).** Aparelho (permissão, Service
+Worker e versão, token), vínculo (instalação ↔ pessoa), conta (registros e
+preferências), outros aparelhos, servidor/Firebase (`/api/push/diagnostico`) e o
+que o aparelho de fato recebeu e exibiu (registro de 10 itens no Cache API do
+Service Worker). Cada camada diz o que **não** consegue saber. Quando o texto do
+Service Worker muda, suba `SW_VERSAO` em `lib/push-sw-versao.ts`: o diagnóstico
+compara a versão que o aparelho roda com a publicada e avisa se está defasada.
+
+**iOS.** Push web só funciona com o app instalado na Tela de Início e a
+permissão pedida por um toque; o fluxo de ativação respeita isso e explica o
+motivo em vez de falhar em silêncio.
+
+**Fila de avisos na tela.** Uma rajada de vendas com o app aberto não empilha
+toasts sem fim: `lib/domain/toast-fila.ts` (puro, seguro no Strict Mode) mostra
+até 3 por vez (1 no celular, com um contador pro resto), deixa esperar até 12 e
+só por 30 s, dá prioridade ao alerta de prejuízo, congela o prazo com o mouse ou
+o foco em cima e troca o toast de mesma `tag` em vez de duplicar. O que a fila
+descarta **não some**: continua na Central. (Quem agrupa uma rajada em resumo é
+o servidor — janela de 90 s —, não o toast.)
+
+**Regras — ordem.** As regras novas (feed pessoal, formato de preferências,
+`deny` das coleções internas do outbox) dependem do app novo já publicado: o
+app antigo lê os avisos direcionados da coleção do time, que o passo 5 esvazia.
 
 ## Quando "não chega notificação"
 

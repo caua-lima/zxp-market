@@ -28,6 +28,7 @@ function toneDeTipo(type: string): Tone {
     // pra prioridade alta/crítica) — isso é decidido no evento persistido,
     // visível na Central. Aqui, no toast, fica sempre "info" por simplicidade.
     case "task_assigned": return "info";
+    case "task_due": return "warning";
     default: return "info";
   }
 }
@@ -46,7 +47,10 @@ function Icone({ type }: { type: string }) {
     case "return_completed":
       return <svg {...common}><path d="M3 12a9 9 0 1 0 3-6.7" /><path d="M3 4v5h5" /></svg>;
     case "task_assigned":
+    case "task_due":
       return <svg {...common}><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 8h6M9 12h6M9 16h3" /></svg>;
+    case "test":
+      return <svg {...common}><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3" /></svg>;
     case "sale_paid":
     default:
       return <svg {...common}><path d="M6 8h12l-1 12H7L6 8z" /><path d="M9 8V6.5a3 3 0 0 1 6 0V8" /><path d="M9.5 12.5l1.8 1.8L15 11" /></svg>;
@@ -60,14 +64,32 @@ function fmtBRL(v: string | undefined): string | null {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+/** Vendas com classificação financeira — as únicas em que "resultado em atualização" faz sentido. */
+const TIPOS_DE_VENDA = new Set(["sale_paid", "sale_high_value", "sale_low_margin", "sale_negative_margin"]);
+
+/** O rótulo do botão principal: descreve pra ONDE ele leva, em vez de todo aviso virar "Ver pedido". */
+function rotuloDaAcao(type: string, orderId: string | undefined, deepLink: string): string | null {
+  if (orderId) return "Ver pedido";
+  if (type === "task_assigned" || type === "task_due") return "Ver tarefa";
+  if (type === "milestone") return "Ver desempenho";
+  if (type === "stock_low") return "Ver estoque";
+  if (type === "test") return null; // o teste não leva a lugar nenhum
+  return deepLink && deepLink !== "/" ? "Abrir" : null;
+}
+
 export function SaleNotificationToast({
   event,
   onClose,
   onNavigate,
+  onPausar,
+  onRetomar,
 }: {
   event: ForegroundPushEvent;
   onClose: () => void;
   onNavigate: (deepLink: string) => void;
+  /** Mouse ou foco em cima: o prazo de fechamento congela pra o botão não sumir enquanto se estende a mão. */
+  onPausar?: () => void;
+  onRetomar?: () => void;
 }) {
   const tone = toneDeTipo(event.type);
   // role="alert" interrompe leitor de tela na hora (prejuízo/cancelamento —
@@ -76,15 +98,32 @@ export function SaleNotificationToast({
   const role = tone === "danger" ? "alert" : "status";
   const grossFmt = fmtBRL(event.grossAmount);
   const lucroFmt = fmtBRL(event.estimatedProfit);
-  const emAtualizacao = event.financialState === "unavailable" || (event.estimatedProfit == null && event.type !== "sale_cancelled" && event.type !== "return_completed");
+  // "Em atualização" só quando o cálculo financeiro de uma VENDA está mesmo indisponível. Antes valia
+  // pra qualquer aviso sem lucro — tarefa, marco, teste e a versão sem financeiro de um member
+  // (que não tem lucro por PRIVACIDADE, não por atraso) diziam "resultado financeiro em atualização".
+  const emAtualizacao = TIPOS_DE_VENDA.has(event.type) && event.financialState === "unavailable";
+  const rotulo = rotuloDaAcao(event.type, event.orderId, event.deepLink);
+  const ehTeste = event.type === "test";
   const itens = parseItens(event.itensJson);
   const [expandido, setExpandido] = useState(false);
 
   return (
-    <div className={`sale-toast sale-toast-${tone}`} role={role} aria-live={tone === "danger" ? "assertive" : "polite"}>
+    <div
+      className={`sale-toast sale-toast-${tone}`}
+      role={role}
+      aria-live={tone === "danger" ? "assertive" : "polite"}
+      onPointerEnter={onPausar}
+      onPointerLeave={onRetomar}
+      // Foco de teclado também pausa: quem navega por Tab precisa do mesmo tempo que quem usa o mouse.
+      onFocusCapture={onPausar}
+      onBlurCapture={onRetomar}
+    >
       <div className="sale-toast-head">
         <span className="sale-toast-icon"><Icone type={event.type} /></span>
-        <span className="sale-toast-title">{event.title}</span>
+        <span className="sale-toast-title">
+          {ehTeste && !/^TESTE/i.test(event.title) && <span style={{ fontSize: ".75rem", fontWeight: 700, padding: "1px 6px", borderRadius: 4, marginRight: 6, background: "var(--surface2)", color: "var(--muted)", border: "1px solid var(--border)" }}>TESTE</span>}
+          {event.title}
+        </span>
         <button type="button" className="sale-toast-close" onClick={onClose} aria-label="Fechar notificação">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
         </button>
@@ -130,10 +169,10 @@ export function SaleNotificationToast({
         )
       )}
 
-      {event.orderId && (
+      {rotulo && (
         <div className="sale-toast-actions">
-          <button type="button" className="btn btn-primary btn-xs" onClick={() => onNavigate(event.deepLink)}>Ver pedido</button>
-          <button type="button" className="btn btn-ghost btn-xs" onClick={() => onNavigate("/")}>Ver dashboard</button>
+          <button type="button" className="btn btn-primary btn-xs" onClick={() => onNavigate(event.deepLink)}>{rotulo}</button>
+          {event.orderId && <button type="button" className="btn btn-ghost btn-xs" onClick={() => onNavigate("/")}>Ver dashboard</button>}
         </div>
       )}
     </div>

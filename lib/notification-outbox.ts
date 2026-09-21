@@ -74,6 +74,8 @@ export type EspecPush = {
   isSummary?: boolean;
   /** `null`/ausente = o time inteiro; lista = só essas pessoas (aviso direcionado). */
   audiencia?: string[] | null;
+  /** Restringe a APARELHOS específicos (ids de registro). O teste vai só pro aparelho que o pediu. */
+  apenasRegistros?: string[] | null;
   validadeMs?: number;
   /** De onde veio — só pra diagnóstico. */
   origem: string;
@@ -228,7 +230,7 @@ function registroDe(d: FirebaseFirestore.QueryDocumentSnapshot): RegistroDeDesti
 async function fazerFanout(
   deps: Dependencias,
   outbox: DocumentReference,
-  dados: { pushId: string; eventId: string; audiencia: string[] | null; expiraEm: number; entregarApos?: number },
+  dados: { pushId: string; eventId: string; audiencia: string[] | null; expiraEm: number; entregarApos?: number; apenasRegistros?: string[] | null },
 ): Promise<number> {
   const { db } = deps;
   const agora = deps.agora();
@@ -237,6 +239,10 @@ async function fazerFanout(
   if (dados.audiencia) {
     const permitidos = new Set(dados.audiencia.map((e) => e.toLowerCase()));
     registros = registros.filter((r) => permitidos.has(r.email.toLowerCase()));
+  }
+  if (dados.apenasRegistros) {
+    const ids = new Set(dados.apenasRegistros);
+    registros = registros.filter((r) => ids.has(r.docId));
   }
 
   const col = db.collection(COLECAO_ENTREGAS);
@@ -301,6 +307,7 @@ export async function publicarPush(deps: Dependencias, spec: EspecPush): Promise
     // JSON, não objeto: o payload tem campos `undefined`, que o Admin SDK recusa.
     payloadJson: JSON.stringify(spec.payload),
     audiencia: spec.audiencia ?? null,
+    apenasRegistros: spec.apenasRegistros ?? null,
     criadoEm: agora,
     entregarApos: spec.entregarApos ?? agora,
     // A validade conta do momento em que o envio PODE acontecer: um push agendado
@@ -332,6 +339,7 @@ export async function publicarPush(deps: Dependencias, spec: EspecPush): Promise
       pushId: spec.pushId,
       eventId: String(existente.eventId ?? spec.eventId),
       audiencia: (existente.audiencia as string[] | null) ?? null,
+      apenasRegistros: (existente.apenasRegistros as string[] | null) ?? null,
       expiraEm: num(existente.expiraEm),
       entregarApos: num(existente.entregarApos) || undefined,
     });
@@ -655,6 +663,7 @@ export async function processarEntregas(deps: Dependencias, opcoes: OpcoesDeProc
       await fazerFanout(deps, d.ref, {
         pushId: String(x.pushId), eventId: String(x.eventId),
         audiencia: (x.audiencia as string[] | null) ?? null, expiraEm: num(x.expiraEm),
+        apenasRegistros: (x.apenasRegistros as string[] | null) ?? null,
         entregarApos: num(x.entregarApos) || undefined,
       }).catch(() => {});
     }
@@ -725,4 +734,31 @@ export async function limparEntregasAntigas(deps: Dependencias, retencaoMs = 14 
     removidos++;
   }
   return removidos;
+}
+
+/**
+ * O recibo de CLIQUE: a pessoa tocou na notificação deste aparelho.
+ *
+ * É um fato à parte de "aceito pelo provedor" (o servidor entregou ao FCM) e de
+ * "lido" (a Central): tocar não marca como lido, e ler na Central não conta como
+ * clique. Cada um responde uma pergunta diferente — o clique é a única evidência,
+ * do lado do servidor, de que o aviso CHEGOU À PESSOA, e por isso é guardado.
+ *
+ * Idempotente: o clique repetido (reabrir pelo mesmo link) não sobrescreve o primeiro.
+ * Só grava se o destino existe e foi ACEITO — clique num aviso que o servidor nunca
+ * enviou àquele aparelho não é um fato que valha registrar.
+ */
+export async function registrarClique(
+  db: Firestore,
+  alvo: { pushId: string; registroDocId: string },
+  agora = Date.now(),
+): Promise<"registrado" | "ja_registrado" | "sem_entrega"> {
+  const ref = db.collection(COLECAO_ENTREGAS).doc(idDaEntrega(alvo.pushId, alvo.registroDocId));
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists || snap.data()?.status !== "accepted") return "sem_entrega" as const;
+    if (snap.data()?.clicadoEm) return "ja_registrado" as const;
+    tx.update(ref, { clicadoEm: agora });
+    return "registrado" as const;
+  });
 }

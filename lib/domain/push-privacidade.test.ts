@@ -286,3 +286,47 @@ describe("espelhoDivergente — a migração só mexe no que precisa", () => {
     expect(espelhoDivergente(redigirEvento(evento()), { ...redigirEvento(evento()), delivery: {} })).toBe(true);
   });
 });
+
+describe("tarefas e testes: o texto não vira 'Pedido' e o teste não parece venda (N16)", () => {
+  const tarefa = (over: Partial<SalePushPayload> = {}): SalePushPayload => ({
+    eventId: "task_assigned:t1:1", type: "task_assigned", title: "Nova tarefa atribuída a você",
+    body: "Conferir o custo da Menta · prioridade alta · prazo 30/09/2026", tag: "task-t1", deepLink: "/?tab=tarefas&task=t1", timestamp: "1", ...over,
+  });
+
+  it("a tarefa mantém o texto ORIGINAL pra quem não vê financeiro (antes virava 'Pedido')", () => {
+    const r = redigirPush(tarefa(), "sem_financeiro");
+    expect(r.body).toBe("Conferir o custo da Menta · prioridade alta · prazo 30/09/2026");
+    expect(r.body).not.toBe("Pedido");
+  });
+
+  it("…mas título de tarefa com dinheiro cai no genérico — texto livre não é confiável", () => {
+    const r = redigirPush(tarefa({ body: "Cobrar R$ 300,00 do fornecedor · prioridade alta" }), "sem_financeiro");
+    expect(contemFinanceiro(r.body)).toBe(false);
+    expect(r.body).toBe("Abra o app para ver os detalhes");
+  });
+
+  it("lembrete de prazo (task_due) tem o próprio tipo e mantém o texto limpo", () => {
+    const r = redigirPush(tarefa({ type: "task_due", title: "Você tem 2 tarefas com prazo", body: "Conferir a Menta · Responder cliente" }), "sem_financeiro");
+    expect(r.type).toBe("task_due");
+    expect(r.title).toBe("Você tem 2 tarefas com prazo");
+  });
+
+  it("o teste sem financeiro vira um TESTE explícito — nunca um aviso de venda", () => {
+    const r = redigirPush({ ...tarefa(), type: "test", title: "TESTE · Venda de alto valor 🚀", body: "R$ 480,00 · Produto de teste" }, "sem_financeiro");
+    expect(r.title).toBe("TESTE de notificação");
+    expect(r.body).toBe("Conteúdo sintético — nenhuma venda real");
+    expect(r.type).toBe("test");
+  });
+
+  it("o teste COMPLETO não leva orderId nem valores (o payload de antes trazia um pedido TESTE-... inexistente)", () => {
+    const s = serializarPayload({ eventId: "test:a:1", type: "test", title: "TESTE · Nova venda", body: "x", tag: "test-1", deepLink: "/", timestamp: "1" });
+    expect(s.orderId).toBe("");
+    expect(s.grossAmount).toBe("");
+    expect(s.deepLink).toBe("/");
+  });
+
+  it("no espelho público a tarefa também mantém o texto (se algum dia passar por lá)", () => {
+    const r = redigirEvento({ type: "task_assigned", title: "Nova tarefa atribuída a você", body: "Conferir a Menta · prioridade alta", entityId: "t1" } as Partial<NotificationEvent>);
+    expect(r.body).toBe("Conferir a Menta · prioridade alta");
+  });
+});

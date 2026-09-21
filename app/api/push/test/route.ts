@@ -1,18 +1,20 @@
 import { NextResponse } from "next/server";
 import { requireAccess } from "@/lib/api-auth";
-import { enviarEPersistirEntrega } from "@/lib/notification-dispatch";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { createNotificationEventIdempotent } from "@/lib/notification-events";
+import { consumirLimiteDaChave } from "@/lib/notification-limites";
+import { dependenciasReais, publicarEEntregar, situacaoDoPush } from "@/lib/notification-outbox";
+import { explicarTeste, type DestinoDoTeste } from "@/lib/domain/diagnostico-push";
+import { idDoRegistro } from "@/lib/domain/push-registro";
 import {
   buildCancelContent,
   buildGroupedSalesContent,
-  buildOrderDeepLink,
   buildReturnCompletedContent,
   buildSaleContent,
   classifySale,
-  type NotificationEventSeverity,
-  type NotificationEventType,
   type SalePushPayload,
 } from "@/lib/domain/notifications";
+import type { StatusEntrega } from "@/lib/domain/entrega-destino";
 
 export type TestScenario =
   | "sale_paid" | "sale_high_value" | "sale_low_margin" | "sale_negative_margin"
@@ -23,109 +25,122 @@ const SCENARIOS: TestScenario[] = [
   "sale_cancelled", "return_completed", "sales_summary", "unavailable",
 ];
 
+const DEVICE_ID = /^[A-Za-z0-9-]{8,64}$/;
+
+/** Teste é repetível de propósito, mas não infinito: cada um cria um aviso e um push. */
+const LIMITE = { max: 10, janelaMs: 10 * 60_000 };
+
 /**
- * Dados 100% inventados por cenário — NUNCA lê pedido real nem grava nada em
- * `ml_orders`/`estoque`. O orderId sintético (`TESTE-...`) deixa óbvio, se
- * aparecer em qualquer lugar, que não é uma venda de verdade.
+ * O TEXTO de cada cenário — dados 100% inventados. Nunca lê pedido real nem
+ * grava em `ml_orders`/`estoque`. O texto imita o de um aviso de verdade pra a
+ * pessoa ver COMO ele aparece; o evento, porém, é do tipo "test": não é venda,
+ * não vai pra Central do time e não leva link pra pedido (o de antes apontava
+ * pra um pedido "TESTE-..." que não existe).
  */
-function montarCenario(scenario: TestScenario) {
+function montarConteudo(scenario: TestScenario): { title: string; body: string } {
   const produto = "Produto de teste";
   switch (scenario) {
-    case "sale_high_value": {
-      const grossAmount = 480;
-      const { type } = classifySale({ grossAmount, estimatedProfit: 96, estimatedMargin: 20, metaMargem: null });
-      const content = buildSaleContent({ type, productName: produto, itemCount: 1, grossAmount, estimatedProfit: 96, estimatedMargin: 20, metaMargem: null });
-      return { type, severity: "success" as NotificationEventSeverity, content, grossAmount, estimatedProfit: 96, estimatedMargin: 20, financialState: "estimated" as const };
-    }
-    case "sale_low_margin": {
-      const grossAmount = 120;
-      const content = buildSaleContent({ type: "sale_low_margin", productName: produto, itemCount: 1, grossAmount, estimatedProfit: 6, estimatedMargin: 5, metaMargem: null });
-      return { type: "sale_low_margin" as NotificationEventType, severity: "warning" as NotificationEventSeverity, content, grossAmount, estimatedProfit: 6, estimatedMargin: 5, financialState: "estimated" as const };
-    }
-    case "sale_negative_margin": {
-      const grossAmount = 89.9;
-      const content = buildSaleContent({ type: "sale_negative_margin", productName: produto, itemCount: 1, grossAmount, estimatedProfit: -12.4, estimatedMargin: -13.8, metaMargem: null });
-      return { type: "sale_negative_margin" as NotificationEventType, severity: "danger" as NotificationEventSeverity, content, grossAmount, estimatedProfit: -12.4, estimatedMargin: -13.8, financialState: "estimated" as const };
-    }
-    case "sale_cancelled": {
-      const grossAmount = 139.8;
-      const content = buildCancelContent(produto, 1, grossAmount);
-      return { type: "sale_cancelled" as NotificationEventType, severity: "warning" as NotificationEventSeverity, content, grossAmount, estimatedProfit: undefined, estimatedMargin: undefined, financialState: "estimated" as const };
-    }
-    case "return_completed": {
-      const content = buildReturnCompletedContent(produto, 1);
-      return { type: "return_completed" as NotificationEventType, severity: "warning" as NotificationEventSeverity, content, grossAmount: 139.8, estimatedProfit: undefined, estimatedMargin: undefined, financialState: "estimated" as const };
-    }
-    case "sales_summary": {
-      const content = buildGroupedSalesContent(5, 486.2, 2);
-      return { type: "sale_paid" as NotificationEventType, severity: "success" as NotificationEventSeverity, content, grossAmount: 486.2, estimatedProfit: undefined, estimatedMargin: undefined, financialState: "estimated" as const };
-    }
-    case "unavailable": {
-      const content = buildSaleContent({ type: "sale_paid", productName: produto, itemCount: 1, grossAmount: 139.8, estimatedProfit: null, estimatedMargin: null, metaMargem: null });
-      return { type: "sale_paid" as NotificationEventType, severity: "info" as NotificationEventSeverity, content, grossAmount: 139.8, estimatedProfit: undefined, estimatedMargin: undefined, financialState: "unavailable" as const };
-    }
+    case "sale_high_value":
+      return buildSaleContent({ type: classifySale({ grossAmount: 480, estimatedProfit: 96, estimatedMargin: 20, metaMargem: null }).type, productName: produto, itemCount: 1, grossAmount: 480, estimatedProfit: 96, estimatedMargin: 20, metaMargem: null });
+    case "sale_low_margin":
+      return buildSaleContent({ type: "sale_low_margin", productName: produto, itemCount: 1, grossAmount: 120, estimatedProfit: 6, estimatedMargin: 5, metaMargem: null });
+    case "sale_negative_margin":
+      return buildSaleContent({ type: "sale_negative_margin", productName: produto, itemCount: 1, grossAmount: 89.9, estimatedProfit: -12.4, estimatedMargin: -13.8, metaMargem: null });
+    case "sale_cancelled":
+      return buildCancelContent(produto, 1, 139.8);
+    case "return_completed":
+      return buildReturnCompletedContent(produto, 1);
+    case "sales_summary":
+      return buildGroupedSalesContent(5, 486.2, 2);
+    case "unavailable":
+      return buildSaleContent({ type: "sale_paid", productName: produto, itemCount: 1, grossAmount: 139.8, estimatedProfit: null, estimatedMargin: null, metaMargem: null });
     case "sale_paid":
-    default: {
-      const grossAmount = 139.8;
-      const content = buildSaleContent({ type: "sale_paid", productName: produto, itemCount: 1, grossAmount, estimatedProfit: 34.5, estimatedMargin: 24.7, metaMargem: null });
-      return { type: "sale_paid" as NotificationEventType, severity: "success" as NotificationEventSeverity, content, grossAmount, estimatedProfit: 34.5, estimatedMargin: 24.7, financialState: "estimated" as const };
-    }
+    default:
+      return buildSaleContent({ type: "sale_paid", productName: produto, itemCount: 1, grossAmount: 139.8, estimatedProfit: 34.5, estimatedMargin: 24.7, metaMargem: null });
   }
 }
 
 /**
- * Dispara um cenário de teste completo (evento persistido + push real, só
- * pros dispositivos do usuário logado) — o botão "Testar" do sino vira um
- * menu de cenários em vez de mandar sempre o mesmo aviso genérico. Nunca usa
- * dado real: tudo aqui é inventado, com orderId prefixado "TESTE-" pra nunca
- * ser confundido com uma venda de verdade em nenhum lugar que ler
- * notification_events depois.
+ * Dispara um push de TESTE — só pro aparelho que pediu (ou, sem identificação,
+ * pros da própria pessoa), e devolve o que aconteceu com ESSE aparelho.
+ *
+ * ─── TESTE NÃO É VENDA ──────────────────────────────────────────────────
+ *
+ * O teste usava tipos de venda e uma coleção compartilhada: o teste de A virava
+ * "venda" na Central de B, com pedido e link inexistentes. Agora:
+ *  - o tipo é "test" (selo TESTE no título, sem valores nem pedido);
+ *  - o evento vive no feed PESSOAL de quem testou (histórico técnico, apagado em
+ *    7 dias) e nunca nas coleções do time;
+ *  - a preferência não o esconde (ver avaliarPush): o teste prova o caminho até
+ *    o aparelho, e um silêncio configurado não é defeito desse caminho.
  */
 export async function POST(req: Request) {
   const gate = await requireAccess(req, { capacidade: "ver_resumo" });
   if (gate instanceof NextResponse) return gate;
 
-  const body = await req.json().catch(() => ({}));
+  const body = await req.json().catch(() => ({})) as { scenario?: unknown; deviceId?: unknown };
   const scenarioRaw = String(body?.scenario ?? "sale_paid");
   const scenario = (SCENARIOS as string[]).includes(scenarioRaw) ? (scenarioRaw as TestScenario) : "sale_paid";
+  const deviceId = typeof body.deviceId === "string" && DEVICE_ID.test(body.deviceId) ? body.deviceId : null;
 
-  const orderId = `TESTE-${Date.now()}`;
-  const cenario = montarCenario(scenario);
-  const dedupeKey = `test:${gate.email}:${scenario}:${Date.now()}`; // sempre novo — teste é repetível de propósito
-
+  const db = getAdminDb();
+  const limite = await consumirLimiteDaChave(db, `teste:${gate.email}`, LIMITE);
+  if (!limite.permitido) {
+    return NextResponse.json(
+      { ok: false, error: "Muitos testes seguidos. Espere um pouco e tente de novo.", rateLimited: true },
+      { status: 429, headers: { "Retry-After": String(limite.esperarSegundos) } },
+    );
+  }
+  const deps = dependenciasReais();
+  const conteudo = montarConteudo(scenario);
+  const title = `TESTE · ${conteudo.title}`;
   const horario = new Date().toISOString();
 
   const { eventId } = await createNotificationEventIdempotent({
-    type: cenario.type, severity: cenario.severity, entityType: "order", entityId: orderId, dedupeKey,
-    title: cenario.content.title, body: cenario.content.body,
-    orderId, orderExternalId: orderId,
-    productName: "Produto de teste", productCount: 1,
-    grossAmount: cenario.grossAmount, estimatedProfit: cenario.estimatedProfit, estimatedMargin: cenario.estimatedMargin,
-    financialState: cenario.financialState,
-    deepLink: buildOrderDeepLink(orderId),
-  });
+    type: "test", severity: "info", entityType: "system", entityId: `teste-${scenario}`,
+    // Sempre novo: o teste é repetível de propósito.
+    dedupeKey: `test:${gate.email}:${scenario}:${Date.now()}`,
+    title, body: conteudo.body,
+    deepLink: "/",
+    financialState: "unavailable",
+  }, db, { audiencia: [gate.email] });
 
+  // Sem orderId, sem valores e sem link de pedido: nada aqui aponta pra algo que não existe.
   const payload: SalePushPayload = {
-    eventId, type: cenario.type, title: cenario.content.title, body: cenario.content.body,
-    tag: `sale-${orderId}`, orderId, deepLink: buildOrderDeepLink(orderId),
-    productName: "Produto de teste",
-    grossAmount: cenario.grossAmount.toFixed(2),
-    estimatedProfit: cenario.estimatedProfit != null ? cenario.estimatedProfit.toFixed(2) : undefined,
-    estimatedMargin: cenario.estimatedMargin != null ? cenario.estimatedMargin.toFixed(1) : undefined,
-    financialState: cenario.financialState,
-    timestamp: horario,
+    eventId, type: "test", title, body: conteudo.body,
+    tag: `test-${eventId}`, deepLink: "/", timestamp: horario,
   };
 
-  // Só pros aparelhos de quem pediu o teste: audiência de UMA pessoa. Nunca o time.
-  const enviados = await enviarEPersistirEntrega(eventId, cenario.type, payload, false, {
-    audiencia: [gate.email], origem: "teste", validadeMs: 10 * 60_000,
-  });
+  const alvo = deviceId ? [idDoRegistro(gate.email, deviceId)] : null;
+  try {
+    await publicarEEntregar(deps, {
+      pushId: eventId, eventId, type: "test", payload, audiencia: [gate.email], apenasRegistros: alvo,
+      origem: "teste", validadeMs: 10 * 60_000, atualizaEvento: false,
+    });
+  } catch (err) {
+    console.error(`[teste] falha ao publicar o teste (${String((err as { code?: unknown })?.code ?? "erro")})`);
+    return NextResponse.json({ ok: false, error: "Não consegui agendar o teste agora. Tente de novo.", scenario, eventId, horario }, { status: 500 });
+  }
+
+  const situacao = await situacaoDoPush(deps, eventId);
+  const meuRegistro = deviceId ? idDoRegistro(gate.email, deviceId) : null;
+  // Só status e códigos: nunca token nem e-mail no que volta ao navegador.
+  const destinos: DestinoDoTeste[] = situacao.entregas.map((e) => ({
+    este: meuRegistro != null && e.registroDocId === meuRegistro,
+    status: e.status as StatusEntrega,
+    motivo: typeof e.motivo === "string" ? e.motivo : undefined,
+    erro: typeof e.ultimoErro?.codigo === "string" ? e.ultimoErro.codigo : undefined,
+  }));
+  const veredito = explicarTeste(destinos, deviceId != null);
+
   return NextResponse.json({
-    ok: true, scenario, eventId, orderId,
-    title: cenario.content.title, body: cenario.content.body,
-    enviados, horario,
-    bloqueioMotivo: enviados === 0
-      ? "Nenhum aparelho seu aceitou o envio: nenhum está registrado, a preferência bloqueou este tipo, ou o provedor recusou. Ative as notificações neste aparelho e confira as preferências."
-      : null,
+    ok: true, scenario, eventId,
+    title, body: conteudo.body, horario,
+    resultado: veredito.resultado,
+    explicacao: veredito.explicacao,
+    destinos,
+    // Compatibilidade com a tela anterior.
+    enviados: destinos.filter((d) => d.status === "accepted").length,
+    bloqueioMotivo: veredito.resultado === "aceito" ? null : veredito.explicacao,
   });
 }

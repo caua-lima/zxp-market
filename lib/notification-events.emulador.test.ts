@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { FieldPath, getFirestore, type Firestore } from "firebase-admin/firestore";
-import { createNotificationEventIdempotent, garantirEspelho, repararEspelhosPendentes, type NewNotificationEvent } from "./notification-events";
+import { createNotificationEventIdempotent, garantirEspelho, limparTestesAntigos, repararEspelhosPendentes, type NewNotificationEvent } from "./notification-events";
 
 /**
  * O espelho redigido contra o emulador do Firestore (`npm run test:emulador`).
@@ -41,6 +41,11 @@ beforeEach(async () => {
   for (const col of ["notification_events", "notification_events_publico"]) {
     const snap = await db.collection(col).get();
     await Promise.all(snap.docs.map((d) => d.ref.delete()));
+  }
+  // O feed direcionado tem subcoleções: apaga por e-mail conhecido dos testes.
+  for (const email of ["socio@zxp.com", "dono@zxp.com", "a@zxp.com", "b@zxp.com"]) {
+    const itens = await db.collection("notification_feed").doc(email).collection("itens").get();
+    await Promise.all(itens.docs.map((d) => d.ref.delete()));
   }
 });
 afterAll(async () => { await db?.terminate(); });
@@ -141,5 +146,74 @@ describe("garantirEspelho — consertar NÃO apaga quem já leu", () => {
     // leitura e a escrita, ele refaz — então nenhuma das dez pode ter sido apagada.
     expect(Object.keys(lidos)).toHaveLength(10);
     for (let i = 0; i < 10; i++) expect(lidos[`leitor${i}@zxp.com`]).toBe(i + 1);
+  });
+});
+
+describe("eventos DIRECIONADOS — o feed é da pessoa, não do time (N16)", () => {
+  const tarefa = (over: Partial<NewNotificationEvent> = {}): NewNotificationEvent => ({
+    type: "task_assigned", severity: "info", entityType: "task", entityId: "t1",
+    dedupeKey: "task_assigned:t1:1700000000000", title: "Nova tarefa atribuída a você",
+    body: "Conferir o custo da Menta · prioridade alta", financialState: "unavailable", deepLink: "/?tab=tarefas&task=t1", ...over,
+  });
+  const feed = (email: string, id = "task_assigned:t1:1700000000000") =>
+    db.collection("notification_feed").doc(email).collection("itens").doc(id);
+
+  it("nasce SÓ no feed de quem deve vê-lo — nunca nas coleções do time", async () => {
+    const r = await createNotificationEventIdempotent(tarefa(), db, { audiencia: ["socio@zxp.com"] });
+    expect(r.created).toBe(true);
+    expect((await feed("socio@zxp.com").get()).exists).toBe(true);
+    expect((await original("task_assigned:t1:1700000000000").get()).exists).toBe(false);
+    expect((await espelho("task_assigned:t1:1700000000000").get()).exists).toBe(false);
+  });
+
+  it("o feed de OUTRA pessoa não recebe o aviso", async () => {
+    await createNotificationEventIdempotent(tarefa(), db, { audiencia: ["socio@zxp.com"] });
+    expect((await feed("dono@zxp.com").get()).exists).toBe(false);
+  });
+
+  it("guarda a audiência e o lido é da própria pessoa (sem mapa por e-mail)", async () => {
+    await createNotificationEventIdempotent(tarefa(), db, { audiencia: ["socio@zxp.com"] });
+    const d = (await feed("socio@zxp.com").get()).data()!;
+    expect(d.audiencia).toEqual(["socio@zxp.com"]);
+    expect(d.lidoEm).toBeNull();
+    expect(d.dispensadoEm).toBeNull();
+    expect(d).not.toHaveProperty("readBy");
+  });
+
+  it("idempotente: o mesmo evento não nasce duas vezes", async () => {
+    expect((await createNotificationEventIdempotent(tarefa(), db, { audiencia: ["socio@zxp.com"] })).created).toBe(true);
+    expect((await createNotificationEventIdempotent(tarefa(), db, { audiencia: ["socio@zxp.com"] })).created).toBe(false);
+  });
+
+  it("e-mail em caixa diferente cai no MESMO feed", async () => {
+    await createNotificationEventIdempotent(tarefa(), db, { audiencia: ["Socio@ZXP.com"] });
+    expect((await feed("socio@zxp.com").get()).exists).toBe(true);
+  });
+
+  it("duas pessoas na audiência: cada uma ganha o PRÓPRIO documento", async () => {
+    await createNotificationEventIdempotent(tarefa(), db, { audiencia: ["a@zxp.com", "b@zxp.com"] });
+    await feed("a@zxp.com").update({ lidoEm: 5 });
+    expect((await feed("b@zxp.com").get()).data()?.lidoEm).toBeNull();
+  });
+
+  it("teste de A não vira aviso na Central de B", async () => {
+    await createNotificationEventIdempotent(
+      { ...tarefa(), type: "test", dedupeKey: "test:a:1", title: "TESTE · Nova venda confirmada", entityId: "teste-sale_paid" },
+      db, { audiencia: ["a@zxp.com"] },
+    );
+    expect((await feed("b@zxp.com", "test:a:1").get()).exists).toBe(false);
+    expect((await original("test:a:1").get()).exists).toBe(false);
+  });
+
+  it("limparTestesAntigos apaga só teste vencido, só do feed da pessoa", async () => {
+    await createNotificationEventIdempotent({ ...tarefa(), type: "test", dedupeKey: "test:a:velho" }, db, { audiencia: ["a@zxp.com"] });
+    await createNotificationEventIdempotent({ ...tarefa(), type: "test", dedupeKey: "test:a:novo" }, db, { audiencia: ["a@zxp.com"] });
+    await createNotificationEventIdempotent(tarefa({ dedupeKey: "task_assigned:t9:1" }), db, { audiencia: ["a@zxp.com"] });
+    await feed("a@zxp.com", "test:a:velho").update({ createdAt: new Date(Date.now() - 8 * 24 * 3600 * 1000) });
+
+    expect(await limparTestesAntigos(db, ["a@zxp.com"])).toBe(1);
+    expect((await feed("a@zxp.com", "test:a:velho").get()).exists).toBe(false);
+    expect((await feed("a@zxp.com", "test:a:novo").get()).exists).toBe(true);
+    expect((await feed("a@zxp.com", "task_assigned:t9:1").get()).exists).toBe(true);
   });
 });

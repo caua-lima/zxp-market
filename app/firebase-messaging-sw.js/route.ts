@@ -3,6 +3,9 @@
 // Service Worker não lê variáveis de ambiente do Next em runtime — só assim
 // dá pra reaproveitar o mesmo código em projetos com Firebase diferente
 // (este app roda em mais de um deploy, cada um com seu próprio Firebase).
+import { CACHE_DO_LOG_DE_PUSH, CHAVE_DO_LOG_DE_PUSH, SW_VERSAO } from "@/lib/push-sw-versao";
+import { escolherJanela, juntarParametro, validarDeepLink } from "@/lib/domain/deep-link";
+
 export const dynamic = "force-static";
 
 const firebaseConfig = {
@@ -13,13 +16,6 @@ const firebaseConfig = {
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
-
-/**
- * Versão do Service Worker. Precisa MUDAR sempre que este arquivo mudar: o
- * navegador só considera um Service Worker "novo" se o corpo dele for
- * diferente byte a byte, e é essa comparação que dispara install/activate.
- */
-const SW_VERSAO = "2026-08-21-push-nativo";
 
 export function GET() {
   const body = `
@@ -61,6 +57,35 @@ self.addEventListener("message", (event) => {
 });
 
 /**
+ * As regras de PRA ONDE ir e QUAL janela usar (lib/domain/deep-link.ts). Vêm do
+ * mesmo código que os testes exercitam — o texto das funções é incorporado aqui,
+ * então o que roda no aparelho é o que foi testado.
+ */
+const validarDeepLink = ${validarDeepLink.toString()};
+const juntarParametro = ${juntarParametro.toString()};
+const escolherJanela = ${escolherJanela.toString()};
+
+/**
+ * O registro do que este aparelho RECEBEU, no Cache API (a página e o Service
+ * Worker enxergam o mesmo cache). É o único jeito de o app saber que o push
+ * chegou e foi exibido: o servidor só sabe que o Firebase aceitou. O diagnóstico
+ * e o botão "Testar" leem daqui.
+ */
+async function registrarRecebimento(registro) {
+  try {
+    const cache = await caches.open(${JSON.stringify(CACHE_DO_LOG_DE_PUSH)});
+    const atual = await cache.match(${JSON.stringify(CHAVE_DO_LOG_DE_PUSH)});
+    let lista = [];
+    if (atual) { try { lista = await atual.json(); } catch (e) { lista = []; } }
+    lista.unshift(registro);
+    await cache.put(
+      ${JSON.stringify(CHAVE_DO_LOG_DE_PUSH)},
+      new Response(JSON.stringify(lista.slice(0, 10)), { headers: { "Content-Type": "application/json" } }),
+    );
+  } catch (e) { /* sem cache: o push já foi exibido, o registro é só diagnóstico */ }
+}
+
+/**
  * ─── A EXIBIÇÃO VEM PRIMEIRO, E SEM DEPENDER DE REDE ────────────────────
  *
  * Este handler é registrado ANTES de qualquer importScripts, de propósito.
@@ -83,14 +108,16 @@ self.addEventListener("push", (event) => {
   let d = {};
   try {
     const json = event.data.json();
-    // O envio manda tudo em "data" (ver lib/push-send.ts); o fallback cobre
+    // O envio manda tudo em "data" (ver lib/notification-outbox.ts); o fallback cobre
     // qualquer mensagem que chegue no formato "notification".
     d = json.data || json.notification || json || {};
   } catch {
-    try { d = { title: "Nova venda!", body: event.data.text() }; } catch { d = {}; }
+    try { d = { title: "Novo aviso", body: event.data.text() }; } catch { d = {}; }
   }
 
-  const title = d.title || "Nova venda!";
+  // Sem título, "Novo aviso": o antigo "Nova venda!" chamava de venda uma tarefa, um marco e um teste.
+  const title = d.title || "Novo aviso";
+  const recebidoEm = Date.now();
   const options = {
     body: d.body || "",
     icon: d.icon || "/manifest-icon-192",
@@ -105,10 +132,9 @@ self.addEventListener("push", (event) => {
      * não aconteceu.
      */
     requireInteraction: true,
-    // Guarda o deepLink pro clique (notificationclick não recebe o payload de
-    // novo, só o objeto Notification já mostrado) — sem isto, clicar sempre
-    // abriria "/" em vez da aba/pedido certo.
-    data: { deepLink: d.deepLink || "/" },
+    // O clique não recebe o payload de novo, só este objeto: leva o destino e o
+    // eventId (que liga o clique ao aviso, pro recibo de clique).
+    data: { deepLink: d.deepLink || "/", eventId: d.eventId || "", tipo: d.type || "" },
   };
 
   /**
@@ -120,25 +146,58 @@ self.addEventListener("push", (event) => {
    * aparelho no bolso, a venda passava sem deixar rastro nenhum. O \`tag\`
    * garante que isso nunca vira duas notificações empilhadas pro mesmo pedido.
    */
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil((async () => {
+    let erro = null;
+    try {
+      await self.registration.showNotification(title, options);
+    } catch (e) {
+      erro = String((e && e.name) || "erro");
+    }
+    await registrarRecebimento({
+      eventId: d.eventId || "", tipo: d.type || "", recebidoEm,
+      exibidoEm: erro ? null : Date.now(), erro,
+    });
+  })());
 });
 
-// Clicar na notificação foca a aba do app já aberta (navegando ela pro
-// deepLink) ou abre uma nova — nunca as duas coisas, pra não empilhar janela.
+/**
+ * ─── O CLIQUE ───────────────────────────────────────────────────────────
+ *
+ * Três decisões, e nenhuma delas é "navegar a primeira janela pro que veio":
+ *
+ *  1. PRA ONDE: o endereço passa por validarDeepLink — só a raiz do app, da mesma
+ *     origem, com parâmetros conhecidos.
+ *  2. QUAL JANELA: a que a pessoa está olhando (foco, depois visível), e UMA só —
+ *     com várias abas, as outras ficam quietas.
+ *  3. COMO: com o app aberto, NÃO se chama client.navigate() — ele recarrega a
+ *     página e destrói um formulário em edição. O Service Worker entrega uma
+ *     mensagem ao app, que decide (e, com uma janela de edição aberta, pergunta).
+ *     Com o app fechado, abre uma janela já no destino, levando o eventId no
+ *     endereço pra o app registrar o clique quando carregar.
+ *
+ * O clique é registrado pelo APP (que tem a sessão), não pelo Service Worker, e é
+ * um recibo separado de "lido": tocar na notificação não a marca como lida na
+ * Central, nem o contrário.
+ */
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const deepLink = (event.notification.data && event.notification.data.deepLink) || "/";
-  event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
-      for (const client of list) {
-        if ("focus" in client) {
-          if ("navigate" in client) client.navigate(deepLink).catch(() => {});
-          return client.focus();
-        }
-      }
-      if (self.clients.openWindow) return self.clients.openWindow(deepLink);
-    }),
-  );
+  const dados = event.notification.data || {};
+  const alvo = validarDeepLink(dados.deepLink, self.location.origin);
+  const eventId = String(dados.eventId || "");
+
+  event.waitUntil((async () => {
+    const janelas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const i = escolherJanela(janelas);
+    if (i >= 0) {
+      const janela = janelas[i];
+      try { await janela.focus(); } catch (e) { /* focar pode ser recusado; a mensagem ainda vale */ }
+      janela.postMessage({ tipo: "abrir", deepLink: alvo, eventId });
+      return;
+    }
+    if (self.clients.openWindow) {
+      await self.clients.openWindow(eventId ? juntarParametro(alvo, "ev", eventId) : alvo);
+    }
+  })());
 });
 
 /**

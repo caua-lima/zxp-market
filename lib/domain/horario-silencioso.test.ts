@@ -191,3 +191,23 @@ describe("avaliarPush — críticos e comuns juntos", () => {
     expect(avaliarPush("system", prefs({ quietHoursEnabled: false }), tarde).permitido).toBe(true);
   });
 });
+
+describe("push de TESTE e lembrete de prazo (N16)", () => {
+  const madrugada = { minutosDoDia: hm(3), diaSemana: 2 };
+
+  it("o teste atravessa silêncio, 'só críticas' e toggles — provar o caminho não é uma preferência", () => {
+    const p = prefs({ onlyCritical: true, quietHoursStart: "22:30", quietHoursEnd: "07:30" });
+    expect(avaliarPush("test", p, madrugada).permitido).toBe(true);
+  });
+
+  it("o lembrete de prazo segue o toggle de TAREFAS", () => {
+    const off = prefs({ quietHoursEnabled: false, toggles: { ...DEFAULT_NOTIFICATION_PREFERENCES.toggles, task_assigned: false } });
+    expect(avaliarPush("task_due", off, madrugada)).toEqual({ permitido: false, motivo: "preferencia_toggle" });
+    expect(avaliarPush("task_due", prefs({ quietHoursEnabled: false }), madrugada).permitido).toBe(true);
+  });
+
+  it("o lembrete de prazo é comum: espera o silêncio, como tarefa", () => {
+    expect(avaliarPush("task_due", prefs({ quietHoursStart: "22:30", quietHoursEnd: "07:30" }), madrugada))
+      .toEqual({ permitido: false, motivo: "horario_silencioso" });
+  });
+});

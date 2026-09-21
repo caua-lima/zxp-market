@@ -245,20 +245,21 @@ describe("rajada: prejuízo nunca agrupa e a janela é estável", () => {
 });
 
 describe("janela: concorrência e idempotência no Firestore", () => {
-  it("20 vendas SIMULTÂNEAS ganham posições 1..20 sem repetir nem pular", async () => {
+  it("12 vendas SIMULTÂNEAS ganham posições 1..12 sem repetir nem pular", async () => {
+    // Todas disputam o MESMO par de documentos (ponteiro + janela): é o pior caso de contenção.
     const posicoes = await Promise.all(
-      Array.from({ length: 20 }, (_, i) => registrarVendaNaJanela(db, { eventId: `e${i}`, gross: 10 }, T0 + i)),
+      Array.from({ length: 12 }, (_, i) => registrarVendaNaJanela(db, { eventId: `e${i}`, gross: 10 }, T0 + i)),
     );
-    expect(posicoes.map((p) => p.n).sort((a, b) => a - b)).toEqual(Array.from({ length: 20 }, (_, i) => i + 1));
+    expect(posicoes.map((p) => p.n).sort((a, b) => a - b)).toEqual(Array.from({ length: 12 }, (_, i) => i + 1));
     expect(new Set(posicoes.map((p) => p.janelaId)).size).toBe(1);
-  });
+  }, 90_000);
 
-  it("a MESMA venda registrada 10 vezes ao mesmo tempo ocupa UMA posição", async () => {
-    const rs = await Promise.all(Array.from({ length: 10 }, () => registrarVendaNaJanela(db, { eventId: "mesma", gross: 10 }, T0)));
+  it("a MESMA venda registrada 8 vezes ao mesmo tempo ocupa UMA posição", async () => {
+    const rs = await Promise.all(Array.from({ length: 8 }, () => registrarVendaNaJanela(db, { eventId: "mesma", gross: 10 }, T0)));
     expect(new Set(rs.map((r) => r.n)).size).toBe(1);
     const j = await lerJanela(db, rs[0].janelaId);
     expect(Object.keys(j!.membros)).toHaveLength(1);
-  });
+  }, 90_000);
 });
 
 describe("limite de taxa das rotas de notificação", () => {

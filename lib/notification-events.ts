@@ -5,6 +5,7 @@ import type { NotificationEvent } from "@/lib/domain/notifications";
 import {
   COLECAO_EVENTOS,
   COLECAO_EVENTOS_PUBLICA,
+  COLECAO_FEED,
   redigirEvento,
 } from "@/lib/domain/notificacao-publico";
 
@@ -93,7 +94,14 @@ export async function createNotificationEventIdempotent(
   input: NewNotificationEvent,
   /** Injetável pra o teste usar o emulador; em produção é sempre o banco do app. */
   db: Firestore = getAdminDb(),
+  /**
+   * Evento DIRECIONADO: só estas pessoas o veem. Vai pro feed de cada uma
+   * (notification_feed/{email}/itens) e NUNCA pras coleções compartilhadas — a
+   * privacidade é da regra do Firestore, não de um filtro no React.
+   */
+  opcoes: { audiencia?: string[] } = {},
 ): Promise<{ created: boolean; eventId: string }> {
+  if (opcoes.audiencia && opcoes.audiencia.length > 0) return criarEventoPessoal(db, input, opcoes.audiencia);
   const ref = db.collection(COL).doc(input.dedupeKey);
   const completo = sanitizeUndefined({
     ...input,
@@ -165,4 +173,63 @@ export async function repararEspelhosPendentes(db: Firestore, limite = 50): Prom
     }
   }
   return refeitos;
+}
+
+/**
+ * Um evento direcionado, no feed de cada pessoa da audiência.
+ *
+ * O aviso de tarefa e o de teste aparecem na Central de QUEM DEVE VÊ-LOS: antes
+ * caíam na coleção compartilhada e todo o time via "Nova tarefa atribuída a você"
+ * de outra pessoa, e o teste de um virava "venda" na Central do outro.
+ *
+ * Cada pessoa tem o PRÓPRIO documento, com o lido dela (`lidoEm`), então não há
+ * mapa por e-mail nem marca de outra pessoa pra proteger. `create()` mantém a
+ * idempotência: o mesmo evento não nasce duas vezes.
+ */
+async function criarEventoPessoal(
+  db: Firestore,
+  input: NewNotificationEvent,
+  audiencia: string[],
+): Promise<{ created: boolean; eventId: string }> {
+  const emails = [...new Set(audiencia.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+  let created = false;
+  for (const email of emails) {
+    const ref = db.collection(COLECAO_FEED).doc(email).collection("itens").doc(input.dedupeKey);
+    try {
+      await ref.create(sanitizeUndefined({
+        ...input,
+        id: input.dedupeKey,
+        audiencia: emails,
+        lidoEm: null,
+        dispensadoEm: null,
+        createdAt: FieldValue.serverTimestamp(),
+      }));
+      created = true;
+    } catch (err) {
+      if ((err as { code?: number })?.code !== 6) throw err;
+    }
+  }
+  return { created, eventId: input.dedupeKey };
+}
+
+/** Quanto tempo um evento de TESTE fica no feed. É histórico técnico, não histórico operacional. */
+export const RETENCAO_DE_TESTES_MS = 7 * 24 * 3600 * 1000;
+
+/** Apaga testes antigos dos feeds. Por pessoa e por tipo (consulta de campo único): não exige índice composto nem de grupo de coleção. */
+export async function limparTestesAntigos(db: Firestore, emails: string[], agora = Date.now()): Promise<number> {
+  let apagados = 0;
+  for (const email of emails) {
+    const antigos = await db.collection(COLECAO_FEED).doc(email.toLowerCase()).collection("itens")
+      .where("type", "==", "test").limit(100).get();
+    const lote = db.batch();
+    for (const d of antigos.docs) {
+      const criado = d.data().createdAt;
+      const ms = criado && typeof (criado as { toMillis?: unknown }).toMillis === "function"
+        ? (criado as { toMillis: () => number }).toMillis()
+        : 0;
+      if (ms > 0 && agora - ms > RETENCAO_DE_TESTES_MS) { lote.delete(d.ref); apagados++; }
+    }
+    await lote.commit();
+  }
+  return apagados;
 }

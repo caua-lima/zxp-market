@@ -88,7 +88,7 @@ export async function POST(req: Request) {
     title: content.title, body: content.body,
     deepLink: buildTaskDeepLink(taskId),
     financialState: "unavailable", // campo pensado pra venda; tarefa não tem dado financeiro
-  }, db);
+  }, db, { audiencia: [avaliacao.responsavel] });
 
   const payload: SalePushPayload = {
     eventId, type: "task_assigned", title: content.title, body: content.body,
@@ -96,8 +96,9 @@ export async function POST(req: Request) {
   };
 
   // Publica também quando o evento já existia: é o retry da MESMA transição, e o outbox não reenvia o que já foi aceito.
+  // O evento vive no feed do responsável (audiência), não na Central do time.
   const enviados = await enviarEPersistirEntrega(eventId, "task_assigned", payload, false, {
-    audiencia: [avaliacao.responsavel], origem: "tarefa:atribuida",
+    audiencia: [avaliacao.responsavel], origem: "tarefa:atribuida", atualizaEvento: false,
   });
   return NextResponse.json({ ok: true, eventId, enviados });
 }
