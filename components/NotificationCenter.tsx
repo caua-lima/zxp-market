@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import Drawer from "@/components/Drawer";
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
 import type { QueryDocumentSnapshot } from "firebase/firestore";
 import { useAccess } from "@/components/tabs/AccessGuard";
 import {
@@ -95,8 +96,6 @@ function useOffline(): boolean {
   return offline;
 }
 
-const FOCAVEIS = 'a[href], button:not([disabled]), [role="button"], input, select, textarea, [tabindex]:not([tabindex="-1"])';
-
 export function NotificationCenter({ onNavigate }: { onNavigate: (deepLink: string) => void }) {
   const { email, papel } = useAccess();
   const [open, setOpen] = useState(false);
@@ -119,8 +118,6 @@ export function NotificationCenter({ onNavigate }: { onNavigate: (deepLink: stri
 
   const agora = useRelogio(open);
   const offline = useOffline();
-  const sinoRef = useRef<HTMLButtonElement>(null);
-  const painelRef = useRef<HTMLDivElement>(null);
 
   function alternarExpandido(id: string, e: MouseEvent) {
     e.stopPropagation(); // não deixa o clique no botão também abrir/navegar o card
@@ -159,30 +156,6 @@ export function NotificationCenter({ onNavigate }: { onNavigate: (deepLink: stri
     const fonte: FonteDoFeed = { tipo: "pessoal", email };
     return assistirFeed(fonte, (p) => aplicar(setPessoal, p), (m) => falhar(setPessoal, m));
   }, [email, tentativa, aplicar, falhar]);
-
-  // Foco: ao abrir, vai pro painel; ao fechar, volta pro sino. E o Tab não escapa do painel (aria-modal).
-  useEffect(() => {
-    if (!open) return;
-    const foco = requestAnimationFrame(() => painelRef.current?.focus());
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") { setOpen(false); return; }
-      if (e.key !== "Tab" || !painelRef.current) return;
-      const itens = Array.from(painelRef.current.querySelectorAll<HTMLElement>(FOCAVEIS));
-      if (itens.length === 0) return;
-      const primeiro = itens[0];
-      const ultimo = itens[itens.length - 1];
-      const ativo = document.activeElement;
-      if (e.shiftKey && (ativo === primeiro || ativo === painelRef.current)) { e.preventDefault(); ultimo.focus(); }
-      else if (!e.shiftKey && ativo === ultimo) { e.preventDefault(); primeiro.focus(); }
-    }
-    document.addEventListener("keydown", onKey);
-    const sino = sinoRef.current;
-    return () => {
-      cancelAnimationFrame(foco);
-      document.removeEventListener("keydown", onKey);
-      sino?.focus();
-    };
-  }, [open]);
 
   // Sem e-mail não há feed pessoal a esperar: sem isto ela ficaria "carregando" pra sempre e a Central também.
   const fontes = useMemo<EstadoDaFonte[]>(
@@ -295,7 +268,6 @@ export function NotificationCenter({ onNavigate }: { onNavigate: (deepLink: stri
   return (
     <div className="notif-bell">
       <button
-        ref={sinoRef}
         type="button"
         className="btn btn-ghost btn-xs"
         onClick={() => setOpen((v) => !v)}
@@ -307,9 +279,8 @@ export function NotificationCenter({ onNavigate }: { onNavigate: (deepLink: stri
         {pontinho && <span className="notif-bell-dot" aria-hidden>{pontinho}</span>}
       </button>
 
-      {open && (
-        <div className="drawer-overlay" onClick={() => setOpen(false)}>
-          <div ref={painelRef} tabIndex={-1} className="drawer-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Central de notificações">
+      {/* Portal + foco + fundo inerte + rolagem + pilha: tudo do Drawer (mesmo mecanismo do Modal). */}
+      <Drawer open={open} onClose={() => setOpen(false)} titulo="Central de notificações">
             <div className="drawer-head">
               <div>
                 <div className="drawer-title">Notificações</div>
@@ -373,24 +344,34 @@ export function NotificationCenter({ onNavigate }: { onNavigate: (deepLink: stri
                   const gross = fmtBRL(evt.grossAmount);
                   const ehTeste = evt.type === "test";
                   return (
+                    /*
+                      ─── UM ITEM, DUAS AÇÕES, NENHUMA ANINHADA ───────────────
+                      Era `div role="button"` com o botão "Ver itens" DENTRO. Interativo dentro de
+                      interativo: o leitor de tela não anuncia o filho, e o Enter no botão interno
+                      subia pro `onKeyDown` do pai, que abria o pedido em vez de expandir.
+
+                      Agora o item é um contêiner sem papel, com um <button> real pra abrir (o
+                      texto do próprio botão é o nome dele) e o de expandir como IRMÃO. O clique do
+                      mouse em qualquer parte do cartão continua abrindo, como antes.
+                    */
                     <div
                       key={`${evt.origem}:${evt.id}`}
                       className={`notif-item${lida ? "" : " notif-item-unread"}`}
-                      onClick={() => abrir(evt)}
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`${lida ? "" : "Não lida. "}${evt.title}. ${evt.body}. ${textoDeHora(evt.criadoEmMs, agora)}`}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrir(evt); } }}
+                      onClick={(e) => { if ((e.target as HTMLElement).closest("button, ul, a")) return; abrir(evt); }}
                     >
                       <span className="notif-item-icon" style={{ color: `var(--${evt.severity === "success" ? "success" : evt.severity === "warning" ? "warning" : evt.severity === "danger" ? "danger" : "info-2"})` }}>
                         <IconePorTipo type={evt.type} />
                       </span>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div className="notif-item-title">
-                          {ehTeste && !/^TESTE/i.test(evt.title) && <span style={{ fontSize: ".75rem", fontWeight: 700, padding: "1px 6px", borderRadius: 4, marginRight: 6, background: "var(--surface2)", color: "var(--muted)", border: "1px solid var(--border)" }}>TESTE</span>}
-                          {evt.title}
-                        </div>
-                        <div className="notif-item-body">{evt.body}{gross ? ` · ${gross}` : ""}</div>
+                        <button type="button" className="notif-item-main" onClick={() => abrir(evt)}>
+                          {!lida && <span className="sr-only">Não lida. </span>}
+                          <span className="notif-item-title">
+                            {ehTeste && !/^TESTE/i.test(evt.title) && <span style={{ fontSize: ".75rem", fontWeight: 700, padding: "1px 6px", borderRadius: 4, marginRight: 6, background: "var(--surface2)", color: "var(--muted)", border: "1px solid var(--border)" }}>TESTE</span>}
+                            {evt.title}
+                          </span>
+                          <span className="notif-item-body">{evt.body}{gross ? ` · ${gross}` : ""}</span>
+                          <span className="notif-item-time">{textoDeHora(evt.criadoEmMs, agora)}</span>
+                        </button>
 
                         {evt.itens && evt.itens.length > 1 && (
                           <>
@@ -416,7 +397,6 @@ export function NotificationCenter({ onNavigate }: { onNavigate: (deepLink: stri
                           </>
                         )}
 
-                        <div className="notif-item-time">{textoDeHora(evt.criadoEmMs, agora)}</div>
                       </div>
                     </div>
                   );
@@ -434,9 +414,7 @@ export function NotificationCenter({ onNavigate }: { onNavigate: (deepLink: stri
                 </div>
               )}
             </div>
-          </div>
-        </div>
-      )}
+      </Drawer>
     </div>
   );
 }

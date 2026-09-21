@@ -2,36 +2,16 @@
 
 import { useCallback, useEffect, useId, useRef, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+import { useDialogo } from "@/components/useDialogo";
 
 /**
- * A pilha de modais abertos, do mais antigo ao mais novo.
+ * O diálogo modal do app.
  *
- * O Escape e o Tab são ouvidos no `document`, e cada modal aberto registra o
- * seu ouvinte. Com um modal aberto por cima de outro (o formulário de custo e,
- * por cima, uma confirmação), o mesmo Escape fechava OS DOIS, e o Tab era
- * disputado por duas contenções de foco. Só o do topo responde.
+ * A contenção (foco, Tab, fundo inerte, rolagem, pilha de diálogos) mora em
+ * `useDialogo` e é a MESMA dos drawers (Drawer.tsx) — ver o porquê lá. Este
+ * componente cuida do que é só dele: o portal, o nome acessível e a confirmação
+ * de descarte.
  */
-const pilhaDeModais: symbol[] = [];
-
-/**
- * Diz ao resto da página que há um diálogo aberto: `data-modal-aberto` no <body>.
- * Quem não pode cobrir um formulário (os toasts de venda) escuta isso e se
- * recolhe — ver SaleNotificationProvider. Um atributo, e não um contexto React,
- * porque quem escuta vive fora da árvore do Modal.
- */
-function sinalizarModalAberto() {
-  if (typeof document === "undefined") return;
-  if (pilhaDeModais.length > 0) document.body.setAttribute("data-modal-aberto", "true");
-  else document.body.removeAttribute("data-modal-aberto");
-}
-
-/** O que o teclado consegue alcançar dentro do diálogo. */
-const FOCAVEIS = [
-  "a[href]", "button:not([disabled])", "input:not([disabled])",
-  "select:not([disabled])", "textarea:not([disabled])",
-  '[tabindex]:not([tabindex="-1"])',
-].join(",");
-
 export default function Modal({
   open,
   onClose,
@@ -45,7 +25,9 @@ export default function Modal({
    *
    * Clicar fora e Escape fechavam na hora, sempre. Num formulário de custo ou
    * de movimentação, meia dúzia de campos preenchidos sumiam com um clique
-   * errado — e não havia como voltar, porque nada tinha sido gravado.
+   * errado — e não havia como voltar, porque nada tinha sido gravado. Os
+   * formulários passam `confirmarDescarte={sujo && !salvando}` (ver
+   * `useFormularioSujo`): formulário intacto fecha direto.
    */
   confirmarDescarte,
   /** Rótulo do diálogo pra leitor de tela, quando não houver `.modal-title`. */
@@ -59,10 +41,6 @@ export default function Modal({
   titulo?: string;
 }) {
   const caixaRef = useRef<HTMLDivElement | null>(null);
-  /** A identidade deste modal na pilha. */
-  const meuId = useRef<symbol>(Symbol("modal"));
-  /** Quem tinha o foco antes de abrir — é pra cá que ele volta. */
-  const focoAnterior = useRef<HTMLElement | null>(null);
   const tituloId = useId();
 
   const fechar = useCallback(() => {
@@ -70,123 +48,7 @@ export default function Modal({
     onClose();
   }, [confirmarDescarte, onClose]);
 
-  // Listener global, não local: preso ao onKeyDown do overlay, o Escape só
-  // funcionava se o foco já estivesse DENTRO do modal — mas ao abrir por
-  // clique, o foco costuma continuar no botão que abriu (fora do modal), e
-  // Escape não fazia nada. Mesmo padrão do CommandPalette/DateRangePicker.
-  // Entra na pilha ao abrir e sai ao fechar/desmontar.
-  useEffect(() => {
-    if (!open) return;
-    const id = meuId.current;
-    pilhaDeModais.push(id);
-    sinalizarModalAberto();
-    return () => {
-      const i = pilhaDeModais.indexOf(id);
-      if (i >= 0) pilhaDeModais.splice(i, 1);
-      sinalizarModalAberto();
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    function onKeyDown(e: KeyboardEvent) {
-      // Só o modal do topo da pilha responde: os de baixo estão inertes.
-      if (pilhaDeModais[pilhaDeModais.length - 1] !== meuId.current) return;
-      if (e.key === "Escape") { fechar(); return; }
-
-      /**
-       * Contenção do foco.
-       *
-       * Sem isto, Tab sai do diálogo e passeia pela página ATRÁS dele — que
-       * está visualmente coberta. Quem navega por teclado perde a referência
-       * de onde está, e quem usa leitor de tela é levado a ler conteúdo que
-       * não deveria estar disponível.
-       */
-      if (e.key !== "Tab") return;
-      const caixa = caixaRef.current;
-      if (!caixa) return;
-
-      const alvos = Array.from(caixa.querySelectorAll<HTMLElement>(FOCAVEIS))
-        .filter((el) => el.offsetParent !== null || el === document.activeElement);
-      if (alvos.length === 0) { e.preventDefault(); return; }
-
-      const primeiro = alvos[0];
-      const ultimo = alvos[alvos.length - 1];
-      const ativo = document.activeElement as HTMLElement | null;
-
-      if (e.shiftKey && (ativo === primeiro || !caixa.contains(ativo))) {
-        e.preventDefault();
-        ultimo.focus();
-      } else if (!e.shiftKey && ativo === ultimo) {
-        e.preventDefault();
-        primeiro.focus();
-      }
-    }
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open, fechar]);
-
-  /**
-   * Foco inicial ao abrir, e devolução ao fechar.
-   *
-   * Abrir sem mover o foco deixa quem navega por teclado preso no botão que
-   * abriu, tendo que tabular a página inteira pra chegar no diálogo. E fechar
-   * sem devolver joga o foco pro começo do documento — a pessoa perde o lugar
-   * onde estava.
-   */
-  useEffect(() => {
-    if (!open) return;
-    focoAnterior.current = document.activeElement as HTMLElement | null;
-
-    // Depois da pintura: o conteúdo do diálogo ainda não existe no mesmo tique.
-    const id = requestAnimationFrame(() => {
-      const caixa = caixaRef.current;
-      if (!caixa) return;
-      const primeiro = caixa.querySelector<HTMLElement>(FOCAVEIS);
-      (primeiro ?? caixa).focus();
-    });
-
-    return () => {
-      cancelAnimationFrame(id);
-      // Só devolve se o elemento ainda existir na página.
-      const volta = focoAnterior.current;
-      if (volta && document.contains(volta)) volta.focus();
-    };
-  }, [open]);
-
-  /**
-   * Trava o scroll do fundo enquanto o modal está aberto.
-   *
-   * Sem isso, no celular o dedo arrasta a PÁGINA atrás do modal em vez do
-   * conteúdo dele — e o modal parece travado, mesmo funcionando.
-   */
-  useEffect(() => {
-    if (!open) return;
-    const antes = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = antes; };
-  }, [open]);
-
-  /**
-   * Torna o fundo indisponível de verdade, não só visualmente.
-   *
-   * O overlay cobre a página, mas leitor de tela e navegação por teclado
-   * atravessam o que é apenas coberto. `inert` remove os irmãos do portal da
-   * árvore de acessibilidade E do foco — é a única forma de o diálogo ser
-   * realmente modal pra quem não enxerga o overlay.
-   */
-  useEffect(() => {
-    if (!open) return;
-    const irmaos = Array.from(document.body.children)
-      .filter((el): el is HTMLElement => el instanceof HTMLElement && !el.contains(caixaRef.current));
-
-    const antes = irmaos.map((el) => el.hasAttribute("inert"));
-    irmaos.forEach((el) => el.setAttribute("inert", ""));
-
-    return () => {
-      irmaos.forEach((el, i) => { if (!antes[i]) el.removeAttribute("inert"); });
-    };
-  }, [open]);
+  useDialogo(open, caixaRef, fechar);
 
   /**
    * ─── POR QUE PORTAL, E NÃO RENDER NO LUGAR ──────────────────────────────
@@ -258,11 +120,6 @@ export default function Modal({
         className={`modal-box ${wide ? "modal-box-wide" : ""}`}
         role="dialog"
         aria-modal="true"
-        /**
-         * Sem nome, o leitor de tela anuncia só "diálogo" — e a pessoa não
-         * sabe o que abriu. Prefere o `titulo` explícito; senão, aponta pro
-         * `.modal-title` que quase todo modal deste app já renderiza.
-         */
         {...(titulo ? { "aria-label": titulo } : {})}
         // Foco inicial cai aqui quando o diálogo não tem nada focável dentro.
         tabIndex={-1}

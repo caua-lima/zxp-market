@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDeepLinkConsumido } from "@/components/useDeepLinkConsumido";
+import Drawer from "@/components/Drawer";
 import { statusDeEntrega } from "@/lib/domain/entrega-status";
 
 /** Hoje no fuso de Brasilia — base do "chega hoje/amanha" (ver entrega-status). */
@@ -373,13 +374,6 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
   const abrirPedidoDoLink = useCallback((id: string) => setDetalhe(id), []);
   useDeepLinkConsumido(openOrderId, chaveDeNavegacao, !!openOrderId && pedidos.some((p) => p.order_id === openOrderId), abrirPedidoDoLink);
   const [adsByItem, setAdsByItem] = useState<Record<string, number>>({});
-  // Fecha o drawer com Esc — sem isso, teclado só fecha clicando no X ou fora.
-  useEffect(() => {
-    if (!detalhe) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setDetalhe(null); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [detalhe]);
   // Filtros avançados — texto vazio = sem limite (não força 0).
   const [valorMin, setValorMin] = useState("");
   const [valorMax, setValorMax] = useState("");
@@ -918,8 +912,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
         const p = pedidos.find((x) => x.order_id === detalhe);
         if (!p) return null;
         return (
-          <div className="drawer-overlay" onClick={() => setDetalhe(null)}>
-            <div className="drawer-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={`Detalhe do pedido ${p.order_id}`}>
+          <Drawer open onClose={() => setDetalhe(null)} titulo={`Detalhe do pedido ${p.order_id}`}>
               <div className="drawer-head">
                 <div>
                   <div className="drawer-title">{p.produto || "—"}</div>
@@ -930,8 +923,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
               <div className="drawer-body">
                 <DetalhePedido pedido={p} />
               </div>
-            </div>
-          </div>
+          </Drawer>
         );
       })()}
     </div>

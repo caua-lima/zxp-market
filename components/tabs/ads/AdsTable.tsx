@@ -5,6 +5,9 @@ import { fmtBRL } from "@/lib/domain/calc";
 import { corAcos, corMargem, num, STATUS_META, type LinhaAds, type Modo } from "./ads-types";
 import { rotuloCampanha } from "@/lib/domain/ads-campaigns";
 import { corDoRoas } from "@/lib/domain/ads-cores";
+import {
+  explicacaoInvestido, explicacaoLucro, explicacaoReceita, explicacaoRoas, explicacaoRoasObjetivo, explicacaoViaAds,
+} from "./ads-explicacoes";
 import { alternarOrdem, ariaSort, ordenarLinhas, type ColunaOrdenavel, type OrdemAds } from "@/lib/domain/ads-ordenacao";
 
 /**
@@ -240,13 +243,7 @@ export default function AdsTable({
                       meta e ainda assim não fechar a margem. */}
                   <td
                     data-label="ROAS obj."
-                    title={l.i.roasTarget <= 0
-                      ? "Nenhum ROAS Objetivo configurado nesta campanha no painel do Mercado Ads."
-                      : metaAbaixoDoIdeal
-                        ? `Sua meta no ML é ${num(l.i.roasTarget, 2)}x, ABAIXO do ROAS que entrega a sua margem alvo (${num(l.roasIdeal!, 2)}x). Bater a meta configurada não fecha a margem — é ela que precisa subir.`
-                        : `Meta de ${num(l.i.roasTarget, 2)}x configurada por você na campanha.`
-                          + (l.roasIdeal != null ? ` Cobre o ROAS ideal (${num(l.roasIdeal, 2)}x).` : "")
-                          + (l.roasMlAds != null ? ` Hoje a campanha entrega ${num(l.roasMlAds, 2)}x.` : "")}
+                    title={explicacaoRoasObjetivo(l)}
                     style={{
                       whiteSpace: "nowrap", fontWeight: 700, cursor: "help",
                       color: l.i.roasTarget <= 0 ? "var(--muted)"
@@ -259,7 +256,7 @@ export default function AdsTable({
 
                   <td
                     data-label="Investido"
-                    title={`${num(l.i.prints)} impressões e ${num(l.i.clicks)} cliques — CTR de ${num(l.ctr, 2)}%. CPC médio ${fmtBRL(l.cpc)}.`}
+                    title={explicacaoInvestido(l)}
                     style={{ color: "var(--red-text)", fontWeight: 600, whiteSpace: "nowrap", cursor: "help" }}
                   >
                     {fmtBRL(l.i.cost)}
@@ -267,9 +264,7 @@ export default function AdsTable({
 
                   <td
                     data-label="Receita"
-                    title={`${num(l.i.adUnitsAtribuidas)} venda(s) atribuída(s): ${num(l.i.directUnits)} de clique direto + ${num(l.i.indirectUnits)} assistida(s). `
-                      + (acos != null ? `ACOS ${num(acos, 1)}% (investido ÷ receita atribuída, a mesma conta do painel do ML). ` : "Sem ACOS: não houve receita atribuída. ")
-                      + `A receita do modo "${pub ? "Publicidade direta" : "Geral"}" é ${fmtBRL(l.v)}.`}
+                    title={explicacaoReceita(l, pub)}
                     style={{ color: acos != null ? corAcos(acos, true) : "var(--green)", fontWeight: 600, whiteSpace: "nowrap", cursor: "help" }}
                   >
                     {fmtBRL(l.i.adSales)}
@@ -281,17 +276,7 @@ export default function AdsTable({
                       definições, as duas certas; a outra vive no tooltip. */}
                   <td
                     data-label="ROAS"
-                    title={`Do painel do Mercado Ads: receita atribuída TOTAL (${fmtBRL(l.i.adSales)}) ÷ investido. `
-                      + `No modo "${pub ? "Publicidade direta" : "Geral"}", sobre ${fmtBRL(l.v)}, dá ${num(l.r, 2)}x. `
-                      + (l.breakEven != null
-                        ? `Equilíbrio (não perder dinheiro): ${num(l.breakEven, 2)}x. `
-                        // Sem equilíbrio, DIZER por quê: as três causas pedem ações opostas.
-                        : (l.motivoSemBreakEven ? `${l.motivoSemBreakEven} ` : ""))
-                      + (l.roasIdeal != null
-                        ? `Ideal (fechar a margem alvo): ${num(l.roasIdeal, 2)}x. `
-                        : (l.motivoSemIdeal ? `${l.motivoSemIdeal} ` : ""))
-                      // A cor precisa se explicar: sem isso ela vira enigma.
-                      + corDoRoas(l.roasMlAds, l.breakEven, l.roasIdeal).motivo}
+                    title={explicacaoRoas(l, pub)}
                     style={{
                       fontWeight: 700, whiteSpace: "nowrap", cursor: "help",
                       /*
@@ -312,11 +297,7 @@ export default function AdsTable({
 
                   <td
                     data-label="Lucro após Ads"
-                    title={l.lucroAtual == null
-                      ? "Sem venda vinculada no período pra calcular — não é prejuízo, é falta de dado."
-                      : l.lucroNoIdeal != null
-                        ? `Hoje ${fmtBRL(l.lucroAtual)} → ${fmtBRL(l.lucroNoIdeal)} se atingisse o ROAS ideal, mantendo a receita atual. É teto de comparação entre anúncios, não promessa: cortar verba costuma derrubar a receita junto.`
-                        : (l.motivoSemIdeal ?? "Sem ROAS ideal calculável — não há lucro alvo pra projetar.")}
+                    title={explicacaoLucro(l)}
                     style={{ whiteSpace: "nowrap", fontWeight: 700, cursor: "help", color: l.lucroAtual == null ? "var(--muted)" : l.lucroAtual >= 0 ? "var(--green)" : "var(--red)" }}
                   >
                     {l.lucroAtual != null ? fmtBRL(l.lucroAtual) : "—"}
@@ -331,9 +312,7 @@ export default function AdsTable({
                       campanha parar. */}
                   <td
                     data-label="Via Ads"
-                    title={l.i.totalSales > 0
-                      ? `${fmtBRL(l.i.adSales)} de ${fmtBRL(l.i.totalSales)} vendidos neste anúncio foram creditados à campanha (clique direto + venda assistida). Quanto maior, mais a venda depende da verba — pausar derruba o faturamento junto.`
-                      : "Sem venda registrada neste anúncio no período — não há dependência a medir."}
+                    title={explicacaoViaAds(l)}
                     style={{
                       whiteSpace: "nowrap", fontWeight: 700, cursor: "help",
                       color: l.i.totalSales <= 0 ? "var(--muted)" : corParticipacao(l.pctAds),

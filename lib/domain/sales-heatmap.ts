@@ -59,3 +59,24 @@ export function calcularConcentracaoVendas(orders: OrderParaHeatmap[]): Resultad
 
   return { grid, totalVendas, diaMaisForte, horaMaisForte };
 }
+
+export type CelulaDoRanking = { diaDaSemana: number; hora: number; vendas: number };
+
+/**
+ * As N células (dia da semana × hora) com mais vendas, da maior pra menor.
+ *
+ * É a leitura que o mapa de bolinhas não dá a quem não enxerga cor nem tamanho, e
+ * que ninguém consegue tirar de 168 células passando o mouse. Empate desempata por
+ * dia da semana e depois por hora, pra a ordem não mudar sozinha entre duas
+ * pinturas. Célula com zero venda nunca entra: "o horário mais forte" que tem zero
+ * vendas não é forte.
+ */
+export function topCelulas(grid: readonly (readonly number[])[], n = 5): CelulaDoRanking[] {
+  const todas: CelulaDoRanking[] = [];
+  grid.forEach((linha, diaDaSemana) => linha.forEach((vendas, hora) => {
+    if (vendas > 0) todas.push({ diaDaSemana, hora, vendas });
+  }));
+  return todas
+    .sort((a, b) => b.vendas - a.vendas || a.diaDaSemana - b.diaDaSemana || a.hora - b.hora)
+    .slice(0, n);
+}

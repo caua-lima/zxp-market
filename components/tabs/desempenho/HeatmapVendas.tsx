@@ -1,6 +1,6 @@
 "use client";
 
-import type { ResultadoHeatmap } from "@/lib/domain/sales-heatmap";
+import { topCelulas, type ResultadoHeatmap } from "@/lib/domain/sales-heatmap";
 
 const DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 const ORDEM_DIAS = [1, 2, 3, 4, 5, 6, 0]; // começa na segunda, como o resto do app
@@ -33,6 +33,9 @@ export default function HeatmapVendas({ heatmap, from, to }: { heatmap: Resultad
   const dias = diasDoPeriodo(from, to);
   const maxCelula = Math.max(...heatmap.grid.flat());
   const mediaDiaria = heatmap.totalVendas / dias;
+  // O ranking em TEXTO: o mapa de bolinhas depende de cor, tamanho e mouse (o número da
+  // célula só existia num `title`), e ninguém lê 168 células passando o ponteiro.
+  const ranking = topCelulas(heatmap.grid, 5);
 
   return (
     <div className="panel">
@@ -52,7 +55,22 @@ export default function HeatmapVendas({ heatmap, from, to }: { heatmap: Resultad
         )}
       </div>
 
-      <div style={{ overflowX: "auto" }}>
+      {ranking.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: ".8125rem", fontWeight: 700, marginBottom: 6 }}>Os {ranking.length} horários com mais vendas</div>
+          <ol style={{ margin: 0, paddingLeft: 20, fontSize: ".85rem", lineHeight: 1.7 }}>
+            {ranking.map((c) => (
+              <li key={`${c.diaDaSemana}-${c.hora}`}>
+                {DIAS_SEMANA[c.diaDaSemana]}, {String(c.hora).padStart(2, "0")}h — <b>{c.vendas}</b> {c.vendas === 1 ? "venda" : "vendas"}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {/* O mapa é a VISÃO; o ranking acima e a tabela abaixo são a leitura. Escondido do leitor de tela
+          pra ele não ler 168 bolinhas sem texto — o mesmo dado está, com números, em <details>. */}
+      <div style={{ overflowX: "auto" }} aria-hidden="true">
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 640 }}>
           <thead>
             <tr>
@@ -79,6 +97,33 @@ export default function HeatmapVendas({ heatmap, from, to }: { heatmap: Resultad
           </tbody>
         </table>
       </div>
+
+      <details style={{ marginTop: 12 }}>
+        <summary style={{ cursor: "pointer", fontSize: ".8125rem", color: "var(--muted)" }}>Ver os números de cada dia e horário (tabela)</summary>
+        <div style={{ overflowX: "auto", marginTop: 8 }}>
+          <table style={{ borderCollapse: "collapse", fontSize: ".8rem", fontVariantNumeric: "tabular-nums", minWidth: 640 }}>
+            <caption className="sr-only">Vendas por dia da semana e hora do dia</caption>
+            <thead>
+              <tr>
+                <th scope="col" style={{ textAlign: "left", padding: "2px 6px" }}>Dia</th>
+                {Array.from({ length: 24 }, (_, hh) => (
+                  <th key={hh} scope="col" style={{ padding: "2px 4px", fontWeight: 600 }}>{hh}h</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {ORDEM_DIAS.map((wd) => (
+                <tr key={wd}>
+                  <th scope="row" style={{ textAlign: "left", padding: "2px 6px", fontWeight: 600, whiteSpace: "nowrap" }}>{DIAS_SEMANA[wd]}</th>
+                  {heatmap.grid[wd].map((v, hh) => (
+                    <td key={hh} style={{ textAlign: "center", padding: "2px 4px", color: v === 0 ? "var(--text-muted)" : "var(--text)", fontWeight: v === 0 ? 400 : 700 }}>{v}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
   );
 }

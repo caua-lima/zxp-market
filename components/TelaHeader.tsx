@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { EstadoDaTela } from "@/lib/domain/estado-da-tela";
 import { rotuloDoPeriodo } from "@/lib/domain/estado-da-tela";
 
@@ -54,6 +54,34 @@ export default function TelaHeader({
 }) {
   const [menuAberto, setMenuAberto] = useState(false);
   const menuId = useId();
+  const gatilhoRef = useRef<HTMLButtonElement>(null);
+  const caixaRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * ─── UM MENU DE AÇÕES É UM DISCLOSURE, NÃO UM `role="menu"` ───────────────
+   *
+   * `role="menu"` + `menuitem` prometem ao leitor de tela o contrato de menu de
+   * aplicativo: setas entre os itens, Home/End, foco gerenciado. Nada disso
+   * existia, e um widget ARIA pela metade é pior que um botão comum. Aqui são
+   * botões comuns (Tab anda entre eles), e o que faltava de verdade vem daqui:
+   * Escape fecha e devolve o foco ao gatilho, e o foco saindo do menu (Tab pra
+   * fora) também fecha — sem deixá-lo aberto atrás da pessoa.
+   */
+  useEffect(() => {
+    if (!menuAberto) return;
+    function aoTeclar(e: KeyboardEvent) {
+      if (e.key === "Escape") { setMenuAberto(false); gatilhoRef.current?.focus(); }
+    }
+    function aoFocar(e: FocusEvent) {
+      if (caixaRef.current && !caixaRef.current.contains(e.target as Node)) setMenuAberto(false);
+    }
+    document.addEventListener("keydown", aoTeclar);
+    document.addEventListener("focusin", aoFocar);
+    return () => {
+      document.removeEventListener("keydown", aoTeclar);
+      document.removeEventListener("focusin", aoFocar);
+    };
+  }, [menuAberto]);
 
   return (
     <div className="tela-head">
@@ -100,13 +128,13 @@ export default function TelaHeader({
         )}
 
         {secundarias.length > 0 && (
-          <div style={{ position: "relative" }}>
+          <div style={{ position: "relative" }} ref={caixaRef}>
             <button
+              ref={gatilhoRef}
               type="button"
               className="btn btn-ghost btn-sm"
               onClick={() => setMenuAberto((v) => !v)}
               aria-expanded={menuAberto}
-              aria-haspopup="menu"
               aria-controls={menuId}
               // O nome acessível não pode ser só "⋯": um leitor de tela
               // anunciaria "reticências, botão", que não diz o que acontece.
@@ -127,17 +155,11 @@ export default function TelaHeader({
                   style={{ position: "fixed", inset: 0, zIndex: 40 }}
                   aria-hidden="true"
                 />
-                <div
-                  id={menuId}
-                  role="menu"
-                  className="tela-head-menu"
-                  onKeyDown={(e) => { if (e.key === "Escape") setMenuAberto(false); }}
-                >
+                <div id={menuId} className="tela-head-menu">
                   {secundarias.map((s) => (
                     <button
                       key={s.rotulo}
                       type="button"
-                      role="menuitem"
                       className="tela-head-menu-item"
                       title={s.titulo}
                       disabled={s.desabilitada}

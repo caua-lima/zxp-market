@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import AvisoDaFonte from "@/components/AvisoDaFonte";
 import type { EstoqueMovimento, Product } from "@/lib/domain/types";
 import { watchMovimentos } from "@/lib/firebase/data";
 import RemessasFull from "@/components/tabs/full/RemessasFull";
@@ -23,17 +24,38 @@ import TelaHeader from "@/components/TelaHeader";
 export default function FullTab({ products }: { products: Product[] }) {
   const [movimentos, setMovimentos] = useState<EstoqueMovimento[]>([]);
   const [retido, setRetido] = useState<EstoqueFullRetido | null>(null);
+  /**
+   * O estado da fonte do estoque retido. Antes, uma falha da rota era engolida e o
+   * painel simplesmente não aparecia — igual a "não há nada retido". Agora a falha
+   * é dita: sem dado nenhum é "erro"; com dado anterior é "desatualizado" (o painel
+   * segue na tela, com o aviso de que pode estar velho).
+   */
+  const [fonteRetido, setFonteRetido] = useState<"carregando" | "ok" | "erro">("carregando");
+  const [tentando, setTentando] = useState(false);
   useEffect(() => watchMovimentos(setMovimentos), []);
 
-  useEffect(() => {
-    let vivo = true;
-    // Best-effort: a rota tem cache de 5 min e o painel some se ela falhar.
-    authedFetch("/api/ml/gestao-full", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((j) => { if (vivo) setRetido(j.estoqueFull ?? null); })
-      .catch(() => { /* sem painel de retido */ });
-    return () => { vivo = false; };
+  const carregarRetido = useCallback(async (): Promise<void> => {
+    try {
+      const r = await authedFetch("/api/ml/gestao-full", { cache: "no-store" });
+      if (!r.ok) throw new Error(String(r.status));
+      const j = await r.json();
+      setRetido(j.estoqueFull ?? null);
+      setFonteRetido("ok");
+    } catch {
+      setFonteRetido("erro");
+    }
   }, []);
+
+  useEffect(() => {
+    // Assíncrono de propósito (o setState acontece depois do await), não no corpo do efeito.
+    void (async () => { await carregarRetido(); })();
+  }, [carregarRetido]);
+
+  async function tentarDeNovo() {
+    setTentando(true);
+    await carregarRetido();
+    setTentando(false);
+  }
 
   /** Custo médio por produto, pra estimar o valor imobilizado no retido. */
   const custoPorProduto = useMemo(() => {
@@ -51,6 +73,15 @@ export default function FullTab({ products }: { products: Product[] }) {
         subtitulo="baixa de estoque a partir do que o ML já recebeu"
       />
 
+      {fonteRetido === "carregando" && <AvisoDaFonte estado="carregando" fonte="o estoque retido no Full" />}
+      {fonteRetido === "erro" && (
+        <AvisoDaFonte
+          estado={retido ? "desatualizado" : "erro"}
+          fonte="o estoque retido no Full"
+          naoSignifica={retido ? undefined : "Isso NÃO quer dizer que não há unidades retidas — só que não sei quantas há."}
+          aoTentar={tentarDeNovo} tentando={tentando}
+        />
+      )}
       <EstoqueRetidoFull dados={retido} custoPorProduto={custoPorProduto} />
       <RemessasFull movimentos={movimentos} />
       <HistoricoMovimentos movimentos={movimentos} products={products} />

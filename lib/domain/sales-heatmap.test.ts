@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcularConcentracaoVendas } from "./sales-heatmap";
+import { calcularConcentracaoVendas, topCelulas } from "./sales-heatmap";
 
 describe("calcularConcentracaoVendas", () => {
   it("sem pedidos, tudo zerado e sem dia/hora mais forte", () => {
@@ -54,5 +54,29 @@ describe("calcularConcentracaoVendas", () => {
     // 12:01 em -04:00 e 13:01 em Brasilia: tem que cair na faixa das 13h.
     const r = calcularConcentracaoVendas([{ date_created: "2026-08-11T12:01:00.000-04:00" }]);
     expect(r.horaMaisForte).toBe(13);
+  });
+});
+
+describe("topCelulas — o ranking que o mapa de bolinhas não dá a quem não vê cor", () => {
+  const vazio = () => Array.from({ length: 7 }, () => Array(24).fill(0));
+
+  it("ordena da maior pra menor e limita a N", () => {
+    const g = vazio();
+    g[5][15] = 12; g[1][9] = 7; g[0][20] = 7; g[3][3] = 1;
+    const r = topCelulas(g, 3);
+    expect(r).toEqual([
+      { diaDaSemana: 5, hora: 15, vendas: 12 },
+      { diaDaSemana: 0, hora: 20, vendas: 7 },   // empate: menor dia da semana primeiro
+      { diaDaSemana: 1, hora: 9, vendas: 7 },
+    ]);
+  });
+
+  it("célula com zero venda nunca entra, mesmo se sobrar espaço", () => {
+    const g = vazio(); g[2][10] = 4;
+    expect(topCelulas(g, 5)).toEqual([{ diaDaSemana: 2, hora: 10, vendas: 4 }]);
+  });
+
+  it("grade vazia devolve lista vazia", () => {
+    expect(topCelulas(vazio())).toEqual([]);
   });
 });

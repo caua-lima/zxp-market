@@ -1413,3 +1413,9 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
   .drp-preset{min-height:40px}
   .drp-day{min-height:40px}
 }
+
+/* Item da Central: o botão principal parece texto (o cartão inteiro é a área), e o de expandir é irmão dele. */
+.notif-item-main{display:block;width:100%;background:none;border:0;padding:0;margin:0;text-align:left;font:inherit;color:inherit;cursor:pointer;border-radius:6px}
+.notif-item-main > *{display:block}
+.notif-item-main:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+@media(pointer:coarse){.notif-item-expand-btn{min-height:44px}}

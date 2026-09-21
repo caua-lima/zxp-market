@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { explicarFonte } from "@/lib/domain/estado-fonte";
 import { CUSTO_FAIXA_SENTINELA, custoNaData, impostoNaData, TIPO_MOVIMENTO_LABEL, type EstoqueMovimento, type MovimentoTipo, type Product } from "@/lib/domain/types";
 import { mensagemDeErroDeSalvamento, salvarSemPerder } from "@/lib/domain/salvar-formulario";
+import { motivoDaListaVazia } from "@/lib/domain/estoque-vazio";
 import { useFormularioSujo } from "@/components/useFormularioSujo";
 import { addMovimento, deleteMovimento, deleteProduct, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas, recalcularProduto } from "@/lib/firebase/data";
 import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas";
@@ -624,18 +625,58 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
       {/* Lista */}
       <div className="panel">
         {filtered.length === 0 ? (
-          <div className="empty-state">
-            <span className="empty-ico">📦</span>
-            {/*
-              Lista vazia só pode AFIRMAR que não há produto quando a fonte de
-              fato respondeu. Antes, uma assinatura negada (member) ou um
-              estouro de cota apareciam como "nenhum produto cadastrado".
-            */}
-            {search
-              ? "Nenhum produto encontrado."
-              : explicarFonte(data.fontes.produtos, "produtos")
-                ?? (<>Nenhum produto cadastrado.<br />Clique em <strong>＋ Novo Produto</strong>.</>)}
-          </div>
+          (() => {
+            /*
+              ─── "VAZIO" TEM CINCO SIGNIFICADOS ─────────────────────────────
+              A aba abre em "Precisa de ação". Com tudo saudável, a lista é vazia — e a
+              tela dizia "Nenhum produto cadastrado", descrevendo o MELHOR cenário como
+              o pior. Cada causa tem a sua mensagem e a sua saída (ver estoque-vazio).
+              Lista vazia só afirma que não há produto quando a fonte de fato respondeu:
+              assinatura negada (member) ou cota estourada não são "sem cadastro".
+            */
+            const explicacaoDaFonte = explicarFonte(data.fontes.produtos, "produtos");
+            const totalInativos = data.products.filter((p) => p.ativo === false).length;
+            const motivo = motivoDaListaVazia({
+              totalProdutos: data.products.length, vista, busca: search,
+              filtrosRestritivos: filtroEstoque.sinais.length + (filtroEstoque.logistica ? 1 : 0),
+              incluirInativos: filtroEstoque.incluirInativos, totalInativos,
+              fonteIndisponivel: explicacaoDaFonte != null,
+            });
+            const limparTudo = () => { setSearch(""); setFiltroEstoque((f) => ({ ...FILTRO_ESTOQUE_VAZIO, incluirInativos: f.incluirInativos })); };
+            return (
+              <div className="empty-state" role="status">
+                {motivo === "fonte-indisponivel" && <><span className="empty-ico">⚠️</span>{explicacaoDaFonte}</>}
+                {motivo === "sem-cadastro" && <><span className="empty-ico">📦</span>Nenhum produto cadastrado.<br />Clique em <strong>＋ Novo Produto</strong>.</>}
+                {motivo === "sem-pendencia" && (
+                  <>
+                    <span className="empty-ico">✅</span>
+                    Nenhum produto precisa de ação agora — os <b>{data.products.length}</b> cadastrados estão dentro do esperado.
+                    <div style={{ marginTop: 10 }}>
+                      <button type="button" className="btn btn-primary btn-sm" onClick={() => setVista("todos")}>Ver todos os produtos</button>
+                    </div>
+                  </>
+                )}
+                {motivo === "sem-resultado" && (
+                  <>
+                    <span className="empty-ico">🔎</span>
+                    Nenhum produto passa pela busca e pelos filtros. Existem <b>{data.products.length}</b> cadastrados — o que sumiu foi escondido pelo filtro, não apagado.
+                    <div style={{ marginTop: 10 }}>
+                      <button type="button" className="btn btn-primary btn-sm" onClick={limparTudo}>Limpar busca e filtros</button>
+                    </div>
+                  </>
+                )}
+                {motivo === "so-inativos" && (
+                  <>
+                    <span className="empty-ico">🗄️</span>
+                    Todos os <b>{data.products.length}</b> produtos estão inativos e escondidos.
+                    <div style={{ marginTop: 10 }}>
+                      <button type="button" className="btn btn-primary btn-sm" onClick={() => setFiltroEstoque((f) => ({ ...f, incluirInativos: true }))}>Mostrar inativos</button>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()
         ) : (
           <div className="table-wrapper" style={{ border: "none" }}>
             <table className="tbl-modern tbl-cards">

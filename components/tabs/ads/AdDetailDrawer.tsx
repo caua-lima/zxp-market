@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect } from "react";
+import Drawer from "@/components/Drawer";
 import { fmtBRL } from "@/lib/domain/calc";
 import type { AdsAlteracao } from "@/lib/domain/types";
 import { diasDesde, formatarResumoAlteracao } from "@/lib/domain/ads-changelog";
 import { corAcos, corMargem, num, STATUS_META, type LinhaAds } from "./ads-types";
 import { corDoRoas } from "@/lib/domain/ads-cores";
+import { explicacoesDoAnuncio } from "./ads-explicacoes";
 
 function linkAnuncio(itemId: string): string | null {
   return /^MLB\d+$/i.test(itemId) ? `https://produto.mercadolivre.com.br/${itemId.replace(/^MLB/, "MLB-")}` : null;
@@ -20,13 +21,6 @@ export default function AdDetailDrawer({
   onClose: () => void;
   onIrParaAlteracoes: (campaignId: string) => void;
 }) {
-  useEffect(() => {
-    if (!linha) return;
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [linha, onClose]);
-
   if (!linha) return null;
   const l = linha;
   const m = STATUS_META[l.i.status];
@@ -52,12 +46,12 @@ export default function AdDetailDrawer({
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", justifyContent: "flex-end" }}>
-      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,.5)" }} onClick={onClose} />
-      <div
-        className="drawer-panel"
-        style={{ position: "relative", width: "min(480px, 100%)", height: "100%", background: "var(--surface)", borderLeft: "1px solid var(--border)", overflowY: "auto", padding: 20 }}
-      >
+    // Era um <div> solto, sem papel de diálogo, sem foco preso e com o fundo navegável por Tab.
+    // Agora é um Drawer (portal, foco, fundo inerte, Escape só no topo da pilha).
+    <Drawer
+      open onClose={onClose} titulo={`Detalhes do anúncio ${l.i.title || l.i.itemId}`}
+      painelStyle={{ width: "min(480px, 100%)", overflowY: "auto", padding: 20, display: "block" }}
+    >
         <button type="button" className="btn btn-ghost btn-xs" onClick={onClose} style={{ position: "absolute", top: 14, right: 14 }}>✕ Fechar</button>
 
         {/* A. Cabeçalho */}
@@ -85,11 +79,22 @@ export default function AdDetailDrawer({
           {/* Cor pelo equilibrio DESTE anuncio, nao por corte fixo: o ROAS que
               empata depende da margem do produto, e 3x podia estar queimando
               dinheiro num item de margem fina. */}
+          {/* A coluna ROAS da tabela mostra o do PAINEL do Mercado Ads; o drawer só mostrava o do modo
+              escolhido — dois números diferentes pro mesmo anúncio, sem dizer qual era qual. Agora os dois, nomeados. */}
           <Linha
-            label="ROAS"
+            label="ROAS (painel do Mercado Ads)"
+            valor={l.roasMlAds != null ? `${num(l.roasMlAds, 2)}x` : "—"}
+            cor={corDoRoas(l.roasMlAds, l.breakEven, l.roasIdeal).cor}
+          />
+          <Linha
+            label={`ROAS (modo ${pub ? "Publicidade direta" : "Geral"})`}
             valor={l.i.cost > 0 ? `${num(l.r, 2)}x` : "—"}
             cor={corDoRoas(l.i.cost > 0 ? l.r : null, l.breakEven, l.roasIdeal).cor}
           />
+          <Linha label="ROAS objetivo (meta da campanha)" valor={l.i.roasTarget > 0 ? `${num(l.i.roasTarget, 2)}x` : "não configurado"} />
+          <Linha label="Vendas atribuídas" valor={`${num(l.i.adUnitsAtribuidas)} (${num(l.i.directUnits)} direta(s) + ${num(l.i.indirectUnits)} assistida(s))`} />
+          <Linha label="Receita atribuída pelo Ads" valor={fmtBRL(l.i.adSales)} />
+          <Linha label="Via Ads (dependência da verba)" valor={l.i.totalSales > 0 ? `${num(l.pctAds, 0)}%` : "sem venda"} />
           <Linha label="Break-even ROAS" valor={l.breakEven != null ? `${num(l.breakEven, 2)}x` : "sem lucro antes de Ads pra calcular"} />
           <Linha
             label="ROAS ideal (margem alvo)"
@@ -113,6 +118,19 @@ export default function AdDetailDrawer({
           <Linha label="CPC" valor={l.i.clicks > 0 ? fmtBRL(l.cpc) : "—"} />
           <Linha label="Vendas" valor={`${num(l.un)} un`} />
           <Linha label="Conversão clique → venda" valor={l.i.clicks > 0 ? `${num((l.un / l.i.clicks) * 100, 2)}%` : "—"} />
+        </Secao>
+
+        {/* Como ler cada número — o mesmo texto dos tooltips da tabela (uma fonte: ads-explicacoes),
+            mas VISÍVEL: tooltip só existe com mouse, e no celular e no teclado a conta ficava escondida. */}
+        <Secao titulo="Como ler cada número">
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {explicacoesDoAnuncio(l, pub).map((x) => (
+              <div key={x.chave}>
+                <div style={{ fontSize: ".8125rem", fontWeight: 700 }}>{x.titulo}</div>
+                <div style={{ fontSize: ".8125rem", color: "var(--muted)", lineHeight: 1.5, marginTop: 2 }}>{x.texto}</div>
+              </div>
+            ))}
+          </div>
         </Secao>
 
         {/* D. Diagnóstico */}
@@ -154,8 +172,7 @@ export default function AdDetailDrawer({
           <button type="button" className="btn btn-success btn-sm" onClick={() => onIrParaAlteracoes(l.i.campaignId)}>Registrar alteração</button>
           <button type="button" className="btn btn-ghost btn-sm" onClick={copiarResumo}>Copiar resumo</button>
         </div>
-      </div>
-    </div>
+    </Drawer>
   );
 }
 
