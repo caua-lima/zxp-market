@@ -252,6 +252,20 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
    * porque é a pergunta que se faz ao abrir esta aba. A lista completa
    * continua a um clique.
    */
+  /**
+   * ─── QUANTAS LINHAS DESENHAR ─────────────────────────────────────────────────
+   *
+   * A lista desenhava TODOS os produtos: com 500, medido em build de desenvolvimento,
+   * eram ~21 mil nós de DOM, ~680 ms pra trocar de vista e ~200 ms por tecla na busca.
+   * Agora mostra 60 e o resto vem por "Mostrar mais" — paginação e não virtualização,
+   * porque aqui se procura um produto e se volta pra ele (uma lista virtual perde o
+   * lugar e a busca do navegador). O limite volta pra 60 quando busca, filtro ou vista
+   * mudam: é derivado da chave abaixo, sem efeito que espelhe estado.
+   */
+  const chaveDaLista = `${vista}|${search}|${JSON.stringify(filtroEstoque)}`;
+  const [pagina, setPagina] = useState({ chave: "", limite: LINHAS_POR_PAGINA });
+  const limiteDeLinhas = pagina.chave === chaveDaLista ? pagina.limite : LINHAS_POR_PAGINA;
+
   const filtered = useMemo(() => {
     const alvo = { ...filtroEstoque, busca: search };
     let ids = filtrarProdutos(paraSituacao, alvo);
@@ -700,7 +714,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((p) => (
+                {filtered.slice(0, limiteDeLinhas).map((p) => (
                   <ProductRow
                     key={p.id}
                     product={p}
@@ -717,6 +731,19 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
                 ))}
               </tbody>
             </table>
+            {filtered.length > limiteDeLinhas && (
+              <div style={{ padding: "12px 4px 4px", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "center" }}>
+                <span role="status" style={{ fontSize: ".82rem", color: "var(--muted)" }}>
+                  Mostrando <b>{limiteDeLinhas}</b> de <b>{filtered.length}</b> produtos
+                </span>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPagina({ chave: chaveDaLista, limite: limiteDeLinhas + LINHAS_POR_PAGINA })}>
+                  Mostrar mais {Math.min(LINHAS_POR_PAGINA, filtered.length - limiteDeLinhas)}
+                </button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPagina({ chave: chaveDaLista, limite: filtered.length })}>
+                  Mostrar todos
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1622,6 +1649,9 @@ function PrevisaoPanel({ products, estoqueML, forecast }: { products: Product[];
     </div>
   );
 }
+
+/** Quantos produtos a lista desenha por vez (ver `limiteDeLinhas`). */
+const LINHAS_POR_PAGINA = 60;
 
 export function ProductModal({ product: initial, isNew, onClose, onSave }: { product: Product; isNew: boolean; onClose: () => void; onSave: (p: Product) => Promise<void> }) {
   const [p, setP] = useState<Product>({ ...initial, mlbs: mlbsDe(initial).length ? mlbsDe(initial) : [""] });

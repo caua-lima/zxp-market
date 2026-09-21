@@ -411,10 +411,10 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
       </div>
 
       {/* Toggle de análise */}
-      <div className="seg" style={{ alignSelf: "flex-start" }}>
-        <button type="button" className={`seg-btn ${modo === "pub" ? "active" : ""}`} onClick={() => setModo("pub")}>Publicidade direta</button>
-        <button type="button" className={`seg-btn ${modo === "geral" ? "active" : ""}`} onClick={() => setModo("geral")}>Geral</button>
-        <button type="button" className={`seg-btn ${modo === "log" ? "active" : ""}`} onClick={() => setModo("log")}>Alterações de campanha</button>
+      <div className="seg" style={{ alignSelf: "flex-start" }} role="group" aria-label="Modo de análise">
+        <button type="button" className={`seg-btn ${modo === "pub" ? "active" : ""}`} aria-pressed={modo === "pub"} onClick={() => setModo("pub")}>Publicidade direta</button>
+        <button type="button" className={`seg-btn ${modo === "geral" ? "active" : ""}`} aria-pressed={modo === "geral"} onClick={() => setModo("geral")}>Geral</button>
+        <button type="button" className={`seg-btn ${modo === "log" ? "active" : ""}`} aria-pressed={modo === "log"} onClick={() => setModo("log")}>Alterações de campanha</button>
       </div>
       <AdsModeDescription modo={modo} />
 
