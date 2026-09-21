@@ -51,6 +51,15 @@ export const viewport: Viewport = {
    * num iPhone 13. O contrapeso está em `.topbar` (app/globals.css).
    */
   viewportFit: "cover",
+  /**
+   * O que o teclado virtual faz com a página. O padrão do Chrome no Android é
+   * `resizes-visual`: o teclado cobre o layout SEM encolhê-lo, então um modal com
+   * `max-height:100dvh` continua do tamanho da tela cheia, e o botão Salvar (no
+   * rodapé) fica ATRÁS do teclado. Com `resizes-content` o layout encolhe junto e
+   * `dvh`/`fixed` seguem a área realmente visível. O iOS Safari ignora esta chave
+   * (lá o teclado sempre sobrepõe) — a validação no iPhone continua sendo do aparelho.
+   */
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({

@@ -340,6 +340,17 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
               : <>despesas da empresa</>}
           </div>
         </div>
+        {/*
+          Sem o faturamento do mês, os DOIS percentuais são "—" pelo MESMO motivo. Dois cartões
+          vazios ocupavam a tela do celular inteira pra dizer a mesma frase duas vezes.
+        */}
+        {pctFaturamento == null && pctLucro == null ? (
+          <div className="kpi k-warn" style={{ gridColumn: "1 / -1" }}>
+            <div className="k-lbl">% do faturamento e % do lucro</div>
+            <div className="k-val" style={{ color: "var(--yellow)" }}>—</div>
+            <div className="k-sub">sem base pra dividir: o faturamento ou o lucro do mês não carregou (ou o lucro não é positivo). O custo apropriado da operação segue no primeiro cartão.</div>
+          </div>
+        ) : (<>
         <div className="kpi k-warn">
           <div className="k-lbl">% do faturamento</div>
           <div className="k-val" style={{ color: "var(--yellow)" }}>{pctFaturamento != null ? `${fmtPct(pctFaturamento, 1)}` : "—"}</div>
@@ -358,6 +369,7 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
               : "lucro do mês indisponível ou não positivo — sem base pra dividir"}
           </div>
         </div>
+        </>)}
       </div>
 
       {aviso && (
@@ -684,7 +696,7 @@ function LinhaCusto({ custo: c, canEdit, hojeISO, onEditar, onArquivar, onExclui
             {c.observacao && <span>· {c.observacao}</span>}
           </div>
         </div>
-        <div style={{ textAlign: "right", flex: "0 1 auto", minWidth: 0, maxWidth: "100%" }}>
+        <div className="custo-valores">
           <div style={{ fontWeight: 800, fontVariantNumeric: "tabular-nums", overflowWrap: "anywhere" }}>
             {fmtBRL(parseBRNumber(c.valor))}{" "}
             <span style={{ fontWeight: 400, fontSize: ".8rem", color: "var(--muted)" }}>{sufixoDaFrequencia(c)}</span>

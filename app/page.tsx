@@ -587,42 +587,31 @@ function AppShell() {
               borderTop: "1px solid var(--border)",
             }}
           >
-            <button
-              type="button"
-              onClick={() => setProfileOpen(true)}
-              title="Editar meu perfil"
-              aria-label="Editar meu perfil"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                marginBottom: 10,
-                width: "100%",
-                background: "transparent",
-                border: "none",
-                padding: 0,
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-            >
+            {/*
+              ─── DOIS BOTÕES IRMÃOS, NÃO UM DENTRO DO OUTRO ──────────────────
+              Era um <button> "Editar meu perfil" com o AvatarUpload DENTRO, e o
+              AvatarUpload tem o seu próprio <button> ("Trocar foto de perfil"):
+              botão dentro de botão é HTML inválido (o React acusava erro de
+              hidratação a cada abertura), o leitor de tela não anunciava o filho,
+              e o clique na foto era disputado com o do pai. Agora a foto e o nome
+              são irmãos, cada um com a sua ação.
+            */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, width: "100%" }}>
               <AvatarUpload size={28} />
-              <span
-                style={{
-                  fontSize: ".75rem",
-                  color: "var(--muted)",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  flex: 1,
-                }}
+              <button
+                type="button"
+                onClick={() => setProfileOpen(true)}
+                title="Editar meu perfil"
+                aria-label={`Editar meu perfil (${displayName})`}
+                className="perfil-btn"
               >
-                {displayName}
-              </span>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: "var(--muted)" }} aria-hidden>
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
-            </button>
+                <span className="perfil-nome">{displayName}</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, color: "var(--muted)" }} aria-hidden>
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+              </button>
+            </div>
             {profileOpen && <MyProfileModal onClose={() => setProfileOpen(false)} />}
             <button
               type="button"

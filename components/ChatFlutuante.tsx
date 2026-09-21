@@ -66,11 +66,13 @@ export default function ChatFlutuante({
     <div
       role="dialog"
       aria-label={titulo}
+      className="chat-flutuante"
       style={{
         position: "fixed", right: 18, bottom: 18, zIndex: 60,
         // Nunca mais largo que a tela menos as margens — medido no iPhone.
         width: "min(420px, calc(100vw - 36px))",
-        maxHeight: "min(600px, calc(100vh - 36px))",
+        // A altura máxima vem de `.chat-flutuante` (globals.css): `vh` com reserva e depois `dvh`,
+        // que não tem como sair no estilo inline. `vh` sozinho ignora a barra de endereço do celular.
         display: "flex", flexDirection: "column",
         background: "var(--surface)", border: "1px solid var(--border)",
         borderRadius: 14, boxShadow: "0 10px 34px rgba(0,0,0,.45)",

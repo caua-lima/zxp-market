@@ -1419,3 +1419,52 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
 .notif-item-main > *{display:block}
 .notif-item-main:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
 @media(pointer:coarse){.notif-item-expand-btn{min-height:44px}}
+
+/* Perfil na barra lateral: a foto e o nome são botões irmãos (ver app/page.tsx). */
+.perfil-btn{display:flex;align-items:center;gap:8px;flex:1;min-width:0;background:transparent;border:0;padding:6px 0;cursor:pointer;text-align:left;color:inherit;font:inherit}
+.perfil-nome{font-size:.8125rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.perfil-btn:hover .perfil-nome{color:var(--text)}
+/* O "+" da foto tem 14px: no toque a ÁREA clicável cresce sem mexer no desenho. */
+@media(pointer:coarse){.avatar-badge::after{content:"";position:absolute;inset:-15px}}
+
+/* ─── CELULAR: espaço pro botão flutuante e altura que respeita a barra do navegador ─────── */
+.chat-flutuante{max-height:min(600px,calc(100vh - 36px));max-height:min(600px,calc(100dvh - 36px))}
+@media(max-width:720px){
+  /* O botão "?" fica fixo no canto: sem reserva embaixo, ele cobre o último controle da página. */
+  .dash{padding-bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+}
+
+/* Valores de uma linha de custo: à direita quando cabem ao lado do nome; embaixo e à ESQUERDA quando quebram
+   (à direita, num bloco que quebrou, o texto ficava "flutuando" no meio da linha). */
+.custo-valores{text-align:right;flex:0 1 auto;min-width:0;max-width:100%}
+@media(max-width:560px){.custo-valores{text-align:left;flex:1 1 100%}}
+
+/* Campos dos filtros de Ads (que perderam o estilo inline ao ganhar rótulo e legenda). */
+.ads-busca input,.ads-faixa input,.ads-ordenar select{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:.9rem;min-height:40px;font-family:inherit}
+.ads-busca input:focus-visible,.ads-faixa input:focus-visible,.ads-ordenar select:focus-visible{outline:2px solid var(--focus);outline-offset:1px;border-color:var(--focus)}
+.ads-faixa input[type=number]{-moz-appearance:textfield;appearance:textfield}
+@media(max-width:720px){
+  /* 16px: abaixo disso o Safari do iPhone dá zoom na página ao focar o campo. */
+  .ads-busca input,.ads-faixa input,.ads-ordenar select{font-size:16px;min-height:44px}
+  .ads-faixas{gap:10px 16px}
+}
+
+/* ─── ESTOQUE NO CELULAR: o cartão responde "o que fazer" primeiro ──────────────────────────
+   Eram 10 linhas de rótulo/valor por produto (441px de altura). Agora: nome e SKU, a próxima
+   ação, e a linha "Em casa · Full · Total" lado a lado; custo, preço e imposto ficam atrás de
+   um botão (são consulta, não decisão) e as ações vão no rodapé. Nada saiu: o que está oculto
+   abre com um toque, e no computador a tabela é a de sempre. */
+.tr-fin-btn{display:none}
+@media(max-width:720px){
+  .tbl-estoque tbody tr{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));column-gap:10px}
+  .tbl-estoque tbody td{width:auto;min-width:0;grid-column:1 / -1}
+  .tbl-estoque tbody td[data-label="Em casa"],
+  .tbl-estoque tbody td[data-label="Full (ML)"],
+  .tbl-estoque tbody td[data-label="Total"]{grid-column:auto;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:2px;text-align:left}
+  .tbl-estoque tbody td[data-label="Em casa"]::before,
+  .tbl-estoque tbody td[data-label="Full (ML)"]::before,
+  .tbl-estoque tbody td[data-label="Total"]::before{max-width:none}
+  .tbl-estoque tbody td[data-sec]{display:none}
+  .tbl-estoque tbody tr.fin-aberto td[data-sec]{display:flex}
+  .tr-fin-btn{display:inline-flex;align-items:center;min-height:44px;margin-top:6px;padding:0 2px;background:none;border:0;color:var(--brand);font:inherit;font-size:.8125rem;font-weight:700;cursor:pointer}
+}

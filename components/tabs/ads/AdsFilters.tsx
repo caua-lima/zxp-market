@@ -1,5 +1,6 @@
 "use client";
 
+import { useId, useState } from "react";
 import type { Modo, StatusAnuncio } from "./ads-types";
 import { faixaAtiva, faixaInvertida, resumoDaFaixa } from "@/lib/domain/ads-faixas";
 import {
@@ -157,6 +158,20 @@ export default function AdsFilters({
   ].filter(Boolean);
   const algumaFaixa = faixaAtiva(roas) || faixaAtiva(acos) || faixaAtiva(invest);
 
+  /**
+   * As faixas (ROAS, ACOS/TACOS, investido) ficam RECOLHIDAS no celular: eram três
+   * grupos de campos entre a busca e o primeiro anúncio, e empurravam a lista pra
+   * fora da primeira tela. No computador começam abertas. Com alguma faixa em uso
+   * elas ficam sempre visíveis — filtro ligado e escondido é o que faz um anúncio
+   * "sumir" sem explicação.
+   */
+  const [faixasAbertas, setFaixasAbertas] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 721px)").matches,
+  );
+  const faixasId = useId();
+  const mostrarFaixas = faixasAbertas || algumaFaixa;
+  const nFaixasAtivas = [roas, acos, invest].filter(faixaAtiva).length;
+
   return (
     <div className="ads-filtros">
       <div className="ads-filtros-linha">
@@ -170,11 +185,23 @@ export default function AdsFilters({
         <AdsOrdenar ordem={ordem} onOrdem={onOrdem} />
       </div>
 
-      <div className="ads-filtros-linha ads-faixas">
-        <CampoFaixa id="ads-roas" nome="ROAS" unidade="x" min={f.roasMin} max={f.roasMax} onMin={f.setRoasMin} onMax={f.setRoasMax} larg={78} />
-        <CampoFaixa id="ads-acos" nome={acosNome} unidade="%" min={f.acosMin} max={f.acosMax} onMin={f.setAcosMin} onMax={f.setAcosMax} larg={78} />
-        <CampoFaixa id="ads-invest" nome="Investido" unidade="R$" min={f.investMin} max={f.investMax} onMin={f.setInvestMin} onMax={f.setInvestMax} larg={92} />
+      <div>
+        <button
+          type="button" className="btn btn-ghost btn-sm" aria-expanded={mostrarFaixas} aria-controls={faixasId}
+          onClick={() => setFaixasAbertas((v) => !v)} disabled={algumaFaixa}
+          title={algumaFaixa ? "Há faixa em uso — limpe as faixas pra recolher" : undefined}
+        >
+          {mostrarFaixas ? "▾" : "▸"} Faixas de ROAS, {acosNome} e investido{nFaixasAtivas > 0 ? ` (${nFaixasAtivas} em uso)` : ""}
+        </button>
       </div>
+
+      {mostrarFaixas && (
+        <div id={faixasId} className="ads-filtros-linha ads-faixas">
+          <CampoFaixa id="ads-roas" nome="ROAS" unidade="x" min={f.roasMin} max={f.roasMax} onMin={f.setRoasMin} onMax={f.setRoasMax} larg={78} />
+          <CampoFaixa id="ads-acos" nome={acosNome} unidade="%" min={f.acosMin} max={f.acosMax} onMin={f.setAcosMin} onMax={f.setAcosMax} larg={78} />
+          <CampoFaixa id="ads-invest" nome="Investido" unidade="R$" min={f.investMin} max={f.investMax} onMin={f.setInvestMin} onMax={f.setInvestMax} larg={92} />
+        </div>
+      )}
 
       {algumaFaixa && (
         <div className="ads-filtros-resumo" role="status">

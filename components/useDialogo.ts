@@ -50,11 +50,14 @@ export function useDialogo(
   // O Escape sempre chama a versão MAIS RECENTE do callback, sem reinstalar os ouvintes.
   const escapeRef = useRef(aoEscape);
   useEffect(() => { escapeRef.current = aoEscape; });
+  /** Quem tinha o foco ANTES de abrir — registrado antes do `inert`, que desfoca o gatilho. */
+  const anteriorRef = useRef<HTMLElement | null>(null);
 
   // Entra na pilha ao abrir e sai ao fechar/desmontar.
   useEffect(() => {
     if (!open) return;
     const meu = id.current;
+    anteriorRef.current = document.activeElement as HTMLElement | null;
     pilha.push(meu);
     sinalizar();
     return () => {
@@ -95,19 +98,41 @@ export function useDialogo(
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, caixaRef]);
 
+  // ─── ORDEM IMPORTA: este efeito vem ANTES do de foco ────────────────────────
+  // Ao fechar, o React roda os cleanups na ordem em que os efeitos foram declarados.
+  // Se o `inert` fosse removido depois de o foco ser devolvido, `focus()` no botão que
+  // abriu o diálogo falharia em silêncio (elemento ainda inerte) e o foco cairia no
+  // <body> — quem navega por teclado perdia o lugar. Removendo o `inert` primeiro, a
+  // devolução funciona. (E por isso `anteriorRef` é gravado no primeiro efeito: aplicar
+  // `inert` num ancestral do botão desfoca o botão.)
+  // Torna o fundo indisponível de verdade (teclado e leitor de tela), não só coberto.
+  useEffect(() => {
+    if (!open) return;
+    const caixa = caixaRef.current;
+    const irmaos = Array.from(document.body.children)
+      .filter((el): el is HTMLElement => el instanceof HTMLElement && !el.contains(caixa));
+    const tinham = irmaos.map((el) => el.hasAttribute("inert"));
+    irmaos.forEach((el) => el.setAttribute("inert", ""));
+    return () => { irmaos.forEach((el, i) => { if (!tinham[i]) el.removeAttribute("inert"); }); };
+  }, [open, caixaRef]);
+
   // Foco inicial ao abrir; devolução ao fechar.
   useEffect(() => {
     if (!open) return;
-    const anterior = document.activeElement as HTMLElement | null;
-    // Depois da pintura: o conteúdo do diálogo ainda não existe no mesmo tique.
-    const raf = requestAnimationFrame(() => {
+    // O efeito roda DEPOIS do commit, então o diálogo já está no DOM: foca já, sem esperar a
+    // pintura. O rAF fica só de reserva (conteúdo que entra um quadro depois) — e não pode ser
+    // o único caminho: aba em segundo plano não dispara rAF, e o foco nunca entraria.
+    const focar = () => {
       const caixa = caixaRef.current;
-      if (!caixa) return;
+      if (!caixa || caixa.contains(document.activeElement)) return;
       (caixa.querySelector<HTMLElement>(FOCAVEIS) ?? caixa).focus();
-    });
+    };
+    focar();
+    const raf = requestAnimationFrame(focar);
     return () => {
       cancelAnimationFrame(raf);
-      // Só devolve se o elemento ainda existir na página.
+      // Só devolve se o elemento ainda existir na página. O `inert` já foi removido (efeito acima).
+      const anterior = anteriorRef.current;
       if (anterior && document.contains(anterior)) anterior.focus();
     };
   }, [open, caixaRef]);
@@ -120,14 +145,4 @@ export function useDialogo(
     return () => { document.body.style.overflow = antes; };
   }, [open]);
 
-  // Torna o fundo indisponível de verdade (teclado e leitor de tela), não só coberto.
-  useEffect(() => {
-    if (!open) return;
-    const caixa = caixaRef.current;
-    const irmaos = Array.from(document.body.children)
-      .filter((el): el is HTMLElement => el instanceof HTMLElement && !el.contains(caixa));
-    const tinham = irmaos.map((el) => el.hasAttribute("inert"));
-    irmaos.forEach((el) => el.setAttribute("inert", ""));
-    return () => { irmaos.forEach((el, i) => { if (!tinham[i]) el.removeAttribute("inert"); }); };
-  }, [open, caixaRef]);
 }

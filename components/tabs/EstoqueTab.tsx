@@ -679,7 +679,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
           })()
         ) : (
           <div className="table-wrapper" style={{ border: "none" }}>
-            <table className="tbl-modern tbl-cards">
+            <table className="tbl-modern tbl-cards tbl-estoque">
               <thead>
                 <tr>
                   <th style={{ textAlign: "left" }}>Produto</th>
@@ -979,10 +979,12 @@ function ProductRow({
   const totalUn = full + estoqueForaDoFull(casa, proprio, ehFull);
   const fullBaixo = ehFull && full <= FULL_BAIXO;
   const { min: precoMin, max: precoMax, temPromo } = precosDe(product, estoqueML);
+  /** Só no celular: custo, preço e imposto ficam atrás de um botão (ver .tbl-estoque em globals.css). */
+  const [verFinanceiro, setVerFinanceiro] = useState(false);
 
   return (
     <>
-      <tr style={{ opacity: product.ativo ? 1 : 0.5 }}>
+      <tr style={{ opacity: product.ativo ? 1 : 0.5 }} className={verFinanceiro ? "fin-aberto" : undefined}>
         <td style={{ textAlign: "left" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <button type="button" onClick={onToggle} title="Ver movimentações" aria-label="Ver movimentações" aria-expanded={expanded} style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: ".8rem", transform: expanded ? "rotate(90deg)" : "none", transition: "transform .15s" }}>▶</button>
@@ -1001,6 +1003,12 @@ function ProductRow({
                   </span>
                 ))}
               </div>
+              <button
+                type="button" className="tr-fin-btn" aria-expanded={verFinanceiro}
+                onClick={() => setVerFinanceiro((v) => !v)}
+              >
+                {verFinanceiro ? "▾ Ocultar custo, preço e imposto" : "▸ Ver custo, preço e imposto"}
+              </button>
             </div>
           </div>
         </td>
@@ -1081,15 +1089,15 @@ function ProductRow({
           {proprio > 0 && <span title="Unidades expostas no(s) anúncio(s) fora do Full (envio por sua conta/agência). Saem do MESMO estoque de casa, então NÃO somam no Total — já estão contadas em 'Em casa'." style={{ display: "block", fontSize: ".75rem", color: "var(--muted)", fontWeight: 400 }}>{proprio} no anúncio</span>}
         </td>
         <td data-label="Total" style={{ textAlign: "right", fontWeight: 700, whiteSpace: "nowrap" }}>{totalUn} un</td>
-        <td data-label="Custo médio" style={{ textAlign: "right", whiteSpace: "nowrap", color: custoMedio > 0 ? "var(--text)" : "var(--muted)", fontWeight: 600 }}>
+        <td data-label="Custo médio" data-sec="fin" style={{ textAlign: "right", whiteSpace: "nowrap", color: custoMedio > 0 ? "var(--text)" : "var(--muted)", fontWeight: 600 }}>
           {custoMedio > 0 ? fmtBRL(custoMedio) : "—"}
           {product.custoMedio == null && custoMedio > 0 && <span style={{ display: "block", fontSize: ".75rem", color: "var(--muted)" }}>manual</span>}
         </td>
-        <td data-label="Preço venda" style={{ textAlign: "right", color: precoMax > 0 ? "var(--green)" : "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }}>
+        <td data-label="Preço venda" data-sec="fin" style={{ textAlign: "right", color: precoMax > 0 ? "var(--green)" : "var(--muted)", fontWeight: 600, whiteSpace: "nowrap" }}>
           {precoMax > 0 ? (precoMin === precoMax ? fmtBRL(precoMax) : `${fmtBRL(precoMin)}–${fmtBRL(precoMax)}`) : "—"}
           {temPromo && <span style={{ display: "block", fontSize: ".75rem", color: "var(--accent)" }}>promoção</span>}
         </td>
-        <td data-label="Imposto" style={{ textAlign: "right", whiteSpace: "nowrap", color: imposto > 0 ? "var(--red)" : "var(--muted)" }}>{imposto > 0 ? `${imposto.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : "—"}</td>
+        <td data-label="Imposto" data-sec="fin" style={{ textAlign: "right", whiteSpace: "nowrap", color: imposto > 0 ? "var(--red)" : "var(--muted)" }}>{imposto > 0 ? `${imposto.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : "—"}</td>
         <td data-label="Movimentar" data-cell="acoes">
           <div className="row-actions" style={{ justifyContent: "center" }}>
             <button type="button" className="btn btn-success btn-xs" title="Entrada (compra)" onClick={() => onMov("entrada")}>＋ Entrada</button>
@@ -1998,19 +2006,19 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-start", marginBottom: 12 }}>
         <div className="config-field" style={{ margin: 0, maxWidth: 200 }}>
-          <label>Estoque deve durar</label>
+          <label htmlFor="repor-dias">Estoque deve durar</label>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input inputMode="numeric" value={dias} onChange={(e) => setDias(e.target.value)} style={{ width: 90 }} />
-            <span style={{ color: "var(--muted)", fontSize: ".85rem" }}>dias</span>
+            <input id="repor-dias" inputMode="numeric" value={dias} onChange={(e) => setDias(e.target.value)} style={{ width: 90 }} aria-describedby="repor-dias-un" />
+            <span id="repor-dias-un" style={{ color: "var(--muted)", fontSize: ".85rem" }}>dias</span>
           </div>
         </div>
         <div className="config-field" style={{ margin: 0, maxWidth: 230 }}>
-          <label>Folga de segurança</label>
+          <label htmlFor="repor-folga">Folga de segurança</label>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <input inputMode="numeric" value={folga} onChange={(e) => setFolga(e.target.value)} style={{ width: 90 }} />
-            <span style={{ color: "var(--muted)", fontSize: ".85rem" }}>dias a mais</span>
+            <input id="repor-folga" inputMode="numeric" value={folga} onChange={(e) => setFolga(e.target.value)} style={{ width: 90 }} aria-describedby="repor-folga-un repor-folga-dica" />
+            <span id="repor-folga-un" style={{ color: "var(--muted)", fontSize: ".85rem" }}>dias a mais</span>
           </div>
-          <div className="hint">Pra não raspar o zero num dia de venda forte.</div>
+          <div id="repor-folga-dica" className="hint">Pra não raspar o zero num dia de venda forte.</div>
         </div>
         <div style={{ fontSize: ".82rem", color: "var(--muted)", paddingTop: 26 }}>
           Pedindo para <b style={{ color: "var(--text)" }}>{plano.diasACobrir} dias</b>

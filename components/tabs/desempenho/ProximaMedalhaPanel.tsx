@@ -296,7 +296,7 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
                   {" "}· limite {(q.limite * 100).toFixed(q.limite < 0.01 ? 1 : 0)}%
                 </span>
               </span>
-              <span style={{ whiteSpace: "nowrap", textAlign: "right" }}>
+              <span style={{ textAlign: "right", overflowWrap: "anywhere", minWidth: 0 }}>
                 <b>{q.taxa == null ? "—" : `${fmtPct((q.taxa * 100), 2)}`}</b>
                 {/* Protegido: o ML zera o numero visivel e guarda o real em
                     `excluded`. A tela mostra o real — a protecao acaba numa
@@ -344,7 +344,7 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
           {REQUISITOS_COMUNS.map((r) => (
             <div key={r.id} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: ".82rem" }}>
               <span>{r.label}</span>
-              <span style={{ color: "var(--muted)", textAlign: "right", whiteSpace: "nowrap" }}>{r.exigencia}</span>
+              <span style={{ color: "var(--muted)", textAlign: "right", overflowWrap: "anywhere", minWidth: 0, maxWidth: "62%" }}>{r.exigencia}</span>
             </div>
           ))}
         </div>
@@ -384,7 +384,7 @@ function BarraEixo({ titulo, eixo, formato, gargalo }: {
             </span>
           )}
         </span>
-        <span style={{ whiteSpace: "nowrap" }}>
+        <span style={{ overflowWrap: "anywhere", textAlign: "right", minWidth: 0 }}>
           <b style={{ color: eixo.ok ? "var(--green)" : "var(--text)" }}>{formato(eixo.atual)}</b>
           <span style={{ color: "var(--muted)" }}> / {formato(eixo.alvo)}</span>
         </span>

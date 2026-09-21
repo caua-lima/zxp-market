@@ -103,6 +103,7 @@ export function AvatarUpload({ size = 28 }: { size?: number }) {
         disabled={uploading}
         title="Trocar foto de perfil"
         aria-label="Trocar foto de perfil"
+        className="avatar-badge"
         style={{
           position: "absolute", bottom: -2, right: -2, width: badgeSize, height: badgeSize, borderRadius: "50%",
           background: "var(--accent)", border: "2px solid var(--surface)", display: "flex", alignItems: "center",

@@ -188,8 +188,8 @@ export default function AdsTable({
   return (
     <div>
       <div style={{ fontSize: ".75rem", color: "var(--muted)", marginBottom: 6 }}>
-        Ordene pelo cabeçalho ou por &quot;Ordenar por&quot; acima — <b>Campanha</b> agrupa os anúncios da mesma verba.
-        Passe o mouse em um número, ou abra os detalhes do anúncio, pra ver a conta por trás.
+        Ordene por &quot;Ordenar por&quot; (no computador, também pelo cabeçalho) — <b>Campanha</b> agrupa os anúncios da mesma verba.
+        Abra &quot;Ver detalhes&quot; pra ver a conta por trás de cada número.
       </div>
 
       <div className="table-wrapper" style={{ border: "none" }}>
