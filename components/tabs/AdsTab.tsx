@@ -21,6 +21,7 @@ import AdsChat from "@/components/tabs/ads/AdsChat";
 import AdsDataQuality from "@/components/tabs/ads/AdsDataQuality";
 import AdsFilters, { AdsStatusQuickFilters, type FiltrosAdsState } from "@/components/tabs/ads/AdsFilters";
 import AdsTable from "@/components/tabs/ads/AdsTable";
+import TelaHeader from "@/components/TelaHeader";
 import { ORDEM_INICIAL, type OrdemAds } from "@/lib/domain/ads-ordenacao";
 import AdDetailDrawer from "@/components/tabs/ads/AdDetailDrawer";
 import { num, type AdItem, type LinhaAds, type Modo, type StatusAnuncio } from "@/components/tabs/ads/ads-types";
@@ -391,24 +392,26 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
 
   return (
     <div className="dash">
-      <div className="tab-head">
-        <div className="tab-head-left">
-          <h2 className="tab-title">Ads</h2>
-          <button
-            type="button"
-            className="btn btn-sm btn-ghost"
-            onClick={atualizarTudo}
-            disabled={loading || ressincronizando}
-            title="Ressincroniza os pedidos do período e busca o Ads ao vivo no Mercado Livre."
-          >
-            {ressincronizando ? "Sincronizando…" : loading ? "..." : "⟳ Atualizar"}
-          </button>
-        </div>
-        <DateRangePicker from={range.from} to={range.to} onApply={(from, to) => setRange({ from, to })} />
-      </div>
-      <div style={{ fontSize: ".75rem", color: desatualizado ? "var(--warning)" : "var(--muted)", marginTop: -6 }}>
-        {statusAtualizacaoTxt}{desatualizado ? " · dados desatualizados, considere atualizar" : ""}
-      </div>
+      {/* O cabeçalho padrão (o mesmo de Custos, Estoque, Full…): título, contexto e o que pertence
+          ao cabeçalho — atualizar e o período. Antes era um <div className="tab-head"> escrito à mão. */}
+      <TelaHeader
+        titulo="Ads"
+        subtitulo={`${statusAtualizacaoTxt}${desatualizado ? " · dados desatualizados, considere atualizar" : ""}`}
+        extra={(
+          <>
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost"
+              onClick={atualizarTudo}
+              disabled={loading || ressincronizando}
+              title="Ressincroniza os pedidos do período e busca o Ads ao vivo no Mercado Livre."
+            >
+              {ressincronizando ? "Sincronizando…" : loading ? "..." : "⟳ Atualizar"}
+            </button>
+            <DateRangePicker from={range.from} to={range.to} onApply={(from, to) => setRange({ from, to })} />
+          </>
+        )}
+      />
 
       {/* Toggle de análise */}
       <div className="seg" style={{ alignSelf: "flex-start" }} role="group" aria-label="Modo de análise">

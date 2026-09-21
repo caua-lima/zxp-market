@@ -12,6 +12,9 @@ import type { UserData } from "@/components/useUserData";
 import { useAccess } from "@/components/tabs/AccessGuard";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import TelaHeader from "@/components/TelaHeader";
+import MetricCard from "@/components/MetricCard";
+import EstadoVazio from "@/components/EstadoVazio";
+import StatusBadge from "@/components/StatusBadge";
 import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
 import {
   filtrarCustos, ordenarCustos, filtrosAtivos, impactoDaLista, acumuladoEProjetado,
@@ -315,61 +318,50 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
       {/* Quatro números, cada um respondendo uma pergunta. Eram seis, e
           "custo fixo por dia" e "mensais fixos" ao lado de "impacto no mês"
           obrigavam a somar de cabeça pra achar o total. */}
+      {/*
+        Quatro números, cada um respondendo uma pergunta — no cartão padrão (MetricCard).
+
+        O rótulo diz QUAL dos dois números é: "pesa no mês" com o valor do mês inteiro, no dia
+        8, era uma afirmação falsa com cara de fato. "Apropriado" é o que a operação já
+        reconhece como custo do período — não é pagamento confirmado: a tela não sabe quando
+        o dinheiro saiu.
+
+        Sem o faturamento do mês, os DOIS percentuais são "—" pelo MESMO motivo: um cartão só.
+      */}
       <div className="kpi-grid">
-        <div className="kpi k-neg">
-          {/*
-            O rótulo diz QUAL dos dois números é. "Pesa no mês" com o valor
-            do mês inteiro, no dia 8, era uma afirmação falsa com cara de fato.
-            "Apropriado" é o que a operação já reconhece como custo do período
-            — não é pagamento confirmado: a tela não sabe quando o dinheiro saiu.
-          */}
-          <div className="k-lbl">{mesEmCurso ? "Operação — projeção do mês" : "Operação no mês"}</div>
-          <div className="k-val" style={{ color: "var(--red-text)" }}>{fmtBRL(totalOperacao)}</div>
-          <div className="k-sub">
-            {mesEmCurso
-              ? <>apropriado até hoje <b>{fmtBRL(impactoOperacao.acumulado)}</b></>
-              : <>custos da operação</>}
-          </div>
-        </div>
-        <div className="kpi k-acc">
-          <div className="k-lbl">{mesEmCurso ? "Só na DRE — projeção" : "Só na DRE"}</div>
-          <div className="k-val" style={{ color: totalEmpresa ? "var(--text)" : "var(--text-muted)" }}>{fmtBRL(totalEmpresa)}</div>
-          <div className="k-sub">
-            {mesEmCurso && totalEmpresa
-              ? <>apropriado até hoje <b>{fmtBRL(impactoEmpresa.acumulado)}</b></>
-              : <>despesas da empresa</>}
-          </div>
-        </div>
-        {/*
-          Sem o faturamento do mês, os DOIS percentuais são "—" pelo MESMO motivo. Dois cartões
-          vazios ocupavam a tela do celular inteira pra dizer a mesma frase duas vezes.
-        */}
+        <MetricCard
+          tom="neg" rotulo={mesEmCurso ? "Operação — projeção do mês" : "Operação no mês"}
+          valor={fmtBRL(totalOperacao)} corValor="var(--red-text)"
+          sub={mesEmCurso ? <>apropriado até hoje <b>{fmtBRL(impactoOperacao.acumulado)}</b></> : "custos da operação"}
+        />
+        <MetricCard
+          tom="acc" rotulo={mesEmCurso ? "Só na DRE — projeção" : "Só na DRE"}
+          valor={fmtBRL(totalEmpresa)} corValor={totalEmpresa ? "var(--text)" : "var(--text-muted)"}
+          sub={mesEmCurso && totalEmpresa ? <>apropriado até hoje <b>{fmtBRL(impactoEmpresa.acumulado)}</b></> : "despesas da empresa"}
+        />
         {pctFaturamento == null && pctLucro == null ? (
-          <div className="kpi k-warn" style={{ gridColumn: "1 / -1" }}>
-            <div className="k-lbl">% do faturamento e % do lucro</div>
-            <div className="k-val" style={{ color: "var(--yellow)" }}>—</div>
-            <div className="k-sub">sem base pra dividir: o faturamento ou o lucro do mês não carregou (ou o lucro não é positivo). O custo apropriado da operação segue no primeiro cartão.</div>
-          </div>
-        ) : (<>
-        <div className="kpi k-warn">
-          <div className="k-lbl">% do faturamento</div>
-          <div className="k-val" style={{ color: "var(--yellow)" }}>{pctFaturamento != null ? `${fmtPct(pctFaturamento, 1)}` : "—"}</div>
-          <div className="k-sub">
-            {pctFaturamento != null
-              ? <>apropriado da operação ÷ faturamento líquido, ambos de 1º até hoje{horaDaReferencia ? ` · faturamento das ${horaDaReferencia}` : ""}</>
-              : "faturamento do mês indisponível — sem base pra dividir"}
-          </div>
-        </div>
-        <div className="kpi k-neg">
-          <div className="k-lbl">% do lucro</div>
-          <div className="k-val" style={{ color: "var(--red-text)" }}>{pctLucro != null ? `${fmtPct(pctLucro, 1)}` : "—"}</div>
-          <div className="k-sub">
-            {pctLucro != null
-              ? <>apropriado da operação ÷ lucro antes dos custos, ambos de 1º até hoje</>
-              : "lucro do mês indisponível ou não positivo — sem base pra dividir"}
-          </div>
-        </div>
-        </>)}
+          <MetricCard
+            tom="warn" larguraTotal rotulo="% do faturamento e % do lucro" valor="—" corValor="var(--yellow)"
+            sub="sem base pra dividir: o faturamento ou o lucro do mês não carregou (ou o lucro não é positivo). O custo apropriado da operação segue no primeiro cartão."
+          />
+        ) : (
+          <>
+            <MetricCard
+              tom="warn" rotulo="% do faturamento"
+              valor={pctFaturamento != null ? fmtPct(pctFaturamento, 1) : "—"} corValor="var(--yellow)"
+              sub={pctFaturamento != null
+                ? `apropriado da operação ÷ faturamento líquido, ambos de 1º até hoje${horaDaReferencia ? ` · faturamento das ${horaDaReferencia}` : ""}`
+                : "faturamento do mês indisponível — sem base pra dividir"}
+            />
+            <MetricCard
+              tom="neg" rotulo="% do lucro"
+              valor={pctLucro != null ? fmtPct(pctLucro, 1) : "—"} corValor="var(--red-text)"
+              sub={pctLucro != null
+                ? "apropriado da operação ÷ lucro antes dos custos, ambos de 1º até hoje"
+                : "lucro do mês indisponível ou não positivo — sem base pra dividir"}
+            />
+          </>
+        )}
       </div>
 
       {aviso && (
@@ -497,8 +489,8 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
 
       {vista === "sem-cadastro" ? (
         <div className="panel">
-          <div className="empty-state">
-            <span className="empty-ico">💸</span>
+          <div className="empty-state" role="status">
+            <span className="empty-ico" aria-hidden="true">💸</span>
             {/*
               "Não carregou" não pode aparecer como "nenhum custo cadastrado".
 
@@ -535,33 +527,37 @@ export default function CustosTab({ uid, data }: { uid: string; data: UserData }
 
           {vista === "filtro-vazio" && (
             <div className="panel">
-              <div className="empty-state">
-                <span className="empty-ico">🔎</span>
-                Nenhum custo passa pelos filtros atuais. Existem <b>{data.costs.length}</b> cadastrados
-                {filtro.incluirArquivados ? "" : <> ({porSituacao.ativo} ativos)</>} — o que sumiu foi escondido pelo filtro, não apagado.
-                <div style={{ marginTop: 10 }}>
+              <EstadoVazio
+                icone="🔎"
+                acao={(
                   <button type="button" className="btn btn-primary btn-sm" onClick={() => setFiltro((f) => ({ ...FILTRO_VAZIO, incluirArquivados: f.incluirArquivados }))}>
                     Limpar busca e filtros
                   </button>
-                </div>
-              </div>
+                )}
+              >
+                Nenhum custo passa pelos filtros atuais. Existem <b>{data.costs.length}</b> cadastrados
+                {filtro.incluirArquivados ? "" : <> ({porSituacao.ativo} ativos)</>} — o que sumiu foi escondido pelo filtro, não apagado.
+              </EstadoVazio>
             </div>
           )}
 
           {vista === "sem-ativos" && (
             <div className="panel">
-              <div className="empty-state">
-                <span className="empty-ico">🗄️</span>
+              <EstadoVazio
+                icone="🗄️"
+                acao={(
+                  <>
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => setFiltro((f) => ({ ...f, incluirArquivados: true }))}>
+                      Mostrar arquivados e futuros
+                    </button>
+                    {canEdit && (
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirNovo("dash")}>＋ Novo custo</button>
+                    )}
+                  </>
+                )}
+              >
                 Nenhum custo vale hoje. Há <b>{porSituacao.encerrado}</b> encerrado(s) e <b>{porSituacao.futuro}</b> futuro(s) escondidos.
-                <div style={{ marginTop: 10, display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-                  <button type="button" className="btn btn-primary btn-sm" onClick={() => setFiltro((f) => ({ ...f, incluirArquivados: true }))}>
-                    Mostrar arquivados e futuros
-                  </button>
-                  {canEdit && (
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirNovo("dash")}>＋ Novo custo</button>
-                  )}
-                </div>
-              </div>
+              </EstadoVazio>
             </div>
           )}
 
@@ -678,9 +674,9 @@ function LinhaCusto({ custo: c, canEdit, hojeISO, onEditar, onArquivar, onExclui
           <div style={{ fontWeight: 700, overflowWrap: "anywhere" }}>{c.nome || "(sem nome)"}</div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4, fontSize: ".8rem", color: "var(--muted)" }}>
             {foraDeVigor && (
-              <span className="chip" title={ROTULO_DA_SITUACAO[situacao].explica} style={{ fontWeight: 700 }}>
+              <StatusBadge tom={situacao === "futuro" ? "info" : "neutro"} titulo={ROTULO_DA_SITUACAO[situacao].explica}>
                 {ROTULO_DA_SITUACAO[situacao].texto}
-              </span>
+              </StatusBadge>
             )}
             <span className="chip">{FREQUENCIA_META[c.freq]?.rotulo ?? c.freq}</span>
             {c.categoria && <span className="chip">{COST_CATEGORIA_LABEL[c.categoria]}</span>}
@@ -748,7 +744,7 @@ function LinhaCusto({ custo: c, canEdit, hojeISO, onEditar, onArquivar, onExclui
               >
                 Excluir definitivamente
               </button>
-              <div style={{ fontSize: ".72rem", color: "var(--muted)", marginTop: 6, maxWidth: 210, lineHeight: 1.5 }}>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 6, maxWidth: 210, lineHeight: 1.5 }}>
                 Some de todos os meses, inclusive os já fechados. Arquivar preserva o histórico.
               </div>
             </div>

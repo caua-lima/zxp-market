@@ -116,3 +116,29 @@ describe("cores: sufixo hexadecimal só vale sobre hexadecimal", () => {
     expect(ruins).toEqual([]);
   });
 });
+
+describe("formulários: todo rótulo ligado ao seu campo", () => {
+  it("nenhum <label>Texto</label> seguido de input/select/textarea sem htmlFor", () => {
+    const ruins: string[] = [];
+    const rx = /<label((?:\s[^>]*?)?)>([^<{]+)<\/label>\s*<(input|select|textarea)\b/g;
+    for (const p of tsx) {
+      const s = fs.readFileSync(p, "utf8");
+      for (const m of s.matchAll(rx)) {
+        if (/htmlFor/.test(m[1] ?? "")) continue;
+        // o campo pode estar dentro do label (associação implícita) — aqui o campo é IRMÃO, então precisa de htmlFor
+        ruins.push(`${path.relative(RAIZ, p)}: <label>${m[2]?.trim()}</label>`);
+      }
+    }
+    expect(ruins).toEqual([]);
+  });
+
+  it("nenhum <button> dentro de <button> escrito na mesma expressão JSX (o caso da barra lateral)", () => {
+    const ruins: string[] = [];
+    for (const p of tsx) {
+      const s = fs.readFileSync(p, "utf8");
+      // procura <button ...> ... <button  sem um </button> no meio
+      for (const m of s.matchAll(/<button\b[^>]*>(?:(?!<\/button>)[\s\S]){0,600}?<button\b/g)) ruins.push(`${path.relative(RAIZ, p)}: ${m[0].slice(0, 50).replace(/\s+/g, " ")}`);
+    }
+    expect(ruins).toEqual([]);
+  });
+});

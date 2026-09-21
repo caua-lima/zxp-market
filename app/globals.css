@@ -1355,13 +1355,13 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
 .ads-ordenar{display:flex;gap:6px 8px;flex-wrap:wrap;align-items:center;flex:1 1 280px;min-width:0}
 .ads-ordenar select{min-width:0;max-width:100%}
 .ads-ordenar-ativa{flex:1 1 100%;font-size:.8rem;color:var(--muted)}
-.ads-faixa{border:0;margin:0;padding:0;min-width:0}
-.ads-faixa legend{font-size:.8rem;font-weight:700;color:var(--muted);padding:0 0 4px}
-.ads-faixa-un{font-weight:400}
-.ads-faixa-campos{display:flex;align-items:center;gap:6px}
-.ads-faixa-campos input{min-width:0}
-.ads-faixa input[aria-invalid="true"]{border-color:var(--red)}
-.ads-faixa-erro{margin-top:4px;font-size:.8rem;color:var(--red-text);max-width:260px}
+.campo-faixa{border:0;margin:0;padding:0;min-width:0}
+.campo-faixa legend{font-size:.8rem;font-weight:700;color:var(--muted);padding:0 0 4px}
+.campo-faixa-un{font-weight:400}
+.campo-faixa-campos{display:flex;align-items:center;gap:6px}
+.campo-faixa-campos input{min-width:0}
+.campo-faixa input[aria-invalid="true"]{border-color:var(--red)}
+.campo-faixa-erro{margin-top:4px;font-size:.8rem;color:var(--red-text);max-width:260px}
 .ads-filtros-resumo{display:flex;gap:8px 12px;flex-wrap:wrap;align-items:center;font-size:.82rem;color:var(--muted)}
 .ads-quick{display:flex;gap:6px;flex-wrap:wrap}
 .ads-quick-btn{font-size:.8rem;font-weight:700;padding:4px 10px;min-height:32px;border-radius:8px;border:1px solid transparent;cursor:pointer;font-family:inherit}
@@ -1440,12 +1440,12 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
 @media(max-width:560px){.custo-valores{text-align:left;flex:1 1 100%}}
 
 /* Campos dos filtros de Ads (que perderam o estilo inline ao ganhar rótulo e legenda). */
-.ads-busca input,.ads-faixa input,.ads-ordenar select{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:.9rem;min-height:40px;font-family:inherit}
-.ads-busca input:focus-visible,.ads-faixa input:focus-visible,.ads-ordenar select:focus-visible{outline:2px solid var(--focus);outline-offset:1px;border-color:var(--focus)}
-.ads-faixa input[type=number]{-moz-appearance:textfield;appearance:textfield}
+.ads-busca input,.campo-faixa input,.ads-ordenar select,.campo-busca{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:.9rem;min-height:40px;font-family:inherit}
+.ads-busca input:focus-visible,.campo-faixa input:focus-visible,.ads-ordenar select:focus-visible,.campo-busca:focus-visible{outline:2px solid var(--focus);outline-offset:1px;border-color:var(--focus)}
+.campo-faixa input[type=number]{-moz-appearance:textfield;appearance:textfield}
 @media(max-width:720px){
   /* 16px: abaixo disso o Safari do iPhone dá zoom na página ao focar o campo. */
-  .ads-busca input,.ads-faixa input,.ads-ordenar select{font-size:16px;min-height:44px}
+  .ads-busca input,.campo-faixa input,.ads-ordenar select,.campo-busca{font-size:16px;min-height:44px}
   .ads-faixas{gap:10px 16px}
 }
 
@@ -1467,4 +1467,49 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
   .tbl-estoque tbody td[data-sec]{display:none}
   .tbl-estoque tbody tr.fin-aberto td[data-sec]{display:flex}
   .tr-fin-btn{display:inline-flex;align-items:center;min-height:44px;margin-top:6px;padding:0 2px;background:none;border:0;color:var(--brand);font:inherit;font-size:.8125rem;font-weight:700;cursor:pointer}
+}
+
+/* Chip de filtro (Pedidos): estado por aria-pressed; alvo de 44px no toque. */
+@media(pointer:coarse){.chip-filtro{min-height:44px}}
+.campo-busca{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 14px;color:var(--text);font-size:.9rem;font-family:inherit;min-height:40px}
+@media(max-width:720px){.campo-busca{font-size:16px;min-height:44px}}
+
+/* Alça de arrastar do kanban no toque: 44px, e só ela captura o gesto — o resto do card rola a página. */
+.kanban-alca{flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;margin:-8px 0 -8px -10px;background:none;border:0;border-radius:8px;color:var(--muted);cursor:grab;touch-action:none}
+.kanban-alca:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+
+/* Alvos pequenos achados na auditoria de cada tela: botões de texto do Dashboard (19px de altura),
+   o "✕" de dispensar, a seta de expandir do Estoque (11x19) e os <summary> de <details> (18-20px).
+   No computador o piso é 32px; no toque, 44px. A área cresce, o desenho não. */
+.ac-cta{min-height:32px;padding-inline:6px}
+.ac-dismiss{min-width:28px;min-height:28px}
+.expandir-btn{min-width:28px;min-height:32px;display:inline-flex;align-items:center;justify-content:center}
+summary{min-height:28px}
+@media(pointer:coarse){
+  .ac-cta,.ac-dismiss,.expandir-btn{min-height:44px;min-width:44px}
+  /* min-height, sem mexer no display: `summary` com display:flex perde o marcador do <details>. */
+  summary{min-height:44px}
+}
+
+/* Ação do MetricCard: um link-botão discreto ("Ver 4 produtos →") dentro do cartão. */
+.k-acao{display:inline-flex;align-items:center;min-height:32px;margin-top:6px;padding:0;background:none;border:0;color:var(--brand);font:inherit;font-size:.8125rem;font-weight:700;cursor:pointer;text-align:left}
+.k-acao:hover{text-decoration:underline}
+.k-acao:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
+@media(pointer:coarse){.k-acao{min-height:44px}}
+
+/* ─── TECLADO VIRTUAL (components/ViewportVisivel.tsx) ──────────────────────────────────────
+   No iOS o teclado sobrepõe a página sem encolher o layout. Quando ele cobre, ViewportVisivel
+   publica --vv-altura/--vv-topo/--vv-fundo/--teclado; os overlays passam a ocupar SÓ a área
+   visível e o que é colado embaixo sobe. Sem as variáveis (desktop, Android, sem visualViewport)
+   os fallbacks reproduzem o comportamento de antes: top 0, bottom 0, altura automática. */
+.modal-overlay,.drawer-overlay,.cmdk-overlay{top:var(--vv-topo,0px);bottom:var(--vv-fundo,0px);height:var(--vv-altura,auto)}
+.drawer-panel{top:var(--vv-topo,0px);bottom:var(--vv-fundo,0px);height:var(--vv-altura,auto)}
+.modal-box{max-height:90vh;max-height:min(90dvh,calc(var(--vv-altura,100dvh) - 16px))}
+.chat-fab,.chat-flutuante{bottom:calc(18px + var(--teclado,0px))}
+/* O rodapé do formulário (Salvar/Cancelar) acompanha a rolagem do modal: com o teclado aberto e o
+   formulário mais alto que a área visível, o botão continua ao alcance do dedo. */
+.modal-box .modal-btns{position:sticky;bottom:-28px;background:var(--surface);padding-top:12px;margin-top:8px;z-index:1}
+@media(max-width:720px){
+  .modal-box .modal-btns{bottom:-20px}
+  .modal-box{max-height:85vh;max-height:min(85dvh,calc(var(--vv-altura,100dvh) - 16px))}
 }

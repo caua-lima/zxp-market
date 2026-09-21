@@ -8,6 +8,7 @@ import { Delta } from "@/components/dashboard/ExecutiveKpis";
 import CustosColetaFull, { type RemessaCusto } from "@/components/tabs/full/CustosColetaFull";
 import ApresentacaoDre from "@/components/tabs/dre/ApresentacaoDre";
 import CustoForm from "@/components/custos/CustoForm";
+import TelaHeader from "@/components/TelaHeader";
 import { useAccess } from "@/components/tabs/AccessGuard";
 import type { DadosDre } from "@/lib/domain/dre-apresentacao";
 import {
@@ -552,24 +553,16 @@ export default function DreTab() {
 
   return (
     <div className="dash">
-      <div className="tab-head">
-        <div className="tab-head-left">
-          <h2 className="tab-title">DRE</h2>
-          <span className="tab-head-sub" style={{ textTransform: "capitalize" }}>
-            {fmtPeriodo(range.from, range.to)} · {m.ordersCount} pedido(s)
-          </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <button
-            type="button" className="btn btn-primary btn-sm"
-            onClick={() => setApresentando(true)}
-            title="Monta uma apresentação de 4 páginas do fechamento do período, pronta pra salvar em PDF e mandar pro sócio"
-          >
-            Apresentação em PDF
-          </button>
-          <DateRangePicker from={range.from} to={range.to} onApply={(from, to) => setRange({ from, to })} />
-        </div>
-      </div>
+      <TelaHeader
+        titulo="DRE"
+        subtitulo={`${fmtPeriodo(range.from, range.to)} · ${m.ordersCount} pedido(s)`}
+        acao={{
+          rotulo: "Apresentação em PDF",
+          onClick: () => setApresentando(true),
+          titulo: "Monta uma apresentação de 4 páginas do fechamento do período, pronta pra salvar em PDF e mandar pro sócio",
+        }}
+        extra={<DateRangePicker from={range.from} to={range.to} onApply={(from, to) => setRange({ from, to })} />}
+      />
 
       {m.adsFalhou && (
         <div className="note note-warn">

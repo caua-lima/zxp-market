@@ -113,8 +113,8 @@ export default function AdsChangelogPanel({
           </div>
           <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(min(220px,100%),1fr))" }}>
             <div className="config-field">
-              <label>Campanha</label>
-              <select value={campaignId} onChange={(e) => selecionarCampanha(e.target.value)}>
+              <label htmlFor="adschg-1">Campanha</label>
+              <select id="adschg-1" value={campaignId} onChange={(e) => selecionarCampanha(e.target.value)}>
                 <option value="">Selecione…</option>
                 {campanhasOrdenadas.map((c) => (
                   <option key={c.id} value={c.id}>{c.name}{c.status ? ` (${c.status})` : ""}</option>
@@ -139,8 +139,8 @@ export default function AdsChangelogPanel({
               )}
             </div>
             <div className="config-field">
-              <label>Tipo de mudança</label>
-              <select value={tipo} onChange={(e) => setTipo(e.target.value as AdsAlteracaoTipo)}>
+              <label htmlFor="adschg-2">Tipo de mudança</label>
+              <select id="adschg-2" value={tipo} onChange={(e) => setTipo(e.target.value as AdsAlteracaoTipo)}>
                 {ADS_ALTERACAO_TIPOS.map((t) => (
                   <option key={t} value={t}>{ADS_ALTERACAO_TIPO_LABEL[t]}</option>
                 ))}
@@ -149,16 +149,16 @@ export default function AdsChangelogPanel({
           </div>
           <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", marginTop: 10 }}>
             <div className="config-field">
-              <label>Valor anterior (opcional)</label>
-              <input type="text" placeholder="Ex: 16x" value={valorAnterior} onChange={(e) => setValorAnterior(e.target.value)} />
+              <label htmlFor="adschg-3">Valor anterior (opcional)</label>
+              <input id="adschg-3" type="text" placeholder="Ex: 16x" value={valorAnterior} onChange={(e) => setValorAnterior(e.target.value)} />
             </div>
             <div className="config-field">
-              <label>Valor novo (opcional)</label>
-              <input type="text" placeholder="Ex: 20x" value={valorNovo} onChange={(e) => setValorNovo(e.target.value)} />
+              <label htmlFor="adschg-4">Valor novo (opcional)</label>
+              <input id="adschg-4" type="text" placeholder="Ex: 20x" value={valorNovo} onChange={(e) => setValorNovo(e.target.value)} />
             </div>
             <div className="config-field">
-              <label>Motivo (opcional)</label>
-              <input type="text" placeholder="Ex: ROAS acima do alvo há 5 dias" value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+              <label htmlFor="adschg-5">Motivo (opcional)</label>
+              <input id="adschg-5" type="text" placeholder="Ex: ROAS acima do alvo há 5 dias" value={motivo} onChange={(e) => setMotivo(e.target.value)} />
             </div>
           </div>
           <div className="config-field" style={{ marginTop: 10 }}>
@@ -183,37 +183,37 @@ export default function AdsChangelogPanel({
 
         <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
           <div className="config-field">
-            <label>Produto</label>
-            <select value={filtroProduto} onChange={(e) => setFiltroProduto(e.target.value)}>
+            <label htmlFor="adschg-6">Produto</label>
+            <select id="adschg-6" value={filtroProduto} onChange={(e) => setFiltroProduto(e.target.value)}>
               <option value="">Todos</option>
               {produtosOrdenados.map((p) => (<option key={p.id} value={p.id}>{p.name || "Sem nome"}</option>))}
             </select>
           </div>
           <div className="config-field">
-            <label>Campanha</label>
-            <select value={filtroCampanha} onChange={(e) => setFiltroCampanha(e.target.value)}>
+            <label htmlFor="adschg-7">Campanha</label>
+            <select id="adschg-7" value={filtroCampanha} onChange={(e) => setFiltroCampanha(e.target.value)}>
               <option value="">Todas</option>
               {campanhasOrdenadas.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
             </select>
           </div>
           <div className="config-field">
-            <label>Tipo</label>
-            <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value as AdsAlteracaoTipo | "")}>
+            <label htmlFor="adschg-8">Tipo</label>
+            <select id="adschg-8" value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value as AdsAlteracaoTipo | "")}>
               <option value="">Todos</option>
               {ADS_ALTERACAO_TIPOS.map((t) => (<option key={t} value={t}>{ADS_ALTERACAO_TIPO_LABEL[t]}</option>))}
             </select>
           </div>
           <div className="config-field">
-            <label>Responsável</label>
-            <input type="text" placeholder="nome ou e-mail" value={filtroResponsavel} onChange={(e) => setFiltroResponsavel(e.target.value)} />
+            <label htmlFor="adschg-9">Responsável</label>
+            <input id="adschg-9" type="text" placeholder="nome ou e-mail" value={filtroResponsavel} onChange={(e) => setFiltroResponsavel(e.target.value)} />
           </div>
           <div className="config-field">
-            <label>De</label>
-            <input type="date" value={filtroDesde} onChange={(e) => setFiltroDesde(e.target.value)} />
+            <label htmlFor="adschg-10">De</label>
+            <input id="adschg-10" type="date" value={filtroDesde} onChange={(e) => setFiltroDesde(e.target.value)} />
           </div>
           <div className="config-field">
-            <label>Até</label>
-            <input type="date" value={filtroAte} onChange={(e) => setFiltroAte(e.target.value)} />
+            <label htmlFor="adschg-11">Até</label>
+            <input id="adschg-11" type="date" value={filtroAte} onChange={(e) => setFiltroAte(e.target.value)} />
           </div>
         </div>
         {filtrosAtivos && (

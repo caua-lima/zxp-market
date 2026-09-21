@@ -16,6 +16,13 @@ O porquê de cada regra está no comentário do módulo citado — este arquivo 
 | Fonte com erro / desatualizada | `components/AvisoDaFonte.tsx` | "Não consegui carregar" ≠ "não há". Vazio e filtro-sem-resultado são de cada tela |
 | Períodos e "hoje" | `lib/domain/periodos.ts` | Dia de Brasília, atalhos recalculados na virada |
 | Cor com transparência | `lib/ui-cor.ts` (`tom`) | **Nunca** `${cor}44`: com `var(--x)` vira CSS inválido |
+| Cabeçalho de tela | `components/TelaHeader.tsx` | Todas as abas com título usam (Ads, Desempenho e DRE migraram). Uma ação principal; o resto em `extra`/menu |
+| Indicador (KPI) | `components/MetricCard.tsx` | Rótulo com a unidade, valor, base/ressalva em `sub`, `acao` opcional que leva ao filtro. Valor de texto vermelho é `--red-text` |
+| Selo de estado | `components/StatusBadge.tsx` | Texto sempre; cor só reforça |
+| Lista vazia | `components/EstadoVazio.tsx` | Só apresentação — a causa vem do domínio da tela |
+| Filtro de faixa mín/máx | `components/CampoFaixa.tsx` | `<fieldset>` com nome, unidade e aviso de faixa invertida (Ads e Pedidos) |
+| Lista longa | `components/usePaginacaoProgressiva.ts` + `RodapeDePagina.tsx` | 60 por vez; o limite volta ao começo quando a chave da lista muda |
+| Teclado virtual | `components/ViewportVisivel.tsx` + `lib/domain/viewport-teclado.ts` | Publica `--vv-*`/`--teclado`; o CSS tem fallback, sem elas nada muda |
 
 Ordem dos efeitos em `useDialogo` importa (comentário no arquivo): o `inert` sai **antes** de o
 foco voltar, e o elemento anterior é gravado **antes** do `inert` (aplicá-lo desfoca o botão).
@@ -46,11 +53,23 @@ texto em `--red` ou contraste < 4,5:1 nos tokens de texto.
   pequeno, a área clicável cresce. 24px é o piso da WCAG 2.5.8, 44px é a meta de conforto.
 - **Botão dentro de botão / link dentro de botão não existe.** Dois irmãos.
 
+## Teclado virtual e orientação
+
+- **Android/Chrome:** `interactive-widget=resizes-content` no viewport (app/layout.tsx): o teclado encolhe o layout e `dvh`/`fixed` seguem a área visível.
+- **iOS/Safari** ignora essa chave: o teclado sobrepõe sem encolher. `ViewportVisivel` lê a `visualViewport` e, só quando o teclado cobre ≥ 120px e não há zoom por pinça, publica a área visível; modal, drawer, busca rápida e chat passam a segui-la. O rodapé Salvar/Cancelar do modal é `sticky`.
+- **Orientação:** o manifest deixou de travar em retrato (`"any"`). Tabelas largas são mais legíveis em paisagem, e o retrato com teclado aberto é o pior caso. Medido em 844×390: sem elemento fora da tela e rodapé do formulário visível. Instalações antigas do PWA só pegam o valor novo ao reinstalar.
+- Nada disto foi visto num iPhone: a função de decisão tem teste unitário, o comportamento em aparelho é **pendente**.
+
+## Auditoria por tela
+
+Um script de navegador percorre cada aba e conta: campo ou botão sem nome acessível, alvo < 24px, texto < 12px, controle aninhado, id duplicado e elemento fora da tela. Ele só vê o que está ABERTO — modais e painéis recolhidos precisam ser abertos e auditados à parte, e `lib/test/leitura-css.test.ts` cobre estaticamente o rótulo sem `htmlFor` e o botão dentro de botão.
+
 ## Medido, e o que não foi
 
-- Estoque com 500 produtos, build de **desenvolvimento**: ~21,3 mil nós de DOM antes de paginar,
-  ~9,9 mil depois (60 linhas por vez + "Mostrar mais"). O restante vem dos painéis de Reposição e
-  Previsão, que ainda percorrem a lista inteira.
+- Estoque com 500 produtos, build de **desenvolvimento**: ~21,3 mil nós de DOM antes de paginar;
+  depois de paginar a lista principal, ~9,9 mil; depois de paginar também Reposição (3 abas) e
+  Previsão, **~2,9 a 3,2 mil** (60 linhas por vez + "Mostrar mais"). A conta dos painéis ainda
+  roda sobre todos os produtos (é ela que dá os totais); só o desenho é paginado.
 - **Latência não foi medida com confiança**: a janela de teste ficou oculta e o navegador
   estrangula temporizadores nesse estado. Meça em aparelho, com o app em produção.
 
@@ -63,6 +82,5 @@ servidor, apague `.next/dev` e suba de novo. Confira no navegador com
 
 ## Validação que só um aparelho faz (PENDENTE)
 
-Ver o relatório da entrega: teclado virtual (iOS e Android), safe areas, landscape, PWA instalado
-(a orientação `portrait-primary` do manifest **não** foi alterada), leitor de tela (VoiceOver,
-TalkBack, NVDA), zoom de 200% e contraste sobre o fundo renderizado final.
+Teclado virtual (iOS e Android), safe areas em aparelho, PWA instalado com a orientação nova,
+leitor de tela (VoiceOver, TalkBack, NVDA), zoom de 200% e contraste sobre o fundo renderizado final.

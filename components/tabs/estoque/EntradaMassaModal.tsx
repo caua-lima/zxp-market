@@ -130,13 +130,13 @@ export default function EntradaMassaModal({ produtos, estoqueML, onClose, onSave
 
       <div className="form-grid" style={{ marginBottom: 10 }}>
         <div className="config-field" style={{ margin: 0 }}>
-          <label>Data da compra</label>
-          <input type="date" value={data} onChange={(e) => setData(e.target.value)} disabled={salvando} />
+          <label htmlFor="entmassa-1">Data da compra</label>
+          <input id="entmassa-1" type="date" value={data} onChange={(e) => setData(e.target.value)} disabled={salvando} />
           <div className="hint">Vale pra todas as linhas. O custo novo passa a valer desta data em diante.</div>
         </div>
         <div className="config-field" style={{ margin: 0 }}>
-          <label>Nota / motivo</label>
-          <input
+          <label htmlFor="entmassa-2">Nota / motivo</label>
+          <input id="entmassa-2"
             value={obs}
             onChange={(e) => setObs(e.target.value)}
             placeholder="Ex.: NF 1234 - Fornecedor X"

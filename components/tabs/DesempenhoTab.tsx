@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { authedFetch } from "@/lib/api/authed-fetch";
+import TelaHeader from "@/components/TelaHeader";
 import ReputacaoPanel from "./desempenho/ReputacaoPanel";
 import ProximaMedalhaPanel from "@/components/tabs/desempenho/ProximaMedalhaPanel";
 import RequisitosMercadoLiderPanel from "./desempenho/RequisitosMercadoLiderPanel";
@@ -97,15 +98,14 @@ export default function DesempenhoTab() {
 
   return (
     <div className="dash">
-      <div className="tab-head">
-        <div className="tab-head-left">
-          <h2 className="tab-title">Desempenho</h2>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <TelaHeader
+        titulo="Desempenho"
+        extra={(
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           {/* Atalhos de mês, antes dos dias avulsos: "este mês" e "mês passado"
               são o recorte que o usuário usa pra fechar resultado, e sem eles
               era preciso contar dias na mão pra chegar no mesmo lugar. */}
-          <div className="seg">
+          <div className="seg" role="group" aria-label="Este mês ou desde o mês passado">
             <button
               type="button"
               className={`seg-btn ${dias === diasEsteMes ? "active" : ""}`}
@@ -144,7 +144,8 @@ export default function DesempenhoTab() {
             {refreshing ? "Atualizando…" : "⟳ Atualizar"}
           </button>
         </div>
-      </div>
+        )}
+      />
       <div style={{ fontSize: ".8rem", color: "var(--muted)", marginTop: -6 }}>
         Reputação/selo Mercado Líder, taxa de recompra, concentração de vendas por dia/horário e entregas no
         prazo — tudo derivado de dados reais (pedidos sincronizados e reputação da API do ML), sem inventar

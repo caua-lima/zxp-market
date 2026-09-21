@@ -30,6 +30,10 @@ import { DIAS_ALVO, hojeBR, todayISO, parseNum, mlbsDe, normMlb, custoMedioDe, a
 import type { EstoqueML, Forecast, PlanoSku } from "@/components/tabs/estoque/estoque-compartilhado";
 import { filtrarProdutos, precisaDeAcao, proximaAcao, ordenarPorUrgencia, contarSinais, resumoDoEstoque, ROTULO_SINAL, FILTRO_ESTOQUE_VAZIO, type FiltroEstoque, type ProdutoNaLista, type SinalDoProduto, DIAS_COBERTURA_BAIXA } from "@/lib/domain/estoque-situacao";
 import DetalheProduto from "@/components/tabs/estoque/DetalheProduto";
+import MetricCard from "@/components/MetricCard";
+import RodapeDePagina from "@/components/RodapeDePagina";
+import { usePaginacaoProgressiva } from "@/components/usePaginacaoProgressiva";
+import EstadoVazio from "@/components/EstadoVazio";
 
 
 
@@ -263,8 +267,14 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
    * mudam: é derivado da chave abaixo, sem efeito que espelhe estado.
    */
   const chaveDaLista = `${vista}|${search}|${JSON.stringify(filtroEstoque)}`;
-  const [pagina, setPagina] = useState({ chave: "", limite: LINHAS_POR_PAGINA });
-  const limiteDeLinhas = pagina.chave === chaveDaLista ? pagina.limite : LINHAS_POR_PAGINA;
+  /** Os cartões do resumo levam ao filtro que explica o número: vista "Todos" + só aquele sinal. */
+  const verSinal = (sinal: SinalDoProduto) => {
+    setVista("todos");
+    setSearch("");
+    setFiltroEstoque((f) => ({ ...f, sinais: [sinal] }));
+  };
+  const pgLista = usePaginacaoProgressiva(chaveDaLista);
+  const limiteDeLinhas = pgLista.limite;
 
   const filtered = useMemo(() => {
     const alvo = { ...filtroEstoque, busca: search };
@@ -408,53 +418,41 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
           baixa ficam separadas porque pedem AÇÕES diferentes: ruptura já
           está perdendo venda, cobertura baixa ainda dá tempo de repor.
         */}
-        <div className={resumoSituacao.ruptura > 0 ? "kpi k-neg" : "kpi k-pos"}>
-          <div className="k-lbl">Em ruptura</div>
-          <div className="k-val" style={{ color: resumoSituacao.ruptura > 0 ? "var(--red)" : "var(--green)" }}>
-            {resumoSituacao.ruptura}
-          </div>
-          <div className="k-sub">
-            {resumoSituacao.ruptura === 0
-              ? "nenhum produto sem estoque"
-              : "sem estoque — o anúncio perde posição a cada hora"}
-          </div>
-        </div>
+        {/* Cada cartão diz a UNIDADE do número (produtos, unidades ou dinheiro) e leva ao filtro que o explica. */}
+        <MetricCard
+          tom={resumoSituacao.ruptura > 0 ? "neg" : "pos"} rotulo="Em ruptura (produtos)"
+          valor={resumoSituacao.ruptura} corValor={resumoSituacao.ruptura > 0 ? "var(--red-text)" : "var(--green)"}
+          sub={resumoSituacao.ruptura === 0 ? "nenhum produto sem estoque" : "sem estoque — o anúncio perde posição a cada hora"}
+          acao={resumoSituacao.ruptura > 0 ? { rotulo: `Ver ${resumoSituacao.ruptura} produto(s) →`, onClick: () => verSinal("ruptura") } : undefined}
+        />
 
-        <div className={resumoSituacao.coberturaBaixa > 0 ? "kpi k-warn" : "kpi k-pos"}>
-          <div className="k-lbl">Cobertura baixa</div>
-          <div className="k-val" style={{ color: resumoSituacao.coberturaBaixa > 0 ? "var(--yellow)" : "var(--green)" }}>
-            {resumoSituacao.coberturaBaixa}
-          </div>
-          <div className="k-sub">duram menos de {DIAS_COBERTURA_BAIXA} dias — ainda dá tempo de repor</div>
-        </div>
+        <MetricCard
+          tom={resumoSituacao.coberturaBaixa > 0 ? "warn" : "pos"} rotulo="Cobertura baixa (produtos)"
+          valor={resumoSituacao.coberturaBaixa} corValor={resumoSituacao.coberturaBaixa > 0 ? "var(--yellow)" : "var(--green)"}
+          sub={`duram menos de ${DIAS_COBERTURA_BAIXA} dias — ainda dá tempo de repor`}
+          acao={resumoSituacao.coberturaBaixa > 0 ? { rotulo: `Ver ${resumoSituacao.coberturaBaixa} produto(s) →`, onClick: () => verSinal("cobertura_baixa") } : undefined}
+        />
 
-        <div className="kpi k-pos">
-          <div className="k-lbl">Capital em estoque</div>
-          <div className="k-val" style={{ color: "var(--green)" }}>{fmtBRL(resumoSituacao.capitalEmEstoque)}</div>
-          {/*
-            O número de produtos sem custo vem JUNTO, não num aviso separado:
-            sem ele, "R$ 32 mil em estoque" parece um fato fechado quando
-            pode faltar metade. A ressalva tem que estar ao lado do número
-            que ela ressalva.
-          */}
-          <div className="k-sub">
-            {resumoSituacao.semCusto > 0
-              ? <>(casa + Full) × custo médio · <b style={{ color: "var(--yellow)" }}>subestimado</b>: {resumoSituacao.semCusto} sem custo</>
-              : <>{unCasa} em casa · {unFull} no Full, ao custo médio</>}
-          </div>
-        </div>
+        {/*
+          O número de produtos sem custo vem JUNTO, não num aviso separado: sem ele, "R$ 32 mil em
+          estoque" parece um fato fechado quando pode faltar metade. A ressalva tem que estar ao
+          lado do número que ela ressalva.
+        */}
+        <MetricCard
+          tom="pos" rotulo="Capital em estoque (R$)"
+          valor={fmtBRL(resumoSituacao.capitalEmEstoque)} corValor="var(--green)"
+          sub={resumoSituacao.semCusto > 0
+            ? <>(casa + Full) × custo médio · <b style={{ color: "var(--yellow)" }}>subestimado</b>: {resumoSituacao.semCusto} sem custo</>
+            : <>{unCasa} em casa · {unFull} no Full, ao custo médio</>}
+          acao={resumoSituacao.semCusto > 0 ? { rotulo: `Ver ${resumoSituacao.semCusto} sem custo →`, onClick: () => verSinal("sem_custo") } : undefined}
+        />
 
-        <div className={resumoSituacao.remessasPendentes > 0 ? "kpi k-warn" : "kpi k-acc"}>
-          <div className="k-lbl">Remessas pendentes</div>
-          <div className="k-val" style={{ color: resumoSituacao.remessasPendentes > 0 ? "var(--yellow)" : "var(--muted)" }}>
-            {resumoSituacao.remessasPendentes}
-          </div>
-          <div className="k-sub">
-            {resumoSituacao.remessasPendentes === 0
-              ? "nenhuma baixa em aberto"
-              : "chegaram no Full e a saída do galpão não foi lançada"}
-          </div>
-        </div>
+        <MetricCard
+          tom={resumoSituacao.remessasPendentes > 0 ? "warn" : "acc"} rotulo="Remessas pendentes"
+          valor={resumoSituacao.remessasPendentes} corValor={resumoSituacao.remessasPendentes > 0 ? "var(--yellow)" : "var(--muted)"}
+          sub={resumoSituacao.remessasPendentes === 0 ? "nenhuma baixa em aberto" : "chegaram no Full e a saída do galpão não foi lançada"}
+          acao={resumoSituacao.remessasPendentes > 0 ? { rotulo: "Ver produtos →", onClick: () => verSinal("remessa_pendente") } : undefined}
+        />
       </div>
 
       {/* Antes da lista de produtos: e decisao de COMPRA, e vem antes de
@@ -658,37 +656,25 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
             });
             const limparTudo = () => { setSearch(""); setFiltroEstoque((f) => ({ ...FILTRO_ESTOQUE_VAZIO, incluirInativos: f.incluirInativos })); };
             return (
-              <div className="empty-state" role="status">
-                {motivo === "fonte-indisponivel" && <><span className="empty-ico">⚠️</span>{explicacaoDaFonte}</>}
-                {motivo === "sem-cadastro" && <><span className="empty-ico">📦</span>Nenhum produto cadastrado.<br />Clique em <strong>＋ Novo Produto</strong>.</>}
+              <>
+                {motivo === "fonte-indisponivel" && <EstadoVazio icone="⚠️">{explicacaoDaFonte}</EstadoVazio>}
+                {motivo === "sem-cadastro" && <EstadoVazio icone="📦">Nenhum produto cadastrado.<br />Clique em <strong>＋ Novo Produto</strong>.</EstadoVazio>}
                 {motivo === "sem-pendencia" && (
-                  <>
-                    <span className="empty-ico">✅</span>
+                  <EstadoVazio icone="✅" acao={<button type="button" className="btn btn-primary btn-sm" onClick={() => setVista("todos")}>Ver todos os produtos</button>}>
                     Nenhum produto precisa de ação agora — os <b>{data.products.length}</b> cadastrados estão dentro do esperado.
-                    <div style={{ marginTop: 10 }}>
-                      <button type="button" className="btn btn-primary btn-sm" onClick={() => setVista("todos")}>Ver todos os produtos</button>
-                    </div>
-                  </>
+                  </EstadoVazio>
                 )}
                 {motivo === "sem-resultado" && (
-                  <>
-                    <span className="empty-ico">🔎</span>
+                  <EstadoVazio icone="🔎" acao={<button type="button" className="btn btn-primary btn-sm" onClick={limparTudo}>Limpar busca e filtros</button>}>
                     Nenhum produto passa pela busca e pelos filtros. Existem <b>{data.products.length}</b> cadastrados — o que sumiu foi escondido pelo filtro, não apagado.
-                    <div style={{ marginTop: 10 }}>
-                      <button type="button" className="btn btn-primary btn-sm" onClick={limparTudo}>Limpar busca e filtros</button>
-                    </div>
-                  </>
+                  </EstadoVazio>
                 )}
                 {motivo === "so-inativos" && (
-                  <>
-                    <span className="empty-ico">🗄️</span>
+                  <EstadoVazio icone="🗄️" acao={<button type="button" className="btn btn-primary btn-sm" onClick={() => setFiltroEstoque((f) => ({ ...f, incluirInativos: true }))}>Mostrar inativos</button>}>
                     Todos os <b>{data.products.length}</b> produtos estão inativos e escondidos.
-                    <div style={{ marginTop: 10 }}>
-                      <button type="button" className="btn btn-primary btn-sm" onClick={() => setFiltroEstoque((f) => ({ ...f, incluirInativos: true }))}>Mostrar inativos</button>
-                    </div>
-                  </>
+                  </EstadoVazio>
                 )}
-              </div>
+              </>
             );
           })()
         ) : (
@@ -731,19 +717,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
                 ))}
               </tbody>
             </table>
-            {filtered.length > limiteDeLinhas && (
-              <div style={{ padding: "12px 4px 4px", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", justifyContent: "center" }}>
-                <span role="status" style={{ fontSize: ".82rem", color: "var(--muted)" }}>
-                  Mostrando <b>{limiteDeLinhas}</b> de <b>{filtered.length}</b> produtos
-                </span>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPagina({ chave: chaveDaLista, limite: limiteDeLinhas + LINHAS_POR_PAGINA })}>
-                  Mostrar mais {Math.min(LINHAS_POR_PAGINA, filtered.length - limiteDeLinhas)}
-                </button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPagina({ chave: chaveDaLista, limite: filtered.length })}>
-                  Mostrar todos
-                </button>
-              </div>
-            )}
+            <RodapeDePagina limite={limiteDeLinhas} total={filtered.length} tamanho={pgLista.tamanho} aoMostrarMais={pgLista.mostrarMais} aoMostrarTudo={pgLista.mostrarTudo} rotulo="produtos" />
           </div>
         )}
       </div>
@@ -1014,7 +988,7 @@ function ProductRow({
       <tr style={{ opacity: product.ativo ? 1 : 0.5 }} className={verFinanceiro ? "fin-aberto" : undefined}>
         <td style={{ textAlign: "left" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <button type="button" onClick={onToggle} title="Ver movimentações" aria-label="Ver movimentações" aria-expanded={expanded} style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: ".8rem", transform: expanded ? "rotate(90deg)" : "none", transition: "transform .15s" }}>▶</button>
+            <button type="button" className="expandir-btn" onClick={onToggle} title="Ver movimentações" aria-label={`Ver movimentações de ${product.name || "produto sem nome"}`} aria-expanded={expanded} style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: ".8rem", transform: expanded ? "rotate(90deg)" : "none", transition: "transform .15s" }}>▶</button>
             <div>
               <div style={{ fontWeight: 600 }}>{product.name || <em style={{ color: "var(--muted)" }}>Sem nome</em>}</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 3 }}>
@@ -1414,14 +1388,14 @@ function MovimentoModal({ product, tipo, estoqueML, onClose, onSaved }: { produc
       <div className="modal-sub">{product.name || "Produto"} · estoque atual: <b>{estoqueAtual} un</b>{avgAtual > 0 && <> · custo médio {fmtBRL(avgAtual)}</>}</div>
 
       <div className="config-field">
-        <label>{isAjuste ? "Quantidade (use − para baixa)" : "Quantidade (unidades)"}</label>
-        <input type="number" step="1" placeholder={isAjuste ? "Ex: -3" : "Ex: 40"} value={qtd} onChange={(e) => setQtd(e.target.value)} />
+        <label htmlFor="mov-qtd">{isAjuste ? "Quantidade (use − para baixa)" : "Quantidade (unidades)"}</label>
+        <input id="mov-qtd" type="number" step="1" placeholder={isAjuste ? "Ex: -3" : "Ex: 40"} value={qtd} onChange={(e) => setQtd(e.target.value)} />
       </div>
 
       {precisaCusto && (
         <div className="config-field">
-          <label>Custo unitário {isSaldo ? "das unidades no Full" : "desta compra"} (R$)</label>
-          <input type="number" min="0" step="0.01" placeholder="Ex: 11.50" value={custo} onChange={(e) => setCusto(e.target.value)} />
+          <label htmlFor="mov-custo">Custo unitário {isSaldo ? "das unidades no Full" : "desta compra"} (R$)</label>
+          <input id="mov-custo" type="number" min="0" step="0.01" placeholder="Ex: 11.50" value={custo} onChange={(e) => setCusto(e.target.value)} />
           {qNum > 0 && cNum > 0 && (
             <div className="hint">
               Custo médio {isSaldo ? "depois de custear o Full" : "após esta entrada"}: <b style={{ color: "var(--green)" }}>{fmtBRL(novoAvg)}</b>
@@ -1446,13 +1420,13 @@ function MovimentoModal({ product, tipo, estoqueML, onClose, onSaved }: { produc
       )}
 
       <div className="config-field">
-        <label>Data</label>
-        <input type="date" value={data} onChange={(e) => setData(e.target.value)} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", color: "var(--text)", fontSize: ".9rem", outline: "none" }} />
+        <label htmlFor="estq-1">Data</label>
+        <input id="estq-1" type="date" value={data} onChange={(e) => setData(e.target.value)} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", color: "var(--text)", fontSize: ".9rem", outline: "none" }} />
       </div>
 
       <div className="config-field">
-        <label>Motivo</label>
-        <input type="text" placeholder="Ex: fornecedor João, NF 123 / quebra no transporte / contagem física" value={obs} onChange={(e) => setObs(e.target.value)} />
+        <label htmlFor="estq-2">Motivo</label>
+        <input id="estq-2" type="text" placeholder="Ex: fornecedor João, NF 123 / quebra no transporte / contagem física" value={obs} onChange={(e) => setObs(e.target.value)} />
       </div>
 
       {erro && <div className="note note-danger" role="alert" style={{ marginBottom: 10 }}>{erro}</div>}
@@ -1495,6 +1469,8 @@ function gravarPlanejados(ids: Set<string>) {
 const STATUS_PESO: Record<CoverageStatus, number> = { critico: 0, repor: 1, "sem-giro": 2, encalhado: 3, saudavel: 4 };
 
 function PrevisaoPanel({ products, estoqueML, forecast }: { products: Product[]; estoqueML: EstoqueML; forecast: Forecast }) {
+  // Uma linha por produto com estoque: com centenas de produtos, desenha 60 por vez (ver usePaginacaoProgressiva).
+  const pgPrev = usePaginacaoProgressiva("previsao");
   /**
    * O que já está planejado sai do localStorage NO PRIMEIRO RENDER.
    *
@@ -1567,7 +1543,7 @@ function PrevisaoPanel({ products, estoqueML, forecast }: { products: Product[];
               </tr>
             </thead>
             <tbody>
-              {linhas.map(({ p, f, status }) => {
+              {linhas.slice(0, pgPrev.limite).map(({ p, f, status }) => {
                 const cob = coberturaFmt(f.cobertura);
                 const emCasa = Math.min(f.reporQtd, f.casa);
                 const comprar = Math.max(0, f.reporQtd - emCasa);
@@ -1644,14 +1620,12 @@ function PrevisaoPanel({ products, estoqueML, forecast }: { products: Product[];
               })}
             </tbody>
           </table>
+            <RodapeDePagina limite={pgPrev.limite} total={linhas.length} tamanho={pgPrev.tamanho} aoMostrarMais={pgPrev.mostrarMais} aoMostrarTudo={pgPrev.mostrarTudo} rotulo="produtos" />
         </div>
       )}
     </div>
   );
 }
-
-/** Quantos produtos a lista desenha por vez (ver `limiteDeLinhas`). */
-const LINHAS_POR_PAGINA = 60;
 
 export function ProductModal({ product: initial, isNew, onClose, onSave }: { product: Product; isNew: boolean; onClose: () => void; onSave: (p: Product) => Promise<void> }) {
   const [p, setP] = useState<Product>({ ...initial, mlbs: mlbsDe(initial).length ? mlbsDe(initial) : [""] });
@@ -1751,9 +1725,9 @@ export function ProductModal({ product: initial, isNew, onClose, onSave }: { pro
         <label>Anúncios / Códigos MLB</label>
         {mlbs.map((m, i) => (
           <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-            <input type="text" placeholder="Ex: MLB1234567890" value={m} onChange={(e) => setMlb(i, e.target.value)} style={{ flex: 1 }} />
+            <input type="text" placeholder="Ex: MLB1234567890" aria-label={`Código MLB do anúncio ${i + 1}`} value={m} onChange={(e) => setMlb(i, e.target.value)} style={{ flex: 1 }} />
             {mlbs.length > 1 && (
-              <button type="button" className="btn btn-danger btn-xs" onClick={() => removeMlb(i)} style={{ flexShrink: 0 }}>Remover</button>
+              <button type="button" className="btn btn-danger btn-xs" onClick={() => removeMlb(i)} aria-label={`Remover o anúncio ${i + 1}`} style={{ flexShrink: 0 }}>Remover</button>
             )}
           </div>
         ))}
@@ -1762,8 +1736,8 @@ export function ProductModal({ product: initial, isNew, onClose, onSave }: { pro
       </div>
 
       <div className="config-field">
-        <label>Custo do estoque atual — R$/unidade (inclui o que já está no Full)</label>
-        <input type="number" min="0" step="0.01" placeholder="Ex: 13.80" value={custoStr} onChange={(e) => setCustoStr(e.target.value)} />
+        <label htmlFor="estq-3">Custo do estoque atual — R$/unidade (inclui o que já está no Full)</label>
+        <input id="estq-3" type="number" min="0" step="0.01" placeholder="Ex: 13.80" value={custoStr} onChange={(e) => setCustoStr(e.target.value)} />
         <div className="hint">
           Informe o custo das unidades que você <strong>já tem hoje</strong> (galpão + Full). A cada <strong>＋ Entrada</strong>,
           esse custo é ajustado sozinho pela média, valendo só a partir dali — vendas já feitas continuam com a margem que tinham.
@@ -1778,8 +1752,8 @@ export function ProductModal({ product: initial, isNew, onClose, onSave }: { pro
       </div>
 
       <div className="config-field">
-        <label>Imposto sobre a venda (%)</label>
-        <input type="number" min="0" step="0.01" placeholder="Ex: 8" value={p.imposto ?? ""} onChange={(e) => set({ imposto: e.target.value })} />
+        <label htmlFor="estq-4">Imposto sobre a venda (%)</label>
+        <input id="estq-4" type="number" min="0" step="0.01" placeholder="Ex: 8" value={p.imposto ?? ""} onChange={(e) => set({ imposto: e.target.value })} />
         <div className="hint">
           Percentual de imposto pago sobre o valor da venda.
           {!!p.impostoFaixas?.length && (
@@ -1796,8 +1770,8 @@ export function ProductModal({ product: initial, isNew, onClose, onSave }: { pro
       </div>
 
       <div className="config-field">
-        <label>Status</label>
-        <select
+        <label htmlFor="estq-5">Status</label>
+        <select id="estq-5"
           value={p.ativo ? "ativo" : "inativo"}
           onChange={(e) => set({ ativo: e.target.value === "ativo" })}
           style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", color: "var(--text)", fontSize: ".9rem", outline: "none" }}
@@ -1877,6 +1851,9 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
 
   const [aba, setAba] = useState<"pedir" | "full" | "todos">("pedir");
   const [busca, setBusca] = useState("");
+  // Três listas que crescem com o número de produtos (todos · pedir · enviar pro Full):
+  // 60 linhas por vez, e o limite volta ao começo ao trocar de aba ou de busca.
+  const pgRepor = usePaginacaoProgressiva(`${aba}|${busca}`);
   const [alvoData, setAlvoData] = useState(() => fimDaSemanaQueVem(hojeBR()));
   const [transito, setTransito] = useState("3");
 
@@ -2149,6 +2126,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
         placeholder="Filtrar produto pelo nome..."
+        aria-label="Filtrar produtos da reposição pelo nome"
         style={{ width: "100%", marginBottom: 12 }}
       />
 
@@ -2166,7 +2144,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
                 </tr>
               </thead>
               <tbody>
-                {filtrar(todos).map((t) => {
+                {filtrar(todos).slice(0, pgRepor.limite).map((t) => {
                   const b = baseDe.get(t.produtoId);
                   const curto = t.duraDias != null && t.duraDias < diasN;
                   return (
@@ -2197,6 +2175,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
                 })}
               </tbody>
             </table>
+            <RodapeDePagina limite={pgRepor.limite} total={filtrar(todos).length} tamanho={pgRepor.tamanho} aoMostrarMais={pgRepor.mostrarMais} aoMostrarTudo={pgRepor.mostrarTudo} rotulo="produtos" />
           </div>
           <div className="hint" style={{ marginTop: 10 }}>
             &quot;Base&quot; são os dias em que o produto esteve à venda dentro dos {forecast.dias} dias —
@@ -2219,12 +2198,12 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
           <div style={{ border: "1px solid var(--accent)", borderRadius: 10, padding: 12, marginBottom: 14, background: "var(--surface2)" }}>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 10 }}>
               <div className="config-field" style={{ margin: 0, maxWidth: 190 }}>
-                <label>Precisa durar até</label>
-                <input type="date" value={alvoData} onChange={(e) => setAlvoData(e.target.value)} />
+                <label htmlFor="estq-6">Precisa durar até</label>
+                <input id="estq-6" type="date" value={alvoData} onChange={(e) => setAlvoData(e.target.value)} />
               </div>
               <div className="config-field" style={{ margin: 0, maxWidth: 150 }}>
-                <label>Trânsito (dias)</label>
-                <input inputMode="numeric" value={transito} onChange={(e) => setTransito(e.target.value)} />
+                <label htmlFor="estq-7">Trânsito (dias)</label>
+                <input id="estq-7" inputMode="numeric" value={transito} onChange={(e) => setTransito(e.target.value)} />
                 <div className="hint">Coleta + processamento no CD.</div>
               </div>
               <button
@@ -2251,7 +2230,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
             ) : (
               <>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  {planoSemana.itens.map((i) => (
+                  {planoSemana.itens.slice(0, pgRepor.limite).map((i) => (
                     <div key={i.produtoId} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: ".82rem" }}>
                       <span>
                         {i.naoChega && (
@@ -2333,7 +2312,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
                   </tr>
                 </thead>
                 <tbody>
-                  {filtrar(planoFull.itens).map((i) => (
+                  {filtrar(planoFull.itens).slice(0, pgRepor.limite).map((i) => (
                     <tr key={i.produtoId}>
                       <td style={{ textAlign: "left" }}>
                         {i.vaiZerar && (
@@ -2364,6 +2343,8 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
                   ))}
                 </tbody>
               </table>
+            <RodapeDePagina limite={pgRepor.limite} total={filtrar(planoFull.itens).length} tamanho={pgRepor.tamanho} aoMostrarMais={pgRepor.mostrarMais} aoMostrarTudo={pgRepor.mostrarTudo} rotulo="produtos" />
+            <RodapeDePagina limite={pgRepor.limite} total={planoSemana.itens.length} tamanho={pgRepor.tamanho} aoMostrarMais={pgRepor.mostrarMais} aoMostrarTudo={pgRepor.mostrarTudo} rotulo="produtos" />
             </div>
           )}
 
@@ -2395,7 +2376,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
                 </tr>
               </thead>
               <tbody>
-                {filtrar(visiveis).map((i) => (
+                {filtrar(visiveis).slice(0, pgRepor.limite).map((i) => (
                   <tr key={i.produtoId}>
                     <td style={{ textAlign: "left" }}>
                       {i.vaiZerarAntes && (
@@ -2432,6 +2413,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
                 ))}
               </tbody>
             </table>
+            <RodapeDePagina limite={pgRepor.limite} total={filtrar(visiveis).length} tamanho={pgRepor.tamanho} aoMostrarMais={pgRepor.mostrarMais} aoMostrarTudo={pgRepor.mostrarTudo} rotulo="produtos" />
           </div>
 
           {plano.itens.length > 10 && (

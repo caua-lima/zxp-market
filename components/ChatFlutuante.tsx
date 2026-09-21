@@ -47,8 +47,10 @@ export default function ChatFlutuante({
         onClick={() => definir(true)}
         aria-label={rotuloBotao}
         title={rotuloBotao}
+        className="chat-fab"
         style={{
-          position: "fixed", right: 18, bottom: 18, zIndex: 60,
+          // `bottom` vem de .chat-fab (globals.css): 18px + a altura do teclado virtual, quando há.
+          position: "fixed", right: 18, zIndex: 60,
           width: 52, height: 52, borderRadius: "50%",
           background: "var(--brand)", color: "#10100E",
           border: "none", cursor: "pointer", fontSize: "1.25rem", fontWeight: 700,
@@ -68,7 +70,7 @@ export default function ChatFlutuante({
       aria-label={titulo}
       className="chat-flutuante"
       style={{
-        position: "fixed", right: 18, bottom: 18, zIndex: 60,
+        position: "fixed", right: 18, zIndex: 60,
         // Nunca mais largo que a tela menos as margens — medido no iPhone.
         width: "min(420px, calc(100vw - 36px))",
         // A altura máxima vem de `.chat-flutuante` (globals.css): `vh` com reserva e depois `dvh`,

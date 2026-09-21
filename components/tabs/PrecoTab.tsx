@@ -128,11 +128,12 @@ export default function PrecoTab({ products }: { products: Product[] }) {
 
         <div className="form-grid">
           <div className="config-field" style={{ margin: 0 }}>
-            <label>Anúncio ativo</label>
+            <label htmlFor="preco-anuncio">Anúncio ativo</label>
             {/* Limpa no EVENTO, não num efeito: trocar de anúncio deixando na
                 tela o lucro do anterior seria enganoso, mas isso é reação a
                 uma ação do usuário — não sincronização com sistema externo. */}
             <select
+              id="preco-anuncio"
               value={mlb}
               onChange={(e) => { setMlb(e.target.value); setSim(null); setPreco(""); setErro(""); }}
               disabled={carregandoLista}
@@ -150,8 +151,8 @@ export default function PrecoTab({ products }: { products: Product[] }) {
           </div>
 
           <div className="config-field" style={{ margin: 0 }}>
-            <label>Preço que quero testar</label>
-            <input
+            <label htmlFor="preco-1">Preço que quero testar</label>
+            <input id="preco-1"
               type="number" inputMode="decimal" step="0.01" value={preco}
               onChange={(e) => setPreco(e.target.value)}
               placeholder={mlb ? "Vazio = preço atual do anúncio" : "Escolha o anúncio primeiro"}
@@ -162,8 +163,8 @@ export default function PrecoTab({ products }: { products: Product[] }) {
 
         <div className="form-grid" style={{ marginTop: 12 }}>
           <div className="config-field" style={{ margin: 0 }}>
-            <label>Imposto (%)</label>
-            <input
+            <label htmlFor="preco-2">Imposto (%)</label>
+            <input id="preco-2"
               type="number" inputMode="decimal" step="0.01" value={imposto}
               onChange={(e) => setImposto(e.target.value)}
               placeholder={sim ? `Cadastrado: ${sim.produto.impostoPct}%` : "Vazio = o do produto"}
@@ -172,8 +173,8 @@ export default function PrecoTab({ products }: { products: Product[] }) {
           </div>
 
           <div className="config-field" style={{ margin: 0 }}>
-            <label>Ads por unidade (R$)</label>
-            <input
+            <label htmlFor="preco-3">Ads por unidade (R$)</label>
+            <input id="preco-3"
               type="number" inputMode="decimal" step="0.01" value={ads}
               onChange={(e) => setAds(e.target.value)} placeholder="Opcional"
             />
@@ -183,16 +184,16 @@ export default function PrecoTab({ products }: { products: Product[] }) {
 
         <div className="form-grid" style={{ marginTop: 12 }}>
           <div className="config-field" style={{ margin: 0 }}>
-            <label>Outros custos por unidade (R$)</label>
-            <input
+            <label htmlFor="preco-4">Outros custos por unidade (R$)</label>
+            <input id="preco-4"
               type="number" inputMode="decimal" step="0.01" value={outros}
               onChange={(e) => setOutros(e.target.value)} placeholder="Embalagem, etiqueta…"
             />
           </div>
 
           <div className="config-field" style={{ margin: 0 }}>
-            <label>CEP de destino (frete)</label>
-            <input
+            <label htmlFor="preco-5">CEP de destino (frete)</label>
+            <input id="preco-5"
               type="text" inputMode="numeric" value={cep}
               onChange={(e) => setCep(e.target.value)} placeholder="01001000"
             />
@@ -201,8 +202,8 @@ export default function PrecoTab({ products }: { products: Product[] }) {
         </div>
 
         <div className="config-field" style={{ marginTop: 12 }}>
-          <label>Quero margem de (%) — opcional</label>
-          <input
+          <label htmlFor="preco-6">Quero margem de (%) — opcional</label>
+          <input id="preco-6"
             type="number" inputMode="decimal" step="0.1" value={margemAlvo}
             onChange={(e) => setMargemAlvo(e.target.value)}
             placeholder="Ex: 25 — calcula o preço mínimo pra essa margem"

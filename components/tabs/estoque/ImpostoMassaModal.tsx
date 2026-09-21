@@ -72,8 +72,8 @@ export default function ImpostoMassaModal({ uid, produtos, escopoBusca, onClose 
       <div className="modal-sub">aplica o mesmo percentual em vários produtos de uma vez</div>
 
       <div className="config-field">
-        <label>Imposto (%)</label>
-        <input
+        <label htmlFor="impmassa-1">Imposto (%)</label>
+        <input id="impmassa-1"
           type="number" min="0" step="0.01" value={valor}
           onChange={(e) => setValor(e.target.value)}
           style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", color: "var(--text)", fontSize: 16, outline: "none" }}
@@ -81,8 +81,8 @@ export default function ImpostoMassaModal({ uid, produtos, escopoBusca, onClose 
       </div>
 
       <div className="config-field">
-        <label>Vale a partir de</label>
-        <input
+        <label htmlFor="impmassa-2">Vale a partir de</label>
+        <input id="impmassa-2"
           type="date" value={desde} onChange={(e) => setDesde(e.target.value)}
           style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", color: "var(--text)", fontSize: 16, outline: "none" }}
         />

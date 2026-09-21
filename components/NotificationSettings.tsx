@@ -153,8 +153,8 @@ export default function NotificationSettings({ open, onClose }: { open: boolean;
           </div>
 
           <div className="config-field" style={{ margin: 0 }}>
-            <label>Venda de alto valor a partir de (R$)</label>
-            <input
+            <label htmlFor="notifcfg-1">Venda de alto valor a partir de (R$)</label>
+            <input id="notifcfg-1"
               type="number" min="0" step="10" value={prefs.highValueThreshold}
               onChange={(e) => setPrefs((p) => ({ ...p, highValueThreshold: parseFloat(e.target.value) || 0 }))}
             />
@@ -204,12 +204,12 @@ export default function NotificationSettings({ open, onClose }: { open: boolean;
             <>
               <div className="form-grid">
                 <div className="config-field" style={{ margin: 0 }}>
-                  <label>Início</label>
-                  <input type="time" value={prefs.quietHoursStart} onChange={(e) => setPrefs((p) => ({ ...p, quietHoursStart: e.target.value }))} />
+                  <label htmlFor="notifcfg-2">Início</label>
+                  <input id="notifcfg-2" type="time" value={prefs.quietHoursStart} onChange={(e) => setPrefs((p) => ({ ...p, quietHoursStart: e.target.value }))} />
                 </div>
                 <div className="config-field" style={{ margin: 0 }}>
-                  <label>Fim</label>
-                  <input type="time" value={prefs.quietHoursEnd} onChange={(e) => setPrefs((p) => ({ ...p, quietHoursEnd: e.target.value }))} />
+                  <label htmlFor="notifcfg-3">Fim</label>
+                  <input id="notifcfg-3" type="time" value={prefs.quietHoursEnd} onChange={(e) => setPrefs((p) => ({ ...p, quietHoursEnd: e.target.value }))} />
                 </div>
               </div>
               {prefs.quietHoursStart === prefs.quietHoursEnd && (
@@ -228,8 +228,8 @@ export default function NotificationSettings({ open, onClose }: { open: boolean;
                 <div className="hint">Críticos: {CRITICOS_EM_TEXTO}. Se você desligou o aviso daquele tipo lá em cima, ele não chega nem assim.</div>
               </div>
               <div className="config-field" style={{ margin: 0 }}>
-                <label>Fuso do horário</label>
-                <select
+                <label htmlFor="notifcfg-4">Fuso do horário</label>
+                <select id="notifcfg-4"
                   value={prefs.quietHoursTimezone}
                   onChange={(e) => setPrefs((p) => ({ ...p, quietHoursTimezone: e.target.value }))}
                 >

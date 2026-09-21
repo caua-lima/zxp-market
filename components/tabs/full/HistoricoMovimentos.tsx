@@ -93,6 +93,7 @@ export default function HistoricoMovimentos({ movimentos, products }: { moviment
       <input
         type="text"
         placeholder="Buscar por produto ou observação…"
+        aria-label="Buscar movimentação por produto ou observação"
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
         style={{
@@ -209,8 +210,8 @@ function EditarMovimentoModal({
       <div className="modal-sub">{TIPO_MOVIMENTO_LABEL[mov.tipo]}</div>
 
       <div className="config-field">
-        <label>Data</label>
-        <input type="date" value={data} onChange={(e) => setData(e.target.value)} />
+        <label htmlFor="histmov-1">Data</label>
+        <input id="histmov-1" type="date" value={data} onChange={(e) => setData(e.target.value)} />
       </div>
 
       {editavelQtd ? (
@@ -229,8 +230,8 @@ function EditarMovimentoModal({
       )}
 
       <div className="config-field">
-        <label>Observação</label>
-        <input type="text" value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Motivo da correção" />
+        <label htmlFor="histmov-2">Observação</label>
+        <input id="histmov-2" type="text" value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Motivo da correção" />
       </div>
 
       <div className="modal-btns">

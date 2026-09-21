@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Sora } from "next/font/google";
 import { AuthProvider } from "@/lib/firebase/auth-context";
+import ViewportVisivel from "@/components/ViewportVisivel";
 import "./globals.css";
 
 // Inter pro corpo (menus, tabelas, filtros, botões) — otimizada pra leitura
@@ -68,6 +69,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" suppressHydrationWarning className={`${inter.variable} ${sora.variable}`}>
       <body>
+        <ViewportVisivel />
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

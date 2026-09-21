@@ -589,8 +589,8 @@ function AppShell() {
           >
             {/*
               ─── DOIS BOTÕES IRMÃOS, NÃO UM DENTRO DO OUTRO ──────────────────
-              Era um <button> "Editar meu perfil" com o AvatarUpload DENTRO, e o
-              AvatarUpload tem o seu próprio <button> ("Trocar foto de perfil"):
+              Era um botão "Editar meu perfil" com o AvatarUpload DENTRO, e o
+              AvatarUpload tem o seu próprio botão ("Trocar foto de perfil"):
               botão dentro de botão é HTML inválido (o React acusava erro de
               hidratação a cada abertura), o leitor de tela não anunciava o filho,
               e o clique na foto era disputado com o do pai. Agora a foto e o nome

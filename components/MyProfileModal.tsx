@@ -70,14 +70,14 @@ export default function MyProfileModal({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="config-field">
-        <label>E-mail</label>
-        <input type="email" value={email} disabled readOnly />
+        <label htmlFor="perfil-1">E-mail</label>
+        <input id="perfil-1" type="email" value={email} disabled readOnly />
         <div className="hint">Não pode ser alterado — fale com o owner se precisar trocar.</div>
       </div>
 
       <div className="config-field">
-        <label>Nome de exibição</label>
-        <input
+        <label htmlFor="perfil-2">Nome de exibição</label>
+        <input id="perfil-2"
           type="text"
           value={nome}
           onChange={(e) => setNome(e.target.value)}

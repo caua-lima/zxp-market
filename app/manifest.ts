@@ -13,7 +13,11 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/",
     scope: "/",
     display: "standalone",
-    orientation: "portrait-primary",
+    // Livre, e não "portrait-primary": travar em retrato tirava do celular a orientação em que as tabelas
+    // largas (Pedidos, Estoque, DRE) são legíveis, e o teclado virtual em retrato já é o pior caso. O
+    // layout é medido em paisagem (844x390) sem elemento fora da tela. Instalações antigas do PWA só
+    // pegam o valor novo ao reinstalar.
+    orientation: "any",
     background_color: "#10100E",
     theme_color: "#10100E",
     icons: [

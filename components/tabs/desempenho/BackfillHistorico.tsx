@@ -87,8 +87,8 @@ export default function BackfillHistorico({ onConcluir }: { onConcluir?: () => v
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-            <label style={{ fontSize: ".8rem", color: "var(--muted)" }}>Quantos meses pra trás</label>
-            <select
+            <label style={{ fontSize: ".8rem", color: "var(--muted)" }} htmlFor="backfill-1">Quantos meses pra trás</label>
+            <select id="backfill-1"
               className="inp" style={{ width: 110 }} value={meses} disabled={rodando}
               onChange={(e) => setMeses(Number(e.target.value))}
             >

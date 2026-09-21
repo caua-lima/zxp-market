@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDeepLinkConsumido } from "@/components/useDeepLinkConsumido";
 import Drawer from "@/components/Drawer";
+import CampoFaixa from "@/components/CampoFaixa";
 import { statusDeEntrega } from "@/lib/domain/entrega-status";
 
 /** Hoje no fuso de Brasilia — base do "chega hoje/amanha" (ver entrega-status). */
@@ -577,9 +578,10 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
 
       {/* Busca + filtros */}
       <input
-        type="text" placeholder="Buscar por produto ou nº do pedido…" value={busca}
+        type="search" className="campo-busca" placeholder="Buscar por produto ou nº do pedido…" value={busca}
+        aria-label="Buscar pedido por produto ou número" autoComplete="off"
         onChange={(e) => setBusca(e.target.value)}
-        style={{ width: "100%", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 14px", color: "var(--text)", fontSize: ".9rem", outline: "none", boxSizing: "border-box" }}
+        style={{ width: "100%", boxSizing: "border-box" }}
       />
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         {([
@@ -590,7 +592,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
           ["canceldevol", `Cancelado/Devolvido (${cancelDevolN})`, "var(--info,var(--accent))"],
         ] as const).map(([id, label, cor]) => (
           <button
-            key={id} type="button" onClick={() => setFiltro(id)}
+            key={id} type="button" onClick={() => setFiltro(id)} aria-pressed={filtro === id} className="chip-filtro"
             style={{
               fontSize: ".82rem", fontWeight: 600, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
               background: filtro === id ? cor : "var(--surface2)", color: filtro === id ? "#fff" : "var(--muted)",
@@ -602,34 +604,12 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
 
       {/* Filtros avançados */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <span style={{ fontSize: ".75rem", color: "var(--text-muted,var(--muted))", fontWeight: 600 }}>Valor:</span>
-        <input
-          type="number" inputMode="decimal" placeholder="mín." value={valorMin}
-          onChange={(e) => setValorMin(e.target.value)}
-          style={{ width: 90, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px", color: "var(--text)", fontSize: ".82rem", outline: "none" }}
-        />
-        <span style={{ color: "var(--text-muted,var(--muted))" }}>–</span>
-        <input
-          type="number" inputMode="decimal" placeholder="máx." value={valorMax}
-          onChange={(e) => setValorMax(e.target.value)}
-          style={{ width: 90, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px", color: "var(--text)", fontSize: ".82rem", outline: "none" }}
-        />
+        <CampoFaixa id="ped-valor" nome="Valor" unidade="R$" min={valorMin} max={valorMax} onMin={setValorMin} onMax={setValorMax} larg={96} />
         {(valorMin || valorMax) && (
           <button type="button" className="btn btn-xs btn-ghost" onClick={() => { setValorMin(""); setValorMax(""); }}>Limpar valor</button>
         )}
 
-        <span style={{ fontSize: ".75rem", color: "var(--text-muted,var(--muted))", fontWeight: 600, marginLeft: 6 }}>Margem %:</span>
-        <input
-          type="number" inputMode="decimal" placeholder="mín." value={margemMin}
-          onChange={(e) => setMargemMin(e.target.value)}
-          style={{ width: 70, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px", color: "var(--text)", fontSize: ".82rem", outline: "none" }}
-        />
-        <span style={{ color: "var(--text-muted,var(--muted))" }}>–</span>
-        <input
-          type="number" inputMode="decimal" placeholder="máx." value={margemMax}
-          onChange={(e) => setMargemMax(e.target.value)}
-          style={{ width: 70, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px", color: "var(--text)", fontSize: ".82rem", outline: "none" }}
-        />
+        <CampoFaixa id="ped-margem" nome="Margem" unidade="%" min={margemMin} max={margemMax} onMin={setMargemMin} onMax={setMargemMax} larg={80} />
         {(margemMin || margemMax) && (
           <button type="button" className="btn btn-xs btn-ghost" onClick={() => { setMargemMin(""); setMargemMax(""); }}>Limpar margem</button>
         )}

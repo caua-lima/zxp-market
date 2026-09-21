@@ -69,6 +69,7 @@ export default function BaixasPorRemessa({
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
         placeholder="Filtrar por número do envio ou produto..."
+        aria-label="Filtrar baixas por número do envio ou produto"
         style={{ width: "100%", marginBottom: 10 }}
       />
 

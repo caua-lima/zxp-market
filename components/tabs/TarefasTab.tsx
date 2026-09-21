@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
 import { useFormularioSujo } from "@/components/useFormularioSujo";
 import { mensagemDeErroDeSalvamento } from "@/lib/domain/salvar-formulario";
 import { useDeepLinkConsumido } from "@/components/useDeepLinkConsumido";
@@ -303,26 +303,68 @@ function KanbanColuna({ status, label, dot, count, children }: {
  * depois de 6px de movimento — um clique parado num botão nunca dispara o
  * drag, só o clique normal do botão.
  */
+/** O ponteiro principal é o dedo? (lido do navegador, sem estado espelhado) */
+function usePonteiroDeToque(): boolean {
+  return useSyncExternalStore(
+    (avisar) => {
+      const m = window.matchMedia("(pointer: coarse)");
+      m.addEventListener("change", avisar);
+      return () => m.removeEventListener("change", avisar);
+    },
+    () => window.matchMedia("(pointer: coarse)").matches,
+    () => false,
+  );
+}
+
+/**
+ * ─── DOIS MODOS DE ARRASTAR, E NENHUM ATRAPALHA O RESTO ─────────────────────
+ *
+ * O card inteiro era arrastável com `touch-action: none` e ainda herdava
+ * `role="button"` do dnd-kit — com os botões Editar/Excluir/←/→ DENTRO dele.
+ * Duas coisas erradas: (1) no celular, tocar num card e arrastar o dedo pra rolar a
+ * página não rolava nada (o gesto era do arrasto); (2) botão dentro de botão.
+ *
+ * Mouse: o card inteiro continua arrastável (seguro clicar nos botões: o sensor só
+ * considera arrasto depois de 6px), mas sem virar um "botão" pro leitor de tela.
+ * Toque: o card rola normalmente e só a ALÇA (44px, com nome) arrasta. Em qualquer
+ * dos dois, ←/→ movem a tarefa sem arrastar — é a alternativa por teclado e toque.
+ */
 function DraggableTaskCard({ task, onMover, onEditar, onExcluir }: {
   task: Task;
   onMover: (s: TaskStatus) => void;
   onEditar: () => void;
   onExcluir: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: task.id });
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({ id: task.id });
+  const toque = usePonteiroDeToque();
+  if (toque) {
+    const alca = (
+      <button
+        type="button" ref={setActivatorNodeRef} {...attributes} {...listeners}
+        className="kanban-alca" aria-label={`Arrastar a tarefa ${task.title} para outra coluna`}
+        title="Segure e arraste para outra coluna"
+      >
+        <svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor" aria-hidden>
+          <circle cx="3" cy="2" r="1.4" /><circle cx="9" cy="2" r="1.4" />
+          <circle cx="3" cy="8" r="1.4" /><circle cx="9" cy="8" r="1.4" />
+          <circle cx="3" cy="14" r="1.4" /><circle cx="9" cy="14" r="1.4" />
+        </svg>
+      </button>
+    );
+    return (
+      <div ref={setNodeRef} style={{ opacity: isDragging ? 0.35 : 1 }}>
+        <TaskCard task={task} onMover={onMover} onEditar={onEditar} onExcluir={onExcluir} alca={alca} />
+      </div>
+    );
+  }
   return (
-    <div
-      ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      style={{ opacity: isDragging ? 0.35 : 1, cursor: "grab", touchAction: "none" }}
-    >
+    <div ref={setNodeRef} {...listeners} style={{ opacity: isDragging ? 0.35 : 1, cursor: "grab", touchAction: "none" }}>
       <TaskCard task={task} onMover={onMover} onEditar={onEditar} onExcluir={onExcluir} arrastavel />
     </div>
   );
 }
 
-function TaskCard({ task, onMover, onEditar, onExcluir, arrastavel, arrastando }: {
+function TaskCard({ task, onMover, onEditar, onExcluir, arrastavel, arrastando, alca }: {
   task: Task;
   onMover: (s: TaskStatus) => void;
   onEditar: () => void;
@@ -330,12 +372,15 @@ function TaskCard({ task, onMover, onEditar, onExcluir, arrastavel, arrastando }
   /** Só visual (ícone de grip) — quem de fato liga o arrasto é o wrapper em DraggableTaskCard. */
   arrastavel?: boolean;
   arrastando?: boolean;
+  /** No toque: a alça de arrastar (um botão com nome), no lugar do ícone decorativo. */
+  alca?: React.ReactNode;
 }) {
   const idx = COLS.findIndex((c) => c.status === task.status);
   const atrasada = isAtrasada(task);
   return (
     <div className={`kanban-card pri-${task.status}`} title={arrastavel ? "Arraste o card pra mover entre colunas" : undefined} style={arrastando ? { boxShadow: "0 10px 30px rgba(0,0,0,.45)", cursor: "grabbing" } : undefined}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+        {alca}
         {arrastavel && (
           <span aria-hidden style={{ color: "var(--muted)", flexShrink: 0, marginTop: 2, padding: "2px 2px" }}>
             <svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor" aria-hidden>

@@ -2,7 +2,8 @@
 
 import { useId, useState } from "react";
 import type { Modo, StatusAnuncio } from "./ads-types";
-import { faixaAtiva, faixaInvertida, resumoDaFaixa } from "@/lib/domain/ads-faixas";
+import CampoFaixa from "@/components/CampoFaixa";
+import { faixaAtiva, resumoDaFaixa } from "@/lib/domain/ads-faixas";
 import {
   COLUNAS_ORDENAVEIS, ORDEM_DAS_OPCOES, descreverOrdem, escolherColuna,
   type ColunaOrdenavel, type OrdemAds,
@@ -105,39 +106,6 @@ export function AdsOrdenar({ ordem, onOrdem }: { ordem: OrdemAds; onOrdem: (o: O
         Ordem atual: {descreverOrdem(ordem)}. Sem dado vai sempre pro fim.
       </span>
     </div>
-  );
-}
-
-/** Um par mínimo/máximo, com nome, unidade e aviso de faixa invertida. */
-function CampoFaixa({ id, nome, unidade, min, max, onMin, onMax, larg }: {
-  id: string; nome: string; unidade: string;
-  min: string; max: string; onMin: (v: string) => void; onMax: (v: string) => void;
-  larg?: number;
-}) {
-  const invertida = faixaInvertida({ min, max });
-  const erroId = `${id}-erro`;
-  return (
-    <fieldset className="ads-faixa" aria-describedby={invertida ? erroId : undefined}>
-      <legend>{nome} <span className="ads-faixa-un">({unidade})</span></legend>
-      <div className="ads-faixa-campos">
-        <input
-          type="number" inputMode="decimal" step="any" min="0" placeholder="mín."
-          aria-label={`${nome} mínimo, em ${unidade}`} aria-invalid={invertida || undefined}
-          value={min} onChange={(e) => onMin(e.target.value)} style={larg ? { width: larg } : undefined}
-        />
-        <span aria-hidden="true">–</span>
-        <input
-          type="number" inputMode="decimal" step="any" min="0" placeholder="máx."
-          aria-label={`${nome} máximo, em ${unidade}`} aria-invalid={invertida || undefined}
-          value={max} onChange={(e) => onMax(e.target.value)} style={larg ? { width: larg } : undefined}
-        />
-      </div>
-      {invertida && (
-        <div id={erroId} className="ads-faixa-erro" role="alert">
-          O mínimo é maior que o máximo — nenhum anúncio passa por esta faixa.
-        </div>
-      )}
-    </fieldset>
   );
 }
 

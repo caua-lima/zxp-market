@@ -130,8 +130,8 @@ export default function EditarMovimentoModal({
 
         <div className="form-grid">
           <div className="field">
-            <label>Data</label>
-            <input className="inp" type="date" value={data} onChange={(e) => setData(e.target.value)} />
+            <label htmlFor="editmov-1">Data</label>
+            <input id="editmov-1" className="inp" type="date" value={data} onChange={(e) => setData(e.target.value)} />
           </div>
 
           <div className="field">
@@ -167,8 +167,8 @@ export default function EditarMovimentoModal({
         </div>
 
         <div className="field">
-          <label>Observação (opcional)</label>
-          <input
+          <label htmlFor="editmov-2">Observação (opcional)</label>
+          <input id="editmov-2"
             className="inp" value={obs} onChange={(e) => setObs(e.target.value)}
             placeholder="Ex: Terramazonia promoção"
           />

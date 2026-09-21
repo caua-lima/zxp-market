@@ -516,13 +516,13 @@ function GoalEntryModal({
       </div>
 
       <div className="config-field">
-        <label>Mês / Ano</label>
-        <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} />
+        <label htmlFor="metas-1">Mês / Ano</label>
+        <input id="metas-1" type="month" value={mes} onChange={(e) => setMes(e.target.value)} />
       </div>
 
       <div className="config-field">
-        <label>Nome da meta principal (opcional)</label>
-        <input
+        <label htmlFor="metas-2">Nome da meta principal (opcional)</label>
+        <input id="metas-2"
           type="text"
           placeholder="Ex: Objetivo Principal, Meta agressiva…"
           value={label}
@@ -535,32 +535,32 @@ function GoalEntryModal({
       <div className="config-section-title">Metas Mensais de Faturamento</div>
 
       <div className="config-field">
-        <label>Meta 1 — Objetivo Principal (R$)</label>
-        <input type="number" min="0" step="100" placeholder="Ex: 15000" value={m1} onChange={(e) => setM1(e.target.value)} />
+        <label htmlFor="metas-3">Meta 1 — Objetivo Principal (R$)</label>
+        <input id="metas-3" type="number" min="0" step="100" placeholder="Ex: 15000" value={m1} onChange={(e) => setM1(e.target.value)} />
       </div>
       <div className="config-field">
-        <label>Meta 2 (opcional, R$)</label>
-        <input type="number" min="0" step="100" placeholder="Ex: 20000" value={m2} onChange={(e) => setM2(e.target.value)} />
+        <label htmlFor="metas-4">Meta 2 (opcional, R$)</label>
+        <input id="metas-4" type="number" min="0" step="100" placeholder="Ex: 20000" value={m2} onChange={(e) => setM2(e.target.value)} />
       </div>
       <div className="config-field">
-        <label>Meta 3 (opcional, R$)</label>
-        <input type="number" min="0" step="100" placeholder="Ex: 25000" value={m3} onChange={(e) => setM3(e.target.value)} />
+        <label htmlFor="metas-5">Meta 3 (opcional, R$)</label>
+        <input id="metas-5" type="number" min="0" step="100" placeholder="Ex: 25000" value={m3} onChange={(e) => setM3(e.target.value)} />
       </div>
 
       <hr className="config-sep" />
       <div className="config-section-title">Meta de Lucro Líquido</div>
 
       <div className="config-field">
-        <label>Margem de lucro líquido alvo (%)</label>
-        <input type="number" min="0" step="0.5" placeholder="10" value={margem} onChange={(e) => setMargem(e.target.value)} />
+        <label htmlFor="metas-6">Margem de lucro líquido alvo (%)</label>
+        <input id="metas-6" type="number" min="0" step="0.5" placeholder="10" value={margem} onChange={(e) => setMargem(e.target.value)} />
         <div className="hint">
           Padrão 10%. A meta diária é calculada automaticamente pela meta mensal (Meta 1 ÷ dias do mês).
         </div>
       </div>
 
       <div className="config-field">
-        <label>Meta de lucro líquido (opcional, R$)</label>
-        <input type="number" min="0" step="100" placeholder="Ex: 1500" value={metaLucro} onChange={(e) => setMetaLucro(e.target.value)} />
+        <label htmlFor="metas-7">Meta de lucro líquido (opcional, R$)</label>
+        <input id="metas-7" type="number" min="0" step="100" placeholder="Ex: 1500" value={metaLucro} onChange={(e) => setMetaLucro(e.target.value)} />
         <div className="hint">
           Independente da margem % — bater a meta de faturamento com margem OK não garante bater esta meta em reais. Deixe em branco pra não acompanhar.
         </div>

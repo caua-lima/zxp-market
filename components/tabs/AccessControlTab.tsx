@@ -316,8 +316,8 @@ export default function AccessControlTab({
 
           <div style={{ display: "grid", gap: 12 }}>
             <div className="config-field" style={{ margin: 0 }}>
-              <label>E-mail</label>
-              <input
+              <label htmlFor="acesso-1">E-mail</label>
+              <input id="acesso-1"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -327,8 +327,8 @@ export default function AccessControlTab({
             </div>
 
             <div className="config-field" style={{ margin: 0 }}>
-              <label>Nome de exibição</label>
-              <input
+              <label htmlFor="acesso-2">Nome de exibição</label>
+              <input id="acesso-2"
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
@@ -337,9 +337,10 @@ export default function AccessControlTab({
             </div>
 
             <div className="config-field" style={{ margin: 0 }}>
-              <label>Senha de login (opcional)</label>
+              <label htmlFor="acesso-senha">Senha de login (opcional)</label>
               <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
                 <input
+                  id="acesso-senha"
                   type={senhaVisivel ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -372,8 +373,8 @@ export default function AccessControlTab({
 
             <div className="form-grid">
               <div className="config-field" style={{ margin: 0 }}>
-                <label>Perfil</label>
-                <select
+                <label htmlFor="acesso-3">Perfil</label>
+                <select id="acesso-3"
                   /* papelDe normaliza o legado: "colaborador" gravado por versões
                      anteriores não casa com nenhuma option e deixaria o campo em
                      branco, fazendo o owner salvar sem perceber a troca. */
@@ -393,8 +394,8 @@ export default function AccessControlTab({
               </div>
 
               <div className="config-field" style={{ margin: 0 }}>
-                <label>Foto URL</label>
-                <input
+                <label htmlFor="acesso-4">Foto URL</label>
+                <input id="acesso-4"
                   type="url"
                   value={photoURL}
                   onChange={(e) => setPhotoURL(e.target.value)}
