@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { FieldPath, getFirestore, type Firestore } from "firebase-admin/firestore";
-import { createNotificationEventIdempotent, garantirEspelho, limparTestesAntigos, repararEspelhosPendentes, type NewNotificationEvent } from "./notification-events";
+import { createNotificationEventIdempotent, garantirEspelho, limparTestesAntigos, limparTestesDosFeeds, repararEspelhosPendentes, type NewNotificationEvent } from "./notification-events";
 
 /**
  * O espelho redigido contra o emulador do Firestore (`npm run test:emulador`).
@@ -215,5 +215,20 @@ describe("eventos DIRECIONADOS — o feed é da pessoa, não do time (N16)", () 
     expect((await feed("a@zxp.com", "test:a:velho").get()).exists).toBe(false);
     expect((await feed("a@zxp.com", "test:a:novo").get()).exists).toBe(true);
     expect((await feed("a@zxp.com", "task_assigned:t9:1").get()).exists).toBe(true);
+  });
+  it("limparTestesDosFeeds acha os feeds sem documento-pai e limpa os de todo mundo", async () => {
+    await createNotificationEventIdempotent({ ...tarefa(), type: "test", dedupeKey: "test:a:velho2" }, db, { audiencia: ["a@zxp.com"] });
+    await createNotificationEventIdempotent({ ...tarefa(), type: "test", dedupeKey: "test:b:velho2" }, db, { audiencia: ["b@zxp.com"] });
+    await createNotificationEventIdempotent({ ...tarefa(), type: "test", dedupeKey: "test:b:novo2" }, db, { audiencia: ["b@zxp.com"] });
+    const velho = { createdAt: new Date(Date.now() - 8 * 24 * 3600 * 1000) };
+    await feed("a@zxp.com", "test:a:velho2").update(velho);
+    await feed("b@zxp.com", "test:b:velho2").update(velho);
+    // O pai nunca foi gravado: é isso que o caminho real produz.
+    expect((await db.collection("notification_feed").doc("a@zxp.com").get()).exists).toBe(false);
+
+    expect(await limparTestesDosFeeds(db)).toBe(2);
+    expect((await feed("a@zxp.com", "test:a:velho2").get()).exists).toBe(false);
+    expect((await feed("b@zxp.com", "test:b:velho2").get()).exists).toBe(false);
+    expect((await feed("b@zxp.com", "test:b:novo2").get()).exists).toBe(true);
   });
 });

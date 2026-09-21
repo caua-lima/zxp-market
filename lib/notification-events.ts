@@ -233,3 +233,13 @@ export async function limparTestesAntigos(db: Firestore, emails: string[], agora
   }
   return apagados;
 }
+
+/**
+ * Limpa os testes vencidos de TODOS os feeds. O documento `notification_feed/{email}`
+ * nunca é criado (só a subcoleção `itens`), então os e-mails vêm de `listDocuments`,
+ * que enxerga esses pais "vazios"; uma consulta comum não os listaria.
+ */
+export async function limparTestesDosFeeds(db: Firestore, agora = Date.now()): Promise<number> {
+  const pais = await db.collection(COLECAO_FEED).listDocuments();
+  return limparTestesAntigos(db, pais.slice(0, 200).map((p) => p.id), agora);
+}

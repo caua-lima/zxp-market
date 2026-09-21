@@ -2,9 +2,8 @@ import "server-only";
 import type { NotificationEventType, SalePushPayload } from "@/lib/domain/notifications";
 import type { ContextoDeRajada } from "@/lib/domain/decisao-destinatario";
 import { dependenciasReais, limparEntregasAntigas, processarEntregas, publicarEEntregar } from "@/lib/notification-outbox";
-import { limparTestesAntigos, repararEspelhosPendentes } from "@/lib/notification-events";
+import { limparTestesDosFeeds, repararEspelhosPendentes } from "@/lib/notification-events";
 import { limparJanelasAntigas } from "@/lib/notification-janelas";
-import { COLECAO_FEED } from "@/lib/domain/notificacao-publico";
 
 /**
  * A porta de entrada que os produtores usam pra mandar push.
@@ -78,14 +77,4 @@ export async function varrerEntregasPendentes(opcoes: { limite?: number; orcamen
     ? (await limparEntregasAntigas(deps).catch(() => 0)) + (await limparJanelasAntigas(deps.db).catch(() => 0)) + (await limparTestesDosFeeds(deps.db).catch(() => 0))
     : 0;
   return { ...entregas, espelhosRefeitos: espelhos, antigosRemovidos: limpos };
-}
-
-/**
- * Apaga os avisos de TESTE vencidos (7 dias) dos feeds pessoais. O documento
- * `notification_feed/{email}` nunca é criado (só a subcoleção), por isso os
- * e-mails vêm de `listDocuments`, que enxerga esses pais "vazios".
- */
-async function limparTestesDosFeeds(db: ReturnType<typeof dependenciasReais>["db"]): Promise<number> {
-  const pais = await db.collection(COLECAO_FEED).listDocuments();
-  return limparTestesAntigos(db, pais.slice(0, 200).map((p) => p.id));
 }
