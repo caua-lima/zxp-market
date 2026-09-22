@@ -45,9 +45,6 @@ export async function GET(req: Request) {
 
   try {
     const accessToken = await getMlAccessToken();
-    if (!accessToken) {
-      return NextResponse.json({ error: "Token ML não encontrado" }, { status: 400 });
-    }
 
     /**
      * Mes corrente + MES ANTERIOR.
@@ -79,29 +76,38 @@ export async function GET(req: Request) {
      * Evidência de que isto mordia: `backups_semanais` está vazio, e o
      * backup roda ANTES dos marcos na sequência abaixo.
      */
-    const resultados = await Promise.allSettled([
-      syncOrdersRange(accessToken, atual),
-      syncReturnsRange(accessToken, atual),
-      /*
-        Reclamacoes/devolucoes ja rodavam no sync-all (botao manual) mas NAO no
-        cron: sem alguem abrir o app, devolucao nunca era atualizada sozinha.
+    const nomes = ["orders/atual", "returns/atual", "claims/atual", "orders/anterior", "returns/anterior", "claims/anterior"];
+    /**
+     * Sem token, nenhuma chamada ao ML pode sair — mas isso não pode mais
+     * derrubar o resto do cron (lembrete, backup, marcos, alerta de estoque,
+     * devolução, outbox de push, poda) como acontecia antes com o 400
+     * antecipado. Os seis passos entram como "falha" — mesmo formato de uma
+     * falha de rede — e o resto da função segue normalmente.
+     */
+    const resultados: PromiseSettledResult<Awaited<ReturnType<typeof syncOrdersRange>>>[] = accessToken
+      ? await Promise.allSettled([
+          syncOrdersRange(accessToken, atual),
+          syncReturnsRange(accessToken, atual),
+          /*
+            Reclamacoes/devolucoes ja rodavam no sync-all (botao manual) mas NAO no
+            cron: sem alguem abrir o app, devolucao nunca era atualizada sozinha.
 
-        O `.catch(() => 0)` que havia aqui sumiu: ele transformava falha em
-        "zero sincronizadas", que se le como sucesso. O allSettled abaixo ja
-        garante que uma falha nao derruba o resto, e agora ela aparece.
-      */
-      syncClaimsRange(accessToken, atual),
-      syncOrdersRange(accessToken, anterior),
-      syncReturnsRange(accessToken, anterior),
-      syncClaimsRange(accessToken, anterior),
-    ]);
+            O `.catch(() => 0)` que havia aqui sumiu: ele transformava falha em
+            "zero sincronizadas", que se le como sucesso. O allSettled abaixo ja
+            garante que uma falha nao derruba o resto, e agora ela aparece.
+          */
+          syncClaimsRange(accessToken, atual),
+          syncOrdersRange(accessToken, anterior),
+          syncReturnsRange(accessToken, anterior),
+          syncClaimsRange(accessToken, anterior),
+        ])
+      : nomes.map(() => ({ status: "rejected" as const, reason: new Error("Token ML não encontrado") }));
     /**
      * Falha vira `null`, não zero: "não sincronizou" e "sincronizou nada" são
      * coisas diferentes, e a resposta do cron é o único lugar onde dá pra
      * enxergar isso depois. Os erros vão junto em `syncFalhas`.
      */
     const syncFalhas: string[] = [];
-    const nomes = ["orders/atual", "returns/atual", "claims/atual", "orders/anterior", "returns/anterior", "claims/anterior"];
     const valores = resultados.map((r, i) => {
       if (r.status === "fulfilled") return r.value;
       const motivo = r.reason instanceof Error ? r.reason.message : String(r.reason);
@@ -119,12 +125,20 @@ export async function GET(req: Request) {
      * ok enquanto metade do período não sincronizou — e era o que acontecia,
      * porque o número de registros de uma etapa que falhou era `null` ou zero,
      * que se lê como "não havia nada".
+     *
+     * O índice tem que vir do array ORIGINAL (`valores`), não de uma versão já
+     * filtrada: mapear `etapasSync.map((e, i) => nomes[i])` depois de um
+     * `.filter()` desalinha `i` assim que a primeira etapa falha — a segunda
+     * etapa bem-sucedida herda o nome da PRIMEIRA. Guardar o índice original
+     * junto do valor evita o desalinhamento.
      */
-    const etapasSync = valores.filter((v): v is NonNullable<typeof v> => v != null);
-    const syncCompleto = syncFalhas.length === 0 && etapasSync.every((e) => e.completo);
+    const etapasSync = valores
+      .map((v, i) => ({ v, i }))
+      .filter((x): x is { v: NonNullable<typeof valores[number]>; i: number } => x.v != null);
+    const syncCompleto = syncFalhas.length === 0 && etapasSync.every((e) => e.v.completo);
     const syncIncompletas = etapasSync
-      .map((e, i) => (e.completo ? null : nomes[i]))
-      .filter((n): n is string => n != null);
+      .filter((e) => !e.v.completo)
+      .map((e) => nomes[e.i]);
 
     // Lembrete de prazo das tarefas pega carona nesta execução diária em vez
     // de virar um cron próprio (ver o aviso do Hobby acima). Best-effort: um
