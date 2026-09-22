@@ -28,14 +28,14 @@ Branch de trabalho: `saas-v2/isolamento-tenant`.
 
 | # | Achado | Status | Arquivo(s) | Evidência |
 |---|---|---|---|---|
-| S04 | `displayName: decoded.name ?? undefined` rejeitado pelo Admin SDK | [ ] | `app/api/acesso/bootstrap/route.ts` | — |
+| S04 | `displayName: decoded.name ?? undefined` rejeitado pelo Admin SDK | [x] | `app/api/acesso/bootstrap/route.ts` | Campo só entra no `set()` quando existe. `tsc`/`test` verdes. Falta um teste de emulador end-to-end (login sem nome cadastrado) — a ser feito junto do harness de emulador da Etapa 3 |
 | S05 | Lease de 30s sem dono/fencing no refresh do token ML | [ ] | `app/api/ml/token.ts` | — |
-| S06 | `Retry-After` do servidor cortado em 8s e a chamada é repetida mesmo assim | [ ] | `lib/domain/retry-http.ts` | — |
+| S06 | `Retry-After` do servidor cortado em 8s e a chamada repetida mesmo assim; `fetch-ml.ts` descartava o `AbortSignal` do chamador | [x] | `lib/domain/retry-http.ts`, `lib/ml/fetch-ml.ts`, testes atualizados | Retry-After que cabe no orçamento (≤15s) é respeitado por inteiro; acima disso a chamada desiste (`espera_excede_orcamento`) em vez de esperar menos e insistir. `AbortSignal` do chamador agora é combinado, não descartado. `npx vitest run lib/domain/retry-http.test.ts` (18/18), `tsc` limpo. Diferenciação por método HTTP (POST não-idempotente) fica pendente, empacotada com o fix de fencing do S05 |
 | S07 | Webhook faz trabalho pesado antes de confirmar de forma durável; aceita recurso sem validar vendedor/app | [ ] | `app/api/ml/webhook/route.ts`, `lib/domain/webhook-ml.ts` | — |
 | S08 | Cron retorna 400 antes de rodar tarefas/backup/outbox; bug de índice no diagnóstico `allSettled` | [ ] | `app/api/ml/cron/route.ts` | — |
 | S09 | Retry do outbox depende de tráfego (webhook/cron); publicação pode engolir falha | [ ] | `lib/notification-dispatch.ts`, `lib/domain/entrega-destino.ts` | — |
 | S10 | Caches de reputação fragmentados, sem coordenação | [ ] | `/api/ml/account`, `/api/ml/desempenho`, `/api/ml/reputacao-vendas`, `ReputacaoPanel`, `ProximaMedalhaPanel` | — |
-| S11 | Projeção de medalha não descontava o que sai da janela móvel | [~] | `lib/domain/projecao-medalha.ts` | Código já mostra a simulação dia-a-dia com desconto — parece corrigido; falta rodar a reprodução exata da auditoria como teste |
+| S11 | Projeção de medalha não descontava o que sai da janela móvel | [x] | `lib/domain/projecao-medalha.ts`, `.test.ts` | A causa citada na auditoria (linear, sem descontar) já estava corrigida no `main` atual. Reproduzindo o cenário EXATO da auditoria (01/06–21/09/2026, R$100/dia, meta R$20.000) achei uma SEGUNDA camada do mesmo bug: a subtração só via a série histórica original, nunca os dias futuros que a própria simulação soma — esgotado o histórico, o saldo só crescia e uma meta acima do teto sustentável "chegava" de qualquer jeito. Corrigido registrando cada dia futuro simulado no mesmo mapa. `npx vitest run lib/domain/projecao-medalha.test.ts` (15/15, incl. a reprodução exata e o caso residual), suite completa 2265/2265, `tsc` limpo |
 | S12 | `sync.ts` grava com `merge:true` e pode reverter dado mais novo do webhook | [ ] | `lib/ml/sync.ts` | — |
 | S13 | `addMovimento`/`recomputeProduto` não são transacionais (corrida de estoque) | [ ] | `lib/firebase/data.ts` | — |
 | S14 | `margemHoje` usa base diferente de "Vendas — Hoje" (7,1% vs 7,2% observado) | [ ] | `Dashboard.tsx` | — |
