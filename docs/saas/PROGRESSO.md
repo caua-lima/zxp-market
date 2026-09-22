@@ -67,10 +67,12 @@ Branch de trabalho: `saas-v2/isolamento-tenant`.
 
 ## Etapa 5 — migração da operação atual
 
-- [ ] `docs/saas/MIGRACAO.md`
-- [ ] Script de migração idempotente, dry-run primeiro
-- [ ] Ensaio em staging com reconciliação (contagem + hash)
-- [ ] Estratégia de corte e rollback
+- [x] `docs/saas/MIGRACAO.md` — primeira fatia (só membership: controleAcesso → tenants/{id}/members + memberships)
+- [x] Script de migração idempotente, dry-run primeiro — `scripts/migrar-tenant-legado.mjs`, lógica pura testada em `lib/domain/migracao-tenant.ts`/`.test.ts` (10/10: mapeamento de papel legado→novo, permissoesEdicao só quando existe, validarPlano barra plano sem owner/com owner duplicado/vazio)
+- [x] Ensaio em staging (emulador) — rodado nesta sessão: dry-run mostrou o plano certo, aplicado gravou 7 documentos corretos, REAPLICADO deu o mesmo resultado (idempotência confirmada), conferido lendo direto do Firestore. Detalhes em `docs/saas/MIGRACAO.md`. **Reconciliação por hash** ainda não existe — a conferência foi por leitura direta, suficiente pro volume de teste (3 registros), não pro volume real
+- [ ] Estratégia de corte e rollback — rollback desta fatia é trivial (o script só ADICIONA, nunca apaga/modifica `controleAcesso` ou qualquer coleção existente); o CORTE (trocar `requireAccess` por `requireTenantAccess` nas rotas que já existem) ainda não está desenhado
+- [ ] Migração de DADO DE NEGÓCIO (estoque, custos, metas, pedidos, tarefas) — nem desenhada; é outra fatia, depois desta (membership) estar rodada e conferida em produção
+- [ ] Rodar contra produção real (`vazxpress-a2350`) — não feito nesta sessão, precisa de autorização específica separada (ver nota abaixo)
 
 ## Etapa 6 — onboarding, time, UX por tela
 
