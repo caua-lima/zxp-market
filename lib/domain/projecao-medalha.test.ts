@@ -74,11 +74,20 @@ describe("projetarMedalha — a janela que anda", () => {
      * e nunca subtraía o que sai da janela na virada do mês. Aqui a simulação
      * subtrai, então a mesma situação leva MAIS dias — e a diferença é o mês
      * que desaparece do acumulado.
+     *
+     * `atual` precisa ser CONSISTENTE com a soma da própria `serie` na janela
+     * (é o que a tela real faz: os dois vêm da mesma janela do ML) — e o
+     * ritmo futuro precisa superar o teto sustentável da janela
+     * (dias-da-janela × ritmo), senão a meta é genuinamente inalcançável e a
+     * resposta certa é `nao_chega` (ver o teste seguinte).
      */
     const hoje = "2026-09-05";
     const serie = serieUniforme(hoje, 5, 400);
-    const atual = { vendas: 400, faturamento: 90000 };
-    const ritmo = { vendasPorDia: 5, faturamentoPorDia: 400 };
+    const atual = {
+      vendas: serie.reduce((s, d) => s + d.concluidas, 0),
+      faturamento: serie.reduce((s, d) => s + d.faturado, 0),
+    };
+    const ritmo = { vendasPorDia: 8, faturamentoPorDia: 1500 };
 
     const linearVendas = Math.ceil((GOLD.vendas - atual.vendas) / ritmo.vendasPorDia);
     const linearFatura = Math.ceil((GOLD.faturamento - atual.faturamento) / ritmo.faturamentoPorDia);
@@ -90,6 +99,31 @@ describe("projetarMedalha — a janela que anda", () => {
     expect(r.dias).toBeGreaterThan(linear);
     expect(r.atravessaViradaDeMes).toBe(true);
     expect(r.vendasQueSaem).toBeGreaterThan(0);
+  });
+
+  it("ritmo que não supera o teto da janela NUNCA chega, mesmo simulando bem além do histórico original", () => {
+    /**
+     * Bug residual encontrado ao reproduzir o S11 da auditoria: a subtração
+     * (passo 2 de `projetarMedalha`) só enxergava os dias da `serie` ORIGINAL.
+     * Um dia FUTURO, simulado pelo próprio ritmo, nunca era registrado pra
+     * sair da janela quando chegasse a vez dele — então, esgotado o histórico
+     * real (por volta de janela.dias no futuro), o saldo simulado passava a
+     * só CRESCER pra sempre, e uma meta acima do teto sustentável da janela
+     * (dias × ritmo) "chegava" de qualquer jeito. Corrigido registrando cada
+     * dia futuro simulado no mesmo mapa que o passo 2 consulta.
+     */
+    const hoje = "2026-09-05";
+    const serie = serieUniforme(hoje, 5, 400);
+    const atual = {
+      vendas: serie.reduce((s, d) => s + d.concluidas, 0),
+      faturamento: serie.reduce((s, d) => s + d.faturado, 0),
+    };
+    // Mesmo ritmo do histórico: em regime permanente o saldo da janela não
+    // pode superar ~dias-da-janela × ritmo (~97 × 400 ≈ 38.800) — bem abaixo
+    // da meta Gold (R$ 118.400).
+    const ritmo = { vendasPorDia: 5, faturamentoPorDia: 400 };
+    const r = projetarMedalha(serie, GOLD, hoje, ritmo, atual);
+    expect(r.tipo).toBe("nao_chega");
   });
 
   it("projeção que NÃO atravessa virada de mês bate com a linear", () => {
@@ -150,6 +184,31 @@ describe("projetarMedalha — a janela que anda", () => {
     // Junho tem 30 dias a 5 vendas/dia = 150 saindo na virada de setembro->outubro.
     expect(r.vendasQueSaem).toBeGreaterThanOrEqual(150);
     expect(r.faturamentoQueSai).toBeGreaterThanOrEqual(30 * 400);
+  });
+
+  it("reprodução exata da auditoria SaaS (S11): R$100/dia não chega a R$20.000 numa janela de ~3 meses", () => {
+    /**
+     * `01-ZXP-MARKET-AUDITORIA-SAAS.md`, achado S11: histórico 01/06 a
+     * 21/09/2026, ritmo de R$100/dia mantido, meta R$20.000. A janela móvel
+     * (3 meses fechados + mês corrente) nunca acumula mais do que
+     * ~dias-da-janela × R$100 — bem abaixo de R$20.000 — então a resposta tem
+     * que ser `nao_chega`. A versão com o bug relatado devolvia uma data
+     * (200 dias, 09/04/2027) porque a venda futura entrava no acumulado sem
+     * nunca sair pela janela.
+     */
+    const hoje = "2026-09-21";
+    const serie: DiaDeVendas[] = [];
+    for (const d = new Date(2026, 5, 1); d <= new Date(2026, 8, 21); d.setDate(d.getDate() + 1)) {
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      serie.push({ dia: iso, concluidas: 1, faturado: 100 });
+    }
+    const janela = janelaDaMedalha(hoje);
+    expect(janela.dias * 100).toBeLessThan(20_000); // a própria premissa do achado
+
+    const meta = { nivel: "gold" as const, label: "teste", vendas: 0, faturamento: 20_000 };
+    const r = projetarMedalha(serie, meta, hoje,
+      { vendasPorDia: 1, faturamentoPorDia: 100 }, { vendas: 999, faturamento: 8_100 });
+    expect(r.tipo).toBe("nao_chega");
   });
 
   it("data inválida não quebra", () => {

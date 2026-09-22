@@ -31,6 +31,21 @@ import { janelaDaMedalha, type MetaMedalha } from "@/lib/domain/mercadolider-met
  * saiu da janela naquele dia, lido da série histórica real. A resposta só sai
  * quando a série cobre a janela inteira; sem cobertura, a função diz que não
  * dá — em vez de devolver uma data com falsa precisão.
+ *
+ * ─── SEGUNDA CAMADA DO MESMO ERRO (achada reproduzindo o S11 da auditoria
+ * SaaS) ────────────────────────────────────────────────────────────────
+ *
+ * A correção acima só registrava os dias da série ORIGINAL no mapa que o
+ * passo 2 consulta pra saber o que sai. Um dia FUTURO — simulado pelo
+ * próprio ritmo — nunca era registrado ali, então quando chegava a vez DELE
+ * de sair da janela (o que acontece pra qualquer simulação mais longa que
+ * `janela.dias`), não tinha o que subtrair. Esgotado o histórico real, o
+ * saldo simulado só crescia — e uma meta acima do teto sustentável da janela
+ * (dias-da-janela × ritmo) "chegava" de qualquer jeito, com uma data também
+ * falsa, só que mais tarde. Agora cada dia futuro entra no mesmo mapa
+ * assim que é somado, e sai dele quando a janela avança o bastante — a
+ * janela realmente NUNCA para de andar, nem depois que os dados reais
+ * acabam.
  */
 
 export type Ritmo = { vendasPorDia: number; faturamentoPorDia: number };
@@ -168,9 +183,13 @@ export function projetarMedalha(
     const dia = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + k);
     const diaISO = iso(dia);
 
-    // 1. O que entra: o ritmo projetado pra este dia.
+    // 1. O que entra: o ritmo projetado pra este dia. Registrado em `porDia`
+    // também — sem isto, um dia FUTURO nunca é encontrado quando chega a vez
+    // dele de sair da janela (passo 2 só olhava o histórico original), e o
+    // saldo simulado cresce sem limite depois que o histórico real se esgota.
     vendas += ritmo.vendasPorDia;
     faturamento += ritmo.faturamentoPorDia;
+    porDia.set(diaISO, { dia: diaISO, concluidas: ritmo.vendasPorDia, faturado: ritmo.faturamentoPorDia });
 
     /**
      * 2. O que SAI: na virada do mês o início da janela pula um mês inteiro, e
