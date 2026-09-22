@@ -88,9 +88,21 @@ describe("Retry-After — o servidor manda", () => {
     expect(r).toMatchObject({ repetir: true, esperarMs: 5000 });
   });
 
-  it("Retry-After absurdo e limitado — senao trava a funcao", () => {
+  it("Retry-After que cabe no orcamento e respeitado por inteiro, sem cortar pro teto do recuo calculado", () => {
+    const r = decidirRetry({ status: 429, tentativa: 1, retryAfter: "12", agora: AGORA });
+    expect(r).toMatchObject({ repetir: true, esperarMs: 12_000 });
+  });
+
+  it("Retry-After que NAO cabe no orcamento desiste agora, em vez de esperar menos e insistir", () => {
+    /**
+     * O comportamento antigo cortava pra ESPERA_MAXIMA_MS (8s) e repetia mesmo
+     * assim — exatamente o "esperar menos do que o servidor pediu" que a regra
+     * do cabecalho probe. Pedido de 1h: a funcao desiste desta tentativa e
+     * devolve o valor pedido pra quem chama decidir (webhook seguinte, cron,
+     * outbox tentam depois).
+     */
     const r = decidirRetry({ status: 429, tentativa: 1, retryAfter: "3600", agora: AGORA });
-    expect(r).toMatchObject({ repetir: true, esperarMs: ESPERA_MAXIMA_MS });
+    expect(r).toEqual({ repetir: false, motivo: "espera_excede_orcamento", esperaPedidaMs: 3_600_000 });
   });
 });
 

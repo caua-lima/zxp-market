@@ -1,4 +1,12 @@
-import { decidirRetry, TIMEOUT_MS } from "@/lib/domain/retry-http";
+import { decidirRetry, TIMEOUT_MS, type DecisaoRetry } from "@/lib/domain/retry-http";
+
+/** Erro distinto de "esgotou as tentativas": o servidor pediu uma espera maior do que a função pode bancar. */
+export class EsperaExcedeOrcamento extends Error {
+  constructor(public readonly esperaPedidaMs: number) {
+    super(`Mercado Livre pediu ${Math.round(esperaPedidaMs / 1000)}s de espera — acima do orçamento da chamada`);
+    this.name = "EsperaExcedeOrcamento";
+  }
+}
 
 /**
  * `fetch` para o Mercado Livre, com timeout e repetição limitada.
@@ -37,16 +45,18 @@ export async function fetchML(
     try {
       res = await fetch(url, {
         ...init,
-        // Um sinal NOVO por tentativa: reaproveitar um já abortado faria a
-        // repetição falhar na hora, sem nem sair.
-        signal: AbortSignal.timeout(timeout),
+        // O timeout aborta por si só, mas um `signal` que o CHAMADOR passou
+        // (ex.: cancelar por desmontagem) não pode ser descartado — combina
+        // os dois. Sinal NOVO a cada tentativa: reaproveitar um já abortado
+        // faria a repetição falhar na hora, sem nem sair.
+        signal: combinarSinais(init.signal, AbortSignal.timeout(timeout)),
       });
     } catch (err) {
       // Timeout estourado ou rede caída — os dois chegam aqui.
       ultimoErro = err;
     }
 
-    const decisao = decidirRetry({
+    const decisao: DecisaoRetry = decidirRetry({
       status: res ? res.status : null,
       tentativa,
       maxTentativas: opts.maxTentativas,
@@ -54,6 +64,12 @@ export async function fetchML(
     });
 
     if (!decisao.repetir) {
+      if (decisao.motivo === "espera_excede_orcamento") {
+        // Nada foi perdido: a resposta (rate limit, por exemplo) já chegou.
+        // Só não cabe esperar aqui dentro — quem dispara de novo (próximo
+        // webhook, cron, worker do outbox) tenta depois.
+        throw new EsperaExcedeOrcamento(decisao.esperaPedidaMs);
+      }
       if (res) return res;
       // Sem resposta e sem tentativas: o erro sobe. Quem chama trata — e
       // agora sabe que foi falha, não "nada encontrado".
@@ -63,4 +79,16 @@ export async function fetchML(
     await new Promise((r) => setTimeout(r, decisao.esperarMs));
     tentativa = decisao.tentativa;
   }
+}
+
+/** Aborta quando QUALQUER um dos sinais dispara. `undefined` é ignorado. */
+function combinarSinais(a: AbortSignal | null | undefined, b: AbortSignal): AbortSignal {
+  if (!a) return b;
+  const controller = new AbortController();
+  const abortar = (sinal: AbortSignal) => controller.abort(sinal.reason);
+  if (a.aborted) return a;
+  if (b.aborted) return b;
+  a.addEventListener("abort", () => abortar(a), { once: true });
+  b.addEventListener("abort", () => abortar(b), { once: true });
+  return controller.signal;
 }

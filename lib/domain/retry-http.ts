@@ -26,6 +26,14 @@
  * limite que ele acabou de comunicar — o caminho mais rápido pra um bloqueio
  * mais longo. O cabeçalho manda; a espera calculada é só o padrão de quando
  * ele não vem.
+ *
+ * Isso tem um limite: a função também tem um orçamento de execução. Cortar o
+ * Retry-After pra caber nesse orçamento e repetir mesmo assim — o
+ * comportamento antigo — é exatamente o "esperar menos e insistir" que a
+ * regra acima proíbe. A saída correta quando o pedido do servidor não cabe é
+ * NÃO repetir agora: devolve `espera_excede_orcamento` com o valor pedido, e
+ * quem chama larga essa tentativa pro próximo gatilho externo (webhook
+ * seguinte, cron, worker do outbox) — não pra silêncio.
  */
 
 /** Status que vale repetir. 429 entra porque é um "tente depois" explícito. */
@@ -33,7 +41,8 @@ const REPETIVEIS = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 export type DecisaoRetry =
   | { repetir: true; esperarMs: number; tentativa: number }
-  | { repetir: false; motivo: "sucesso" | "erro_definitivo" | "sem_tentativas" };
+  | { repetir: false; motivo: "sucesso" | "erro_definitivo" | "sem_tentativas" }
+  | { repetir: false; motivo: "espera_excede_orcamento"; esperaPedidaMs: number };
 
 /** Timeout por chamada. Curto o bastante pra sobrar orçamento pro resto da rodada. */
 export const TIMEOUT_MS = 12_000;
@@ -41,8 +50,17 @@ export const TIMEOUT_MS = 12_000;
 /** Tentativas TOTAIS, incluindo a primeira. Três cobre indisponibilidade curta. */
 export const MAX_TENTATIVAS = 3;
 
-/** Teto da espera — sem ele, um Retry-After absurdo trava a função. */
+/** Teto da espera CALCULADA (sem Retry-After do servidor). */
 export const ESPERA_MAXIMA_MS = 8_000;
+
+/**
+ * Acima disto, esperar DENTRO da chamada consumiria orçamento demais da
+ * função (webhook e cron têm `maxDuration` curto). Um Retry-After maior que
+ * isto não é encurtado — é motivo pra desistir desta tentativa e deixar o
+ * próximo gatilho externo repetir depois, com a espera de verdade já correndo
+ * do lado do ML, não do nosso processo.
+ */
+export const ORCAMENTO_MAXIMO_ESPERA_MS = 15_000;
 
 export function statusEhRepetivel(status: number): boolean {
   return REPETIVEIS.has(Number(status));
@@ -116,11 +134,14 @@ export function decidirRetry(args: {
   if (args.tentativa >= max) return { repetir: false, motivo: "sem_tentativas" };
 
   // O cabeçalho manda sobre a conta: esperar menos do que o servidor pediu é
-  // insistir contra um limite que ele acabou de comunicar.
+  // insistir contra um limite que ele acabou de comunicar. Se o pedido não
+  // cabe no orçamento da função, a resposta é desistir agora — não cortar a
+  // espera e insistir do mesmo jeito.
   const doServidor = lerRetryAfter(args.retryAfter, agora);
-  const esperarMs = doServidor != null
-    ? Math.min(doServidor, ESPERA_MAXIMA_MS)
-    : esperaDoRecuo(args.tentativa, args.aleatorio);
+  if (doServidor != null && doServidor > ORCAMENTO_MAXIMO_ESPERA_MS) {
+    return { repetir: false, motivo: "espera_excede_orcamento", esperaPedidaMs: doServidor };
+  }
+  const esperarMs = doServidor ?? esperaDoRecuo(args.tentativa, args.aleatorio);
 
   return { repetir: true, esperarMs, tentativa: args.tentativa + 1 };
 }
