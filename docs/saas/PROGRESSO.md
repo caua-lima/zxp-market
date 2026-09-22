@@ -54,7 +54,7 @@ Branch de trabalho: `saas-v2/isolamento-tenant`.
 
 - [ ] `TenantContext`/`ConnectionContext` (tipos) + `requireTenantAccess`/`requireConnectionAccess`
 - [ ] S01 — dados e autorização hoje são globais (`controleAcesso`, coleções sem `tenantId`)
-- [ ] S02 — rota admin reseta senha de QUALQUER usuário por e-mail, sem checar organização
+- [x] S02 — rota admin reseta senha de QUALQUER usuário por e-mail, sem checar organização. Fix: o alvo já precisa existir em `controleAcesso` (a fila real já grava lá antes de chamar a rota, fluxo legítimo intacto). `app/api/admin/create-user/route.ts`, `.test.ts` (novo, 3/3). `tsc`/lint/suite completa (2293/2293)/build limpos. Fechado independente do resto do S01/S03 — é o P0 mais autocontido dos três
 - [ ] S03 — conexão ML única/global (`SELLER_ID` fallback fixo) → modelo `Connection` por tenant
 - [ ] S23 — cache/localStorage/IndexedDB sem escopo por tenant/conexão/geração
 
