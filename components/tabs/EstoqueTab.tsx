@@ -7,7 +7,7 @@ import { mensagemDeErroDeSalvamento, salvarSemPerder } from "@/lib/domain/salvar
 import { motivoDaListaVazia } from "@/lib/domain/estoque-vazio";
 import { linhaCsvSegura } from "@/lib/domain/csv-seguro";
 import { useFormularioSujo } from "@/components/useFormularioSujo";
-import { addMovimento, deleteMovimento, deleteProduct, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas, recalcularProduto } from "@/lib/firebase/data";
+import { addMovimento, deleteMovimento, deleteProduct, LIMITE_MOVIMENTOS, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas, recalcularProduto } from "@/lib/firebase/data";
 import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas";
 import { fmtBRL, fmtPct } from "@/lib/domain/calc";
 import { getCoverageStatus, COVERAGE_STATUS_LABEL, ehFullLogistic, estoqueForaDoFull, type CoverageStatus } from "@/lib/domain/estoque";
@@ -82,6 +82,8 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
   const [forecast, setForecast] = useState<Forecast>({ vendas: {}, dias: DIAS_ALVO });
   const [loadingML, setLoadingML] = useState(false);
   const [movimentos, setMovimentos] = useState<EstoqueMovimento[]>([]);
+  /** O livro bateu o teto de leitura (S22) — pode haver movimentação mais antiga faltando aqui. */
+  const [movimentosTruncados, setMovimentosTruncados] = useState(false);
   const [remessas, setRemessas] = useState<Remessa[]>([]);
   const [remessasIgnoradas, setRemessasIgnoradas] = useState<Set<string>>(new Set());
   const [movModal, setMovModal] = useState<{ product: Product; tipo: MovimentoTipo } | null>(null);
@@ -151,7 +153,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
     // depois de um `await`.
     void (async () => { await carregarEstoque(); })();
   }, [carregarEstoque]);
-  useEffect(() => watchMovimentos(setMovimentos), []);
+  useEffect(() => watchMovimentos((movs, truncado) => { setMovimentos(movs); setMovimentosTruncados(truncado); }), []);
   useEffect(() => watchRemessasIgnoradas(setRemessasIgnoradas), []);
 
   /**
@@ -632,6 +634,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
           busca={search}
           pagina={paginaMov}
           onPagina={setPaginaMov}
+          truncado={movimentosTruncados}
         />
       ) : (
       <>
@@ -849,12 +852,14 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
  * Paginada porque a lista cresce pra sempre: nenhuma movimentação some, e
  * desenhar quinhentas linhas de uma vez trava a aba num celular.
  */
-function MovimentacoesPanel({ movimentos, produtos, busca, pagina, onPagina }: {
+function MovimentacoesPanel({ movimentos, produtos, busca, pagina, onPagina, truncado }: {
   movimentos: EstoqueMovimento[];
   produtos: Product[];
   busca: string;
   pagina: number;
   onPagina: (n: number) => void;
+  /** O livro bateu o teto de leitura (S22 da auditoria SaaS): pode haver movimentação mais antiga faltando. */
+  truncado?: boolean;
 }) {
   const nomePorId = useMemo(
     () => new Map(produtos.map((p) => [p.id, p.name || p.id])),
@@ -890,6 +895,14 @@ function MovimentacoesPanel({ movimentos, produtos, busca, pagina, onPagina }: {
         <span className="panel-title">Movimentações de estoque</span>
         <span className="panel-sub">entradas, ajustes e envios pro Full — do mais recente pro mais antigo</span>
       </div>
+
+      {truncado && (
+        <div style={{ marginBottom: 12, padding: "8px 14px", background: "rgba(212,165,74,.12)", border: "1px solid var(--warning)", borderRadius: 8, fontSize: ".8rem", color: "var(--text)" }}>
+          Mostrando as {LIMITE_MOVIMENTOS} movimentações mais recentes — pode haver lançamentos mais
+          antigos que não aparecem aqui. Isto não afeta o custo médio nem a quantidade em estoque, que
+          são recalculados a partir do livro inteiro.
+        </div>
+      )}
 
       {ordenados.length === 0 ? (
         <div className="empty-state">

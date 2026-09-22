@@ -283,14 +283,27 @@ async function recomputeProduto(
  * usuário nunca vê dado velho depois de mexer.
  */
 const CHAVE_MOV = "estoque_movimentos";
+/** Teto da leitura — ver `truncado` no callback de `watchMovimentos`. */
+export const LIMITE_MOVIMENTOS = 1500;
 
+/**
+ * `truncado` no callback: o teto de leitura foi atingido, então pode haver
+ * movimentação mais antiga que NÃO está nesta lista. Sem isto, bater o teto
+ * é indistinguível de "isto é o livro inteiro" — quem olha a tela não tem
+ * como saber que o histórico foi cortado em silêncio (achado S22 da
+ * auditoria SaaS). Isto não é paginação real (não dá pra pedir a próxima
+ * página): é o aviso honesto de que ela falta.
+ */
 export function watchMovimentos(
-  cb: (movs: EstoqueMovimento[]) => void,
+  cb: (movs: EstoqueMovimento[], truncado: boolean) => void,
 ): () => void {
   return assinarComCache(CHAVE_MOV, async () => {
-    const snap = await getDocs(query(sCol(MOV_COL), orderBy("data", "desc"), limit(1500)));
-    return snap.docs.map((d) => d.data() as EstoqueMovimento);
-  }, cb);
+    const snap = await getDocs(query(sCol(MOV_COL), orderBy("data", "desc"), limit(LIMITE_MOVIMENTOS)));
+    return {
+      itens: snap.docs.map((d) => d.data() as EstoqueMovimento),
+      truncado: snap.docs.length >= LIMITE_MOVIMENTOS,
+    };
+  }, (d) => cb(d.itens, d.truncado));
 }
 
 /**
@@ -549,7 +562,16 @@ export async function saveFinanceiroSaidas(saidas: SaidaFin[]): Promise<void> {
 const TASK_COL = "tarefas";
 const CHAVE_TAREFAS = "tarefas";
 
-export function watchTasks(cb: (tasks: Task[]) => void): () => void {
+/** Teto da leitura — ver `truncado` no callback de `watchTasks`. */
+export const LIMITE_TAREFAS = 500;
+
+/**
+ * `truncado` no callback: o teto foi atingido, então tarefas mais antigas
+ * (concluídas há mais tempo) podem estar faltando na lista — sem isso, bater
+ * o teto é indistinguível de "é isso mesmo que existe" (achado S22 da
+ * auditoria SaaS). Não é paginação real, é o aviso honesto de que ela falta.
+ */
+export function watchTasks(cb: (tasks: Task[], truncado: boolean) => void): () => void {
   // limit(500) — sem teto, essa era a última coleção do time (compartilhada,
   // vista por todo mundo) sem limit() num listener global. Achado ao investigar
   // a cota do Firestore esgotando TODO DIA: watchTasks roda em DOIS lugares ao
@@ -559,9 +581,12 @@ export function watchTasks(cb: (tasks: Task[]) => void): () => void {
   // QUALQUER tarefa, de QUALQUER pessoa. Sem teto, o custo só cresce conforme o
   // quadro acumula tarefas concluídas ao longo dos meses.
   return assinarComCache(CHAVE_TAREFAS, async () => {
-    const snap = await getDocs(query(sCol(TASK_COL), orderBy("createdAt", "desc"), limit(500)));
-    return snap.docs.map((d) => d.data() as Task);
-  }, cb, {
+    const snap = await getDocs(query(sCol(TASK_COL), orderBy("createdAt", "desc"), limit(LIMITE_TAREFAS)));
+    return {
+      itens: snap.docs.map((d) => d.data() as Task),
+      truncado: snap.docs.length >= LIMITE_TAREFAS,
+    };
+  }, (d) => cb(d.itens, d.truncado), {
     // TTL curto: o Kanban é compartilhado e duas pessoas mexem nele ao mesmo
     // tempo. 60s é o meio-termo entre ver o card do outro andar e não reler
     // 500 documentos a cada mudança em cada aba aberta.

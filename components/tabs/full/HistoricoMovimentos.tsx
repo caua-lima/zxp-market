@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { TIPO_MOVIMENTO_LABEL, type EstoqueMovimento, type Product } from "@/lib/domain/types";
-import { deleteMovimento, logAudit, updateMovimento } from "@/lib/firebase/data";
+import { deleteMovimento, LIMITE_MOVIMENTOS, logAudit, updateMovimento } from "@/lib/firebase/data";
 import { fmtBRL } from "@/lib/domain/calc";
 import Modal from "@/components/Modal";
 import BaixasPorRemessa from "@/components/tabs/full/BaixasPorRemessa";
@@ -24,7 +24,12 @@ const FILTROS: { id: Filtro; label: string }[] = [
  * "o que já entrou", com filtro e busca, e cada linha corrigível ou excluível
  * sem precisar saber de antemão de qual produto ela é.
  */
-export default function HistoricoMovimentos({ movimentos, products }: { movimentos: EstoqueMovimento[]; products: Product[] }) {
+export default function HistoricoMovimentos({ movimentos, products, truncado }: {
+  movimentos: EstoqueMovimento[];
+  products: Product[];
+  /** O livro bateu o teto de leitura (S22 da auditoria SaaS): pode haver movimentação mais antiga faltando. */
+  truncado?: boolean;
+}) {
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [busca, setBusca] = useState("");
   const [editando, setEditando] = useState<EstoqueMovimento | null>(null);
@@ -77,6 +82,13 @@ export default function HistoricoMovimentos({ movimentos, products }: { moviment
         <span className="panel-title">Histórico de movimentações</span>
         <span className="panel-sub">todas as entradas e baixas do Full, de todos os produtos — corrija ou exclua qualquer lançamento</span>
       </div>
+
+      {truncado && (
+        <div style={{ marginBottom: 10, padding: "8px 14px", background: "rgba(212,165,74,.12)", border: "1px solid var(--warning)", borderRadius: 8, fontSize: ".8rem", color: "var(--text)" }}>
+          Mostrando as {LIMITE_MOVIMENTOS} movimentações mais recentes — pode haver lançamentos mais
+          antigos que não aparecem aqui. Isto não afeta o custo médio nem a quantidade em estoque.
+        </div>
+      )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
         {FILTROS.map((f) => (

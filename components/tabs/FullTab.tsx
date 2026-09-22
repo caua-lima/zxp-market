@@ -23,6 +23,8 @@ import TelaHeader from "@/components/TelaHeader";
  */
 export default function FullTab({ products }: { products: Product[] }) {
   const [movimentos, setMovimentos] = useState<EstoqueMovimento[]>([]);
+  /** O livro bateu o teto de leitura (S22 da auditoria SaaS) — ver HistoricoMovimentos. */
+  const [movimentosTruncados, setMovimentosTruncados] = useState(false);
   const [retido, setRetido] = useState<EstoqueFullRetido | null>(null);
   /**
    * O estado da fonte do estoque retido. Antes, uma falha da rota era engolida e o
@@ -32,7 +34,7 @@ export default function FullTab({ products }: { products: Product[] }) {
    */
   const [fonteRetido, setFonteRetido] = useState<"carregando" | "ok" | "erro">("carregando");
   const [tentando, setTentando] = useState(false);
-  useEffect(() => watchMovimentos(setMovimentos), []);
+  useEffect(() => watchMovimentos((movs, truncado) => { setMovimentos(movs); setMovimentosTruncados(truncado); }), []);
 
   const carregarRetido = useCallback(async (): Promise<void> => {
     try {
@@ -84,7 +86,7 @@ export default function FullTab({ products }: { products: Product[] }) {
       )}
       <EstoqueRetidoFull dados={retido} custoPorProduto={custoPorProduto} />
       <RemessasFull movimentos={movimentos} />
-      <HistoricoMovimentos movimentos={movimentos} products={products} />
+      <HistoricoMovimentos movimentos={movimentos} products={products} truncado={movimentosTruncados} />
     </div>
   );
 }

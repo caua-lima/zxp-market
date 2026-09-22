@@ -10,7 +10,7 @@ import {
 } from "@dnd-kit/core";
 import Modal from "@/components/Modal";
 import { appendAtividade, isTaskAtrasada, type Task, type TaskAtividade, type TaskPriority, type TaskStatus } from "@/lib/domain/types";
-import { deleteTask, upsertTask, watchTasks } from "@/lib/firebase/data";
+import { deleteTask, LIMITE_TAREFAS, upsertTask, watchTasks } from "@/lib/firebase/data";
 import { useAccess } from "@/components/tabs/AccessGuard";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import TelaHeader from "@/components/TelaHeader";
@@ -64,6 +64,8 @@ type Filtro = "todas" | "pra-mim" | "criei-eu";
 export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openTaskId?: string; chaveDeNavegacao?: number } = {}) {
   const { email } = useAccess();
   const [tasks, setTasks] = useState<Task[]>([]);
+  /** O quadro bateu o teto de leitura (S22 da auditoria SaaS) — tarefa mais antiga pode estar faltando. */
+  const [tasksTruncadas, setTasksTruncadas] = useState(false);
   const [pessoas, setPessoas] = useState<PessoaDiretorio[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<Filtro>("todas");
@@ -99,7 +101,7 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
   useDeepLinkConsumido(openTaskId, chaveDeNavegacao, !!openTaskId && tasks.some((x) => x.id === openTaskId), abrirTarefaDoLink);
 
   useEffect(() => {
-    const u1 = watchTasks((ts) => { setTasks(ts); setLoading(false); });
+    const u1 = watchTasks((ts, truncado) => { setTasks(ts); setTasksTruncadas(truncado); setLoading(false); });
     let vivo = true;
     authedFetch("/api/acesso/diretorio")
       .then((r) => (r.ok ? r.json() : { pessoas: [] }))
@@ -212,6 +214,13 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
         })}
         acao={{ rotulo: "＋ Nova Tarefa", onClick: () => setOpenNew(true) }}
       />
+
+      {tasksTruncadas && (
+        <div style={{ marginBottom: 12, padding: "8px 14px", background: "rgba(212,165,74,.12)", border: "1px solid var(--warning)", borderRadius: 8, fontSize: ".8rem", color: "var(--text)" }}>
+          Mostrando as {LIMITE_TAREFAS} tarefas mais recentes — pode haver tarefas mais antigas
+          (normalmente já concluídas) que não aparecem aqui.
+        </div>
+      )}
 
       <div className="kpi-grid">
         <div className="kpi k-acc"><div className="k-lbl">Em aberto</div><div className="k-val">{abertas}</div><div className="k-sub">{tasks.length} no total</div></div>
