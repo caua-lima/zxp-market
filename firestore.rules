@@ -555,5 +555,55 @@ service cloud.firestore {
     match /usuarios/{uid}/{sub}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == uid && sub != 'preferences';
     }
+
+    /**
+     * ─── FUNDAÇÃO MULTI-TENANT (S01 da auditoria SaaS) ──────────────────
+     *
+     * Aditivo de propósito: nada abaixo é lido ou escrito pelo app hoje —
+     * `controleAcesso` e as coleções globais (`estoque`, `custos`, `metas`...)
+     * continuam sendo a única fonte de verdade até a migração acontecer (ver
+     * docs/saas/MIGRACAO.md, ainda não escrito). Isto só existe pra provar,
+     * ANTES de qualquer rota depender disso, que o isolamento entre tenants
+     * funciona de verdade — testado contra o emulador, não por leitura.
+     *
+     * A identidade continua sendo o e-mail do token (mesma escolha de
+     * `controleAcesso`, e pelo mesmo motivo: convidar alguém por e-mail
+     * precisa funcionar ANTES da pessoa ter um `uid` — ela só ganha uid no
+     * primeiro login). `memberships/{email}` é o ponteiro reverso
+     * (e-mail → tenant); só o servidor (Admin SDK, que ignora estas regras)
+     * o lê, então fica trancado pro cliente — mesmo padrão de
+     * `ml_oauth_transacoes` logo acima.
+     */
+    function membroDoTenant(tenantId, email) {
+      return get(/databases/$(database)/documents/tenants/$(tenantId)/members/$(email));
+    }
+    function ehMembroDoTenant(tenantId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/tenants/$(tenantId)/members/$(request.auth.token.email));
+    }
+    function ehOwnerDoTenant(tenantId) {
+      return ehMembroDoTenant(tenantId) && membroDoTenant(tenantId, request.auth.token.email).data.role == "owner";
+    }
+
+    match /tenants/{tenantId} {
+      allow read: if ehMembroDoTenant(tenantId);
+      // Criação do tenant e mudança de nome/plano passam pelo servidor
+      // (Admin SDK) — nenhum cliente cria ou edita o tenant em si.
+      allow write: if false;
+
+      match /members/{email} {
+        // Cada membro lê o PRÓPRIO registro (pra saber o próprio papel); o
+        // owner lê todo mundo (pra administrar o time).
+        allow read: if ehMembroDoTenant(tenantId) && (request.auth.token.email == email || ehOwnerDoTenant(tenantId));
+        // Convite/remoção passam pelo servidor: o primeiro membro (owner) de
+        // um tenant novo não pode se auto-nomear pelo cliente, mesma lição
+        // do bootstrap de controleAcesso (app/api/acesso/bootstrap).
+        allow write: if false;
+      }
+    }
+
+    match /memberships/{email} {
+      allow read, write: if false;
+    }
   }
 }

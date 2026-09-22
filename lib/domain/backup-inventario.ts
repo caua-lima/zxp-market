@@ -203,6 +203,37 @@ export const INVENTARIO: readonly ItemDeBackup[] = [
       "Nenhuma — e restaurar seria PIOR que perder: revive state já usado. " +
       "Esta coleção é excluída do backup de propósito.",
   },
+  /**
+   * ─── FUNDAÇÃO MULTI-TENANT (S01) — ainda não usada pelo app ────────────
+   *
+   * `tenants`/`members` existem só nas regras (firestore.rules), aditivas,
+   * sem nenhuma rota ou tela escrevendo nelas ainda — ver
+   * docs/saas/PROGRESSO.md. Classificadas já agora porque o teste logo
+   * abaixo (`toda coleção de firestore.rules tem decisão de backup`) não
+   * distingue "existe na regra" de "tem dado de verdade": a decisão
+   * precisa existir ANTES da coleção começar a ser usada, não depois que
+   * alguém notar que ela não está no backup.
+   */
+  {
+    colecao: "tenants",
+    classe: "irrecuperavel",
+    conteudo: "Metadado do tenant: nome, plano, estado da assinatura.",
+    perda: "A empresa perde a própria identidade no sistema — nome, plano, tudo que a distingue de outro tenant.",
+  },
+  {
+    colecao: "members",
+    classe: "irrecuperavel",
+    conteudo: "Subcoleção de tenants/{id}: quem pertence ao tenant e com que papel — o controleAcesso multi-tenant.",
+    perda: "NINGUÉM entra naquele tenant — mesma gravidade e mesma prioridade de restauração de controleAcesso hoje.",
+  },
+  {
+    colecao: "memberships",
+    classe: "irrecuperavel",
+    conteudo: "Ponteiro reverso e-mail → tenantId, só lido pelo servidor (ver firestore.rules).",
+    perda:
+      "Tecnicamente reconstruível varrendo tenants/*/members/* inteiro, mas até existir uma " +
+      "ferramenta que faça isso automaticamente, tratar como irrecuperável é o lado seguro do erro.",
+  },
 ];
 
 /** Coleções que NÃO devem ser restauradas nunca, mesmo se estiverem no dump. */
@@ -218,6 +249,14 @@ export const NUNCA_RESTAURAR: readonly string[] = ["ml_oauth_transacoes"];
 export const ORDEM_DE_RESTAURACAO: readonly string[] = [
   "controleAcesso",
   "controleAcessoMeta",
+  // Ainda não usadas pelo app (ver o comentário no INVENTARIO) — na ordem
+  // certa desde já, pra não precisar lembrar disto quando a migração ligar
+  // a fundação multi-tenant de verdade. tenants antes de members (a
+  // subcoleção pressupõe o documento pai) e memberships por último (é só
+  // um ponteiro pra members, reconstruível a partir dele).
+  "tenants",
+  "members",
+  "memberships",
   "estoque",
   "estoque_movimentos",
   "custos",
