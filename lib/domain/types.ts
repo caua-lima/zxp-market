@@ -406,6 +406,34 @@ export function podeVerAba(papel: Papel, aba: string): boolean {
   return true;
 }
 
+/**
+ * Esta aba tem alguma edição liberada pra quem está olhando AGORA?
+ *
+ * Existia pra alimentar o banner "somente leitura" em app/page.tsx, que
+ * decidia isso globalmente por `!isOwner` — enquanto EstoqueTab, CustosTab,
+ * MetasTab e o changelog de Ads já perguntavam `canEditTab(aba)` (permissão
+ * granular por aba) pra mostrar os próprios botões de editar. Um partner com
+ * "estoque" liberado via `permissoesEdicao` (mas não as outras) via o banner
+ * dizendo "somente leitura" bem ao lado de botões de editar ativos —
+ * contradição visível na mesma tela (achado S17 da auditoria SaaS).
+ *
+ * DRE não tem `PermissionTab` própria (é só-leitura por natureza), mas
+ * herda a permissão de "custos" pro cadastro rápido embutido nela.
+ */
+export function abaEhEditavel(
+  aba: string,
+  ctx: { isOwner: boolean; canEditTab: (tab: PermissionTab) => boolean },
+): boolean {
+  if (aba === "tarefas") return true; // leitura+escrita pra todo autorizado, por design.
+  if (ctx.isOwner) return true;
+  if (aba === "dre") return ctx.canEditTab("custos");
+  if ((["custos", "metas", "estoque", "ads"] as const).includes(aba as PermissionTab)) {
+    return ctx.canEditTab(aba as PermissionTab);
+  }
+  // acesso, dashboard, pedidos, preco, full, desempenho: tudo-ou-nada do owner.
+  return false;
+}
+
 // ── Tarefas (Kanban) ────────────────────────────────────────────
 export type TaskStatus = "todo" | "doing" | "done";
 export type TaskPriority = "baixa" | "media" | "alta" | "critica";

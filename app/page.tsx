@@ -11,6 +11,7 @@ import AjudaChat from "@/components/AjudaChat";
 import { useUserData } from "@/components/useUserData";
 import dynamic from "next/dynamic";
 import { AccessGuard, useAccess } from "@/components/tabs/AccessGuard";
+import { abaEhEditavel } from "@/lib/domain/types";
 /**
  * ─── AS ABAS SÓ BAIXAM QUANDO SÃO ABERTAS ───────────────────────────────
  *
@@ -377,7 +378,7 @@ function AppShell() {
   }, [sidebarOpen]);
 
   const data = useUserData(user?.uid);
-  const { isOwner, displayName, podeVer } = useAccess();
+  const { isOwner, displayName, podeVer, canEditTab } = useAccess();
   const [profileOpen, setProfileOpen] = useState(false);
 
   // Sem isto, uma venda que chega com o app ABERTO não mostra notificação
@@ -709,9 +710,11 @@ function AppShell() {
               </div>
             ) : (
               <>
-                {/* Tarefas é a exceção: colaborador edita lá igual ao owner, então o
-                    aviso de "somente leitura" seria falso ali. */}
-                {!isOwner && activeTab !== "tarefas" && (
+                {/* A mesma pergunta que EstoqueTab/CustosTab/MetasTab/Ads já fazem
+                    (canEditTab, por aba) — não `!isOwner` global, que contradizia
+                    os próprios botões de editar da aba quando um partner tinha
+                    aquela aba especificamente liberada (S17). */}
+                {!abaEhEditavel(activeTab, { isOwner, canEditTab }) && (
                   <div style={{ marginBottom: 14, padding: "8px 14px", background: "rgba(185,181,166,.12)", border: "1px solid var(--border)", borderRadius: 8, fontSize: ".8rem", color: "var(--muted)" }}>
                     Modo <b>somente leitura</b> — você pode ver tudo, mas alterações são permitidas apenas ao owner.
                   </div>
