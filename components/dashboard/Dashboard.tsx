@@ -84,6 +84,33 @@ type HojeBreakdown = {
   produtoTop?: { titulo: string; receita: number; unidades: number } | null;
 };
 
+/**
+ * `HojeBreakdown` → `EntradaDia`, pra usar as funções de `lib/domain/resumo-dia`
+ * (margemReal, margemSemAds, roas…) — a MESMA base em todo lugar que mostra
+ * margem do dia.
+ *
+ * Existia só dentro de `VendasDoDiaHero`; `HojeVsOntem` calculava a própria
+ * margem local com `lucroLiquido / faturamentoBruto` (bruto INCLUI cancelado
+ * e devolvido) enquanto o hero usava `margemReal`, cuja base é `retorno`
+ * (bruto menos cancelado/devolvido, ou pior: um item sem produto vinculado
+ * também fica de fora). Duas margens do MESMO dia, duas bases diferentes —
+ * 7,1% vs 7,2% observado ao vivo na auditoria SaaS (S14).
+ */
+function paraDominioDoDia(b: HojeBreakdown): EntradaDia {
+  return {
+    faturamentoBruto: b.faturamentoBruto,
+    faturamentoLiquido: b.faturamentoLiquido,
+    // Sem `totalRetorno` (payload antigo em cache), cai no líquido em vez do
+    // bruto: errar pra perto da verdade é melhor que errar pro lado que
+    // inclui cancelado.
+    retorno: b.totalRetorno ?? b.faturamentoLiquido,
+    totalCMV: b.totalCMV, totalEnvio: b.totalEnvio,
+    totalTaxasML: b.totalTaxasML, totalImposto: b.totalImposto, totalAds: b.totalAds,
+    lucroLiquido: b.lucroLiquido, pedidos: b.pedidos,
+    unidades: b.unidadesVendidas ?? 0, vendaDiretaAds: b.vendaDiretaAds ?? 0,
+  };
+}
+
 type MlMetrics = {
   faturamentoBruto:   number;
   faturamentoLiquido: number;
@@ -567,7 +594,7 @@ function HojeVsOntem({ hoje, ontem, rotulo, rotuloAnterior }: {
   rotuloAnterior: string;
 }) {
   if (!hoje) return null;
-  const margemHoje = hoje.faturamentoBruto > 0 ? (hoje.lucroLiquido / hoje.faturamentoBruto) * 100 : 0;
+  const margemHoje = margemReal(paraDominioDoDia(hoje)) ?? 0;
 
   let diffTxt: React.ReactNode = null;
   if (ontem && ontem.faturamentoLiquido !== 0) {
@@ -606,22 +633,8 @@ function VendasDoDiaHero({ hoje, ontem, rotulo, rotuloAnterior }: {
   };
   const h: HojeBreakdown = hoje ?? vazio;
 
-  const paraDominio = (b: HojeBreakdown): EntradaDia => ({
-    faturamentoBruto: b.faturamentoBruto,
-    faturamentoLiquido: b.faturamentoLiquido,
-    /**
-     * Sem `totalRetorno` (payload antigo em cache), cai no líquido em vez do
-     * bruto: errar pra perto da verdade é melhor que errar pro lado que
-     * inclui cancelado.
-     */
-    retorno: b.totalRetorno ?? b.faturamentoLiquido,
-    totalCMV: b.totalCMV, totalEnvio: b.totalEnvio,
-    totalTaxasML: b.totalTaxasML, totalImposto: b.totalImposto, totalAds: b.totalAds,
-    lucroLiquido: b.lucroLiquido, pedidos: b.pedidos,
-    unidades: b.unidadesVendidas ?? 0, vendaDiretaAds: b.vendaDiretaAds ?? 0,
-  });
-  const d = paraDominio(h);
-  const dOntem = ontem ? paraDominio(ontem) : null;
+  const d = paraDominioDoDia(h);
+  const dOntem = ontem ? paraDominioDoDia(ontem) : null;
 
   const margem = margemReal(d) ?? 0;
   const semAds = margemSemAds(d);
