@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mediaDiariaAjustada } from "./reposicao";
-import { calculateStockCoverage, consolidarEstoqueAnuncios, estoqueForaDoFull, type AnuncioEstoque } from "./estoque";
+import { calculateStockCoverage, consolidarEstoqueAnuncios, estoqueForaDoFull, getCoverageStatus, type AnuncioEstoque } from "./estoque";
 
 function full(available: number, inventoryId?: string): AnuncioEstoque {
   return { available, logistic: "fulfillment", inventoryId };
@@ -188,5 +188,29 @@ describe("calculateStockCoverage — dias ativos", () => {
     const estoque = 100, vendas = 45, dias = 30, ativos = 18;
     const ritmo = mediaDiariaAjustada(vendas, dias, ativos);
     expect(calculateStockCoverage(estoque, vendas, dias, ativos)).toBeCloseTo(estoque / ritmo, 6);
+  });
+});
+
+describe("getCoverageStatus — achado S16 da auditoria SaaS", () => {
+  it("zerado com giro CONFIRMADO no periodo e ruptura, nao 'sem giro suficiente'", () => {
+    // Reproducao exata: previsaoDe (estoque-compartilhado.ts) devolve
+    // cobertura=Infinity quando total<=0, que EstoqueTab converte pra null
+    // antes de chamar getCoverageStatus — exatamente o cenario aqui.
+    expect(getCoverageStatus(null, 0, 12)).toBe("critico");
+  });
+
+  it("zerado e SEM nenhuma venda no periodo continua 'sem-giro' (nao inventa urgencia sem dado)", () => {
+    expect(getCoverageStatus(null, 0, 0)).toBe("sem-giro");
+  });
+
+  it("com estoque e SEM venda no periodo e 'encalhado' (capital parado, giro confirmado zero)", () => {
+    expect(getCoverageStatus(null, 50, 0)).toBe("encalhado");
+  });
+
+  it("cobertura calculavel continua nas mesmas faixas de antes", () => {
+    expect(getCoverageStatus(3, 10, 5)).toBe("critico");
+    expect(getCoverageStatus(10, 10, 5)).toBe("repor");
+    expect(getCoverageStatus(20, 10, 5)).toBe("saudavel");
+    expect(getCoverageStatus(20, 0, 5)).toBe("critico"); // zerado sempre critico, mesmo com cobertura "calculavel"
   });
 });

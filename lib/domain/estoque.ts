@@ -58,6 +58,16 @@ export function getCoverageStatus(
   estoqueDisponivel: number,
   vendasNoPeriodo: number,
 ): CoverageStatus {
+  /**
+   * Zerado com giro CONFIRMADO no período é ruptura AGORA, não "sem giro
+   * suficiente". `coberturaDias` chega `null` aqui porque dividir pelo
+   * estoque zero não dá um número de dias — mas a pergunta que importa (tem
+   * estoque? houve venda recente?) já está respondida. Achado S16 da
+   * auditoria SaaS, visto ao vivo: um produto zerado com vendas recentes
+   * mostrava "Comprar" no painel de Reposição e "Sem giro suficiente" no de
+   * Previsão — os dois lendo o mesmo dado, dizendo coisas opostas.
+   */
+  if (estoqueDisponivel <= 0 && vendasNoPeriodo > 0) return "critico";
   if (coberturaDias == null) {
     return estoqueDisponivel > 0 && vendasNoPeriodo === 0 ? "encalhado" : "sem-giro";
   }
