@@ -214,6 +214,13 @@ export type CenariosProjecao = { conservador: number; esperado: number; agressiv
  * tendência real, então "conservador"/"agressivo" são o ritmo atual ±
  * `variacaoPct` (padrão 15%), não uma previsão estatística. Serve pra dar
  * uma noção de sensibilidade ("e se o ritmo cair/subir"), não uma garantia.
+ *
+ * A variação incide só sobre o que FALTA (`esperado - valorAcumulado`), não
+ * sobre o mês inteiro: o que já aconteceu é fato, não cenário. A versão
+ * antiga multiplicava `esperado` inteiro — no último dia do mês, com
+ * `esperado === valorAcumulado` (nada mais a projetar), ainda assim os três
+ * cenários abriam ±15% em cima de um número que não tinha mais futuro pra
+ * variar (achado S18 da auditoria SaaS).
  */
 export function scenariosDeProjecao(
   valorAcumulado: number,
@@ -222,10 +229,11 @@ export function scenariosDeProjecao(
   variacaoPct = 0.15,
 ): CenariosProjecao {
   const esperado = projetarMes(valorAcumulado, diaAtual, totalDiasMes);
+  const resto = esperado - valorAcumulado;
   return {
-    conservador: esperado * (1 - variacaoPct),
+    conservador: valorAcumulado + resto * (1 - variacaoPct),
     esperado,
-    agressivo: esperado * (1 + variacaoPct),
+    agressivo: valorAcumulado + resto * (1 + variacaoPct),
   };
 }
 
