@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fmtBRL } from "@/lib/domain/calc";
+import { linhaCsvSegura } from "@/lib/domain/csv-seguro";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import DateRangePicker from "@/components/dashboard/DateRangePicker";
 import { calculateBreakEvenRoas, calculateTargetRoas, getAdRecommendation, lucroNoRoas, motivoSemBreakEven, motivoSemRoasIdeal } from "@/lib/domain/ads";
@@ -377,7 +378,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
       ];
     });
     const linhas2 = [header, ...linhasCsv]
-      .map((cols) => cols.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";"))
+      .map(linhaCsvSegura)
       .join("\r\n");
     const blob = new Blob([String.fromCharCode(0xfeff) + linhas2], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);

@@ -5,6 +5,7 @@ import { explicarFonte } from "@/lib/domain/estado-fonte";
 import { CUSTO_FAIXA_SENTINELA, custoNaData, impostoNaData, TIPO_MOVIMENTO_LABEL, type EstoqueMovimento, type MovimentoTipo, type Product } from "@/lib/domain/types";
 import { mensagemDeErroDeSalvamento, salvarSemPerder } from "@/lib/domain/salvar-formulario";
 import { motivoDaListaVazia } from "@/lib/domain/estoque-vazio";
+import { linhaCsvSegura } from "@/lib/domain/csv-seguro";
 import { useFormularioSujo } from "@/components/useFormularioSujo";
 import { addMovimento, deleteMovimento, deleteProduct, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas, recalcularProduto } from "@/lib/firebase/data";
 import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas";
@@ -1988,7 +1989,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
         i.investimento.toFixed(2).replace(".", ","),
       ]),
     ];
-    const txt = linhas.map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";")).join("\n");
+    const txt = linhas.map(linhaCsvSegura).join("\n");
     const url = URL.createObjectURL(new Blob([`﻿${txt}`], { type: "text/csv;charset=utf-8;" }));
     const a = document.createElement("a");
     a.href = url;

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fmtBRL, isFullMonth, prevPeriod, todayStr, fmtPct } from "@/lib/domain/calc";
+import { linhaCsvSegura } from "@/lib/domain/csv-seguro";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import DateRangePicker from "@/components/dashboard/DateRangePicker";
 import { Delta } from "@/components/dashboard/ExecutiveKpis";
@@ -540,7 +541,7 @@ export default function DreTab() {
     ];
 
     const csv = [...contexto, header, ...linhasCsv, ...repasse]
-      .map((cols) => cols.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";"))
+      .map(linhaCsvSegura)
       .join("\r\n");
     const blob = new Blob([String.fromCharCode(0xfeff) + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
