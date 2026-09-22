@@ -9,13 +9,22 @@ import {
   type DragEndEvent, type DragStartEvent,
 } from "@dnd-kit/core";
 import Modal from "@/components/Modal";
-import { appendAtividade, isTaskAtrasada, type AccessEntry, type Task, type TaskAtividade, type TaskPriority, type TaskStatus } from "@/lib/domain/types";
-import { deleteTask, upsertTask, watchAccessList, watchTasks } from "@/lib/firebase/data";
+import { appendAtividade, isTaskAtrasada, type Task, type TaskAtividade, type TaskPriority, type TaskStatus } from "@/lib/domain/types";
+import { deleteTask, upsertTask, watchTasks } from "@/lib/firebase/data";
 import { useAccess } from "@/components/tabs/AccessGuard";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import TelaHeader from "@/components/TelaHeader";
 import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
 import { fonteCarregada, FONTE_CARREGANDO } from "@/lib/domain/estado-fonte";
+
+/**
+ * Só e-mail e nome — o que o seletor de responsável precisa. Vem de
+ * GET /api/acesso/diretorio (Admin SDK), não de `watchAccessList`: a
+ * coleção completa (`controleAcesso`, com papel e permissão granular) só é
+ * listável pelo owner nas regras do Firestore, e um colaborador atribuindo
+ * tarefa pra outro colaborador nunca teria dado ali (S19 da auditoria SaaS).
+ */
+type PessoaDiretorio = { email: string; displayName: string | null };
 
 const PRIORIDADE_META: Record<TaskPriority, { label: string; cor: string; peso: number }> = {
   critica: { label: "Crítica", cor: "var(--danger,var(--red))", peso: 3 },
@@ -55,7 +64,7 @@ type Filtro = "todas" | "pra-mim" | "criei-eu";
 export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openTaskId?: string; chaveDeNavegacao?: number } = {}) {
   const { email } = useAccess();
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [pessoas, setPessoas] = useState<AccessEntry[]>([]);
+  const [pessoas, setPessoas] = useState<PessoaDiretorio[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const [responsavelFiltro, setResponsavelFiltro] = useState("");
@@ -91,8 +100,12 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
 
   useEffect(() => {
     const u1 = watchTasks((ts) => { setTasks(ts); setLoading(false); });
-    const u2 = watchAccessList((es) => setPessoas(es));
-    return () => { u1(); u2(); };
+    let vivo = true;
+    authedFetch("/api/acesso/diretorio")
+      .then((r) => (r.ok ? r.json() : { pessoas: [] }))
+      .then((j) => { if (vivo) setPessoas(Array.isArray(j?.pessoas) ? j.pessoas : []); })
+      .catch(() => { /* seletor de responsável fica vazio; o resto da aba segue normal */ });
+    return () => { u1(); vivo = false; };
   }, []);
 
   /**
@@ -420,7 +433,7 @@ function TaskCard({ task, onMover, onEditar, onExcluir, arrastavel, arrastando, 
 }
 
 function TaskModal({ pessoas, minhaEmail, task, onClose }: {
-  pessoas: AccessEntry[];
+  pessoas: PessoaDiretorio[];
   minhaEmail: string;
   task: Task | null;
   onClose: () => void;
