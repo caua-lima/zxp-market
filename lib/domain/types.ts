@@ -218,13 +218,20 @@ export type Product = {
    * antigo — e custo medio desatualizado vira CMV errado em toda venda daquele
    * produto.
    *
-   * Nao da pra fazer as duas numa transacao: o recalculo varre TODAS as
-   * movimentacoes, e varredura ilimitada dentro de transacao e justamente o
-   * que o Firestore nao suporta bem. A saida e o contrario — deixar a
-   * inconsistencia VISIVEL e curavel, ja que qualquer recalculo posterior
-   * conserta (ele reexecuta o livro inteiro).
+   * A LEITURA do livro (a varredura) não pode entrar numa transação do SDK
+   * cliente — `Transaction.get()` só aceita referência de documento, não
+   * query (verificado no `.d.ts` do `@firebase/firestore` instalado; o SDK
+   * Admin aceita, o de cliente não). O que ESTE campo resolve é uma coisa
+   * mais estreita e real: duas gravações concorrentes (dois `addMovimento`
+   * no mesmo produto) cada uma varrendo o livro e escrevendo por cima —
+   * quem escrever por último pode ter varrido ANTES do movimento do outro
+   * existir, e o agregado fica sem ele até o PRÓXIMO recálculo (achado S13
+   * da auditoria SaaS). `recomputeProduto` lê a versão antes de varrer e só
+   * grava dentro de uma transação que confere que ela não mudou nesse meio
+   * tempo — se mudou, refaz a varredura e tenta de novo. Ver `lib/firebase/data.ts`.
    */
   custoDesatualizado?: boolean;
+  estoqueVersao?: number;
   qtdLocal?: number;         // estoque no galpão (entradas − envios Full − ajustes)
   // @deprecated — preço e retorno vêm automaticamente das vendas do ML
   preco?: string;

@@ -22,7 +22,6 @@ import {
   type AuditEntity,
   type AuditEvent,
   type Cost,
-  type CustoFaixa,
   type DraftToday,
   type EstoqueMovimento,
   type GoalEntry,
@@ -32,7 +31,7 @@ import {
 } from "@/lib/domain/types";
 import { getFirebase } from "./client";
 import { assinarComCache, invalidar } from "./cache";
-import { faixasAlteradas, reconstruirCusto } from "@/lib/domain/custo-medio";
+import { recomputeProdutoComVersao } from "./estoque-recompute";
 import { patchCusto, patchIgnorar, patchReabrir } from "@/lib/domain/remessa-full";
 
 function sanitizeUndefined<T extends Record<string, unknown>>(obj: T): T {
@@ -257,52 +256,18 @@ const MOV_COL = "estoque_movimentos";
  * construção: não sobra estado acumulado pra ficar defasado. A política de
  * cada tipo de movimento está em lib/domain/custo-medio.ts.
  */
+/**
+ * Reconstrói quantidade, custo médio e faixas a partir do LIVRO — com
+ * controle de concorrência otimista contra duas gravações no mesmo produto
+ * ao mesmo tempo. Ver `lib/firebase/estoque-recompute.ts` (achado S13 da
+ * auditoria SaaS) — extraída pra lá pra poder ser testada contra o emulador
+ * sem depender de `getFirebase()` (que exige `window`).
+ */
 async function recomputeProduto(
   productId: string,
 ): Promise<{ faixasAlteradas: { desde: string; de: number; para: number }[] }> {
-  const snap = await getDocs(query(sCol(MOV_COL), where("productId", "==", productId)));
-  const movs = snap.docs.map((d) => d.data() as EstoqueMovimento);
-
-  const prodSnap = await getDoc(sDoc("estoque", productId));
-  const prodData = prodSnap.data() as
-    | { custo?: string | number; custoMedioFaixas?: CustoFaixa[] }
-    | undefined;
-
-  /**
-   * O custo ANTERIOR ao livro é o `custo` manual do cadastro — nunca o
-   * `custoMedio` atual, que é derivado do próprio livro. Usar o derivado como
-   * ponto de partida faria a média se realimentar e subir sozinha a cada
-   * recálculo.
-   */
-  const custoInicial = Number(String(prodData?.custo ?? "").replace(",", ".")) || 0;
-
-  const { qtdLocal, custoMedio, faixas } = reconstruirCusto(movs, custoInicial);
-  const mudancas = faixasAlteradas(prodData?.custoMedioFaixas, faixas);
-
-  await updateDoc(sDoc("estoque", productId), {
-    qtdLocal,
-    custoMedio,
-    custoMedioFaixas: faixas,
-    /**
-     * EST-02: o agregado está em dia com o livro.
-     *
-     * Gravar a movimentação e recalcular o produto são duas escritas. Se a
-     * segunda falhar, o livro tem o movimento e o produto fica com o número
-     * antigo — em silêncio, e o custo médio desatualizado vira CMV errado em
-     * toda venda daquele produto.
-     *
-     * Não dá pra fazer as duas numa transação: o recálculo varre TODAS as
-     * movimentações do produto, e varredura ilimitada dentro de transação é
-     * justamente o que o Firestore não suporta bem. Então a saída é o
-     * contrário — deixar a inconsistência VISÍVEL e curável: qualquer
-     * recálculo posterior conserta, porque ele reexecuta o livro inteiro.
-     */
-    custoDesatualizado: false,
-  });
-
-  // Quem chamou decide o que fazer com isso — corrigir movimento antigo muda
-  // a margem de vendas já apuradas, e isso não pode acontecer em silêncio.
-  return { faixasAlteradas: mudancas };
+  const { db } = getFirebase();
+  return recomputeProdutoComVersao(db, productId);
 }
 
 /**
