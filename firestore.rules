@@ -600,6 +600,18 @@ service cloud.firestore {
         // do bootstrap de controleAcesso (app/api/acesso/bootstrap).
         allow write: if false;
       }
+
+      /**
+       * Conexão ML por tenant (S03) — guarda token de acesso/refresh do
+       * OAuth do Mercado Livre. Igual a `ml_oauth_transacoes` hoje: ninguém
+       * lê ou escreve pelo cliente, nunca, nem o próprio owner do tenant —
+       * um token de acesso na mão do navegador é um token que qualquer
+       * extensão ou script injetado na página rouba. Só o Admin SDK (que
+       * ignora estas regras) toca aqui, sempre por uma rota de servidor.
+       */
+      match /connections/{connectionId} {
+        allow read, write: if false;
+      }
     }
 
     match /memberships/{email} {

@@ -1,7 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
-import { capacidadesDoPapel, caminhoMembership, caminhoMembro, type PapelTenant, type TenantContext } from "@/lib/domain/tenant";
+import { capacidadesDoPapel, caminhoMembership, caminhoMembro, type ConnectionContext, type PapelTenant, type TenantContext } from "@/lib/domain/tenant";
 
 function bearer(req: Request): string | null {
   const h = req.headers.get("authorization") || req.headers.get("Authorization");
@@ -73,5 +73,56 @@ export async function requireTenantAccess(req: Request): Promise<TenantContext |
     papel,
     membershipVersion: Number(dados?.membershipVersion ?? 0),
     capabilities: capacidadesDoPapel(papel, dados?.permissoesEdicao ?? []),
+  };
+}
+
+/**
+ * `requireTenantAccess` mais a conexão ML ativa do tenant — pra rotas que
+ * vão FALAR com o Mercado Livre (S03). Continua sem consumidor: a leitura
+ * real do token de acesso e o refresh (achado S05, fencing) moram em
+ * `lib/ml/token.ts`, que hoje resolve um ÚNICO token global — a migração
+ * pra esta função ser CHAMADA de verdade é o corte que exige o script de
+ * migração + ensaio, não uma troca de código isolada.
+ *
+ * ─── POR QUE "A conexão ativa", NÃO "a conexão" ─────────────────────────
+ *
+ * Um tenant pode ter zero (ainda não conectou o ML) ou, no futuro, mais de
+ * uma conexão (duas contas ML na mesma empresa). Hoje a operação real tem
+ * exatamente UMA — por isso a busca pega a primeira com `status: "active"`
+ * e não pede `connectionId`. No dia em que existir mais de uma de verdade,
+ * quem chama passa a precisar dizer QUAL, e essa mudança é no `opts` desta
+ * função, não em cada rota que a usa.
+ */
+export async function requireConnectionAccess(
+  req: Request,
+  opts: { capacidade?: string } = {},
+): Promise<ConnectionContext | NextResponse> {
+  const tenantCtx = await requireTenantAccess(req);
+  if (tenantCtx instanceof NextResponse) return tenantCtx;
+
+  if (opts.capacidade && !tenantCtx.capabilities.has(opts.capacidade)) {
+    return NextResponse.json({ error: "forbidden", details: `Falta a capacidade: ${opts.capacidade}` }, { status: 403 });
+  }
+
+  const db = getAdminDb();
+  const conexoes = await db
+    .collection(`tenants/${tenantCtx.tenantId}/connections`)
+    .where("status", "==", "active")
+    .limit(1)
+    .get();
+
+  if (conexoes.empty) {
+    return NextResponse.json({ error: "sem_conexao", details: "Este tenant ainda não conectou o Mercado Livre." }, { status: 409 });
+  }
+
+  const conexao = conexoes.docs[0];
+  const dados = conexao.data() as { sellerId?: string; siteId?: string; generation?: number };
+
+  return {
+    ...tenantCtx,
+    connectionId: conexao.id,
+    sellerId: String(dados.sellerId ?? ""),
+    siteId: String(dados.siteId ?? "MLB"),
+    generation: Number(dados.generation ?? 0),
   };
 }

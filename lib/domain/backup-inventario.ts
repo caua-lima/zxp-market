@@ -234,6 +234,15 @@ export const INVENTARIO: readonly ItemDeBackup[] = [
       "Tecnicamente reconstruível varrendo tenants/*/members/* inteiro, mas até existir uma " +
       "ferramenta que faça isso automaticamente, tratar como irrecuperável é o lado seguro do erro.",
   },
+  {
+    colecao: "connections",
+    classe: "rebuscavel",
+    conteudo: "Subcoleção de tenants/{id}: a conexão OAuth com o Mercado Livre (token de acesso/refresh, sellerId, siteId).",
+    perda:
+      "O tenant reconecta a conta ML (novo OAuth) — chato, não catastrófico. Diferente de " +
+      "ml_oauth_transacoes (state de UMA autorização em voo, nunca restaurável), aqui o " +
+      "token já emitido PODE continuar válido se restaurado — por isso não entra em NUNCA_RESTAURAR.",
+  },
 ];
 
 /** Coleções que NÃO devem ser restauradas nunca, mesmo se estiverem no dump. */
@@ -257,6 +266,7 @@ export const ORDEM_DE_RESTAURACAO: readonly string[] = [
   "tenants",
   "members",
   "memberships",
+  "connections",
   "estoque",
   "estoque_movimentos",
   "custos",

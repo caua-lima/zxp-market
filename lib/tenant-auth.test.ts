@@ -9,10 +9,14 @@ import { NextResponse } from "next/server";
 const verifyIdTokenMock = vi.fn();
 const docGetMock = vi.fn();
 const docMock = vi.fn(() => ({ get: docGetMock }));
+const conexoesGetMock = vi.fn();
+const collectionMock = vi.fn(() => ({
+  where: () => ({ limit: () => ({ get: conexoesGetMock }) }),
+}));
 
 vi.mock("@/lib/firebase/admin", () => ({
   getAdminAuth: () => ({ verifyIdToken: verifyIdTokenMock }),
-  getAdminDb: () => ({ doc: docMock }),
+  getAdminDb: () => ({ doc: docMock, collection: collectionMock }),
 }));
 
 const requisicao = (token?: string) => new Request("https://exemplo.com/api/tenant/whoami", {
@@ -23,6 +27,7 @@ describe("requireTenantAccess", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     docGetMock.mockReset();
+    conexoesGetMock.mockReset();
   });
 
   it("sem token, 401", async () => {
@@ -101,5 +106,67 @@ describe("requireTenantAccess", () => {
     if (ctx instanceof Response) throw new Error("esperava TenantContext, veio erro");
     expect(ctx.papel).toBe("member");
     expect(ctx.capabilities.has("tenant:administrar")).toBe(false);
+  });
+});
+
+describe("requireConnectionAccess", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    docGetMock.mockReset();
+    conexoesGetMock.mockReset();
+  });
+
+  function autenticarComoOwnerDoTenant1() {
+    verifyIdTokenMock.mockResolvedValue({ uid: "u1", email: "dono@empresa.com" });
+    docGetMock
+      .mockResolvedValueOnce({ exists: true, data: () => ({ tenantId: "tenant-1" }) })
+      .mockResolvedValueOnce({ exists: true, data: () => ({ role: "owner" }) });
+  }
+
+  it("sem token, repassa a recusa de requireTenantAccess (nunca chega a consultar conexoes)", async () => {
+    const { requireConnectionAccess } = await import("./tenant-auth");
+    const r = await requireConnectionAccess(requisicao());
+    if (!(r instanceof NextResponse)) throw new Error("esperava NextResponse, veio ConnectionContext");
+    expect(r.status).toBe(401);
+    expect(collectionMock).not.toHaveBeenCalled();
+  });
+
+  it("tenant sem NENHUMA conexao ativa, 409 sem_conexao — nao finge que ha uma", async () => {
+    autenticarComoOwnerDoTenant1();
+    conexoesGetMock.mockResolvedValue({ empty: true, docs: [] });
+    const { requireConnectionAccess } = await import("./tenant-auth");
+    const r = await requireConnectionAccess(requisicao("tok"));
+    if (!(r instanceof NextResponse)) throw new Error("esperava NextResponse, veio ConnectionContext");
+    expect(r.status).toBe(409);
+    const body = await r.json();
+    expect(body.error).toBe("sem_conexao");
+  });
+
+  it("resolve a conexao ativa do tenant, com o ConnectionContext completo", async () => {
+    autenticarComoOwnerDoTenant1();
+    conexoesGetMock.mockResolvedValue({
+      empty: false,
+      docs: [{ id: "conn-1", data: () => ({ sellerId: "123456", siteId: "MLB", generation: 2 }) }],
+    });
+    const { requireConnectionAccess } = await import("./tenant-auth");
+    const ctx = await requireConnectionAccess(requisicao("tok"));
+    if (ctx instanceof Response) throw new Error("esperava ConnectionContext, veio erro");
+    expect(ctx.tenantId).toBe("tenant-1");
+    expect(ctx.connectionId).toBe("conn-1");
+    expect(ctx.sellerId).toBe("123456");
+    expect(ctx.siteId).toBe("MLB");
+    expect(ctx.generation).toBe(2);
+  });
+
+  it("capacidade exigida e ausente, 403 — antes mesmo de consultar conexoes", async () => {
+    verifyIdTokenMock.mockResolvedValue({ uid: "u2", email: "colega@empresa.com" });
+    docGetMock
+      .mockResolvedValueOnce({ exists: true, data: () => ({ tenantId: "tenant-1" }) })
+      .mockResolvedValueOnce({ exists: true, data: () => ({ role: "member" }) });
+    const { requireConnectionAccess } = await import("./tenant-auth");
+    const r = await requireConnectionAccess(requisicao("tok"), { capacidade: "conexoes:gerir" });
+    if (!(r instanceof NextResponse)) throw new Error("esperava NextResponse, veio ConnectionContext");
+    expect(r.status).toBe(403);
+    expect(collectionMock).not.toHaveBeenCalled();
   });
 });

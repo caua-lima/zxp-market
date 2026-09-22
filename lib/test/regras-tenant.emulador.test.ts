@@ -98,4 +98,18 @@ describe("isolamento entre tenants (S01)", () => {
     await assertFails(getDoc(doc(ctx(DONO_A), "memberships", DONO_A.email)));
     await assertFails(setDoc(doc(ctx(DONO_A), "memberships", DONO_A.email), { tenantId: "tenant-a" }));
   });
+
+  it("conexao ML (S03): nunca legivel nem gravavel pelo cliente — nem pelo proprio owner do tenant", async () => {
+    await env.withSecurityRulesDisabled(async (c) => {
+      await setDoc(doc(c.firestore(), "tenants", "tenant-a", "connections", "conn-1"), {
+        sellerId: "123456", accessToken: "segredo-de-verdade", status: "active",
+      });
+    });
+    // O owner do PRÓPRIO tenant não lê — um token de acesso na mão do
+    // navegador é um token que qualquer script na página rouba.
+    await assertFails(getDoc(doc(ctx(DONO_A), "tenants", "tenant-a", "connections", "conn-1")));
+    await assertFails(setDoc(doc(ctx(DONO_A), "tenants", "tenant-a", "connections", "conn-1"), { sellerId: "outro" }));
+    // E o dono de outro tenant, pelas mesmas duas razões (isolamento + segredo).
+    await assertFails(getDoc(doc(ctx(DONO_B), "tenants", "tenant-a", "connections", "conn-1")));
+  });
 });
