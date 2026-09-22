@@ -163,10 +163,20 @@ service cloud.firestore {
      * Recusar uma escrita legítima em produção é pior do que aceitar um
      * formato antigo que a camada de leitura já sabe normalizar.
      */
+    /**
+     * Mês 01-12 e dia 01-31 — não só "dois dígitos quaisquer". `^[0-9]{4}-
+     * [0-9]{2}-[0-9]{2}$` aceitava "2026-99-99": qualquer par de dígitos
+     * passava, então o campo protegia contra "abc" mas não contra lixo com a
+     * FORMA certa e o VALOR errado (achado S21 da auditoria SaaS). Não
+     * valida o limite de dia por mês (fevereiro com 30, abril com 31) — isso
+     * exigiria checar o mês pra decidir o teto do dia, o que uma regex sem
+     * grupos condicionais não faz; barrar mês/dia fora da faixa 1-12/1-31 já
+     * fecha o caso relatado sem inventar um parser de calendário aqui.
+     */
     function dataAceitavel(v) {
       return v is string && (
-        v.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
-        || v.matches('^[0-9]{2}/[0-9]{2}/[0-9]{4}$')
+        v.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$')
+        || v.matches('^(0[1-9]|[12][0-9]|3[01])/(0[1-9]|1[0-2])/[0-9]{4}$')
       );
     }
 
@@ -176,9 +186,17 @@ service cloud.firestore {
      * `parseBRNumber` existe justamente porque há valores gravados no formato
      * brasileiro ("1.234,56"). Exigir só ponto decimal bloquearia a edição
      * desses registros.
+     *
+     * `^[0-9.,]+$` aceitava QUALQUER combinação de dígito/ponto/vírgula —
+     * "...", ",,,", "1.2.3.4,5,6" passavam pela regra e só quebravam na
+     * LEITURA, onde `parseBRNumber` silenciosamente vira 0 (uma venda ou
+     * custo que a tela mostra como zero, sem erro nenhum). Agora exige pelo
+     * menos um dígito antes de qualquer separador, cada ponto seguido de
+     * dígito (não "1..2" nem ponto solto) e NO MÁXIMO uma vírgula, com até 2
+     * casas depois dela — a mesma forma que `parseBRNumber` sabe interpretar.
      */
     function valorAceitavel(v) {
-      return v is string && v.size() > 0 && v.matches('^[0-9.,]+$');
+      return v is string && v.size() > 0 && v.matches('^[0-9]+(\\.[0-9]+)*(,[0-9]{1,2})?$');
     }
 
     /** Número finito e não negativo. Dinheiro e quantidade nunca são negativos por digitação. */
