@@ -55,10 +55,15 @@ export async function POST(req: Request) {
       // As duas gravações saem juntas ou não saem. Antes eram dois `setDoc`
       // soltos: falhar no segundo deixava um owner sem config, com a janela
       // ainda aberta pro próximo.
+      //
+      // `displayName` só entra quando existe: o Admin SDK recusa `undefined`
+      // em `set()` (sem `ignoreUndefinedProperties`), e login por e-mail/senha
+      // sem nome cadastrado não traz `decoded.name` — o bootstrap inteiro
+      // quebrava com 500 pra esse caso.
       tx.set(db.collection("controleAcesso").doc(veredito.email), {
         email: veredito.email,
         role: "owner",
-        displayName: decoded.name ?? undefined,
+        ...(decoded.name ? { displayName: decoded.name } : {}),
         addedAt: Date.now(),
       });
       tx.set(refConfig, {
