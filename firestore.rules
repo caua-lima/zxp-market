@@ -474,13 +474,39 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    /**
+     * `em` tinha que ser só `is number`: um cliente podia gravar QUALQUER
+     * timestamp — datar um evento pro passado (escondê-lo de quem só olha
+     * "hoje") ou pro futuro. `request.time` é o relógio do SERVIDOR no
+     * instante da escrita, e nenhum cliente controla isso. Tolerância de 5
+     * min cobre relógio de aparelho dessincronizado sem abrir a porta pra
+     * forjar a data.
+     *
+     * O que isto NÃO resolve — residual anotado em docs/saas/PROGRESSO.md
+     * (S20): quem/quando fica preso à verdade do servidor, mas QUAL ação
+     * aconteceu (`acao`/`entidade`/`detalhe`) e SE ela foi de fato logada
+     * continuam vindo do cliente sem verificação cruzada — a maioria das
+     * escritas deste app vai direto do cliente pro Firestore, sem um
+     * checkpoint no servidor que pudesse gerar o log sozinho. Resolver isso
+     * de vez pede Cloud Functions (gatilho `onWrite`) ou mover as escritas
+     * pra rotas de servidor — as duas são mudanças de arquitetura, não uma
+     * regra.
+     */
+    function auditEventValido(d) {
+      return d.em is number
+        && d.em > request.time.toMillis() - 300000
+        && d.em < request.time.toMillis() + 300000;
+    }
+
     // Trilha de auditoria: qualquer autorizado registra a PRÓPRIA ação
     // (não pode assinar em nome de outro), só o owner lê/lista (atividade de
     // colaborador é informação sensível), e ninguém — nem o owner — pode
     // alterar ou apagar um evento já gravado. Log de verdade é imutável.
     match /auditLog/{docId} {
       allow read, list: if isOwner();
-      allow create: if isAuthorized() && request.resource.data.por == request.auth.token.email;
+      allow create: if isAuthorized()
+        && request.resource.data.por == request.auth.token.email
+        && auditEventValido(request.resource.data);
       allow update, delete: if false;
     }
 
