@@ -48,7 +48,7 @@ Branch de trabalho: `saas-v2/isolamento-tenant`.
 | S21 | Regras aceitam dinheiro em texto tipo `"..."` e data tipo `"2026-99-99"` | [ ] | `firestore.rules` | — |
 | S22 | Limites de paginação (`watchMovimentos` 1500, `watchTasks` 500) não são paginação real | [ ] | — | — |
 | S29 | Central de Notificações duplica valor (corpo já tem o número + `gross` concatenado) | [ ] | `NotificationCenter.tsx` | Precisa reverificar: este arquivo foi muito mexido na auditoria de UX anterior nesta mesma sessão |
-| S30 | Exportação CSV não neutraliza injeção de fórmula (`=`,`+`,`-`,`@`) | [ ] | Exportadores CSV de Ads/Estoque/DRE | — |
+| S30 | Exportação CSV não neutraliza injeção de fórmula (`=`,`+`,`-`,`@`) | [x] | `lib/domain/csv-seguro.ts` (novo) + `AdsTab.tsx`, `DreTab.tsx`, `EstoqueTab.tsx` | Helper único (`celulaCsvSegura`/`linhaCsvSegura`) que prefixa `'` quando o texto começa com `=+-@`/tab/CR e NÃO é número de verdade (preserva negativo formatado). Os três exportadores identificados usam o mesmo helper agora — não havia um quarto. `npx vitest run lib/domain/csv-seguro.test.ts` (5/5), suite completa 2273/2273, `tsc` limpo |
 
 ## Etapa 3 — isolamento por tenant/conexão (o núcleo do S01–S03, S23)
 
