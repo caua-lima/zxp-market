@@ -41,7 +41,7 @@ Branch de trabalho: `saas-v2/isolamento-tenant`.
 | S14 | `margemHoje` usa base diferente de "Vendas — Hoje" (7,1% vs 7,2% observado) | [ ] | `Dashboard.tsx` | — |
 | S15 | Backup automático cobre só 7 coleções; inventário lista 15 não cobertas; exporter manual perde subcoleções órfãs | [ ] | `lib/backup-run.ts`, `lib/domain/backup-inventario.ts`, `scripts/backup-firestore.mjs` | — |
 | S16 | `previsaoDe`/`getCoverageStatus` contradizem outros painéis sobre ruptura quando `total <= 0` | [ ] | `components/tabs/estoque/estoque-compartilhado.ts` | — |
-| S17 | Banner de somente-leitura usa `!isOwner`, telas usam `canEditTab` (contradição) | [ ] | `app/page.tsx` | — |
+| S17 | Banner de somente-leitura usa `!isOwner`, telas usam `canEditTab` (contradição) | [x] | `lib/domain/types.ts` (`abaEhEditavel`, novo), `app/page.tsx` | Banner agora pergunta a MESMA coisa que a aba pergunta pra mostrar os próprios botões — por aba, não `!isOwner` global. `npx vitest run lib/domain/acesso-abas.test.ts` (5/5), suite completa 2280/2280, `tsc` limpo. Verificação visual por papel (owner vs. partner com permissão parcial) ainda pendente — precisa de conta de teste com `permissoesEdicao` parcial |
 | S18 | `scenariosDeProjecao` varia o mês inteiro, não só os dias restantes | [ ] | `lib/domain/calc.ts` | — |
 | S19 | `TarefasTab` usa `watchAccessList` (só owner), colaborador não populariza responsável | [ ] | `TarefasTab.tsx` | — |
 | S20 | Trilha de auditoria gravada pelo cliente, não pelo servidor | [ ] | `lib/firebase/data.ts` (`logAudit`) | — |
