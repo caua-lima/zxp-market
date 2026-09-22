@@ -13,7 +13,7 @@ import {
   type FonteDoFeed,
   type PaginaDoFeed,
 } from "@/lib/firebase/notificacoes";
-import { NOTIFICATION_TYPE_META, type NotificationEvent } from "@/lib/domain/notifications";
+import { NOTIFICATION_TYPE_META, corpoComValor, type NotificationEvent } from "@/lib/domain/notifications";
 import { colecaoDoNivel, nivelDoDestinatario } from "@/lib/domain/notificacao-publico";
 import {
   contarNaoLidas,
@@ -51,11 +51,6 @@ const FONTE_INICIAL: EstadoDaFonteNaTela = {
 };
 
 type Feedback = { texto: string; refazer?: () => void };
-
-function fmtBRL(v: number | undefined): string | null {
-  if (v == null) return null;
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
 
 function IconePorTipo({ type }: { type: NotificationEvent["type"] }) {
   const common = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
@@ -341,7 +336,6 @@ export function NotificationCenter({ onNavigate }: { onNavigate: (deepLink: stri
               ) : (
                 filtrados.map((evt) => {
                   const lida = estaLido(evt, email);
-                  const gross = fmtBRL(evt.grossAmount);
                   const ehTeste = evt.type === "test";
                   return (
                     /*
@@ -369,7 +363,7 @@ export function NotificationCenter({ onNavigate }: { onNavigate: (deepLink: stri
                             {ehTeste && !/^TESTE/i.test(evt.title) && <span style={{ fontSize: ".75rem", fontWeight: 700, padding: "1px 6px", borderRadius: 4, marginRight: 6, background: "var(--surface2)", color: "var(--muted)", border: "1px solid var(--border)" }}>TESTE</span>}
                             {evt.title}
                           </span>
-                          <span className="notif-item-body">{evt.body}{gross ? ` · ${gross}` : ""}</span>
+                          <span className="notif-item-body">{corpoComValor(evt.body, evt.grossAmount)}</span>
                           <span className="notif-item-time">{textoDeHora(evt.criadoEmMs, agora)}</span>
                         </button>
 

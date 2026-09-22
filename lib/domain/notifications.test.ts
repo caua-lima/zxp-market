@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSaleContent } from "./notifications";
+import { buildSaleContent, corpoComValor } from "./notifications";
 
 const base = {
   type: "sale_paid" as const,
@@ -54,5 +54,31 @@ describe("buildSaleContent — pedido com mais de um produto", () => {
   it("sem detalhe de itens, cai no texto antigo — nunca quebra", () => {
     const c = buildSaleContent({ ...base, itemCount: 4, estimatedProfit: 20, estimatedMargin: 22 });
     expect(c.body).toContain("4 itens no pedido");
+  });
+});
+
+const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+
+describe("corpoComValor — S29 da auditoria SaaS (Central duplicava o valor)", () => {
+  it("nao duplica quando o corpo JA menciona o valor (sale_paid com lucro calculado)", () => {
+    const c = buildSaleContent({ ...base, type: "sale_paid", estimatedProfit: 15, estimatedMargin: 16 });
+    expect(c.body).toContain("R$"); // buildSaleContent ja embute o valor
+    expect(corpoComValor(c.body, base.grossAmount)).toBe(c.body);
+  });
+
+  it("anexa o valor quando o corpo NAO menciona (sale_low_margin so mostra a margem %)", () => {
+    const c = buildSaleContent({ ...base, type: "sale_low_margin", estimatedMargin: 3, estimatedProfit: 2.7 });
+    expect(c.body).not.toContain("R$");
+    const resultado = corpoComValor(c.body, base.grossAmount);
+    expect(resultado).toBe(`${c.body} · ${brl(base.grossAmount)}`);
+  });
+
+  it("sem grossAmount, devolve o corpo intacto", () => {
+    expect(corpoComValor("Produto X", undefined)).toBe("Produto X");
+  });
+
+  it("reproducao exata do achado: corpo que ja tem o valor nao ganha um segundo", () => {
+    const corpo = `${brl(19.3)} · Produto`;
+    expect(corpoComValor(corpo, 19.3)).toBe(corpo);
   });
 });

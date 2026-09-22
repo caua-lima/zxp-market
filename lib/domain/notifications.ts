@@ -298,6 +298,26 @@ export function buildGroupedSalesContent(count: number, totalGross: number, wind
   };
 }
 
+/**
+ * O corpo do evento, com o valor bruto anexado — SÓ quando `body` ainda não
+ * menciona esse mesmo valor.
+ *
+ * A maioria dos `body` acima (sale_high_value, sale_paid, sem cadastro, frete
+ * desconhecido, rajada) já embute `fmtBRL(grossAmount)` no próprio texto —
+ * é assim que a pessoa lê "R$ 19,30 · Produto X" na notificação. A Central
+ * (`NotificationCenter.tsx`) guardava `grossAmount` separado (outros
+ * consumidores do evento usam) e anexava de novo incondicionalmente: pra
+ * quem já tinha o valor no corpo, virava "R$ 19,30 · Produto X · R$ 19,30"
+ * (achado S29 da auditoria SaaS, visto ao vivo). Casos como sale_low_margin
+ * (só mostra a margem %) continuam ganhando o valor anexado, porque ali ele
+ * não aparece em nenhum outro lugar do texto.
+ */
+export function corpoComValor(body: string, grossAmount: number | undefined): string {
+  if (grossAmount == null) return body;
+  const valor = fmtBRL(grossAmount);
+  return body.includes(valor) ? body : `${body} · ${valor}`;
+}
+
 export const NOTIFICATION_TYPE_META: Record<
   NotificationEventType,
   { label: string; severity: NotificationEventSeverity; group: "vendas" | "alertas" | "sistema" }
