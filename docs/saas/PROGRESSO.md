@@ -91,5 +91,51 @@ Branch de trabalho: `saas-v2/isolamento-tenant`.
 
 ## O que falta e por quê (atualizado a cada etapa)
 
-_(preenchido conforme avança — nunca declarar "SaaS pronto" com isolamento parcial, worker manual,
-billing fake, migração sem ensaio ou teste ignorado)_
+**Não declarar "SaaS pronto"** — nada abaixo chegou perto disso ainda. O que existe até aqui é a
+Etapa 2 (bugs do main atual) majoritariamente fechada, com teste de verdade em cada item — a maior
+parte contra o emulador real, não mock. As Etapas 3-8 (o núcleo do pedido: isolamento por tenant,
+billing, migração, UX por tela, operação) **não começaram**.
+
+### Etapa 2 — o que ficou
+
+14 de 21 achados corrigidos e testados: S04, S06, S08, S11, S13, S14, S16, S17, S18, S19, S21, S29,
+S30 completos; S20 parcial (documentado no próprio item — falta o checkpoint de servidor pra
+`acao`/`entidade` do log, não só `quem`/`quando`).
+
+Pendentes, e por quê ainda não:
+
+- **S05** (lease de 30s sem dono/fencing no refresh do token ML) — precisa do mesmo padrão de
+  versão/CAS que o S13 usou pro estoque, mas aplicado a um recurso mais crítico (o token vale pra
+  TODA leitura do ML); e entrelaça com o ponto de S06 sobre não repetir POST às cegas.
+- **S07** (webhook faz trabalho pesado antes de confirmar; aceita recurso sem validar vendedor/app) —
+  é o desenho do inbox durável que a Etapa 4 do prompt pede de qualquer forma. Fazer uma vez certo.
+- **S09** (outbox depende de tráfego web pra retry) — mesmo histórico: um worker independente de
+  tráfego é infraestrutura nova (fila, agendador), não um fix pontual.
+- **S10** (caches de reputação fragmentados) — precisa do tipo `SourceState` que o prompt define pra
+  Etapa 4; fazer isolado agora seria refazer depois.
+- **S12** (`sync.ts` grava com `merge:true`, pode reverter dado mais novo do webhook) — é a mesma
+  classe de corrida do S13 (duas gravações concorrentes), mas em `ml_orders`/`ml_returns` em vez de
+  `estoque`; o padrão de versão já provado no S13 deveria se aplicar aqui, mas isolado do resto do
+  fluxo de sync pra não regredir sincronização em produção sem ensaio antes.
+- **S15** (backup cobre 7 de 22 coleções; exporter manual perde subcoleção órfã) — é uma auditoria +
+  mudança de `lib/backup-run.ts` + `scripts/backup-firestore.mjs`, e qualquer mudança em backup exige
+  o ensaio de restauração (`docs/backup.md`) antes de confiar nela — não é código que se testa só com
+  `vitest`.
+- **S22** (limites de paginação viram truncamento silencioso, não paginação real) — `watchMovimentos`
+  (1500) e `watchTasks` (500) precisam de cursor + `hasMore` na tela, não só um teto maior; toca
+  EstoqueTab/FullTab/TarefasTab/Dashboard.
+
+### Etapas 3-8 — não iniciadas
+
+O núcleo do pedido (S01 dados/autorização globais, S02 rota admin que reseta senha de qualquer
+usuário, S03 conexão ML única) e tudo que depende disso (migração, billing, UX por tela, operação)
+segue como está no `main`: um app single-tenant. `docs/saas/ARQUITETURA.md`, `MIGRACAO.md`,
+`OPERACAO.md`, `VALIDACAO.md` ainda não existem.
+
+### Verificação ainda pendente (fora do alcance de `vitest`/emulador)
+
+- S17/S19: confirmação visual com conta de colaborador de verdade (permissão parcial).
+- S15: ensaio de restauração depois de qualquer mudança no backup.
+- Ambiente: `test:emulador` tem uma instabilidade pré-existente sob carga prolongada (ver nota no
+  S21) — não afeta os testes tocados nesta sessão rodados isoladamente, mas vale investigar antes de
+  depender dela em CI.
