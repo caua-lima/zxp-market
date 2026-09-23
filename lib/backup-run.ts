@@ -1,4 +1,5 @@
 import { getAdminDb } from "@/lib/firebase/admin";
+import { colecoesParaBackup } from "@/lib/domain/backup-inventario";
 
 /**
  * Backup semanal das coleções que NÃO dá pra reconstruir sozinho.
@@ -7,11 +8,24 @@ import { getAdminDb } from "@/lib/firebase/admin";
  * `ml_orders` e `ml_returns` são re-sincronizáveis a qualquer momento a
  * partir da API do Mercado Livre (existe até uma rota de backfill pra isso) —
  * fazer cópia deles seria gastar escrita duplicando o que o próprio ML já
- * guarda. O que entra aqui é só o que é DIGITADO por vocês e não existe em
- * lugar nenhum fora deste Firestore: custo médio e imposto por produto,
- * histórico de entrada/saída de estoque, quadro de tarefas, metas do mês,
- * custos fixos, quem tem acesso ao app, custo manual de remessa Full. Perder
- * isso não é "espera a próxima sincronização", é perder o dado de verdade.
+ * guarda. Nem aparecem em `firestore.rules` (são só Admin SDK, nunca
+ * lidos/escritos pelo cliente), então nem entram no inventário. O que entra
+ * aqui é todo o resto que NÃO é efêmero (`colecoesParaBackup`,
+ * lib/domain/backup-inventario.ts) — o mesmo inventário que
+ * `scripts/backup-firestore.mjs` (o export manual) e `restore-firestore.mjs`
+ * já usam como fonte única. Perder isso não é "espera a próxima
+ * sincronização", é perder o dado de verdade.
+ *
+ * ─── S15 DA AUDITORIA SAAS ───────────────────────────────────────────────
+ *
+ * Esta lista era uma constante mantida À MÃO — 7 coleções, hardcoded — e
+ * ficou pra trás do inventário (que já tinha 15 marcadas pra backup) sem
+ * ninguém notar: metas, controleAcessoMeta, ads_alteracoes, auditLog, dias,
+ * rascunho, alertasDispensados e usuarios estavam SEM cópia semanal
+ * nenhuma, apesar de classificadas como irrecuperáveis. Agora deriva do
+ * inventário — a mesma coleção nova que o teste de `backup-inventario.test.ts`
+ * já força ter uma decisão passa a entrar aqui automaticamente, sem
+ * precisar lembrar de tocar neste arquivo também.
  *
  * ONDE FICA
  * `backups_semanais/{dia}/{colecao}/{docId}` — espelha a estrutura original
@@ -26,10 +40,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
  * disparo manual pra testar) vê o marcador e não refaz o trabalho.
  */
 
-const COLECOES_CRITICAS = [
-  "estoque", "estoque_movimentos", "tarefas",
-  "metasHistorico", "custos", "controleAcesso", "full_remessas",
-];
+const COLECOES_CRITICAS = colecoesParaBackup();
 
 /** Dia de hoje no fuso de São Paulo, "yyyy-mm-dd". */
 function diaBR(): string {
