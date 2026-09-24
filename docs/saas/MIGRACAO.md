@@ -39,6 +39,25 @@ nome do projeto quando o script perguntar — mesmo padrão de
 `scripts/restore-firestore.mjs`, pela mesma razão (uma flag pode estar no
 histórico do shell; digitar o nome é um ato deliberado do momento).
 
+## Antes de rodar contra a produção: duas coisas a resolver
+
+**1. Qual projeto o script está lendo.** Em 23/09/2026, o `.env.local` deste repositório apontava
+pro projeto `controleml-saas` — a produção é `vazxpress-a2350` (default do `.firebaserc`). O
+script avisa em destaque quando os dois não batem; um plano lido do projeto errado mostra "1
+membro" e parece a operação. Pra ler a produção, as credenciais da conta de serviço **de
+`vazxpress-a2350`** precisam estar no ambiente.
+
+**2. Os dois owners.** `controleAcesso` da produção tem dois registros `role: owner` (visto em
+22/08/2026: `caualima@zxpmarket.com` e `caualimavd@zxpsolutions.com`). O tenant precisa de um
+owner só, e o script **recusa** o plano até alguém escolher com `--owner <e-mail>` — nunca escolhe
+sozinho. Com `--owner`, o outro owner vira `partner` (continua entrando, sem administrar time,
+conexão nem cobrança) e a simulação o lista como rebaixado.
+
+Decisão em aberto: na tentativa anterior de SaaS (22/08, branch `saas-merge`), a escolha foi que
+**só o owner** entrava no tenant e os demais (o outro owner e o colaborador) seriam convidados de
+novo à mão. Este script migra todos de `controleAcesso` (o outro owner como partner). Confirmar
+qual dos dois comportamentos vale antes do `--aplicar` em produção.
+
 ## O que o script garante
 
 - **Idempotente.** Toda escrita é `set()` com o e-mail no caminho do
@@ -50,8 +69,8 @@ histórico do shell; digitar o nome é um ato deliberado do momento).
 - **Não cria conexão ML.** `tenants/{id}/connections/*` fica pra depois de
   confirmar que login/autorização funcionam com o tenant migrado.
 - **Recusa aplicar um plano ruim.** `validarPlano` (mesmo módulo) barra: zero
-  membro, zero owner, mais de um owner, e-mail duplicado — antes de qualquer
-  escrita.
+  membro, zero owner, mais de um owner sem `--owner`, `--owner` que não está em
+  `controleAcesso`, e-mail duplicado — antes de qualquer escrita.
 
 ## Ensaio executado nesta sessão
 

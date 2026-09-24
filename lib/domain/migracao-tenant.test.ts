@@ -88,3 +88,37 @@ describe("validarPlano", () => {
     expect(validarPlano(plano)).toContain("tenantId vazio");
   });
 });
+
+describe("dois owners em controleAcesso (o estado real da produção)", () => {
+  const doisOwners = [
+    acesso({ email: "a@zxp.com", role: "owner" }),
+    acesso({ email: "b@zxp.com", role: "owner" }),
+    acesso({ email: "c@zxp.com", role: "colaborador" }),
+  ];
+
+  it("sem --owner, o plano é recusado e a mensagem diz como resolver — nunca escolhe sozinho", () => {
+    const problemas = validarPlano(planoDeMigracaoDeMembros(doisOwners, { tenantId: "t1", nomeDoTenant: "T1" }));
+    expect(problemas.some((p) => p.includes("--owner"))).toBe(true);
+  });
+
+  it("com --owner, o escolhido é o único owner e o outro vira partner — listado como rebaixado", () => {
+    const plano = planoDeMigracaoDeMembros(doisOwners, { tenantId: "t1", nomeDoTenant: "T1", owner: "A@ZXP.com" });
+    expect(validarPlano(plano)).toEqual([]);
+    expect(plano.ownerEscolhido).toBe("a@zxp.com");
+    expect(plano.rebaixados).toEqual(["b@zxp.com"]);
+    expect(plano.membros.map((m) => [m.email, m.role])).toEqual([
+      ["a@zxp.com", "owner"], ["b@zxp.com", "partner"], ["c@zxp.com", "partner"],
+    ]);
+  });
+
+  it("--owner com e-mail que não está em controleAcesso é recusado com mensagem própria", () => {
+    const plano = planoDeMigracaoDeMembros(doisOwners, { tenantId: "t1", nomeDoTenant: "T1", owner: "digitado-errado@zxp.com" });
+    expect(validarPlano(plano).some((p) => p.includes("não está em controleAcesso"))).toBe(true);
+  });
+
+  it("com um owner só, --owner é opcional e nada é rebaixado", () => {
+    const plano = planoDeMigracaoDeMembros([acesso({ email: "a@zxp.com", role: "owner" })], { tenantId: "t1", nomeDoTenant: "T1" });
+    expect(validarPlano(plano)).toEqual([]);
+    expect(plano.rebaixados).toEqual([]);
+  });
+});

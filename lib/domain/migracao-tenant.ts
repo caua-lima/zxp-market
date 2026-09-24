@@ -50,15 +50,36 @@ export type PlanoMigracaoTenant = {
   tenant: { name: string };
   membros: MembroMigrado[];
   memberships: { email: string; tenantId: string }[];
+  /** O owner que quem rodou escolheu com `--owner`, se escolheu. */
+  ownerEscolhido: string | null;
+  /** Quem era owner em `controleAcesso` e vira partner no tenant — pra aparecer na simulação. */
+  rebaixados: string[];
 };
 
+/**
+ * ─── DOIS OWNERS ─────────────────────────────────────────────────────────
+ *
+ * A produção tem DOIS registros `role: owner` em `controleAcesso` (visto em
+ * 22/08/2026) — e o tenant precisa de exatamente um, porque é o owner que
+ * administra time, conexão e cobrança. Sem `owner`, `validarPlano` recusa o
+ * plano (em vez de escolher sozinho). Com ele, o escolhido é o owner e os
+ * outros owners viram `partner`: continuam entrando, sem o poder de
+ * administrar — e a simulação lista cada um como rebaixado, pra decisão
+ * ficar à vista ANTES de qualquer escrita.
+ */
 export function planoDeMigracaoDeMembros(
   acessos: readonly AccessEntryMinima[],
-  args: { tenantId: string; nomeDoTenant: string },
+  args: { tenantId: string; nomeDoTenant: string; owner?: string | null },
 ): PlanoMigracaoTenant {
+  const escolhido = args.owner?.trim().toLowerCase() || null;
+  const rebaixados: string[] = [];
   const membros: MembroMigrado[] = acessos.map((a) => {
     const email = a.email.toLowerCase();
-    const role = papelDe(a.role);
+    let role = papelDe(a.role);
+    if (escolhido) {
+      if (email === escolhido) role = "owner";
+      else if (role === "owner") { role = "partner"; rebaixados.push(email); }
+    }
     // `permissoesEdicao` só entra quando existe e tem conteúdo — mesma
     // regra de sanitizeUndefined em lib/firebase/data.ts: campo ausente,
     // não campo vazio, é o que já significa "sem permissão granular" hoje.
@@ -76,6 +97,8 @@ export function planoDeMigracaoDeMembros(
     tenant: { name: args.nomeDoTenant },
     membros,
     memberships: membros.map((m) => ({ email: m.email, tenantId: args.tenantId })),
+    ownerEscolhido: escolhido,
+    rebaixados,
   };
 }
 
@@ -89,10 +112,16 @@ export function validarPlano(plano: PlanoMigracaoTenant): string[] {
   if (!plano.tenantId.trim()) problemas.push("tenantId vazio");
   if (plano.membros.length === 0) problemas.push("nenhum membro pra migrar — controleAcesso está vazio?");
 
+  if (plano.ownerEscolhido && !plano.membros.some((m) => m.email === plano.ownerEscolhido)) {
+    problemas.push(`o owner escolhido (${plano.ownerEscolhido}) não está em controleAcesso — confira o e-mail`);
+  }
   const owners = plano.membros.filter((m) => m.role === "owner");
   if (owners.length === 0) problemas.push("nenhum owner no plano — o tenant nasceria sem dono");
   if (owners.length > 1) {
-    problemas.push(`${owners.length} owners no plano (${owners.map((o) => o.email).join(", ")}) — controleAcesso deveria ter só um`);
+    problemas.push(
+      `${owners.length} owners no plano (${owners.map((o) => o.email).join(", ")}) — o tenant precisa de um só; ` +
+      "escolha com --owner <e-mail> (os outros viram partner)",
+    );
   }
 
   const emails = plano.membros.map((m) => m.email);

@@ -31,7 +31,11 @@
  *
  *   # aplicar de verdade em produção — exige --confirmar-producao E digitar o projeto
  *   node scripts/migrar-tenant-legado.mjs --tenant-id vazxpress --nome "VAZXPRESS" --aplicar --confirmar-producao
+ *
+ *   # controleAcesso com mais de um owner (o caso da produção): escolha qual
+ *   node scripts/migrar-tenant-legado.mjs --tenant-id vazxpress --nome "VAZXPRESS" --owner dono@exemplo.com
  */
+import fs from "node:fs";
 import readline from "node:readline";
 import { cert, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
@@ -45,6 +49,7 @@ const flag = (n) => args.includes(`--${n}`);
 
 const tenantId = opt("tenant-id");
 const nomeDoTenant = opt("nome", tenantId);
+const owner = opt("owner", null);
 const aplicar = flag("aplicar");
 
 if (!tenantId) {
@@ -69,18 +74,41 @@ if (emulador) {
 }
 const db = getFirestore();
 
+/**
+ * O projeto que as credenciais apontam NÃO é necessariamente a produção.
+ * Em 23/09/2026 o .env.local deste repositório apontava pra
+ * `controleml-saas`, e a produção é o default do .firebaserc
+ * (`vazxpress-a2350`). Uma simulação contra o projeto errado mostra um
+ * plano de 1 membro que parece "dado faltando" — o aviso existe pra isso
+ * nunca ser lido como a operação real.
+ */
+if (!emulador) {
+  let padrao = null;
+  try { padrao = JSON.parse(fs.readFileSync(".firebaserc", "utf8"))?.projects?.default ?? null; } catch { /* sem .firebaserc */ }
+  if (padrao && projeto !== padrao) {
+    console.log(
+      `\n⚠ ATENÇÃO: lendo o projeto "${projeto}", mas a produção (.firebaserc) é "${padrao}".` +
+      "\n  Este plano NÃO é o da operação real. Confira FIREBASE_PROJECT_ID e as credenciais antes de concluir qualquer coisa.",
+    );
+  }
+}
+
 console.log(`\nLendo controleAcesso de ${projeto ?? "(projeto do emulador)"}...`);
 const snap = await db.collection("controleAcesso").get();
 const acessos = snap.docs.map((d) => d.data());
 
-const plano = planoDeMigracaoDeMembros(acessos, { tenantId, nomeDoTenant });
+const plano = planoDeMigracaoDeMembros(acessos, { tenantId, nomeDoTenant, owner });
 const problemas = validarPlano(plano);
 
 console.log(`\nPlano — tenant "${plano.tenantId}" (${plano.tenant.name}):`);
 for (const m of plano.membros) {
-  console.log(`  ${m.email} → ${m.role}${m.permissoesEdicao ? ` (permissoesEdicao: ${m.permissoesEdicao.join(",")})` : ""}`);
+  const nota = plano.rebaixados.includes(m.email) ? "   ← era owner em controleAcesso, vira partner" : "";
+  console.log(`  ${m.email} → ${m.role}${m.permissoesEdicao ? ` (permissoesEdicao: ${m.permissoesEdicao.join(",")})` : ""}${nota}`);
 }
 console.log(`\n${plano.membros.length} membro(s) seriam migrados.`);
+if (plano.rebaixados.length > 0) {
+  console.log(`${plano.rebaixados.length} owner(s) de controleAcesso viram partner no tenant (entram, mas não administram time, conexão nem cobrança).`);
+}
 
 if (problemas.length > 0) {
   console.error("\nO plano tem problema(s) e NÃO deve ser aplicado:");
