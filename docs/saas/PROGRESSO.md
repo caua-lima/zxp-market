@@ -21,16 +21,17 @@ Branch de trabalho: `saas-v2/isolamento-tenant`.
 - [x] Ler `AGENTS.md`, `README.md`, `docs/design-e-uso.md`, `docs/notificacoes.md`, `docs/backup.md`.
 - [x] Checar breaking changes do Next.js 16 relevantes (route handlers) — sem novidade que afete o
       código existente.
-- [~] Ambiente do emulador (Java, `firebase-tools`) — a verificar quando eu precisar rodar
-      `npm run test:emulador`.
+- [x] Ambiente do emulador — Java 21 (Temurin) e `npx -y firebase-tools@latest` funcionam; usado em
+      todos os testes de emulador desta etapa. Atenção: o `.env.local` aponta pro projeto
+      `controleml-saas`, não pra produção (`vazxpress-a2350`) — ver `MIGRACAO.md`.
 
 ## Etapa 2 — bugs existentes (antes de isolar por tenant)
 
 | # | Achado | Status | Arquivo(s) | Evidência |
 |---|---|---|---|---|
 | S04 | `displayName: decoded.name ?? undefined` rejeitado pelo Admin SDK | [x] | `app/api/acesso/bootstrap/route.ts` | Campo só entra no `set()` quando existe. `tsc`/`test` verdes. Falta um teste de emulador end-to-end (login sem nome cadastrado) — a ser feito junto do harness de emulador da Etapa 3 |
-| S05 | Lease de 30s sem dono/fencing no refresh do token ML | [ ] | `app/api/ml/token.ts` | — |
-| S06 | `Retry-After` do servidor cortado em 8s e a chamada repetida mesmo assim; `fetch-ml.ts` descartava o `AbortSignal` do chamador | [x] | `lib/domain/retry-http.ts`, `lib/ml/fetch-ml.ts`, testes atualizados | Retry-After que cabe no orçamento (≤15s) é respeitado por inteiro; acima disso a chamada desiste (`espera_excede_orcamento`) em vez de esperar menos e insistir. `AbortSignal` do chamador agora é combinado, não descartado. `npx vitest run lib/domain/retry-http.test.ts` (18/18), `tsc` limpo. Diferenciação por método HTTP (POST não-idempotente) fica pendente, empacotada com o fix de fencing do S05 |
+| S05 | Lease de 30s sem dono/fencing no refresh do token ML | [x] | `app/api/ml/token.ts`, `lib/domain/token-ml.ts`, `lib/ml/client.ts`, `app/api/ml/token.emulador.test.ts` (novo) | Dois buracos reais: (1) a troca de token passava por `fetchML` com 3 tentativas × 12 s (>37 s) contra 30 s de concessão — o dono legítimo perdia a concessão no meio da própria chamada, e quem entrava depois falhava (refresh de uso único) e **apagava a concessão do primeiro**; (2) a gravação só conferia a geração, não se já havia um token mais novo no documento. Fix: troca com UMA tentativa de até 15 s (teste de contrato quebra se passar da concessão); concessão com dono, liberada só por quem a detém; gravação por **compare-and-set no refresh token** — grava só se o documento ainda tem o refresh que foi usado. Deliberadamente NÃO é "só o dono grava": com refresh de uso único, o processo lento pode ser o único com token válido, e descartá-lo perderia a conexão (documentado em `decidirGravacaoDoRefresh`). **Contra o emulador real** (ML simulado com refresh de uso único): 6/6 — 8 requisições simultâneas fazem 1 chamada; token mais novo não é sobrescrito; concessão alheia não é apagada nem zerada. **Prova reversa**: no código antigo, 5 de 6 falham. Unitários 2350/2350, emulador 76/76 (arquivos tocados), build limpo |
+| S06 | `Retry-After` do servidor cortado em 8s e a chamada repetida mesmo assim; `fetch-ml.ts` descartava o `AbortSignal` do chamador | [x] | `lib/domain/retry-http.ts`, `lib/ml/fetch-ml.ts`, testes atualizados | Retry-After que cabe no orçamento (≤15s) é respeitado por inteiro; acima disso a chamada desiste (`espera_excede_orcamento`) em vez de esperar menos e insistir. `AbortSignal` do chamador agora é combinado, não descartado. `npx vitest run lib/domain/retry-http.test.ts` (18/18), `tsc` limpo. Os únicos POST que passam por `fetchML` são a troca de token (código do OAuth e refresh) — resolvidos no S05 com uma tentativa só |
 | S07 | Webhook faz trabalho pesado antes de confirmar de forma durável; aceita recurso sem validar vendedor/app | [ ] | `app/api/ml/webhook/route.ts`, `lib/domain/webhook-ml.ts` | — |
 | S08 | Cron retorna 400 antes de rodar tarefas/backup/outbox; bug de índice no diagnóstico `allSettled` | [x] | `app/api/ml/cron/route.ts`, `.test.ts` (novo) | Sem token ML, os 6 passos de sync entram como falha (mesmo formato de falha de rede) e o resto do cron roda igual (lembrete, backup, marcos, estoque, devolução, outbox, poda, heartbeat) — não há mais 400 antecipado. `etapasIncompletas` guarda o índice original junto do valor antes de filtrar, não desalinha mais quando a primeira etapa falha. Dois testes novos mockando todas as dependências. `npx vitest run app/api/ml/cron/route.test.ts` (2/2), suite completa 2275/2275, `tsc` e `npm run build` limpos |
 | S09 | Retry do outbox depende de tráfego (webhook/cron); publicação pode engolir falha | [ ] | `lib/notification-dispatch.ts`, `lib/domain/entrega-destino.ts` | — |
@@ -100,32 +101,31 @@ billing, migração, UX por tela, operação) **não começaram**.
 
 ### Etapa 2 — o que ficou
 
-14 de 21 achados corrigidos e testados: S04, S06, S08, S11, S13, S14, S16, S17, S18, S19, S21, S29,
-S30 completos; S20 e S22 parciais (documentado em cada item — S20 falta o checkpoint de servidor pra
-`acao`/`entidade` do log; S22 falta paginação real, só ficou visível quando trunca).
+15 de 21 achados corrigidos e testados: S04, S05, S06, S08, S11, S13, S14, S15, S16, S17, S18,
+S19, S21, S29, S30. Parciais: S20 (falta checkpoint de servidor pra `acao`/`entidade` do log) e
+S22 (falta paginação real; o truncamento ficou visível).
 
 Pendentes, e por quê ainda não:
 
-- **S05** (lease de 30s sem dono/fencing no refresh do token ML) — precisa do mesmo padrão de
-  versão/CAS que o S13 usou pro estoque, mas aplicado a um recurso mais crítico (o token vale pra
-  TODA leitura do ML); e entrelaça com o ponto de S06 sobre não repetir POST às cegas.
 - **S07** (webhook faz trabalho pesado antes de confirmar; aceita recurso sem validar vendedor/app) —
   é o desenho do inbox durável que a Etapa 4 do prompt pede de qualquer forma. Fazer uma vez certo.
-- **S09** (outbox depende de tráfego web pra retry) — mesmo histórico: um worker independente de
-  tráfego é infraestrutura nova (fila, agendador), não um fix pontual.
-- **S10** (caches de reputação fragmentados) — precisa do tipo `SourceState` que o prompt define pra
-  Etapa 4; fazer isolado agora seria refazer depois.
-- **S12** (`sync.ts` grava com `merge:true`, pode reverter dado mais novo do webhook) — é a mesma
-  classe de corrida do S13 (duas gravações concorrentes), mas em `ml_orders`/`ml_returns` em vez de
-  `estoque`; o padrão de versão já provado no S13 deveria se aplicar aqui, mas isolado do resto do
-  fluxo de sync pra não regredir sincronização em produção sem ensaio antes.
+- **S09** (outbox depende de tráfego web pra retry) — um worker independente de tráfego é
+  infraestrutura nova (fila, agendador), não um fix pontual.
+- **S10** (caches de reputação fragmentados) — precisa do `SourceState` (já definido em
+  `lib/domain/tenant.ts`) aplicado à reputação; é o começo da Etapa 4.
+- **S12** (`sync.ts` grava com `merge:true`, pode reverter dado mais novo do webhook) — mesma classe
+  de corrida do S13/S05, em `ml_orders`/`ml_returns`; toca a sincronização viva da operação.
 
-### Etapas 3-8 — não iniciadas
+### Etapas 3-8 — onde estão
 
-O núcleo do pedido (S01 dados/autorização globais, S02 rota admin que reseta senha de qualquer
-usuário, S03 conexão ML única) e tudo que depende disso (migração, billing, UX por tela, operação)
-segue como está no `main`: um app single-tenant. `docs/saas/ARQUITETURA.md`, `MIGRACAO.md`,
-`OPERACAO.md`, `VALIDACAO.md` ainda não existem.
+- **Etapa 3 (isolamento)**: fundação pronta e aditiva — `TenantContext`/`ConnectionContext`,
+  `requireTenantAccess`/`requireConnectionAccess`, regras de isolamento provadas no emulador, S02
+  fechado. NENHUMA rota existente usa isso ainda: o app em produção continua single-tenant. O corte
+  (trocar `requireAccess` por `requireTenantAccess` e a conexão ML global pela do tenant) não
+  começou.
+- **Etapa 5 (migração)**: primeira fatia (membership) escrita, ensaiada no emulador e documentada
+  em `MIGRACAO.md`; não rodada em produção. Dado de negócio: não desenhado.
+- **Etapas 4, 6, 7, 8**: não iniciadas. `ARQUITETURA.md`, `OPERACAO.md`, `VALIDACAO.md` não existem.
 
 ### Correção de uma leitura errada minha (23/09)
 
