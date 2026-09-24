@@ -1,4 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { GET } from "./route";
+import { getMlAccessToken } from "../token";
+import { syncClaimsRange, syncOrdersRange, syncReturnsRange } from "@/lib/ml/sync";
+import { ehDomingoBR, fazerBackupSemanal } from "@/lib/backup-run";
+import { enviarLembretesDeTarefa } from "@/lib/task-reminders-run";
+import { verificarEstoqueBaixo } from "@/lib/estoque-alerta-run";
+import { verificarDevolucoes } from "@/lib/devolucoes-run";
+import { varrerEntregasPendentes } from "@/lib/notification-dispatch";
+import { registrarExecucaoDoCron } from "@/lib/cron-heartbeat";
+import { etapaOk, etapaParcial } from "@/lib/domain/sync-resultado";
 
 /**
  * Achado S08 da auditoria SaaS: dois bugs no cron.
@@ -11,6 +21,16 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
  *     errado.
  *
  * Mocka todas as dependências pra isolar só a orquestração da rota.
+ *
+ * ─── IMPORT ESTÁTICO, SEM resetModules ───────────────────────────────────
+ *
+ * A primeira versão fazia `vi.resetModules()` e `await import("./route")`
+ * DENTRO de cada teste. A rota puxa `lib/api-auth` → `firebase-admin` de
+ * verdade, e reavaliar isso a cada teste custava segundos — sob a carga da
+ * suíte inteira, estourava os 5 s de timeout (5 vezes seguidas, sempre na
+ * suíte e nunca isolado). Importado uma vez no topo, o custo vai pra coleta
+ * do arquivo, fora do relógio de cada teste; os `vi.mock` abaixo são içados
+ * pelo vitest pra antes desses imports.
  */
 
 vi.mock("../token", () => ({ getMlAccessToken: vi.fn() }));
@@ -36,23 +56,20 @@ const requisicao = () => new Request("https://exemplo.com/api/ml/cron", {
 
 describe("GET /api/ml/cron (S08)", () => {
   beforeEach(() => {
-    vi.resetModules();
     vi.clearAllMocks();
+    // Sem resetModules, o que um teste configura sobrevive pro seguinte: cada
+    // um parte do mesmo ponto conhecido.
+    vi.mocked(ehDomingoBR).mockReturnValue(false);
+    vi.mocked(syncOrdersRange).mockReset();
+    vi.mocked(syncReturnsRange).mockReset();
+    vi.mocked(syncClaimsRange).mockReset();
     process.env.CRON_SECRET = "segredo-de-teste";
   });
 
   it("sem token ML, roda backup/lembrete/marcos/estoque/devolucao/outbox mesmo assim, e NAO responde 400", async () => {
-    const { getMlAccessToken } = await import("../token");
     vi.mocked(getMlAccessToken).mockResolvedValue(null);
-    const { fazerBackupSemanal, ehDomingoBR } = await import("@/lib/backup-run");
     vi.mocked(ehDomingoBR).mockReturnValue(true);
-    const { enviarLembretesDeTarefa } = await import("@/lib/task-reminders-run");
-    const { verificarEstoqueBaixo } = await import("@/lib/estoque-alerta-run");
-    const { verificarDevolucoes } = await import("@/lib/devolucoes-run");
-    const { varrerEntregasPendentes } = await import("@/lib/notification-dispatch");
-    const { registrarExecucaoDoCron } = await import("@/lib/cron-heartbeat");
 
-    const { GET } = await import("./route");
     const res = await GET(requisicao());
 
     expect(res.status).not.toBe(400);
@@ -70,10 +87,7 @@ describe("GET /api/ml/cron (S08)", () => {
   });
 
   it("etapasIncompletas nomeia a etapa CERTA quando uma falha ANTES dela na lista (sem desalinhar o indice)", async () => {
-    const { getMlAccessToken } = await import("../token");
     vi.mocked(getMlAccessToken).mockResolvedValue("token-valido");
-    const { syncOrdersRange, syncReturnsRange, syncClaimsRange } = await import("@/lib/ml/sync");
-    const { etapaOk, etapaParcial } = await import("@/lib/domain/sync-resultado");
     const completo = etapaOk("pedidos", 1);
     const incompleto = etapaParcial("devolucoes", 1, null, new Error("truncado"));
     // Ordem: orders/atual (falha), returns/atual (INCOMPLETO), claims/atual, orders/anterior, returns/anterior, claims/anterior.
@@ -87,7 +101,6 @@ describe("GET /api/ml/cron (S08)", () => {
       .mockResolvedValueOnce(completo)
       .mockResolvedValueOnce(completo);
 
-    const { GET } = await import("./route");
     const res = await GET(requisicao());
     const body = await res.json();
 
