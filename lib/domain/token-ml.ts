@@ -49,6 +49,8 @@ export type DadosToken = {
   geracao?: number | null;
   /** Até quando alguém já está renovando. */
   refreshLeaseAte?: number | null;
+  /** QUEM está renovando — só o dono libera a própria concessão. */
+  refreshLeaseDono?: string | null;
 };
 
 /** Margem antes do vencimento: renova com folga em vez de tomar 401 no meio. */
@@ -56,6 +58,69 @@ export const MARGEM_MS = 60_000;
 
 /** Quanto tempo a concessão de renovação vale. Curto: um processo pode morrer. */
 export const LEASE_MS = 30_000;
+
+/**
+ * Tempo máximo da chamada que troca token no ML (refresh e troca do código
+ * do OAuth) — UMA tentativa, sem repetição.
+ *
+ * ─── POR QUE UMA TENTATIVA SÓ (S05/S06 da auditoria SaaS) ────────────────
+ *
+ * A troca passava por `fetchML` com 3 tentativas × 12 s + esperas: mais de
+ * 37 s no pior caso, contra uma concessão de 30 s. O processo legítimo
+ * perdia a concessão NO MEIO da própria chamada, outro entrava com o MESMO
+ * refresh token — que o ML aceita uma vez só —, falhava e, ao falhar,
+ * apagava a concessão do primeiro, abrindo a porta pra um terceiro.
+ *
+ * E repetir não ajuda aqui: se a primeira tentativa estourou o tempo DEPOIS
+ * de o ML processá-la, o refresh token já foi consumido e a segunda recebe
+ * `invalid_grant`, sempre. Uma falha limpa (503) é problema da PRÓXIMA
+ * requisição, que encontra a concessão livre e tenta de novo.
+ *
+ * O teste em token-ml.test.ts quebra se alguém aumentar isto além do que a
+ * concessão cobre.
+ */
+export const TIMEOUT_TROCA_TOKEN_MS = 15_000;
+
+/** O que fazer com o resultado de uma renovação, na hora de gravar. */
+export type DecisaoGravacao = {
+  gravar: boolean;
+  motivo: "ok" | "conexao_trocada" | "token_mais_novo_ja_gravado";
+  /** Limpar a concessão? Só se ela ainda for de quem está gravando. */
+  liberarConcessao: boolean;
+};
+
+/**
+ * Grava o token novo, ou não? Compare-and-set no PRÓPRIO refresh token.
+ *
+ * ─── POR QUE NÃO "SÓ O DONO DA CONCESSÃO GRAVA" ──────────────────────────
+ *
+ * Parece o certo e seria pior. O refresh token do ML é de uso único: se o
+ * processo A (lento, já sem a concessão) conseguiu trocar, o token que ele
+ * tem na mão é o ÚNICO válido — o B, que entrou depois com o mesmo refresh
+ * token, necessariamente falhou. Descartar o resultado do A por não ser mais
+ * o dono jogaria fora a conexão.
+ *
+ * A pergunta certa é outra: "alguém gravou um token MAIS NOVO desde que eu
+ * li?". Se o refresh token do documento ainda é o que eu usei, o meu é o
+ * mais novo que existe — grava. Se mudou, alguém gravou depois de mim —
+ * não sobrescreve (era esse o "o mais velho por cima do mais novo").
+ *
+ * E a concessão só é liberada por quem a detém: o B que falhou não apaga
+ * mais a concessão do A que ainda está trabalhando.
+ */
+export function decidirGravacaoDoRefresh(
+  pedido: { geracao: number; refreshUsado: string; dono: string },
+  docAgora: DadosToken | null | undefined,
+): DecisaoGravacao {
+  const liberarConcessao = docAgora?.refreshLeaseDono === pedido.dono;
+  if (!resultadoAindaVale(pedido.geracao, docAgora?.geracao)) {
+    return { gravar: false, motivo: "conexao_trocada", liberarConcessao };
+  }
+  if ((docAgora?.refresh_token ?? null) !== pedido.refreshUsado) {
+    return { gravar: false, motivo: "token_mais_novo_ja_gravado", liberarConcessao };
+  }
+  return { gravar: true, motivo: "ok", liberarConcessao };
+}
 
 /**
  * Quando este token expira, em ms. `null` = não dá pra saber.

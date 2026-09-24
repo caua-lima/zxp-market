@@ -1,6 +1,15 @@
 // lib/ml/client.ts
 import crypto from "crypto";
 import { fetchML } from "./fetch-ml";
+import { TIMEOUT_TROCA_TOKEN_MS } from "@/lib/domain/token-ml";
+
+/**
+ * Troca de token (código do OAuth ou refresh): UMA tentativa, com tempo que
+ * cabe na concessão de renovação. O código e o refresh token são de uso
+ * único — repetir depois de um timeout ambíguo recebe `invalid_grant`
+ * sempre. Ver TIMEOUT_TROCA_TOKEN_MS em lib/domain/token-ml.ts.
+ */
+const TROCA_DE_TOKEN = { maxTentativas: 1, timeoutMs: TIMEOUT_TROCA_TOKEN_MS } as const;
 
 const ML_APP_ID = process.env.ML_APP_ID!;
 const ML_SECRET = process.env.ML_SECRET!;
@@ -47,7 +56,7 @@ export async function exchangeCodeForToken(code: string, codeVerifier: string) {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(body),
-  });
+  }, TROCA_DE_TOKEN);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -62,7 +71,7 @@ export async function refreshAccessToken(refreshToken: string) {
       client_secret: ML_SECRET,
       refresh_token: refreshToken,
     }),
-  });
+  }, TROCA_DE_TOKEN);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

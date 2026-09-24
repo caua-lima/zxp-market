@@ -1,12 +1,13 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { getAdminDb } from "../../../lib/firebase/admin";
 import { refreshAccessToken } from "@/lib/ml/client";
 import {
   LEASE_MS,
+  decidirGravacaoDoRefresh,
   podeAssumirRenovacao,
   precisaRenovar,
   relogioDoToken,
-  resultadoAindaVale,
   type DadosToken,
 } from "@/lib/domain/token-ml";
 
@@ -50,12 +51,22 @@ export async function getMlTokenData(): Promise<MlTokenData | null> {
  * A dupla conferência de geração existe porque a conexão pode ser trocada
  * ENQUANTO o ML responde. Gravar assim mesmo ressuscitaria a conexão anterior,
  * com o token de uma conta que já não é a conectada.
+ *
+ * ─── S05 DA AUDITORIA SAAS ───────────────────────────────────────────────
+ *
+ * A gravação também é compare-and-set no refresh token (grava só se ninguém
+ * gravou um mais novo desde a leitura), e a concessão tem DONO: quem falha
+ * libera só a própria, nunca a de outro processo ainda trabalhando. A chamada
+ * ao ML é uma tentativa só, com tempo que cabe na concessão. O porquê de cada
+ * escolha está em lib/domain/token-ml.ts (decidirGravacaoDoRefresh,
+ * TIMEOUT_TROCA_TOKEN_MS).
  */
 async function renovarCoordenado(atual: MlTokenData): Promise<string | null> {
   if (!atual.refresh_token) return null;
 
   const db = getAdminDb();
   const ref = REF();
+  const dono = randomUUID();
 
   // 1. Toma a concessão — ou descobre que outro já está renovando.
   const assumiu = await db.runTransaction(async (tx) => {
@@ -66,7 +77,7 @@ async function renovarCoordenado(atual: MlTokenData): Promise<string | null> {
     if (!precisaRenovar(d, Date.now())) return { tipo: "ja_renovado" as const, token: d.access_token ?? null };
     if (!podeAssumirRenovacao(d, Date.now())) return { tipo: "ocupado" as const };
 
-    tx.update(ref, { refreshLeaseAte: Date.now() + LEASE_MS });
+    tx.update(ref, { refreshLeaseAte: Date.now() + LEASE_MS, refreshLeaseDono: dono });
     return { tipo: "assumiu" as const, geracao: Number(d.geracao ?? 0), refresh: d.refresh_token ?? null };
   });
 
@@ -94,21 +105,28 @@ async function renovarCoordenado(atual: MlTokenData): Promise<string | null> {
   try {
     renovado = await refreshAccessToken(assumiu.refresh);
   } catch (err) {
-    // Libera a concessão: segurar por 30s depois de falhar só atrasa a
-    // próxima tentativa sem proteger nada.
-    await ref.update({ refreshLeaseAte: null }).catch(() => {});
+    // Libera a concessão — se ainda for DESTE processo. Antes era um `update`
+    // cego: o processo que falhava apagava a concessão de outro que ainda
+    // estava no meio da própria renovação.
+    await db.runTransaction(async (tx) => {
+      const d = ((await tx.get(ref)).data() ?? {}) as MlTokenData;
+      if (d.refreshLeaseDono === dono) tx.update(ref, { refreshLeaseAte: null, refreshLeaseDono: null });
+    }).catch(() => {});
     throw err;
   }
 
-  // 3. Grava, se a conexão ainda for a mesma.
+  // 3. Grava — se a conexão é a mesma E ninguém gravou um token mais novo.
   const gravou = await db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const d = (snap.data() ?? {}) as MlTokenData;
+    const decisao = decidirGravacaoDoRefresh({ geracao: assumiu.geracao, refreshUsado: assumiu.refresh!, dono }, d);
+    const soltar = decisao.liberarConcessao ? { refreshLeaseAte: null, refreshLeaseDono: null } : {};
 
-    if (!resultadoAindaVale(assumiu.geracao, d.geracao)) {
-      // A conexão foi trocada no meio. Descarta o token: ele é de outra conta.
-      tx.update(ref, { refreshLeaseAte: null });
-      return null;
+    if (!decisao.gravar) {
+      if (decisao.liberarConcessao) tx.update(ref, soltar);
+      // Conexão trocada: o token é de outra conta, descarta. Token mais novo
+      // já gravado: o do documento é o que vale.
+      return decisao.motivo === "token_mais_novo_ja_gravado" ? d.access_token ?? null : null;
     }
 
     const relogio = relogioDoToken(renovado.expires_in ?? atual.expires_in, Date.now());
@@ -121,7 +139,7 @@ async function renovarCoordenado(atual: MlTokenData): Promise<string | null> {
       // `updated_at` volta a ser o que o nome diz: quando o documento mudou.
       // Ele NÃO é mais o relógio de expiração — ver lib/domain/token-ml.ts.
       updated_at: new Date().toISOString(),
-      refreshLeaseAte: null,
+      ...soltar,
     }, { merge: true });
 
     return renovado.access_token ?? null;
