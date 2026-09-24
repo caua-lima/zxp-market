@@ -16,6 +16,8 @@ import { fmtBRL, getMarginStatus, fmtPct } from "@/lib/domain/calc";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import DateRangePicker from "@/components/dashboard/DateRangePicker";
 import { gravarChaveApp, lerChaveApp } from "@/lib/storage";
+import { hojeNaOperacao } from "@/lib/domain/periodos";
+import { ehVendaValida, margemPonderada, naFaixaDeMargem, resumoDeMargem, type FaixaDeMargem } from "@/lib/domain/pedidos-margem";
 
 type ItemPedido = {
   produto: string;
@@ -82,9 +84,10 @@ type FiltroSalvo = {
   valorMin: string; valorMax: string;
   margemMin: string; margemMax: string;
   statusFiltro: string; produtoFiltro: string;
-  // Opcionais: filtros salvos antes desses dois existirem continuam válidos.
+  // Opcionais: filtros salvos antes desses existirem continuam válidos.
   adsFiltro?: "" | "com" | "sem";
   logisticaFiltro?: string;
+  faixaMargem?: FaixaDeMargem;
 };
 
 const FILTROS_SALVOS_KEY = "pedidos:filtros-salvos";
@@ -384,6 +387,13 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
   const [produtoFiltro, setProdutoFiltro] = useState("");
   const [adsFiltro, setAdsFiltro] = useState<"" | "com" | "sem">("");
   const [logisticaFiltro, setLogisticaFiltro] = useState("");
+  // Atalho "margem ≥ meta / < meta" — separado da faixa digitada (margemMin/Max)
+  // porque a regra dele é outra: deixa de fora cancelado e sem cadastro, que é
+  // o que faz a contagem na tela bater com a conta do dia (ver pedidos-margem).
+  const [faixaMargem, setFaixaMargem] = useState<FaixaDeMargem>("");
+  // A ponte "sem Ads → com Ads" só aparece se o Ads do período carregou: sem
+  // ele, "com Ads" sairia igual a "sem Ads" e pareceria que o Ads é zero.
+  const [adsCarregado, setAdsCarregado] = useState(false);
   // Filtros frequentes salvos no navegador (localStorage) — não é modelo
   // global, não precisa de Firestore nem de rule nova.
   // Mesma leitura preguiçosa dos planejados em EstoqueTab: o efeito que
@@ -395,7 +405,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
   function salvarFiltroAtual() {
     const nome = window.prompt("Nome para este filtro:")?.trim();
     if (!nome) return;
-    const novo: FiltroSalvo = { nome, busca, filtro, valorMin, valorMax, margemMin, margemMax, statusFiltro, produtoFiltro, adsFiltro, logisticaFiltro };
+    const novo: FiltroSalvo = { nome, busca, filtro, valorMin, valorMax, margemMin, margemMax, statusFiltro, produtoFiltro, adsFiltro, logisticaFiltro, faixaMargem };
     const lista = [...filtrosSalvos.filter((f) => f.nome !== nome), novo];
     setFiltrosSalvos(lista);
     gravarFiltrosSalvos(lista);
@@ -407,6 +417,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
     setMargemMin(f.margemMin); setMargemMax(f.margemMax);
     setStatusFiltro(f.statusFiltro); setProdutoFiltro(f.produtoFiltro);
     setAdsFiltro(f.adsFiltro ?? ""); setLogisticaFiltro(f.logisticaFiltro ?? "");
+    setFaixaMargem(f.faixaMargem ?? "");
   }
 
   function excluirFiltroSalvo(nome: string) {
@@ -427,9 +438,11 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
       if (resPedidos.ok) setPedidos((await resPedidos.json()).pedidos ?? []);
       else setPedidos([]);
       setAdsByItem(resAds?.ok ? (await resAds.json()).adsByItem ?? {} : {});
+      setAdsCarregado(Boolean(resAds?.ok));
     } catch {
       setPedidos([]);
       setAdsByItem({});
+      setAdsCarregado(false);
     } finally {
       setLoading(false);
     }
@@ -479,9 +492,10 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
         if (adsFiltro === "sem" && temAds) return false;
       }
       if (logisticaFiltro && p.logisticType !== logisticaFiltro) return false;
+      if (!naFaixaDeMargem(p, faixaMargem, metaMargem)) return false;
       return true;
     });
-  }, [pedidos, busca, filtro, valorMin, valorMax, margemMin, margemMax, statusFiltro, produtoFiltro, adsFiltro, adsByItem, logisticaFiltro]);
+  }, [pedidos, busca, filtro, valorMin, valorMax, margemMin, margemMax, statusFiltro, produtoFiltro, adsFiltro, adsByItem, logisticaFiltro, faixaMargem, metaMargem]);
 
   const statusOptions = useMemo(
     () => Array.from(new Set(pedidos.map((p) => p.status).filter(Boolean))).sort(),
@@ -541,12 +555,34 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
   const semCadN = pedidos.filter((p) => !p.vinculado).length;
   const cancelDevolN = pedidos.filter((p) => p.cancelado || p.devolvido).length;
 
-  const totalLucro = filtrados.reduce((s, p) => s + p.lucro, 0);
+  // Faturamento é BRUTO de propósito (tudo que passou, como no Dashboard).
+  // Retorno e lucro, não: somavam o lucro "como se tivesse vendido" de
+  // pedido cancelado e devolvido.
+  const validosFiltrados = filtrados.filter(ehVendaValida);
+  const totalLucro = validosFiltrados.reduce((s, p) => s + p.lucro, 0);
   const totalValor = filtrados.reduce((s, p) => s + p.valor, 0);
-  const totalRetorno = filtrados.reduce((s, p) => s + p.retorno, 0);
-  const margemMedia = filtrados.length
-    ? filtrados.reduce((s, p) => s + p.margem, 0) / filtrados.length
-    : 0;
+  const totalRetorno = validosFiltrados.reduce((s, p) => s + p.retorno, 0);
+  /**
+   * PONDERADA por valor, só vendas válidas com custo conhecido. Era a média
+   * SIMPLES de todas as linhas (cancelado e sem cadastro inclusos): um pedido
+   * de R$ 20 a 20% pesava igual a um de R$ 600 a 8%, e o número ficava longe
+   * da conta do dia sem motivo aparente. Ver lib/domain/pedidos-margem.ts.
+   */
+  const margemDoFiltro = margemPonderada(filtrados).margem;
+
+  // A ponte, sobre o PERÍODO inteiro — nunca sobre a lista filtrada: o Ads é
+  // custo do período, descontá-lo só do que sobrou num filtro daria uma
+  // margem que não existe.
+  const adsDoPeriodo = useMemo(
+    () => Object.values(adsByItem).reduce((s, v) => s + (Number(v) || 0), 0),
+    [adsByItem],
+  );
+  const resumo = useMemo(
+    () => resumoDeMargem(pedidos, { limiar: metaMargem, ads: adsDoPeriodo }),
+    [pedidos, metaMargem, adsDoPeriodo],
+  );
+  const hoje = hojeNaOperacao();
+  const ehHoje = range.from === hoje && range.to === hoje;
   // saudável (bateu a meta de margem) / atenção (positiva mas abaixo) / prejuízo (<0)
   const margemTag = (m: number) => {
     const s = getMarginStatus(m, metaMargem);
@@ -563,18 +599,89 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
             {loading ? "Atualizando..." : "⟳ Atualizar"}
           </button>
         </div>
-        <DateRangePicker from={range.from} to={range.to} onApply={(from, to) => setRange({ from, to })} />
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <button
+            type="button" className="chip-filtro" aria-pressed={ehHoje}
+            onClick={() => setRange(ehHoje ? monthRange() : { from: hoje, to: hoje })}
+            title={ehHoje ? "Voltar pro mês" : "Só os pedidos de hoje"}
+            style={{
+              fontSize: ".82rem", fontWeight: 600, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
+              background: ehHoje ? "var(--accent)" : "var(--surface2)", color: ehHoje ? "#fff" : "var(--muted)",
+              border: `1px solid ${ehHoje ? "var(--accent)" : "var(--border)"}`,
+            }}
+          >Hoje</button>
+          <DateRangePicker from={range.from} to={range.to} onApply={(from, to) => setRange({ from, to })} />
+        </div>
       </div>
 
       {/* Resumo */}
       <div className="kpi-grid">
         <div className="kpi k-acc"><div className="k-lbl">Pedidos</div><div className="k-val">{filtrados.length}</div></div>
         <div className="kpi k-acc"><div className="k-lbl">Faturamento</div><div className="k-val">{fmtBRL(totalValor)}</div><div className="k-sub">bruto</div></div>
-        <div className="kpi k-pos"><div className="k-lbl">Retorno</div><div className="k-val" style={{ color: "var(--green)" }}>{fmtBRL(totalRetorno)}</div><div className="k-sub">líquido — já sem taxa e frete</div></div>
-        <div className={`kpi ${totalLucro >= 0 ? "k-pos" : "k-neg"}`}><div className="k-lbl">Lucro líquido</div><div className="k-val" style={{ color: totalLucro >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(totalLucro)}</div><div className="k-sub">retorno − custos</div></div>
-        <div className="kpi k-warn"><div className="k-lbl">Margem média</div><div className="k-val" style={{ color: "var(--yellow)" }}>{fmtPct(margemMedia, 1)}</div></div>
+        <div className="kpi k-pos"><div className="k-lbl">Retorno</div><div className="k-val" style={{ color: "var(--green)" }}>{fmtBRL(totalRetorno)}</div><div className="k-sub">sem taxa e frete · sem cancelado/devolvido</div></div>
+        <div className={`kpi ${totalLucro >= 0 ? "k-pos" : "k-neg"}`}><div className="k-lbl">Lucro dos pedidos</div><div className="k-val" style={{ color: totalLucro >= 0 ? "var(--green)" : "var(--red)" }}>{fmtBRL(totalLucro)}</div><div className="k-sub">retorno − custos · antes do Ads</div></div>
+        <div className="kpi k-warn"><div className="k-lbl">Margem dos pedidos</div><div className="k-val" style={{ color: "var(--yellow)" }}>{margemDoFiltro == null ? "—" : fmtPct(margemDoFiltro, 1)}</div><div className="k-sub">por valor · antes do Ads</div></div>
         <div className="kpi k-acc"><div className="k-lbl">Ticket médio</div><div className="k-val">{fmtBRL(filtrados.length ? totalValor / filtrados.length : 0)}</div><div className="k-sub">por pedido</div></div>
       </div>
+
+      {/*
+        Quantos pedidos batem a meta de margem — e a ponte até a margem do
+        Dashboard. Sem isto, "quase todo pedido acima de 10%" e "o dia a 3,8%"
+        pareciam um erro de cálculo; era Ads (que o pedido não carrega) e peso
+        por valor. Sempre sobre o PERÍODO inteiro, não sobre os filtros.
+      */}
+      {!loading && resumo.comCusto > 0 && (() => {
+        const meta = fmtPct(metaMargem, Number.isInteger(metaMargem) ? 0 : 1);
+        const pctAcima = (resumo.acima / resumo.comCusto) * 100;
+        return (
+          <div className="panel" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: ".85rem", fontWeight: 700 }}>
+                {resumo.acima} de {resumo.comCusto} pedidos com margem ≥ {meta} ({fmtPct(pctAcima, 0)})
+              </span>
+              {([
+                ["acima", `Margem ≥ ${meta} (${resumo.acima})`, "var(--green)"],
+                ["abaixo", `Margem < ${meta} (${resumo.abaixo})`, "var(--warning)"],
+              ] as const).map(([id, label, cor]) => (
+                <button
+                  key={id} type="button" className="chip-filtro" aria-pressed={faixaMargem === id}
+                  onClick={() => setFaixaMargem(faixaMargem === id ? "" : id)}
+                  style={{
+                    fontSize: ".82rem", fontWeight: 600, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
+                    background: faixaMargem === id ? cor : "var(--surface2)", color: faixaMargem === id ? "#fff" : "var(--muted)",
+                    border: `1px solid ${faixaMargem === id ? cor : "var(--border)"}`,
+                  }}
+                >{label}</button>
+              ))}
+            </div>
+
+            {resumo.margemSemAds != null && (
+              <div style={{ fontSize: ".85rem", lineHeight: 1.6 }}>
+                Margem dos pedidos <b>{fmtPct(resumo.margemSemAds, 1)}</b> (antes do Ads, por valor)
+                {adsCarregado && resumo.margemComAds != null ? (
+                  <>
+                    {" "}− Ads do período <b>{fmtBRL(resumo.ads)}</b>
+                    {resumo.receita > 0 && <> ({fmtPct((resumo.ads / resumo.receita) * 100, 1)} da receita)</>}
+                    {" "}= <b style={{ color: resumo.margemComAds >= 0 ? "var(--green)" : "var(--red-text)" }}>{fmtPct(resumo.margemComAds, 1)}</b>
+                    {" "}— é a margem que o Dashboard mostra. O Ads é gasto do período, não de um pedido, por isso nenhuma linha abaixo o desconta.
+                  </>
+                ) : (
+                  <> · <span style={{ color: "var(--muted)" }}>o gasto de Ads do período não carregou — a margem com Ads fica indisponível (não é zero).</span></>
+                )}
+              </div>
+            )}
+
+            {(resumo.semCadastro > 0 || resumo.naoVendas > 0) && (
+              <div style={{ fontSize: ".78rem", color: "var(--muted)" }}>
+                Fora da conta:
+                {resumo.semCadastro > 0 && <> {resumo.semCadastro} sem cadastro (custo desconhecido — a margem deles não é real)</>}
+                {resumo.semCadastro > 0 && resumo.naoVendas > 0 && " ·"}
+                {resumo.naoVendas > 0 && <> {resumo.naoVendas} cancelado(s)/devolvido(s)</>}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Busca + filtros */}
       <input
