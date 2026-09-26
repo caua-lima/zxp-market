@@ -69,7 +69,8 @@ describe("validarNotificacao — o que a rota aceitava e não devia", () => {
   it("corpo vazio, nulo ou torto não passa", () => {
     expect(validarNotificacao(null, NOSSO)).toMatchObject({ ok: false, motivo: "corpo_invalido" });
     expect(validarNotificacao(undefined, NOSSO)).toMatchObject({ ok: false, motivo: "corpo_invalido" });
-    expect(validarNotificacao({}, NOSSO)).toMatchObject({ ok: false, motivo: "recurso_invalido" });
+    // Os campos obrigatórios são conferidos antes do formato do resource.
+    expect(validarNotificacao({}, NOSSO)).toMatchObject({ ok: false, motivo: "campo_ausente" });
   });
 
   it("resource sem id numérico não passa", () => {
@@ -78,19 +79,45 @@ describe("validarNotificacao — o que a rota aceitava e não devia", () => {
   });
 });
 
-describe("validarNotificacao — quando não há o que conferir", () => {
-  it("sem vendedor configurado, não barra por vendedor", () => {
-    // Instalação sem ML_SELLER_ID não pode ficar sem receber venda nenhuma.
-    expect(validarNotificacao(aviso({ user_id: 999 }), { appId: NOSSO.appId }).ok).toBe(true);
+describe("validarNotificacao — campo ausente não é campo certo (S07)", () => {
+  it("a reprodução da auditoria: só { resource } com vendedor e aplicação configurados é RECUSADO", () => {
+    // Antes passava: cada conferência só valia quando o campo vinha.
+    expect(validarNotificacao({ resource: "/orders/123" }, NOSSO)).toEqual({ ok: false, motivo: "campo_ausente", topic: "" });
   });
 
-  it("sem os campos no corpo, não barra por eles", () => {
-    // Notificação legada do ML sem application_id continua valendo.
-    expect(validarNotificacao({ resource: "/orders/1", topic: "orders_v2" }, NOSSO).ok).toBe(true);
+  it("sem topic, recusa — não assume mais orders_v2", () => {
+    expect(validarNotificacao(aviso({ topic: undefined }), NOSSO)).toMatchObject({ ok: false, motivo: "campo_ausente" });
   });
 
-  it("sem topic, assume o tratado — era o comportamento anterior", () => {
-    expect(validarNotificacao({ resource: "/orders/1", user_id: 2420261535 }, NOSSO).ok).toBe(true);
+  it("sem user_id, recusa — é ele que diz de qual conexão é o pedido", () => {
+    expect(validarNotificacao(aviso({ user_id: undefined }), NOSSO)).toMatchObject({ ok: false, motivo: "campo_ausente" });
+    // Mesmo sem vendedor configurado pra comparar: sem user_id não há roteamento.
+    expect(validarNotificacao(aviso({ user_id: "" }), { appId: NOSSO.appId })).toMatchObject({ ok: false, motivo: "campo_ausente" });
+  });
+
+  it("aplicação configurada: sem application_id, recusa", () => {
+    expect(validarNotificacao(aviso({ application_id: undefined }), NOSSO)).toMatchObject({ ok: false, motivo: "campo_ausente" });
+  });
+
+  it("aplicação NÃO configurada: application_id não é exigido nem comparado", () => {
+    expect(validarNotificacao(aviso({ application_id: undefined }), { sellerId: NOSSO.sellerId }).ok).toBe(true);
+    expect(validarNotificacao(aviso({ application_id: 1 }), { sellerId: NOSSO.sellerId }).ok).toBe(true);
+  });
+
+  it("sem vendedor configurado, o user_id é exigido mas não comparado", () => {
+    expect(validarNotificacao(aviso({ user_id: 999 }), { appId: NOSSO.appId })).toMatchObject({ ok: true, sellerId: "999" });
+  });
+
+  it("o vendedor da notificação segue junto, pra rotear o processamento", () => {
+    expect(validarNotificacao(aviso(), NOSSO)).toMatchObject({ ok: true, sellerId: "2420261535", orderId: "2000123456" });
+  });
+
+  it("array não é corpo", () => {
+    expect(validarNotificacao([aviso()] as never, NOSSO)).toMatchObject({ ok: false, motivo: "corpo_invalido" });
+  });
+
+  it("a recusa por campo ausente aparece como tal na contagem", () => {
+    expect(rotuloDaRecusa(validarNotificacao({ resource: "/orders/1" }, NOSSO))).toBe("campo_ausente");
   });
 });
 

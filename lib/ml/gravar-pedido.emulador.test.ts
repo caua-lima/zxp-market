@@ -63,9 +63,12 @@ vi.mock("@/lib/notification-dispatch", () => ({
   varrerEntregasPendentes: vi.fn(async () => {}),
 }));
 vi.mock("@/lib/ml/getToken", () => ({ getValidMlAccessToken: vi.fn(async () => "token-teste") }));
+// A rota do webhook grava no inbox e agenda o processamento pra depois da
+// resposta (S07). Aqui o "depois" roda quando o teste chama processarWebhook().
+const posResposta = vi.hoisted(() => ({ fila: [] as (() => Promise<unknown>)[] }));
 vi.mock("next/server", async (original) => ({
   ...(await original<typeof import("next/server")>()),
-  after: vi.fn(),
+  after: vi.fn((fn: () => Promise<unknown>) => { posResposta.fila.push(fn); }),
 }));
 
 const { gravarPedidos } = await import("./gravar-pedido");
@@ -92,11 +95,19 @@ function pedidoML(status: string, lastUpdated: string | undefined, id = ID): Rec
     total_amount: 129.9,
     currency_id: "BRL",
     buyer: { id: 555 },
+    seller: { id: 999 },
     pack_id: null,
     shipping: { id: 4400 },
     payments: [{ id: 7700, money_release_date: "2026-10-10T00:00:00.000-04:00" }],
     order_items: [{ item: { id: "MLB1", seller_sku: "SKU-1", title: "Produto" }, quantity: 1, unit_price: 129.9, sale_fee: 18.2 }],
   };
+}
+
+/** O webhook inteiro: recebe, responde e roda o que ficou pra depois da resposta. */
+async function processarWebhook(orderId = ID) {
+  const r = await webhook(notificacao(orderId));
+  while (posResposta.fila.length) await posResposta.fila.shift()!();
+  return r;
 }
 
 function notificacao(orderId = ID) {
@@ -116,8 +127,10 @@ beforeEach(async () => {
   estado.pedido = null;
   estado.durante = null;
   estado.duranteEm = "";
+  posResposta.fila = [];
   vi.clearAllMocks();
   await db.recursiveDelete(db.collection("ml_orders"));
+  await db.recursiveDelete(db.collection("ml_webhook_inbox"));
 });
 
 afterAll(async () => { await db.terminate(); });
@@ -130,7 +143,7 @@ describe("o caso da auditoria: webhook grava no meio do sync", () => {
     estado.pedido = pedidoML("cancelled", V2); // o que o webhook lê quando chega
     estado.duranteEm = "/shipments/";
     estado.durante = async () => {
-      const r = await webhook(notificacao());
+      const r = await processarWebhook();
       expect(r.status).toBe(200);
     };
 
@@ -168,7 +181,7 @@ describe("webhook", () => {
       await gravarPedidos(db, [{ orderId: ID, estado: estadoDoPedido(pedidoML("cancelled", V2)) }]);
     };
 
-    const r = await webhook(notificacao());
+    const r = await processarWebhook();
     expect(r.status).toBe(200);
     const d = (await doc().get()).data()!;
     expect(d.status).toBe("cancelled");
@@ -183,7 +196,7 @@ describe("webhook", () => {
     });
     estado.pedido = pedidoML("cancelled", V2);
 
-    const r = await webhook(notificacao());
+    const r = await processarWebhook();
     expect(r.status).toBe(200);
     const d = (await doc().get()).data()!;
     expect(d).toMatchObject({ status: "cancelled", last_updated: V2, buyer_id: "555", shipping_cost: 21.5, shipping_status: "shipped" });

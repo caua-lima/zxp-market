@@ -42,13 +42,15 @@ export type NotificacaoML = {
 
 export type RecusaWebhook =
   | "corpo_invalido"
+  /** Faltou topic, user_id ou (com a aplicação configurada) application_id. */
+  | "campo_ausente"
   | "topico_nao_tratado"
   | "vendedor_diferente"
   | "aplicacao_diferente"
   | "recurso_invalido";
 
 export type VeredictoWebhook =
-  | { ok: true; topic: string; orderId: string; tentativa: number }
+  | { ok: true; topic: string; sellerId: string; orderId: string; tentativa: number }
   | { ok: false; motivo: RecusaWebhook; topic: string };
 
 /** O único tópico que esta rota transforma em evento de negócio. */
@@ -69,38 +71,57 @@ function texto(v: unknown): string {
 }
 
 /**
- * Decide se esta notificação merece a consulta à API do ML.
+ * Decide se esta notificação entra no inbox.
  *
- * @param esperado.sellerId nosso vendedor. Vazio = não conferir (uma
- *   instalação sem ML_SELLER_ID não pode ficar sem receber venda nenhuma).
- * @param esperado.appId nossa aplicação. Vazio = não conferir, mesma razão.
+ * ─── S07: CAMPO AUSENTE NÃO É CAMPO CERTO ────────────────────────────────
+ *
+ * Cada conferência só valia quando o campo VINHA: sem `topic`, assumia
+ * orders_v2; sem `user_id` ou `application_id`, não barrava. Então
+ * `{ "resource": "/orders/123" }` sozinho passava por tudo, mesmo com vendedor
+ * e aplicação configurados — era só omitir o que seria recusado.
+ *
+ * O ML manda os quatro campos em toda notificação (exemplo da página oficial
+ * de Notificações: resource, user_id, topic, application_id, attempts, sent,
+ * received). E `user_id` é o que ROTEIA a notificação pra conexão certa — sem
+ * ele não há de quem é o pedido. Agora são obrigatórios; a recusa é contada
+ * por motivo em `webhook_topicos`, então se o ML um dia mudar o formato isso
+ * aparece como `campo_ausente`, não como silêncio.
+ *
+ * @param esperado.sellerId nosso vendedor. Vazio = não compara (o campo continua
+ *   obrigatório). Na rota ele nunca é vazio: cai no SELLER_ID fixo.
+ * @param esperado.appId nossa aplicação. Configurada, `application_id` passa a
+ *   ser obrigatório e tem que bater.
  */
 export function validarNotificacao(
   body: NotificacaoML | null | undefined,
   esperado: { sellerId?: string; appId?: string },
 ): VeredictoWebhook {
-  if (!body || typeof body !== "object") {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
     return { ok: false, motivo: "corpo_invalido", topic: "" };
   }
 
   const topic = texto(body.topic);
   const resource = texto(body.resource);
+  const sellerRecebido = texto(body.user_id);
+  const appEsperado = texto(esperado.appId);
+  const appRecebido = texto(body.application_id);
+
+  if (!topic || !sellerRecebido || (appEsperado && !appRecebido)) {
+    return { ok: false, motivo: "campo_ausente", topic };
+  }
 
   // O tópico manda. Antes a rota olhava só o formato do `resource`, então uma
   // notificação de outro assunto com um resource parecido entrava como venda.
-  if (topic && topic !== TOPICO_TRATADO) {
+  if (topic !== TOPICO_TRATADO) {
     return { ok: false, motivo: "topico_nao_tratado", topic };
   }
 
   const sellerEsperado = texto(esperado.sellerId);
-  const sellerRecebido = texto(body.user_id);
-  if (sellerEsperado && sellerRecebido && sellerRecebido !== sellerEsperado) {
+  if (sellerEsperado && sellerRecebido !== sellerEsperado) {
     return { ok: false, motivo: "vendedor_diferente", topic };
   }
 
-  const appEsperado = texto(esperado.appId);
-  const appRecebido = texto(body.application_id);
-  if (appEsperado && appRecebido && appRecebido !== appEsperado) {
+  if (appEsperado && appRecebido !== appEsperado) {
     return { ok: false, motivo: "aplicacao_diferente", topic };
   }
 
@@ -110,7 +131,8 @@ export function validarNotificacao(
   const tentativa = Number(body.attempts);
   return {
     ok: true,
-    topic: topic || TOPICO_TRATADO,
+    topic,
+    sellerId: sellerRecebido,
     orderId: m[1],
     tentativa: Number.isFinite(tentativa) && tentativa > 0 ? tentativa : 1,
   };

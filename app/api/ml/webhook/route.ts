@@ -1,16 +1,10 @@
 import { NextResponse, after } from "next/server";
-import { instanteDaConfirmacao } from "@/lib/domain/confirmacao-de-venda";
-import { fetchML } from "@/lib/ml/fetch-ml";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
-import { getValidMlAccessToken } from "@/lib/ml/getToken";
-import { estadoDoPedido, mapOrderItems } from "@/lib/domain/estado-do-pedido";
-import { gravarPedidos } from "@/lib/ml/gravar-pedido";
-import { createNotificationEventIdempotent } from "@/lib/notification-events";
-import { buildPayload, notificarVendaConfirmada } from "@/lib/ml/notificar-venda";
-import { enviarEPersistirEntrega, varrerEntregasPendentes } from "@/lib/notification-dispatch";
-import { buildCancelContent, buildOrderDeepLink } from "@/lib/domain/notifications";
+import { varrerEntregasPendentes } from "@/lib/notification-dispatch";
 import { rotuloDaRecusa, validarNotificacao } from "@/lib/domain/webhook-ml";
+import { idDoItem } from "@/lib/domain/webhook-inbox";
+import { processarItem, receberNotificacao, varrerInbox } from "@/lib/ml/webhook-inbox";
 import { SELLER_ID } from "@/lib/ml/orders";
 
 /**
@@ -20,8 +14,6 @@ import { SELLER_ID } from "@/lib/ml/orders";
 const LIMITE_CORPO = 16 * 1024;
 
 export const maxDuration = 30;
-
-const ML_API = "https://api.mercadolibre.com";
 
 /**
  * Trilha de TODA chamada recebida do Mercado Livre.
@@ -154,116 +146,41 @@ export async function POST(req: Request) {
   }
   const orderId = veredito.orderId;
 
+  /**
+   * ─── S07: CONFIRMA DURÁVEL, TRABALHA DEPOIS ─────────────────────────────
+   *
+   * O contrato do ML (página oficial de Notificações) é HTTP 200 em até
+   * 500 ms, senão ele pode DESATIVAR os tópicos. A rota consultava o pedido na
+   * API do ML, gravava e publicava push ANTES de responder — uma chamada ao ML
+   * sozinha já passa disso.
+   *
+   * Agora: grava a notificação no inbox (uma transação) e responde. Consulta,
+   * gravação e avisos rodam depois da resposta; o que falhar fica no inbox com
+   * nova tentativa agendada, e a varredura (aqui de carona e no cron) retenta.
+   * Ver lib/domain/webhook-inbox.ts.
+   */
   try {
-    const token = await getValidMlAccessToken();
-    const res = await fetchML(`${ML_API}/orders/${orderId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      // 404 acontece com pedido de teste/sandbox do próprio ML — não é erro
-      // nosso, não faz sentido o ML ficar retentando. Outros status, sim.
-      return NextResponse.json({ ok: res.status === 404 }, { status: res.status === 404 ? 200 : 502 });
-    }
-    const order = (await res.json()) as Record<string, unknown>;
-    const status = String(order.status ?? "");
-    const items = mapOrderItems(order);
-    const primeiro = items[0]?.title || "Pedido";
-
-    const db = getAdminDb();
-    const dataCriacao = String(order.date_created ?? "");
-
-    // Mantém o dashboard atualizado mesmo em chamadas que não geram evento
-    // (troca de status de envio, etc.) — sincronização completa (frete,
-    // repasse) continua vindo do cron/sync manual, isto aqui é só o essencial.
-    // O mesmo estado que o sync grava (com buyer_id, que sustenta a taxa de
-    // recompra), e só se este retrato não for mais velho que o gravado: dois
-    // webhooks do mesmo pedido podem se cruzar (S12).
-    const [gravacao] = await gravarPedidos(db, [{ orderId, estado: estadoDoPedido(order) }]);
-    const antes = gravacao.antes;
-    /**
-     * "Já era paga ANTES de nós existirmos como registro" — só serve pro
-     * cancelamento, que precisa saber se a venda chegou a valer. Para a venda
-     * em si NÃO se usa mais este sinal: ver vendaRecente() acima.
-     */
-    const jaConheciaComoPago = antes?.status === "paid";
-
-    // ── Venda confirmada ─────────────────────────────────────────
-    // Toda a regra (idade, classificacao, dedupe, agrupamento, push) vive em
-    // lib/ml/notificar-venda.ts — a MESMA que o sync usa como rede de
-    // seguranca. Duplicar aqui era o que permitia os dois caminhos divergirem.
-    const resultadoVenda = await notificarVendaConfirmada({
-      orderId,
-      status,
-      dateCreated: dataCriacao,
-      // A aprovação do pagamento, não a criação, é o que diz se a venda é nova.
-      datePaid: instanteDaConfirmacao(order),
-      items,
-      // O ID do envio, não o valor: `order.shipping_cost` é o que o comprador
-      // pagou (zero em frete grátis), e usá-lo inflava a margem do aviso.
-      shippingId: String((order.shipping as Record<string, unknown>)?.id ?? "").trim() || null,
-    });
-
-    /**
-     * ── Cancelamento ──
-     * Só avisa se a venda chegou a ser ANUNCIADA como venda. A pergunta certa
-     * é "existe evento sale_paid deste pedido?", não "o doc do pedido estava
-     * com status paid?": o sync sobrescreve esse status direto pra
-     * "cancelled" (mesma corrida descrita em vendaRecente), e aí o
-     * cancelamento de uma venda que o usuário JÁ tinha visto passava batido.
-     * `jaConheciaComoPago` fica como atalho — se o doc ainda diz "paid", não
-     * precisa nem ler notification_events.
-     */
-    const anunciamosAVenda = status !== "cancelled"
-      ? false // nem chega a ler: só o ramo de cancelamento usa este sinal
-      : jaConheciaComoPago ||
-        (await db.collection("notification_events").doc(`sale_paid:${orderId}`).get()).exists;
-    if (status === "cancelled" && anunciamosAVenda) {
-      const dedupeKey = `sale_cancelled:${orderId}`;
-      const valorImpacto = Number(order.total_amount ?? antes?.total_amount ?? 0);
-      const content = buildCancelContent(primeiro, items.length, valorImpacto);
-      const { eventId } = await createNotificationEventIdempotent({
-        type: "sale_cancelled", severity: "warning", entityType: "order", entityId: orderId, dedupeKey,
-        title: content.title, body: content.body,
-        orderId, orderExternalId: orderId,
-        productName: primeiro, productCount: items.length,
-        grossAmount: valorImpacto, financialState: "estimated",
-        deepLink: buildOrderDeepLink(orderId),
-      });
-      /**
-       * Publica SEMPRE, também quando o evento já existia. O envio só acontecia
-       * com `created: true`: um cancelamento cujo envio falhou logo depois de
-       * criar o evento nunca mais era tentado, e o retry do ML (que traz o mesmo
-       * pedido) recebia "já existia" e desistia. Publicar é idempotente — o que
-       * já foi aceito não é reenviado.
-       */
-      const payload = buildPayload(eventId, "sale_cancelled", content.title, content.body, {
-        orderId, productName: primeiro, grossAmount: valorImpacto, financialState: "estimated", tag: `sale-${orderId}`,
-      });
-      await enviarEPersistirEntrega(eventId, "sale_cancelled", payload, false, { origem: "webhook:cancelamento" });
-    }
-
-    await registrarChamada({
-      orderId, topic: body?.topic ?? "", status,
-      resultado: resultadoVenda.estado,
-      enviados: "enviados" in resultadoVenda ? resultadoVenda.enviados : null,
-      ok: true,
-    });
-    /**
-     * Carona: o cron da Vercel só roda uma vez por dia no plano gratuito, e um
-     * retry que espera até o dia seguinte não é retry. Cada webhook é uma chance
-     * barata de varrer o que ficou pendente — DEPOIS de responder ao ML, pra não
-     * atrasar a resposta que ele espera.
-     */
-    after(async () => { await varrerEntregasPendentes({ limite: 30, orcamentoMs: 10_000 }).catch(() => {}); });
-    return NextResponse.json({ ok: true, venda: resultadoVenda.estado });
+    await receberNotificacao({ topic: veredito.topic, orderId, sellerId: veredito.sellerId });
   } catch (err) {
+    // Sem registro durável não se confirma recebimento: o erro faz o ML
+    // retentar, que é exatamente o que se quer aqui.
     const msg = err instanceof Error ? err.message : String(err);
-    // Erro TEM que virar registro: sem isso, "o ML chamou e nós quebramos"
-    // era indistinguível de "o ML nunca chamou".
-    await registrarChamada({ orderId, topic: body?.topic ?? "", ok: false, erro: msg.slice(0, 300) });
-    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+    await registrarChamada({ orderId, topic: veredito.topic, ok: false, erro: `inbox: ${msg.slice(0, 280)}` });
+    return NextResponse.json({ ok: false, error: "inbox_indisponivel" }, { status: 500 });
   }
+
+  /**
+   * Depois da resposta, dentro do maxDuration desta rota: primeiro ESTE
+   * pedido, depois o que estiver pendente no inbox, depois o outbox de push.
+   * O cron da Vercel só roda uma vez por dia no plano gratuito — cada webhook
+   * é uma chance barata de varrer o que ficou pra trás.
+   */
+  after(async () => {
+    await processarItem(idDoItem(veredito.topic, orderId)).catch(() => {});
+    await varrerInbox({ limite: 10, orcamentoMs: 8_000 }).catch(() => {});
+    await varrerEntregasPendentes({ limite: 30, orcamentoMs: 10_000 }).catch(() => {});
+  });
+  return NextResponse.json({ ok: true, recebido: true });
 }
 
 // O ML às vezes bate com GET pra checar se a URL responde antes de salvar a

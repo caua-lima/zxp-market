@@ -7,6 +7,7 @@ import { enviarLembretesDeTarefa } from "@/lib/task-reminders-run";
 import { verificarEstoqueBaixo } from "@/lib/estoque-alerta-run";
 import { verificarDevolucoes } from "@/lib/devolucoes-run";
 import { varrerEntregasPendentes } from "@/lib/notification-dispatch";
+import { varrerInbox } from "@/lib/ml/webhook-inbox";
 import { registrarExecucaoDoCron } from "@/lib/cron-heartbeat";
 import { etapaOk, etapaParcial } from "@/lib/domain/sync-resultado";
 
@@ -49,6 +50,10 @@ vi.mock("@/lib/estoque-alerta-run", () => ({ verificarEstoqueBaixo: vi.fn(async 
 vi.mock("@/lib/webhook-log-prune", () => ({ podarWebhookLog: vi.fn(async () => ({ apagados: 0 })) }));
 vi.mock("@/lib/cron-heartbeat", () => ({ registrarExecucaoDoCron: vi.fn(async () => undefined) }));
 vi.mock("@/lib/notification-dispatch", () => ({ varrerEntregasPendentes: vi.fn(async () => ({ processadas: 0 })) }));
+vi.mock("@/lib/ml/webhook-inbox", () => ({
+  varrerInbox: vi.fn(async () => ({ elegiveis: 0 })),
+  podarInbox: vi.fn(async () => ({ apagados: 0 })),
+}));
 
 const requisicao = () => new Request("https://exemplo.com/api/ml/cron", {
   headers: { authorization: "Bearer segredo-de-teste" },
@@ -83,6 +88,9 @@ describe("GET /api/ml/cron (S08)", () => {
     expect(verificarEstoqueBaixo).toHaveBeenCalled();
     expect(verificarDevolucoes).toHaveBeenCalled();
     expect(varrerEntregasPendentes).toHaveBeenCalled();
+    // S07: o inbox do webhook também é varrido sem token — cada item pede o
+    // seu ao processar, e o que falhar fica agendado pra nova tentativa.
+    expect(varrerInbox).toHaveBeenCalled();
     expect(registrarExecucaoDoCron).toHaveBeenCalled();
   });
 

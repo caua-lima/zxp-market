@@ -10,6 +10,7 @@ import { verificarEstoqueBaixo } from "@/lib/estoque-alerta-run";
 import { podarWebhookLog } from "@/lib/webhook-log-prune";
 import { registrarExecucaoDoCron } from "@/lib/cron-heartbeat";
 import { varrerEntregasPendentes } from "@/lib/notification-dispatch";
+import { podarInbox, varrerInbox } from "@/lib/ml/webhook-inbox";
 
 export const maxDuration = 60;
 
@@ -195,6 +196,17 @@ export async function GET(req: Request) {
     });
 
     /**
+     * Inbox do webhook (S07): notificação do ML que foi recebida mas cujo
+     * processamento falhou ou morreu no meio. De carona a cada webhook também,
+     * mas sem venda nova ninguém chama o webhook — aqui é a garantia diária.
+     * Antes do outbox de push, pra o aviso que sair daqui ir na mesma rodada.
+     */
+    const inboxWebhook = await varrerInbox({ limite: 100, orcamentoMs: 15_000 }).catch((err) => {
+      console.error("[cron] varredura do inbox do webhook falhou", err);
+      return null;
+    });
+
+    /**
      * Varredura do outbox de push: reenvia o que ficou pendente (retry vencido,
      * concessão de worker que morreu, fan-out incompleto), refaz espelhos
      * pendentes e apaga o que já passou da retenção. Depois de tudo que PRODUZ
@@ -211,6 +223,10 @@ export async function GET(req: Request) {
      */
     const poda = await podarWebhookLog().catch((err) => {
       console.error("[cron] poda do webhook_log falhou", err);
+      return null;
+    });
+    const podaInbox = await podarInbox().catch((err) => {
+      console.error("[cron] poda do inbox do webhook falhou", err);
       return null;
     });
 
@@ -238,9 +254,11 @@ export async function GET(req: Request) {
       sincronizacaoCompleta: syncCompleto,
       etapasIncompletas: syncIncompletas.length > 0 ? syncIncompletas : undefined,
       poda,
+      podaInbox,
       marcos,
       devolucoes,
       estoqueBaixo,
+      inboxWebhook,
       entregasPush,
       syncFalhas: syncFalhas.length > 0 ? syncFalhas : undefined,
       atual: { orders: ordensAtual, returns: devAtual, claims: claimsAtual, range: atual },
