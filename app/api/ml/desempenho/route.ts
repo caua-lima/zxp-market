@@ -7,14 +7,18 @@ import { calcularCompradoresPeriodo } from "@/lib/domain/repurchase";
 import { calcularConcentracaoVendas } from "@/lib/domain/sales-heatmap";
 import { calcularEntregasNoPrazo } from "@/lib/domain/shipping-performance";
 import { avaliarRequisitosMercadoLider, type ReputationParaChecklist } from "@/lib/domain/mercadolider-requisitos";
+import { CacheDeFonte, estadoDaFonte, periodoOficialDaReputacao } from "@/lib/domain/fonte-desempenho";
+import { getMlTokenData } from "../token";
 
 // Cache generoso (30min) — essa rota fazia varredura SEM LIMITE de ml_orders
 // (2x, UTC+BR) e ml_returns inteiro a cada abertura da aba, o que ajudou a
 // estourar a cota diária do Firestore (Spark: 50k leituras/dia). Com 4
 // botões de período (3/6/12/24 meses), cada um vira uma chave de cache
 // própria — 30min reduz drasticamente quantas vezes isso roda de novo.
-const cache = new Map<string, { at: number; body: Record<string, unknown> }>();
-const CACHE_TTL = 30 * 60 * 1000;
+//
+// S10: a geração da conexão vai na chave. Antes, reconectar OUTRA conta do ML
+// servia a reputação da anterior por até 30 min.
+const cache = new CacheDeFonte<Record<string, unknown>>(16, 30 * 60 * 1000);
 
 // Teto do histórico usado só pra decidir "esse comprador já comprava antes
 // do período?" — sem teto, a rota lia TODO ml_orders (podem ser milhares de
@@ -61,13 +65,12 @@ export async function GET(req: Request) {
     const diasParam = Number(url.searchParams.get("dias") ?? "");
     const dias = Number.isFinite(diasParam) && diasParam > 0 ? Math.floor(diasParam) : null;
 
-    const cacheKey = dias != null ? `d${dias}` : String(months);
+    const geracao = Number((await getMlTokenData())?.geracao ?? 0);
+    const cacheKey = CacheDeFonte.chave(geracao, dias != null ? `d${dias}` : `m${months}`);
     const bust = url.searchParams.get("fresh") === "1";
     if (!bust) {
-      const cached = cache.get(cacheKey);
-      if (cached && Date.now() - cached.at < CACHE_TTL) {
-        return NextResponse.json({ ...cached.body, cached: true });
-      }
+      const cached = cache.ler(cacheKey, Date.now());
+      if (cached) return NextResponse.json({ ...cached.valor, cached: true });
     }
 
     const db = getAdminDb();
@@ -136,6 +139,7 @@ export async function GET(req: Request) {
     const entregas = calcularEntregasNoPrazo(noPeriodo);
 
     const reputacao = (perfil?.seller_reputation as Record<string, unknown> | undefined) ?? null;
+    const agora = Date.now();
 
     const body = {
       months,
@@ -151,10 +155,21 @@ export async function GET(req: Request) {
       entregas,
       reputacao,
       reputacaoIndisponivel: perfil == null,
+      /**
+       * A janela que o ML usa pra julgar a reputação, como ele informa (60 ou
+       * 365 dias). É por ela que a tela conta a base das métricas — não por 60
+       * fixos.
+       */
+      periodoReputacao: periodoOficialDaReputacao(
+        (reputacao?.metrics as Parameters<typeof periodoOficialDaReputacao>[0]) ?? null,
+      ),
+      fonteReputacao: estadoDaFonte({
+        ok: perfil != null, buscadoEm: agora, geracao, erro: perfil == null ? "perfil_indisponivel" : null,
+      }),
       registrationDate: perfil?.registration_date ?? null,
       requisitosMercadoLider: avaliarRequisitosMercadoLider(reputacao as unknown as ReputationParaChecklist | null),
     };
-    cache.set(cacheKey, { at: Date.now(), body });
+    cache.gravar(cacheKey, body, agora);
     return NextResponse.json(body);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

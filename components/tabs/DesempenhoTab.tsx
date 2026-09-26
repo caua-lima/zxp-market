@@ -11,6 +11,7 @@ import HeatmapVendas from "./desempenho/HeatmapVendas";
 import EntregasPanel from "./desempenho/EntregasPanel";
 import BackfillHistorico from "./desempenho/BackfillHistorico";
 import type { DesempenhoResponse } from "./desempenho/desempenho-types";
+import { useVendasDaReputacao } from "./desempenho/useVendasDaReputacao";
 import { dataBR, diasCobrindoMesPassado, diasDesdeInicioDoMes, hojeNaOperacao, limitesDoMes, rotuloDesdeMesPassado } from "@/lib/domain/periodos";
 
 const OPCOES_MESES = [3, 6, 12, 24];
@@ -66,6 +67,12 @@ export default function DesempenhoTab() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  /**
+   * Sobe a cada "⟳ Atualizar" (e ao concluir o backfill): é o que faz as vendas
+   * da reputação/medalha buscarem de novo, com `fresh=1`. Antes o botão renovava
+   * só /desempenho, e os painéis filhos ficavam com o que tinham (S10).
+   */
+  const [versao, setVersao] = useState(0);
 
   const carregar = useCallback(async (fresh = false) => {
     if (fresh) setRefreshing(true); else setLoading(true);
@@ -89,12 +96,24 @@ export default function DesempenhoTab() {
   // não o corpo do efeito em si.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { carregar(); }, [carregar]);
+  const atualizarTudo = useCallback(() => {
+    setVersao((v) => v + 1);
+    carregar(true);
+  }, [carregar]);
 
   // O dia em Brasília, lido a cada pintura: o botão "ativo" acompanha a virada do dia.
   const hoje = hojeNaOperacao();
   const diasEsteMes = diasDesdeInicioDoMes(hoje);
   const diasDesdeMesPassado = diasCobrindoMesPassado(hoje);
   const rotuloMesPassado = rotuloDesdeMesPassado(hoje);
+
+  /**
+   * As vendas das duas janelas (medalha e reputação), UMA busca pros dois
+   * painéis. A janela da reputação é a que o ML informa — só se sabe depois de
+   * /desempenho responder, então até lá não busca.
+   */
+  const periodo = dados?.periodoReputacao ?? null;
+  const vendas = useVendasDaReputacao(dados ? (periodo?.dias ?? 60) : null, versao, hoje);
 
   return (
     <div className="dash">
@@ -140,7 +159,7 @@ export default function DesempenhoTab() {
               </button>
             ))}
           </div>
-          <button type="button" className="btn btn-sm btn-ghost" onClick={() => carregar(true)} disabled={refreshing}>
+          <button type="button" className="btn btn-sm btn-ghost" onClick={atualizarTudo} disabled={refreshing}>
             {refreshing ? "Atualizando…" : "⟳ Atualizar"}
           </button>
         </div>
@@ -185,7 +204,17 @@ export default function DesempenhoTab() {
           */}
 
           <SecaoDesempenho titulo="Estado oficial" origem="medido e publicado pelo Mercado Livre">
-            <ReputacaoPanel reputation={dados.reputacao} indisponivel={dados.reputacaoIndisponivel} />
+            <ReputacaoPanel
+              reputation={dados.reputacao}
+              indisponivel={dados.reputacaoIndisponivel}
+              vendas={{
+                estado: vendas.estado,
+                bloco: vendas.reputacao,
+                janela: vendas.janelaReputacao,
+                periodoOficial: periodo?.oficial ?? false,
+                buscadoEm: vendas.buscadoEm,
+              }}
+            />
           </SecaoDesempenho>
 
           <SecaoDesempenho
@@ -195,6 +224,7 @@ export default function DesempenhoTab() {
             <ProximaMedalhaPanel
               metrics={dados.reputacao?.metrics}
               nivelAtual={dados.reputacao?.power_seller_status}
+              vendas={vendas}
             />
           </SecaoDesempenho>
 
@@ -231,7 +261,7 @@ export default function DesempenhoTab() {
 
           {/* Fica logo abaixo do painel de compradores: e onde a falta de
               historico se manifesta (recompra travada). */}
-          <BackfillHistorico onConcluir={() => carregar(true)} />
+          <BackfillHistorico onConcluir={atualizarTudo} />
 
           {/*
             Entregas subiu pra seção de cálculo local, junto de compradores:

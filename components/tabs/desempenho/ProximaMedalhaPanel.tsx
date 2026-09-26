@@ -1,16 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { authedFetch } from "@/lib/api/authed-fetch";
 import { fmtBRL, fmtPct } from "@/lib/domain/calc";
 import { metricasDeQualidade } from "@/lib/domain/proxima-medalha";
 import { projetarMedalha } from "@/lib/domain/projecao-medalha";
-import type { DiaDeVendas } from "@/lib/domain/reputacao-vendas";
-import { janelaDeDias } from "@/lib/domain/janela-dias";
 import type { MetricaML } from "@/lib/domain/limites-reputacao";
+import type { VendasDaReputacao } from "./useVendasDaReputacao";
 import {
   REQUISITOS_COMUNS,
-  janelaDaMedalha,
   progressoMercadoLider,
   type EixoMedalha,
 } from "@/lib/domain/mercadolider-metas";
@@ -33,10 +29,11 @@ import {
  * distintos do ML, e misturá-los subestimava o acumulado em ~40%: foi o que
  * fez R$ 76.490 do painel parecer meta quando era progresso.
  *
- * Por isso duas buscas. A alternativa — uma janela só — daria um número
- * errado nos dois lados.
+ * Por isso duas CONTAGENS — da mesma busca, feita pela aba (S10). A
+ * alternativa — uma janela só — daria um número errado nos dois lados. E a
+ * janela da qualidade é a que o ML informa (60 ou 365 dias), não 60 fixos.
  */
-export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
+export default function ProximaMedalhaPanel({ metrics, nivelAtual, vendas }: {
   /**
    * `seller_reputation.metrics` como a API devolve — inclusive `period` por
    * metrica, `excluded` (protecao) e `sales.completed`, que e o denominador
@@ -49,73 +46,40 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
     sales?: { period?: string | null; completed?: number | null } | null;
   } | null | undefined;
   nivelAtual: string | null | undefined;
+  /** As vendas das duas janelas, buscadas uma vez pela aba (useVendasDaReputacao). */
+  vendas: VendasDaReputacao;
 }) {
-  /** Janela da reputação — denominador das três métricas de qualidade. */
-  const [reputacao, setReputacao] = useState<{ concluidas: number; faturado: number } | null>(null);
-  /** Vendas por dia da janela da medalha — o que a projeção simula. */
-  const [serie, setSerie] = useState<DiaDeVendas[]>([]);
-  /**
-   * Qual fonte falhou, se alguma. Antes o `.catch(() => null)` engolia o erro
-   * e a tela mostrava zero — que lê como "não vendeu nada", o oposto de "não
-   * consegui perguntar".
-   */
-  const [falhou, setFalhou] = useState(false);
-  /** Janela da medalha — 3 meses + mês vigente. */
-  const [medalha, setMedalha] = useState<{ concluidas: number; faturado: number } | null>(null);
-  /**
-   * Comeca em true e so cai pra false quando as duas buscas voltam.
-   * Chamar setCarregando(true) DENTRO do efeito seria setState sincrono em
-   * efeito — render em cascata, e o lint pega (react-hooks/set-state-in-effect).
-   */
-  const [carregando, setCarregando] = useState(true);
-
   const hoje = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
   }).format(new Date());
-  const janela = janelaDaMedalha(hoje);
 
-  /** A janela da reputação, contida na da medalha. */
-  const janelaRep = janelaDeDias(60);
-
-  useEffect(() => {
-    let vivo = true;
-
-    /**
-     * UMA busca, não duas.
-     *
-     * A tela pedia esta rota duas vezes — reputação (60 dias) e medalha (3
-     * meses + mês vigente) — e cada chamada é até 16 páginas de pedidos na API
-     * do ML. Como a janela da medalha CONTÉM a da reputação, a segunda busca
-     * pagava de novo pelos mesmos pedidos. A rota passou a aceitar uma
-     * sub-janela e devolver os dois blocos de uma vez.
-     */
-    const qs = new URLSearchParams({
-      from: janela.de, to: janela.ate, dias: String(janela.dias),
-      subFrom: janelaRep.de, subTo: janelaRep.ate,
-    });
-
-    authedFetch(`/api/ml/reputacao-vendas?${qs}`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("falhou"))))
-      .then((j) => {
-        if (!vivo) return;
-        setMedalha(j?.bloco ?? null);
-        setReputacao(j?.sub?.bloco ?? null);
-        setSerie(Array.isArray(j?.serie) ? j.serie : []);
-        setFalhou(!j?.bloco);
-        setCarregando(false);
-      })
-      .catch(() => {
-        if (!vivo) return;
-        // Falhar não pode virar zero: a tela precisa dizer que não perguntou.
-        setFalhou(true);
-        setCarregando(false);
-      });
-
-    return () => { vivo = false; };
-  }, [janela.de, janela.ate, janela.dias, janelaRep.de, janelaRep.ate]);
+  /**
+   * As vendas vêm da ABA, não de uma busca própria (S10).
+   *
+   * Este painel buscava a própria janela, e a rota guardava uma resposta só: ele
+   * e o painel da reputação se expulsavam do cache, e o "⟳ Atualizar" da aba não
+   * o alcançava. Agora a aba busca uma vez as duas janelas e o "Atualizar"
+   * renova as duas. Falhar continua não virando zero.
+   */
+  const janela = vendas.janelaMedalha;
+  const medalha = vendas.medalha;
+  const reputacao = vendas.reputacao;
+  const serie = vendas.serie;
+  const carregando = vendas.estado === "carregando";
+  const falhou = vendas.estado === "falhou";
 
   const vendasReputacao = reputacao?.concluidas ?? 0;
   const qualidade = metricasDeQualidade(metrics, vendasReputacao);
+  /**
+   * A base que a conta USA, não a que o app contou. `metricasDeQualidade` usa o
+   * denominador oficial (`metrics.sales.completed`) quando o ML informa; o texto
+   * mostrava sempre a contagem local — e, com a busca falhando ou carregando,
+   * "base de 0 vendas", que lê como "não vendeu nada" (S10).
+   */
+  const baseOficial = Number(metrics?.sales?.completed);
+  const baseDaQualidade = Number.isFinite(baseOficial) && baseOficial > 0
+    ? { n: baseOficial, oficial: true }
+    : reputacao ? { n: reputacao.concluidas, oficial: false } : null;
 
   /**
    * A janela vem da RESPOSTA, nao de uma constante da tela.
@@ -282,7 +246,10 @@ export default function ProximaMedalhaPanel({ metrics, nivelAtual }: {
       */}
       <div style={{ borderTop: p ? "1px solid var(--border)" : "none", paddingTop: p ? 12 : 0 }}>
         <div style={{ fontSize: ".75rem", color: "var(--muted)", marginBottom: 6 }}>
-          Qualidade — {janelaDaQualidade} · base de {vendasReputacao} vendas concluídas
+          Qualidade — {janelaDaQualidade} ·{" "}
+          {baseDaQualidade
+            ? <>base de {baseDaQualidade.n.toLocaleString("pt-BR")} vendas concluídas{baseDaQualidade.oficial ? " (informada pelo ML)" : " (contadas aqui)"}</>
+            : carregando ? "base carregando…" : "base indisponível agora"}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {qualidade.map((q) => (

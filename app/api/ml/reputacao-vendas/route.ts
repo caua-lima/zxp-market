@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireAccess } from "@/lib/api-auth";
-import { getMlAccessToken } from "../token";
+import { getMlAccessToken, getMlTokenData } from "../token";
 import { fetchOrdersLive } from "@/lib/ml/orders";
 import { montarBlocoVendas, serieDiariaDeVendas } from "@/lib/domain/reputacao-vendas";
 import { diasNaJanela, janelaDeDias } from "@/lib/domain/janela-dias";
 import { lerPeriodo } from "@/lib/domain/periodo";
+import { CacheDeFonte, estadoDaFonte, lerJanelasNomeadas } from "@/lib/domain/fonte-desempenho";
 
 export const maxDuration = 60;
 
@@ -23,10 +24,16 @@ export const maxDuration = 60;
  * lib/domain/reputacao-vendas.ts.
  */
 
-// Cache curto por lambda quente: são até 16 páginas do ML por chamada, e o
-// painel de Desempenho recarrega a cada troca de aba.
-let cache: { at: number; dias: number; body: Record<string, unknown> } | null = null;
-const CACHE_TTL = 5 * 60 * 1000;
+/**
+ * Cache curto por lambda quente: são várias páginas do ML por chamada, e o
+ * painel de Desempenho recarrega a cada troca de aba.
+ *
+ * Era UMA entrada (`let cache`): os dois painéis pediam janelas diferentes e
+ * expulsavam um ao outro, e cada abertura da aba virava duas buscas ao vivo. E
+ * não sabia de qual conta era — a geração da conexão agora vai na chave (S10,
+ * ver lib/domain/fonte-desempenho).
+ */
+const cache = new CacheDeFonte<Record<string, unknown>>(8, 5 * 60 * 1000);
 
 
 /**
@@ -91,27 +98,40 @@ export async function GET(req: Request) {
     const diasCobertos = diasNaJanela(de, ate);
 
     /**
-     * REP-01: uma sub-janela calculada da MESMA busca.
+     * Várias contagens da MESMA busca (REP-01, generalizado no S10).
      *
-     * A tela de Desempenho pedia esta rota DUAS vezes — uma pra reputacao (60
-     * dias) e outra pra medalha (3 meses + mes vigente) — e cada chamada e ate
-     * 16 paginas de pedidos na API do ML. Como a janela da medalha CONTEM a da
-     * reputacao, buscar de novo e pagar duas vezes pelos mesmos pedidos.
+     * A aba precisa da janela da medalha (3 meses + mês vigente) e da janela da
+     * REPUTAÇÃO, cujo tamanho é o que o ML informa (60 ou 365 dias). Elas se
+     * sobrepõem, e cada busca são várias páginas de pedidos ao vivo — então a tela
+     * pede o intervalo que cobre as duas e esta rota conta cada janela:
+     * `janela=nome:de:ate`, repetível.
      *
-     * Com `subFrom`/`subTo` a rota devolve os dois blocos de uma busca so.
+     * `subFrom`/`subTo` (a forma antiga, uma sub-janela só) continua valendo
+     * como a janela `sub`, pra um navegador com a tela antiga não ficar sem o
+     * bloco até recarregar.
      */
+    const pedidasJanelas = url.searchParams.getAll("janela");
     const subDe = url.searchParams.get("subFrom");
     const subAte = url.searchParams.get("subTo");
+    if (subDe && subAte) pedidasJanelas.push(`sub:${subDe}:${subAte}`);
+    const lidas = lerJanelasNomeadas(pedidasJanelas, { de, ate });
+    if (!lidas.ok) return NextResponse.json({ error: "janela_invalida", details: lidas.erro, bloco: null }, { status: 400 });
 
-    // A sub-janela entra na chave: senao uma resposta guardada sem `sub`
-    // responderia a um pedido que pede `sub`, e a tela ficaria sem o bloco.
-    const chave = `${de}|${ate}|${url.searchParams.get("subFrom") ?? ""}|${url.searchParams.get("subTo") ?? ""}`;
-    if (cache && cache.dias === dias && cache.body.chave === chave && Date.now() - cache.at < CACHE_TTL) {
-      return NextResponse.json({ ...cache.body, cached: true });
+    const geracao = Number((await getMlTokenData())?.geracao ?? 0);
+    const chave = CacheDeFonte.chave(geracao, de, ate, lidas.janelas.map((j) => `${j.nome}:${j.de}:${j.ate}`).join(","));
+    // `fresh=1`: o "Atualizar" da aba precisa renovar de verdade, não reler o cache.
+    if (url.searchParams.get("fresh") !== "1") {
+      const guardado = cache.ler(chave, Date.now());
+      if (guardado) return NextResponse.json({ ...guardado.valor, cached: true });
     }
 
     const token = await getMlAccessToken();
-    if (!token) return NextResponse.json({ error: "sem_token", bloco: null }, { status: 200 });
+    if (!token) {
+      return NextResponse.json({
+        error: "sem_token", bloco: null,
+        fonte: estadoDaFonte({ ok: false, buscadoEm: Date.now(), geracao, erro: "sem_token" }),
+      }, { status: 200 });
+    }
 
     const pedidos = await fetchOrdersLive(
       token,
@@ -121,7 +141,10 @@ export async function GET(req: Request) {
     if (!pedidos) {
       // null, nunca zeros: "não consegui perguntar" e "não vendeu nada" levam
       // a leituras opostas da reputação.
-      return NextResponse.json({ error: "pedidos_indisponiveis", bloco: null, de, ate }, { status: 200 });
+      return NextResponse.json({
+        error: "pedidos_indisponiveis", bloco: null, de, ate,
+        fonte: estadoDaFonte({ ok: false, buscadoEm: Date.now(), geracao, erro: "pedidos_indisponiveis" }),
+      }, { status: 200 });
     }
 
     /**
@@ -141,10 +164,11 @@ export async function GET(req: Request) {
 
     const bloco = montarBlocoVendas(paraDominio);
 
-    // O bloco da sub-janela sai dos mesmos pedidos, so filtrando por dia.
-    const blocoSub = subDe && subAte
-      ? montarBlocoVendas(paraDominio.filter((p) => p.dia >= subDe && p.dia <= subAte))
-      : null;
+    // Cada janela sai dos mesmos pedidos, só filtrando por dia.
+    const janelas = Object.fromEntries(lidas.janelas.map((j) => [
+      j.nome,
+      { bloco: montarBlocoVendas(paraDominio.filter((p) => p.dia >= j.de && p.dia <= j.ate)), de: j.de, ate: j.ate },
+    ]));
 
     /**
      * A serie por dia, pra a projecao da medalha poder simular a JANELA MOVEL.
@@ -156,11 +180,18 @@ export async function GET(req: Request) {
      */
     const serie = serieDiariaDeVendas(paraDominio);
 
+    const agora = Date.now();
     const body = {
-      bloco, serie, de, ate, dias, diasCobertos, chave,
-      sub: blocoSub ? { bloco: blocoSub, de: subDe, ate: subAte } : null,
+      bloco, serie, de, ate, dias, diasCobertos, janelas,
+      sub: janelas.sub ?? null,
+      // Quando, de qual conexão e o que cobre — pra a tela dizer "atualizado às
+      // HH:MM" e nunca ler falta de resposta como falta de venda.
+      fonte: estadoDaFonte({
+        ok: true, vazio: pedidos.length === 0, buscadoEm: agora, geracao,
+        cobertura: { de, ate, completa: true },
+      }),
     };
-    cache = { at: Date.now(), dias, body };
+    cache.gravar(chave, body, agora);
     return NextResponse.json(body);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

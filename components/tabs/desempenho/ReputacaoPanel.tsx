@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { authedFetch } from "@/lib/api/authed-fetch";
 import { fmtBRL } from "@/lib/domain/calc";
+import type { BlocoVendas } from "@/lib/domain/reputacao-vendas";
 
 import {
   CORES_NIVEL,
@@ -23,54 +22,68 @@ function fmtPct01(v: number | undefined): string | null {
 
 
 /**
- * "Acompanhamos suas vendas nos últimos 60 dias" — o bloco que o Seller Center
+ * "Acompanhamos suas vendas nos últimos N dias" — o bloco que o Seller Center
  * mostra no topo da Reputação, e que é a base de tudo que ele julga.
  *
- * Vem de uma rota própria, buscando AO VIVO: o sync cobre mês atual +
- * anterior, e 60 dias alcançam o mês retrasado. Medido em 22/08 — junho tinha
- * zero pedidos no banco, e a conta fechava 691 contra 750 do painel.
+ * Vem AO VIVO do ML: o sync cobre mês atual + anterior, e a janela alcança o
+ * mês retrasado. Medido em 22/08 — junho tinha zero pedidos no banco, e a conta
+ * fechava 691 contra 750 do painel.
+ *
+ * A janela é a que o ML INFORMA (60 dias, ou 365 pra quem vendeu pouco) — era
+ * 60 fixo. E a busca não é mais daqui: a aba busca uma vez pros dois painéis e
+ * o "Atualizar" renova as duas coisas juntas (S10, ver useVendasDaReputacao).
  *
  * As definições de cada número estão em lib/domain/reputacao-vendas.ts. Duas
  * surpreendem: "Com Envios" são ENVIOS distintos (um pacote de 5 pedidos conta
  * 1) e "Vendas" inclui cancelados.
  */
-function BlocoUltimos60Dias() {
-  const [d, setD] = useState<{ bloco: { vendas: number; comEnvios: number; concluidas: number; faturado: number } | null; de?: string; ate?: string } | null>(null);
+export type VendasDaJanelaDaReputacao = {
+  estado: "carregando" | "ok" | "falhou";
+  bloco: BlocoVendas | null;
+  janela: { de: string; ate: string; dias: number };
+  /** O período veio do ML (true) ou é o padrão de quando ele não informa. */
+  periodoOficial: boolean;
+  buscadoEm: string | null;
+};
 
-  useEffect(() => {
-    let vivo = true;
-    authedFetch("/api/ml/reputacao-vendas?dias=60", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((j) => { if (vivo) setD(j); })
-      .catch(() => { if (vivo) setD({ bloco: null }); });
-    return () => { vivo = false; };
-  }, []);
+function horaBR(iso: string | null): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(new Date(t));
+}
 
-  if (!d) return null;
+function BlocoDaJanelaDaReputacao({ vendas }: { vendas: VendasDaJanelaDaReputacao }) {
+  if (vendas.estado === "carregando") return null;
+  const dias = vendas.janela.dias;
 
-  if (!d.bloco) {
+  if (vendas.estado === "falhou" || !vendas.bloco) {
     return (
       <div style={{ marginBottom: 12, fontSize: ".8rem", color: "var(--muted)" }}>
-        Não consegui buscar as vendas dos últimos 60 dias agora. Os números não aparecem
+        Não consegui buscar as vendas dos últimos {dias} dias agora. Os números não aparecem
         zerados de propósito — “não vendeu nada” e “não consegui perguntar” dizem coisas opostas
         sobre a reputação.
       </div>
     );
   }
 
-  const b = d.bloco;
+  const b = vendas.bloco;
   const itens: { rotulo: string; valor: string; nota?: string }[] = [
     { rotulo: "Vendas", valor: String(b.vendas), nota: "inclui canceladas" },
     { rotulo: "Com envios", valor: String(b.comEnvios), nota: "envios distintos" },
     { rotulo: "Concluídas", valor: String(b.concluidas) },
     { rotulo: "Faturado", valor: fmtBRL(b.faturado), nota: "em vendas concluídas" },
   ];
+  const hora = horaBR(vendas.buscadoEm);
 
   return (
     <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 10, background: "var(--surface2)" }}>
       <div style={{ fontSize: ".75rem", color: "var(--muted)", marginBottom: 8 }}>
-        Vendas dos últimos 60 dias{d.de ? ` · de ${d.de.split("-").reverse().join("/")} até hoje` : ""} —
-        é a janela que o Mercado Livre usa pra julgar sua reputação
+        Vendas dos últimos {dias} dias · de {vendas.janela.de.split("-").reverse().join("/")} até hoje —{" "}
+        {vendas.periodoOficial
+          ? "é a janela que o Mercado Livre informa pra julgar sua reputação"
+          : "o Mercado Livre não informou a janela; usando o padrão de 60 dias"}
+        {hora ? ` · buscado às ${hora}` : ""}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 10 }}>
         {itens.map((i) => (
@@ -86,10 +99,11 @@ function BlocoUltimos60Dias() {
 }
 
 export default function ReputacaoPanel({
-  reputation, indisponivel,
+  reputation, indisponivel, vendas,
 }: {
   reputation: SellerReputation | null;
   indisponivel: boolean;
+  vendas: VendasDaJanelaDaReputacao;
 }) {
   if (indisponivel) {
     return (
@@ -154,7 +168,7 @@ export default function ReputacaoPanel({
         })}
       </div>
 
-      <BlocoUltimos60Dias />
+      <BlocoDaJanelaDaReputacao vendas={vendas} />
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14, padding: "10px 14px", borderRadius: 10, background: "var(--surface2)" }}>
         <div>
