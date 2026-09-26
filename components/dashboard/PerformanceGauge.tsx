@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import { clampGaugePercent, rawGoalPercent, type GaugeTone } from "@/lib/domain/gauge";
+import { clampGaugePercent, formatarPercentualDaMeta, rawGoalPercent, type GaugeTone } from "@/lib/domain/gauge";
 
 export type PerformanceGaugeProps = {
   title: string;
@@ -112,7 +112,7 @@ export default function PerformanceGauge({
   const markerPos = pointOnArc(clamped);
   const ticks = title.toLowerCase().includes("margem") ? MARGIN_TICKS : REVENUE_TICKS;
 
-  const percentText = `${raw >= 0 ? Math.round(raw) : 0}%`;
+  const percentText = formatarPercentualDaMeta(raw);
   const a11ySummary = `${title}: ${valueLabel}${target != null ? `, meta ${targetLabel ?? target}` : ""}. ${percentText} da meta. ${helperText ?? ""}`.trim();
 
   const interactive = typeof onClick === "function";

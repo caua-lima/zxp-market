@@ -144,3 +144,34 @@ export function getGoalInsight(
   }
   return "";
 }
+
+/**
+ * O % do texto central, com UMA casa, TRUNCADO — nunca arredondado pra cima.
+ *
+ * Era `Math.round`: com R$ 23.429,31 de R$ 23.500 (99,7%) o velocímetro
+ * escrevia "100%" com R$ 70,69 ainda faltando — dizia que a meta estava
+ * batida quando não estava. Truncar garante que "100%" só aparece quando
+ * chegou. Número inteiro sai sem ",0".
+ */
+export function formatarPercentualDaMeta(raw: number): string {
+  if (!Number.isFinite(raw) || raw <= 0) return "0%";
+  const decimos = Math.floor(raw * 10 + 1e-9);
+  const inteiro = Math.floor(decimos / 10);
+  const resto = decimos % 10;
+  return resto === 0 ? `${inteiro}%` : `${inteiro},${resto}%`;
+}
+
+/**
+ * Valor abreviado pros rótulos do velocímetro ("R$ 23,5k").
+ *
+ * Era `Math.round(n / 1000)`: a Meta de R$ 23.500 aparecia como "R$ 24k", ao
+ * lado de um "Faltam R$ 70,69" que só faz sentido com 23,5k. Agora mantém até
+ * duas casas do milhar, sem zeros sobrando.
+ */
+export function abreviarValor(n: number): string {
+  if (!Number.isFinite(n)) return "R$ 0";
+  const casas = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+  if (Math.abs(n) >= 1_000_000) return `R$ ${casas(Math.trunc((n / 1_000_000) * 100) / 100)}M`;
+  if (Math.abs(n) >= 1_000) return `R$ ${casas(Math.trunc((n / 1_000) * 100) / 100)}k`;
+  return fmtBRLLocal(n);
+}

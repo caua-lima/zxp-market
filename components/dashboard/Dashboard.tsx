@@ -34,7 +34,7 @@ import PerformanceGauge from "./PerformanceGauge";
 import DateRangePicker from "./DateRangePicker";
 import AvisoRemessasFull from "./AvisoRemessasFull";
 import { authedFetch } from "@/lib/api/authed-fetch";
-import { getGaugeStatus, getGaugeStatusLabel, getGoalInsight, getRevenuePaceLabel, getRevenuePaceStatus, rawGoalPercent, selectActiveGoal } from "@/lib/domain/gauge";
+import { abreviarValor, getGaugeStatus, getGaugeStatusLabel, getGoalInsight, getRevenuePaceLabel, getRevenuePaceStatus, rawGoalPercent, selectActiveGoal } from "@/lib/domain/gauge";
 import ActionCenter from "./ActionCenter";
 import ExecutiveKpis, { Delta } from "./ExecutiveKpis";
 import RevenueLineChart from "./RevenueLineChart";
@@ -1221,11 +1221,6 @@ function MetaDiariaCard({
 // Fórmulas de seleção de meta ativa / ritmo / ideal-até-hoje relocadas
 // verbatim do antigo MetasGauge.tsx — só a apresentação (PerformanceGauge)
 // é nova, nenhum número muda.
-function abreviarValor(n: number): string {
-  if (n >= 1_000_000) return `R$ ${(n / 1_000_000).toFixed(1).replace(".", ",")}M`;
-  if (n >= 1_000) return `R$ ${Math.round(n / 1_000)}k`;
-  return fmtBRL(n);
-}
 
 function MetasOverviewCard({
   fatBruto, meta1, meta2, meta3, projecao, projecaoLucro, diaAtual, totalDias, margemAtual, metaMargem, onVerMetas,
