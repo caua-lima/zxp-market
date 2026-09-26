@@ -4,7 +4,8 @@ import { fetchML } from "@/lib/ml/fetch-ml";
 import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { getValidMlAccessToken } from "@/lib/ml/getToken";
-import { mapOrderItems } from "@/lib/ml/sync";
+import { estadoDoPedido, mapOrderItems } from "@/lib/domain/estado-do-pedido";
+import { gravarPedidos } from "@/lib/ml/gravar-pedido";
 import { createNotificationEventIdempotent } from "@/lib/notification-events";
 import { buildPayload, notificarVendaConfirmada } from "@/lib/ml/notificar-venda";
 import { enviarEPersistirEntrega, varrerEntregasPendentes } from "@/lib/notification-dispatch";
@@ -170,44 +171,22 @@ export async function POST(req: Request) {
     const primeiro = items[0]?.title || "Pedido";
 
     const db = getAdminDb();
-    const ref = db.collection("ml_orders").doc(orderId);
-    const antes = await ref.get();
     const dataCriacao = String(order.date_created ?? "");
+
+    // Mantém o dashboard atualizado mesmo em chamadas que não geram evento
+    // (troca de status de envio, etc.) — sincronização completa (frete,
+    // repasse) continua vindo do cron/sync manual, isto aqui é só o essencial.
+    // O mesmo estado que o sync grava (com buyer_id, que sustenta a taxa de
+    // recompra), e só se este retrato não for mais velho que o gravado: dois
+    // webhooks do mesmo pedido podem se cruzar (S12).
+    const [gravacao] = await gravarPedidos(db, [{ orderId, estado: estadoDoPedido(order) }]);
+    const antes = gravacao.antes;
     /**
      * "Já era paga ANTES de nós existirmos como registro" — só serve pro
      * cancelamento, que precisa saber se a venda chegou a valer. Para a venda
      * em si NÃO se usa mais este sinal: ver vendaRecente() acima.
      */
-    const jaConheciaComoPago = antes.exists && antes.data()?.status === "paid";
-
-    // Mantém o dashboard atualizado mesmo em chamadas que não geram evento
-    // (troca de status de envio, etc.) — sincronização completa (frete,
-    // repasse) continua vindo do cron/sync manual, isto aqui é só o essencial.
-    await ref.set({
-      order_id: orderId,
-      status: order.status ?? null,
-      date_created: String(order.date_created ?? ""),
-      total_amount: Number(order.total_amount ?? 0),
-      currency: order.currency_id ?? "BRL",
-      /**
-       * buyer_id é o que permite calcular taxa de recompra (ver
-       * lib/domain/repurchase.ts). lib/ml/sync.ts já gravava, mas o webhook
-       * NÃO — então todo pedido que entrou por aqui e nunca passou por um
-       * sync completo ficava sem comprador e sumia da conta de compradores
-       * únicos, jogando a taxa pra baixo. Como é o webhook que registra as
-       * vendas em tempo real, isso atingia justamente os pedidos recentes.
-       */
-      // Spread condicional, NAO `buyer_id: ... : null`: a gravacao usa
-      // { merge: true }, entao escrever null APAGARIA o buyer_id que um sync
-      // completo ja tivesse salvo. Quando o webhook nao traz o comprador, o
-      // certo e nao tocar no campo.
-      ...(((order.buyer as Record<string, unknown> | undefined)?.id)
-        ? { buyer_id: String((order.buyer as Record<string, unknown>).id) }
-        : {}),
-      items,
-      pack_id: order.pack_id ? String(order.pack_id) : null,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
+    const jaConheciaComoPago = antes?.status === "paid";
 
     // ── Venda confirmada ─────────────────────────────────────────
     // Toda a regra (idade, classificacao, dedupe, agrupamento, push) vive em
@@ -241,7 +220,7 @@ export async function POST(req: Request) {
         (await db.collection("notification_events").doc(`sale_paid:${orderId}`).get()).exists;
     if (status === "cancelled" && anunciamosAVenda) {
       const dedupeKey = `sale_cancelled:${orderId}`;
-      const valorImpacto = Number(order.total_amount ?? antes.data()?.total_amount ?? 0);
+      const valorImpacto = Number(order.total_amount ?? antes?.total_amount ?? 0);
       const content = buildCancelContent(primeiro, items.length, valorImpacto);
       const { eventId } = await createNotificationEventIdempotent({
         type: "sale_cancelled", severity: "warning", entityType: "order", entityId: orderId, dedupeKey,

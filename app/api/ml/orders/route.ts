@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { getMlAccessToken } from "../token";
 import { requireAccess } from "@/lib/api-auth";
+import { estadoDoPedido } from "@/lib/domain/estado-do-pedido";
+import { gravarPedidos } from "@/lib/ml/gravar-pedido";
 
 export async function POST(req: Request) {
   const gate = await requireAccess(req, { allowCron: true, capacidade: "ver_operacao" });
@@ -37,44 +39,22 @@ export async function POST(req: Request) {
       );
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as { results?: Record<string, unknown>[] };
     const results = data.results ?? [];
 
-    const batch = adminDb.batch();
-
-    for (const order of results) {
-      const orderId = String(order.id);
-
-      batch.set(
-        adminDb.collection("ml_orders").doc(orderId),
-        {
-          order_id: orderId,
-          status: order.status ?? null,
-          date_created: order.date_created ?? null,
-          total_amount: order.total_amount ?? 0,
-          currency: order.currency_id ?? "BRL",
-          buyer_id: order.buyer?.id ? String(order.buyer.id) : null,
-          shipping_status: order.shipping?.status ?? null,
-          // O item como o ML manda, nos campos que a gente lê. Era `any`.
-          items: (order.order_items ?? []).map((item: {
-            item?: { seller_sku?: string; id?: string; title?: string };
-            quantity?: number;
-            unit_price?: number;
-            sale_fee?: number;
-          }) => ({
-            sku: item.item?.seller_sku ?? item.item?.id ?? null,
-            title: item.item?.title ?? null,
-            quantity: item.quantity ?? 0,
-            unit_price: item.unit_price ?? 0,
-          })),
-          raw: order,
-          updatedAt: new Date().toISOString(),
-        },
-        { merge: true }
-      );
-    }
-
-    await batch.commit();
+    /**
+     * O mesmo estado e a mesma guarda de versão do sync e do webhook (S12).
+     *
+     * Esta rota tinha mapeamento próprio, e ele DESTRUÍA dado: itens sem
+     * `item_id` nem `sale_fee` (o vínculo com o produto e a taxa do ML — a
+     * margem desses pedidos virava outra), `shipping_status: null` por cima do
+     * status real do envio (a busca não traz o status), e `raw` com o pedido
+     * inteiro, dados do comprador inclusive, que nada no app lia.
+     */
+    await gravarPedidos(adminDb, results.map((order) => ({
+      orderId: String(order.id),
+      estado: estadoDoPedido(order),
+    })));
 
     return NextResponse.json({
       ok: true,

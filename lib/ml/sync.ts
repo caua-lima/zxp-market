@@ -10,6 +10,8 @@ import {
   vendaRecente,
 } from "@/lib/ml/notificar-venda";
 import { MAX_AVISOS_POR_SYNC, instanteDaConfirmacao } from "@/lib/domain/confirmacao-de-venda";
+import { estadoDoPedido, mapOrderItems } from "@/lib/domain/estado-do-pedido";
+import { gravarPedidos } from "@/lib/ml/gravar-pedido";
 
 const ML_API = "https://api.mercadolibre.com";
 const MP_API = "https://api.mercadopago.com";
@@ -63,26 +65,9 @@ export function lastNDaysRangeBR(days: number): SyncRange {
   };
 }
 
-type RawItem = Record<string, unknown>;
-
-/** Normaliza os itens de um pedido do ML para o formato armazenado no Firestore. */
-export function mapOrderItems(order: Record<string, unknown>) {
-  const rawItems = (order.order_items as RawItem[]) ?? [];
-  return rawItems.map((item) => {
-    const itemObj = (item.item as Record<string, unknown>) ?? {};
-    const itemId = String(itemObj.id ?? "").trim(); // MLB...
-    const sellerSku = String(itemObj.seller_sku ?? "").trim();
-    return {
-      item_id: itemId, // vínculo por MLB
-      sku: sellerSku || itemId, // vínculo por SKU do vendedor (fallback MLB)
-      title: String(itemObj.title ?? ""),
-      quantity: Number(item.quantity ?? 0),
-      unit_price: Number(item.unit_price ?? 0),
-      // Taxa de venda cobrada pelo ML nesta linha (por unidade — ver metrics)
-      sale_fee: Number(item.sale_fee ?? 0),
-    };
-  });
-}
+// Mora no domínio desde o S12, junto do resto do estado do pedido; continua
+// exportado daqui pra quem já importava.
+export { mapOrderItems };
 
 /** Executa `fn` sobre `items` com no máximo `limit` chamadas simultâneas. */
 async function mapPool<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
@@ -435,64 +420,38 @@ export async function syncOrdersRange(
     tentadoNestaRodada.add(id);
   });
 
-  // ── Gravação em lote ──
-  const BATCH_SIZE = 400;
-  for (let i = 0; i < all.length; i += BATCH_SIZE) {
-    const batch = db.batch();
-    for (const order of all.slice(i, i + BATCH_SIZE)) {
-      const o = order as Record<string, unknown>;
-      const orderId = String(o.id);
-      // Repasse (data) e líquido real do Mercado Pago.
-      const moneyRelease = releaseByOrder.get(orderId) ?? releaseFromSearch.get(orderId) ?? "";
-      const netReceived = netByOrder.get(orderId);
-      const doc: Record<string, unknown> = {
-        order_id: orderId,
-        ...(tentadoNestaRodada.has(orderId) ? { netTentadoEm: Date.now() } : {}),
-        status: o.status ?? null,
-        date_created: String(o.date_created ?? ""),
-        total_amount: Number(o.total_amount ?? 0),
-        currency: o.currency_id ?? "BRL",
-        buyer_id: (o.buyer as Record<string, unknown>)?.id
-          ? String((o.buyer as Record<string, unknown>).id)
-          : null,
-        items: mapOrderItems(o),
-        /**
-         * Compra de produtos diferentes vira um pacote no ML: uma venda para o
-         * comprador, mas vários pedidos na API. Sem o pack_id não dá para
-         * remontar a venda inteira nem saber o lucro real dela.
-         */
-        pack_id: o.pack_id ? String(o.pack_id) : null,
-        /**
-         * O id do ENVIO. Nao era persistido, e sem ele o rateio do frete so
-         * podia agrupar por pack_id (ver lib/domain/frete-pacote.ts). O envio
-         * e a chave mais precisa: dois pedidos podem compartilhar envio sem
-         * compartilhar pacote.
-         */
-        shipping_id: String((o.shipping as Record<string, unknown>)?.id ?? "") || null,
-        updatedAt: new Date().toISOString(),
-      };
-      if (moneyRelease) doc.money_release_date = moneyRelease;
-      if (typeof netReceived === "number" && netReceived > 0) doc.net_received = netReceived;
-      const info = infoByOrder.get(orderId);
-      if (info) {
-        // Quando reconferimos — é o que faz a janela de ajuste girar em vez de
-        // reconsultar o mesmo pedido a cada rodada.
-        doc.reconciliadoEm = Date.now();
-        if (typeof info.cost === "number") doc.shipping_cost = info.cost;
-        if (typeof info.buyerPaidShipping === "number") doc.shipping_cost_comprador = info.buyerPaidShipping;
-        doc.shipping_status = info.status;
-        doc.shipping_substatus = info.substatus;
-        doc.logistic_type = info.logistic;
-        doc.tracking = info.tracking;
-        doc.estimated_delivery = info.estimated;
-        if (info.estimadaAte) doc.estimated_delivery_limit = info.estimadaAte;
-        if (info.dateDelivered) doc.date_delivered = info.dateDelivered;
-      }
-
-      batch.set(db.collection("ml_orders").doc(orderId), doc, { merge: true });
+  // ── Gravação ──
+  // O estado do pedido só é gravado se este retrato não for mais velho que o
+  // do documento — o webhook pode ter gravado um cancelamento enquanto esta
+  // rodada buscava envio e pagamento (S12, lib/domain/estado-do-pedido.ts).
+  await gravarPedidos(db, all.map((order) => {
+    const o = order as Record<string, unknown>;
+    const orderId = String(o.id);
+    // Repasse (data) e líquido real do Mercado Pago.
+    const moneyRelease = releaseByOrder.get(orderId) ?? releaseFromSearch.get(orderId) ?? "";
+    const netReceived = netByOrder.get(orderId);
+    const complemento: Record<string, unknown> = {
+      ...(tentadoNestaRodada.has(orderId) ? { netTentadoEm: Date.now() } : {}),
+    };
+    if (moneyRelease) complemento.money_release_date = moneyRelease;
+    if (typeof netReceived === "number" && netReceived > 0) complemento.net_received = netReceived;
+    const info = infoByOrder.get(orderId);
+    if (info) {
+      // Quando reconferimos — é o que faz a janela de ajuste girar em vez de
+      // reconsultar o mesmo pedido a cada rodada.
+      complemento.reconciliadoEm = Date.now();
+      if (typeof info.cost === "number") complemento.shipping_cost = info.cost;
+      if (typeof info.buyerPaidShipping === "number") complemento.shipping_cost_comprador = info.buyerPaidShipping;
+      complemento.shipping_status = info.status;
+      complemento.shipping_substatus = info.substatus;
+      complemento.logistic_type = info.logistic;
+      complemento.tracking = info.tracking;
+      complemento.estimated_delivery = info.estimated;
+      if (info.estimadaAte) complemento.estimated_delivery_limit = info.estimadaAte;
+      if (info.dateDelivered) complemento.date_delivered = info.dateDelivered;
     }
-    await batch.commit();
-  }
+    return { orderId, estado: estadoDoPedido(o), complemento };
+  }));
 
   await notificarVendasPendentes(all);
 
