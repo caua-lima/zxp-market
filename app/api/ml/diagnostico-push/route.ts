@@ -93,6 +93,29 @@ export async function GET(req: Request) {
     ultimoResumo: ultimaExecucao?.resumo ?? null,
   };
 
+  /**
+   * ── O worker frequente está rodando? (S09) ──
+   *
+   * Retry de push, resumo agendado de rajada e o inbox do webhook dependem dele
+   * quando não há venda nova pra dar carona. Agendado a cada 5 min por
+   * .github/workflows/worker.yml; o GitHub atrasa agendamentos sob carga, então
+   * "saudável" tolera 30 min.
+   */
+  const ultimoWorker = await lerUltimaExecucaoDoCron("worker");
+  const workerHa = ultimoWorker ? agora - ultimoWorker.em : null;
+  const worker = {
+    jaRodou: ultimoWorker != null,
+    ultimaEm: ultimoWorker ? new Date(ultimoWorker.em).toISOString() : null,
+    minutosAtras: workerHa != null ? Math.round(workerHa / 60000) : null,
+    saudavel: workerHa != null && workerHa < 30 * 60 * 1000,
+    diagnostico: ultimoWorker == null
+      ? "O worker NUNCA registrou execução. Causa mais provável: o segredo CRON_SECRET não foi cadastrado no GitHub (Settings → Secrets → Actions) — o workflow chama /api/worker com ele e recebe 401 sem."
+      : workerHa != null && workerHa >= 30 * 60 * 1000
+        ? "O worker rodou, mas não nos últimos 30 min — deveria rodar a cada 5. Veja a aba Actions do repositório (o GitHub desliga agendamentos de repositório sem commit há 60 dias)."
+        : null,
+    ultimoResumo: ultimoWorker?.resumo ?? null,
+  };
+
   // ── 3. Existe aparelho registrado? ──
   const tokensSnap = await db.collection("pushTokens").get();
   const porEmail = new Map<string, number>();
@@ -186,6 +209,7 @@ export async function GET(req: Request) {
       topicosIgnorados,
     },
     cron,
+    worker,
     dispositivos: {
       total: tokensSnap.size,
       porEmail: Object.fromEntries(porEmail),

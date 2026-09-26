@@ -30,9 +30,14 @@ export type ExecucaoDoCron = {
   resumo: Record<string, unknown>;
 };
 
-export async function registrarExecucaoDoCron(resumo: Record<string, unknown>): Promise<void> {
+/**
+ * @param executor qual execução carimbar. O padrão é o cron diário; o worker
+ *   frequente (S09, app/api/worker) tem o próprio carimbo, porque as duas
+ *   perguntas são diferentes: "o cron rodou ontem?" e "o worker está rodando?".
+ */
+export async function registrarExecucaoDoCron(resumo: Record<string, unknown>, executor: string = DOC): Promise<void> {
   try {
-    await getAdminDb().collection(COLECAO).doc(DOC).set({
+    await getAdminDb().collection(COLECAO).doc(executor).set({
       em: Date.now(),
       emISO: new Date().toISOString(),
       resumo,
@@ -42,9 +47,9 @@ export async function registrarExecucaoDoCron(resumo: Record<string, unknown>): 
   }
 }
 
-export async function lerUltimaExecucaoDoCron(): Promise<ExecucaoDoCron | null> {
+export async function lerUltimaExecucaoDoCron(executor: string = DOC): Promise<ExecucaoDoCron | null> {
   try {
-    const d = await getAdminDb().collection(COLECAO).doc(DOC).get();
+    const d = await getAdminDb().collection(COLECAO).doc(executor).get();
     if (!d.exists) return null;
     const x = d.data() ?? {};
     return { em: Number(x.em ?? 0), resumo: (x.resumo as Record<string, unknown>) ?? {} };

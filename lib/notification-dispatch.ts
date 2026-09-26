@@ -1,9 +1,70 @@
 import "server-only";
 import type { NotificationEventType, SalePushPayload } from "@/lib/domain/notifications";
 import type { ContextoDeRajada } from "@/lib/domain/decisao-destinatario";
-import { dependenciasReais, limparEntregasAntigas, processarEntregas, publicarEEntregar } from "@/lib/notification-outbox";
-import { limparTestesDosFeeds, repararEspelhosPendentes } from "@/lib/notification-events";
+import { dependenciasReais, limparEntregasAntigas, processarEntregas, publicarEEntregar, type EspecPush } from "@/lib/notification-outbox";
+import {
+  createNotificationEventIdempotent,
+  limparTestesDosFeeds,
+  repararEspelhosPendentes,
+  type NewNotificationEvent,
+} from "@/lib/notification-events";
 import { limparJanelasAntigas } from "@/lib/notification-janelas";
+
+export type OpcoesDeEnvio = {
+  audiencia?: string[] | null;
+  origem?: string;
+  validadeMs?: number;
+  pushId?: string;
+  rajada?: ContextoDeRajada;
+  agrupamento?: { janelaId: string; n: number };
+  conteudo?: { tipo: "resumo_janela"; janelaId: string } | null;
+  entregarApos?: number;
+  atualizaEvento?: boolean;
+  apenasRegistros?: string[] | null;
+};
+
+/** A especificação de um push — a MESMA usada pra criar junto do evento e pra entregar. */
+export function especDoPush(
+  eventId: string,
+  type: NotificationEventType,
+  payload: SalePushPayload,
+  isSummary = false,
+  opcoes: OpcoesDeEnvio = {},
+): EspecPush {
+  return {
+    pushId: opcoes.pushId ?? eventId,
+    eventId,
+    type,
+    payload,
+    isSummary,
+    audiencia: opcoes.audiencia,
+    validadeMs: opcoes.validadeMs,
+    origem: opcoes.origem ?? "produtor",
+    rajada: opcoes.rajada,
+    agrupamento: opcoes.agrupamento,
+    conteudo: opcoes.conteudo,
+    entregarApos: opcoes.entregarApos,
+    atualizaEvento: opcoes.atualizaEvento,
+    apenasRegistros: opcoes.apenasRegistros,
+  };
+}
+
+/**
+ * Publica e já tenta entregar. NÃO lança: um problema de entrega nunca pode
+ * derrubar o produtor que o disparou. O que falhar fica no outbox e a varredura
+ * tenta de novo — DESDE QUE o push tenha sido gravado, e é pra isso que existe
+ * criarEventoEPublicar.
+ */
+export async function enviarEspec(spec: EspecPush): Promise<number> {
+  try {
+    const r = await publicarEEntregar(dependenciasReais(), spec);
+    return r.aceitas;
+  } catch (err) {
+    const codigo = (err as { code?: unknown })?.code;
+    console.error(`[notificacoes] falha ao publicar ${spec.pushId} (${String(codigo ?? (err instanceof Error ? err.name : "erro"))})`);
+    return 0;
+  }
+}
 
 /**
  * A porta de entrada que os produtores usam pra mandar push.
@@ -13,52 +74,34 @@ import { limparJanelasAntigas } from "@/lib/notification-janelas";
  * destino por aparelho, retry só do que falhou, validade, TTL e recuperação
  * pela varredura. Antes, cada produtor tinha um `sendXxx` e uma trilha de
  * entrega própria, e só o caminho de venda tratava o evento já existente.
- *
- * NÃO lança: um problema de entrega nunca pode derrubar o webhook que o
- * disparou (o ML reenviaria e o pedido seria reprocessado). O que falhar fica
- * no outbox, e a varredura tenta de novo.
  */
 export async function enviarEPersistirEntrega(
   eventId: string,
   type: NotificationEventType,
   payload: SalePushPayload,
   isSummary = false,
-  opcoes: {
-    audiencia?: string[] | null;
-    origem?: string;
-    validadeMs?: number;
-    pushId?: string;
-    rajada?: ContextoDeRajada;
-    agrupamento?: { janelaId: string; n: number };
-    conteudo?: { tipo: "resumo_janela"; janelaId: string } | null;
-    entregarApos?: number;
-    atualizaEvento?: boolean;
-    apenasRegistros?: string[] | null;
-  } = {},
+  opcoes: OpcoesDeEnvio = {},
 ): Promise<number> {
-  try {
-    const r = await publicarEEntregar(dependenciasReais(), {
-      pushId: opcoes.pushId ?? eventId,
-      eventId,
-      type,
-      payload,
-      isSummary,
-      audiencia: opcoes.audiencia,
-      validadeMs: opcoes.validadeMs,
-      origem: opcoes.origem ?? "produtor",
-      rajada: opcoes.rajada,
-      agrupamento: opcoes.agrupamento,
-      conteudo: opcoes.conteudo,
-      entregarApos: opcoes.entregarApos,
-      atualizaEvento: opcoes.atualizaEvento,
-      apenasRegistros: opcoes.apenasRegistros,
-    });
-    return r.aceitas;
-  } catch (err) {
-    const codigo = (err as { code?: unknown })?.code;
-    console.error(`[notificacoes] falha ao publicar ${eventId} (${String(codigo ?? (err instanceof Error ? err.name : "erro"))})`);
-    return 0;
-  }
+  return enviarEspec(especDoPush(eventId, type, payload, isSummary, opcoes));
+}
+
+/**
+ * Cria o evento COM o push no mesmo lote e já tenta entregar — S09.
+ *
+ * É o que um produtor com evento deve usar. Criar o evento e depois chamar
+ * `enviarEPersistirEntrega` deixava uma janela: o evento gravado, o push não,
+ * e ninguém pra perceber. Aqui, gravado o evento, o push está no outbox; se a
+ * entrega imediata falhar ou o processo morrer, a varredura (o worker a cada
+ * 5 min, ver app/api/worker) completa.
+ */
+export async function criarEventoEPublicar(
+  evento: NewNotificationEvent,
+  push: EspecPush,
+  opcoes: { audiencia?: string[] } = {},
+): Promise<{ created: boolean; eventId: string; enviados: number }> {
+  const r = await createNotificationEventIdempotent(evento, undefined, { ...opcoes, push });
+  const enviados = await enviarEspec(push);
+  return { ...r, enviados };
 }
 
 /**

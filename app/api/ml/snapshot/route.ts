@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { isCronRequest, requireAccess } from "@/lib/api-auth";
 import { fetchMlUserProfileFresh } from "@/lib/ml/account";
-import { enviarEPersistirEntrega } from "@/lib/notification-dispatch";
-import { createNotificationEventIdempotent } from "@/lib/notification-events";
+import { criarEventoEPublicar, especDoPush } from "@/lib/notification-dispatch";
 import {
   apenasPioras, compararAnuncios, compararReputacao,
   type AnuncioSnapshot, type ReputacaoSnapshot, type SnapshotDia,
@@ -129,21 +128,19 @@ async function handler(req: Request) {
 
     const titulo = piorasReputacao.length > 0 ? "Reputação piorou" : "Mudanças nos seus anúncios";
     const dedupeKey = `snapshot_alerta:${hoje}`;
-    const { eventId } = await createNotificationEventIdempotent({
+    // Publica também quando o evento do dia já existia — ver resumo-diario.
+    const payload: SalePushPayload = {
+      eventId: dedupeKey, type: "sync_warning", title: titulo, body: linhas.join(" · "),
+      tag: `snapshot-${hoje}`, deepLink: "/?tab=estoque", timestamp: new Date().toISOString(),
+    };
+    const { enviados } = await criarEventoEPublicar({
       // "sync_warning" é o tipo mais próximo do que isto é: aviso operacional
       // do sistema, não venda. Reaproveita o toggle que o usuário já conhece.
       type: "sync_warning", severity: piorasReputacao.length > 0 ? "warning" : "info",
       entityType: "system", entityId: hoje, dedupeKey,
       title: titulo, body: linhas.join(" · "),
       financialState: "estimated", deepLink: "/?tab=estoque",
-    });
-
-    // Publica também quando o evento do dia já existia — ver resumo-diario.
-    const payload: SalePushPayload = {
-      eventId, type: "sync_warning", title: titulo, body: linhas.join(" · "),
-      tag: `snapshot-${hoje}`, deepLink: "/?tab=estoque", timestamp: new Date().toISOString(),
-    };
-    const enviados = await enviarEPersistirEntrega(eventId, "sync_warning", payload, false, { origem: "snapshot" });
+    }, especDoPush(dedupeKey, "sync_warning", payload, false, { origem: "snapshot" }));
 
     return NextResponse.json({
       ok: true, dia: hoje, enviados,

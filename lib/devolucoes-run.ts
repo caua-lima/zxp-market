@@ -3,8 +3,7 @@ import { fetchML } from "@/lib/ml/fetch-ml";
 import { getMlAccessToken } from "@/app/api/ml/token";
 import { avisosDeDevolucao, type Reclamacao } from "@/lib/domain/devolucoes";
 import { buildPayload } from "@/lib/ml/notificar-venda";
-import { enviarEPersistirEntrega } from "@/lib/notification-dispatch";
-import { createNotificationEventIdempotent } from "@/lib/notification-events";
+import { criarEventoEPublicar, especDoPush } from "@/lib/notification-dispatch";
 import { buildOrderDeepLink } from "@/lib/domain/notifications";
 
 const ML_API = "https://api.mercadolibre.com";
@@ -74,7 +73,12 @@ export async function verificarDevolucoes(): Promise<ResultadoDevolucoes> {
        * A chave é o dedupeKey, e o Firestore garante criação única — então
        * rodar o cron de novo não reavisa, sem precisar guardar estado próprio.
        */
-      const { created, eventId } = await createNotificationEventIdempotent({
+      /**
+       * Evento já existente NÃO significa entregue — era aqui que o aviso de
+       * devolução se perdia: criado uma vez, envio falhou, `continue` pra
+       * sempre. Publica sempre; e evento e push nascem no mesmo lote (S09).
+       */
+      const { enviados } = await criarEventoEPublicar({
         type: aviso.tipo,
         severity: aviso.tipo === "return_completed" ? "danger" : "warning",
         entityType: "order",
@@ -86,22 +90,14 @@ export async function verificarDevolucoes(): Promise<ResultadoDevolucoes> {
         orderExternalId: aviso.pedido,
         financialState: "estimated",
         deepLink: buildOrderDeepLink(aviso.pedido),
-      });
-      /**
-       * Evento já existente NÃO significa entregue — era aqui que o aviso de
-       * devolução se perdia: criado uma vez, envio falhou, `continue` pra
-       * sempre.
-       */
-      void created;
-
-      const enviados = await enviarEPersistirEntrega(
-        eventId,
+      }, especDoPush(
+        aviso.chave,
         aviso.tipo,
-        buildPayload(eventId, aviso.tipo, aviso.titulo, aviso.corpo, {
+        buildPayload(aviso.chave, aviso.tipo, aviso.titulo, aviso.corpo, {
           orderId: aviso.pedido,
           tag: aviso.chave,
         }),
-      );
+      ));
       // Só entra em "avisados" quem de fato chegou a algum aparelho.
       if (enviados > 0) avisados.push(aviso.chave);
     } catch (err) {

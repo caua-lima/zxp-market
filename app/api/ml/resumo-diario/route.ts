@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { isCronRequest, requireAccess } from "@/lib/api-auth";
-import { enviarEPersistirEntrega } from "@/lib/notification-dispatch";
-import { createNotificationEventIdempotent } from "@/lib/notification-events";
+import { criarEventoEPublicar, especDoPush } from "@/lib/notification-dispatch";
 import { montarResumoDiario } from "@/lib/domain/resumo-diario";
 import { calculateBreakEvenRoas } from "@/lib/domain/ads";
 import { findProdutosEmRisco, type RiskProduto } from "@/lib/domain/risk";
@@ -112,15 +111,8 @@ async function handler(req: Request) {
     });
 
     const dedupeKey = `resumo_diario:${hoje}`;
-    const { eventId } = await createNotificationEventIdempotent({
-      type: "system", severity: "info", entityType: "system", entityId: hoje, dedupeKey,
-      title: conteudo.title, body: conteudo.body,
-      financialState: lucro == null ? "unavailable" : "estimated",
-      deepLink: "/",
-    });
-
     const payload: SalePushPayload = {
-      eventId, type: "system", title: conteudo.title, body: conteudo.body,
+      eventId: dedupeKey, type: "system", title: conteudo.title, body: conteudo.body,
       tag: `resumo-${hoje}`, deepLink: "/", timestamp: new Date().toISOString(),
     };
     // Respeita as preferências de cada pessoa, igual ao resto: quem desligou
@@ -128,7 +120,13 @@ async function handler(req: Request) {
     // Publica também quando o evento do dia já existia: o `jaEnviado` que havia
     // aqui tratava "já existe" como "já entregue", e um envio que falhou na
     // primeira vez nunca era refeito. O que já foi aceito não é reenviado.
-    const enviados = await enviarEPersistirEntrega(eventId, "system", payload, true, { origem: "resumo-diario" });
+    // Evento e push nascem no mesmo lote (S09).
+    const { enviados } = await criarEventoEPublicar({
+      type: "system", severity: "info", entityType: "system", entityId: hoje, dedupeKey,
+      title: conteudo.title, body: conteudo.body,
+      financialState: lucro == null ? "unavailable" : "estimated",
+      deepLink: "/",
+    }, especDoPush(dedupeKey, "system", payload, true, { origem: "resumo-diario" }));
 
     return NextResponse.json({ ok: true, dia: hoje, enviados, title: conteudo.title, body: conteudo.body });
   } catch (err: unknown) {

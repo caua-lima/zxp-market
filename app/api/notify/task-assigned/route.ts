@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAccess } from "@/lib/api-auth";
 import { getAdminDb } from "@/lib/firebase/admin";
-import { createNotificationEventIdempotent } from "@/lib/notification-events";
-import { enviarEPersistirEntrega } from "@/lib/notification-dispatch";
+import { criarEventoEPublicar, especDoPush } from "@/lib/notification-dispatch";
 import { consumirLimiteDaChave } from "@/lib/notification-limites";
 import { avaliarAtribuicao } from "@/lib/domain/atribuicao-de-tarefa";
 import { podeCapacidade } from "@/lib/domain/capacidades";
@@ -82,23 +81,21 @@ export async function POST(req: Request) {
   }
 
   const content = buildTaskAssignedContent(avaliacao.titulo, avaliacao.prioridade, avaliacao.prazo);
-  const { eventId } = await createNotificationEventIdempotent({
+  const payload: SalePushPayload = {
+    eventId: avaliacao.dedupeKey, type: "task_assigned", title: content.title, body: content.body,
+    tag: `task-${taskId}`, deepLink: buildTaskDeepLink(taskId), timestamp: new Date().toISOString(),
+  };
+
+  // Publica também quando o evento já existia: é o retry da MESMA transição, e o outbox não reenvia o que já foi aceito.
+  // O evento vive no feed do responsável (audiência), não na Central do time. Evento e push no mesmo lote (S09).
+  const { eventId, enviados } = await criarEventoEPublicar({
     type: "task_assigned", severity: taskAssignedSeverity(avaliacao.prioridade), entityType: "task", entityId: taskId,
     dedupeKey: avaliacao.dedupeKey,
     title: content.title, body: content.body,
     deepLink: buildTaskDeepLink(taskId),
     financialState: "unavailable", // campo pensado pra venda; tarefa não tem dado financeiro
-  }, db, { audiencia: [avaliacao.responsavel] });
-
-  const payload: SalePushPayload = {
-    eventId, type: "task_assigned", title: content.title, body: content.body,
-    tag: `task-${taskId}`, deepLink: buildTaskDeepLink(taskId), timestamp: new Date().toISOString(),
-  };
-
-  // Publica também quando o evento já existia: é o retry da MESMA transição, e o outbox não reenvia o que já foi aceito.
-  // O evento vive no feed do responsável (audiência), não na Central do time.
-  const enviados = await enviarEPersistirEntrega(eventId, "task_assigned", payload, false, {
+  }, especDoPush(avaliacao.dedupeKey, "task_assigned", payload, false, {
     audiencia: [avaliacao.responsavel], origem: "tarefa:atribuida", atualizaEvento: false,
-  });
+  }), { audiencia: [avaliacao.responsavel] });
   return NextResponse.json({ ok: true, eventId, enviados });
 }

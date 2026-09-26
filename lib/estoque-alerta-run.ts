@@ -9,9 +9,8 @@ import {
   type AvisoEstoque,
   type ProdutoEstoque,
 } from "@/lib/domain/estoque-alerta";
-import { createNotificationEventIdempotent } from "@/lib/notification-events";
 import { buildPayload } from "@/lib/ml/notificar-venda";
-import { enviarEPersistirEntrega } from "@/lib/notification-dispatch";
+import { criarEventoEPublicar, especDoPush } from "@/lib/notification-dispatch";
 
 const ML_API = "https://api.mercadolibre.com";
 
@@ -302,7 +301,18 @@ export async function verificarEstoqueBaixo(): Promise<ResultadoEstoqueAlerta> {
 }
 
 async function notificarEstoque(aviso: AvisoEstoque): Promise<boolean> {
-  const { created, eventId } = await createNotificationEventIdempotent({
+  /**
+   * Evento já existente NÃO significa entregue.
+   *
+   * Havia `if (!created) return false;` aqui. Um aviso de estoque baixo criado
+   * uma vez, com o envio falhando logo depois, nunca mais era tentado — e o
+   * aviso que existe justamente pra evitar ruptura simplesmente não chegava.
+   *
+   * O outbox decide sozinho: já entregue não repete, quem falhou volta à fila,
+   * e o que venceu é encerrado com registro. Evento e push nascem no mesmo
+   * lote (S09).
+   */
+  const { enviados } = await criarEventoEPublicar({
     type: "stock_low",
     severity: "warning",
     entityType: "system",
@@ -313,27 +323,14 @@ async function notificarEstoque(aviso: AvisoEstoque): Promise<boolean> {
     financialState: "confirmed",
     // Aba Full: e la que a coleta e agendada, nao no Estoque geral.
     deepLink: "/?tab=full",
-  });
-  /**
-   * Evento já existente NÃO significa entregue.
-   *
-   * Havia `if (!created) return false;` aqui. Um aviso de estoque baixo criado
-   * uma vez, com o envio falhando logo depois, nunca mais era tentado — e o
-   * aviso que existe justamente pra evitar ruptura simplesmente não chegava.
-   *
-   * `enviarEPersistirEntrega` decide sozinho: já entregue não repete, quem
-   * falhou volta à fila, e o que venceu é encerrado com registro.
-   */
-  void created;
-
-  const enviados = await enviarEPersistirEntrega(
-    eventId,
+  }, especDoPush(
+    aviso.chave,
     "stock_low",
-    buildPayload(eventId, "stock_low", aviso.titulo, aviso.corpo, {
+    buildPayload(aviso.chave, "stock_low", aviso.titulo, aviso.corpo, {
       orderId: "",
       tag: aviso.chave,
     }),
-  );
+  ));
   // Só conta como avisado quando alguém recebeu — senão o estado de "já
   // avisei" travaria a próxima tentativa de um aviso que nunca saiu.
   return enviados > 0;

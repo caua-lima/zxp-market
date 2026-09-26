@@ -1,0 +1,46 @@
+# Worker frequente (S09 da auditoria SaaS) — ver app/api/worker/route.ts.
+#
+# O cron da Vercel no plano Hobby roda uma vez por dia. Retry de push, resumo
+# agendado de rajada e o inbox do webhook precisam de varredura mais frequente
+# mesmo sem venda nova. Isto chama /api/worker a cada 5 min (o mínimo do GitHub
+# Actions, de graça em repositório público). O GitHub pode atrasar agendamentos
+# sob carga, e desliga agendamentos de repositório sem commit há 60 dias.
+#
+# Precisa do segredo CRON_SECRET (o mesmo valor da Vercel) em
+# Settings → Secrets and variables → Actions. APP_URL (variável, opcional)
+# troca o endereço de produção.
+#
+# O repositório é PÚBLICO e os logs do Actions também: nada da resposta é
+# impresso — as contagens diriam o volume de vendas. Só o status HTTP.
+
+name: worker
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: worker
+  cancel-in-progress: false
+
+jobs:
+  varrer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Chamar /api/worker
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ vars.APP_URL || 'https://briefing-master.vercel.app' }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::warning::CRON_SECRET não cadastrado nos segredos do Actions — worker não chamado."
+            exit 0
+          fi
+          status=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 90 \
+            -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/worker")
+          echo "HTTP $status"
+          test "$status" = "200"

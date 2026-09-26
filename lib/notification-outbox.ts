@@ -296,10 +296,16 @@ export type PushPublicado = {
   doc: FirebaseFirestore.DocumentData;
 };
 
-export async function publicarPush(deps: Dependencias, spec: EspecPush): Promise<PushPublicado> {
-  const agora = deps.agora();
-  const ref = deps.db.collection(COLECAO_OUTBOX).doc(spec.pushId);
-  const doc = {
+/**
+ * O documento do outbox de um push — o QUE enviar, com `fanoutPendente: true`.
+ *
+ * Separado de `publicarPush` pra poder nascer no MESMO lote do evento (S09, ver
+ * lib/notification-events.ts): evento criado com o push dentro garante que a
+ * varredura acha o push pelo `fanoutPendente` mesmo que o processo morra logo
+ * depois.
+ */
+export function montarDocDoOutbox(spec: EspecPush, agora: number) {
+  return {
     pushId: spec.pushId,
     eventId: spec.eventId,
     type: spec.type,
@@ -322,6 +328,12 @@ export async function publicarPush(deps: Dependencias, spec: EspecPush): Promise
     // uma coisa e outra, a varredura acha o push por este campo e completa.
     fanoutPendente: true,
   };
+}
+
+export async function publicarPush(deps: Dependencias, spec: EspecPush): Promise<PushPublicado> {
+  const agora = deps.agora();
+  const ref = deps.db.collection(COLECAO_OUTBOX).doc(spec.pushId);
+  const doc = montarDocDoOutbox(spec, agora);
 
   let criado = true;
   try {

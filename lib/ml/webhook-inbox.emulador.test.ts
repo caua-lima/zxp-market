@@ -48,7 +48,8 @@ vi.mock("@/lib/notification-events", () => ({
   createNotificationEventIdempotent: vi.fn(async () => ({ eventId: "evento-teste", created: true })),
 }));
 vi.mock("@/lib/notification-dispatch", () => ({
-  enviarEPersistirEntrega: vi.fn(async () => {}),
+  criarEventoEPublicar: vi.fn(async () => ({ created: true, eventId: "evento-teste", enviados: 0 })),
+  especDoPush: vi.fn(() => ({})),
   varrerEntregasPendentes: vi.fn(async () => {}),
 }));
 vi.mock("@/lib/ml/getToken", () => ({ getValidMlAccessToken: vi.fn(async () => "token-teste") }));

@@ -8,6 +8,7 @@ import {
   COLECAO_FEED,
   redigirEvento,
 } from "@/lib/domain/notificacao-publico";
+import { COLECAO_OUTBOX, montarDocDoOutbox, type EspecPush } from "@/lib/notification-outbox";
 
 const COL = COLECAO_EVENTOS;
 
@@ -28,6 +29,66 @@ function sanitizeUndefined<T extends Record<string, unknown>>(obj: T): T {
 }
 
 export type NewNotificationEvent = Omit<NotificationEvent, "id" | "createdAt" | "readBy" | "dismissedBy" | "delivery">;
+
+const ALREADY_EXISTS = 6;
+const codigoDe = (err: unknown) => (err as { code?: number })?.code;
+
+/**
+ * Cria os documentos do evento e, se houver, o do push — NO MESMO LOTE (S09).
+ *
+ * ─── POR QUE JUNTOS ─────────────────────────────────────────────────────
+ *
+ * O evento nascia numa escrita e o push em outra, e entre as duas havia o
+ * processo morrer, o Firestore recusar, ou `enviarEPersistirEntrega` engolir
+ * o erro e devolver zero. O evento ficava, o push não — e a varredura do outbox
+ * não tem como achar o que nunca foi gravado. O conserto dependia de o
+ * PRODUTOR repetir, e nem todo produtor repete (o webhook, desde o inbox do
+ * S07, marca a notificação como processada).
+ *
+ * No mesmo lote, os dois nascem ou nenhum nasce. Nascido, o push tem
+ * `fanoutPendente: true` e a varredura o completa mesmo que ninguém mais chame.
+ *
+ * Se o lote falha porque algo já existia (retry, ou evento de antes disto), refaz
+ * um a um ignorando o que já está lá: o push que faltar nasce agora — é assim que
+ * um evento antigo que ficou sem push se conserta quando o produtor repete.
+ *
+ * @returns se algum documento do EVENTO foi criado agora.
+ */
+async function criarComPush(
+  db: Firestore,
+  eventos: { ref: FirebaseFirestore.DocumentReference; dados: Record<string, unknown> }[],
+  push: EspecPush | undefined,
+): Promise<boolean> {
+  const outbox = push
+    ? { ref: db.collection(COLECAO_OUTBOX).doc(push.pushId), dados: montarDocDoOutbox(push, Date.now()) }
+    : null;
+  // Sem push, o caminho de sempre (um create por documento). O lote só existe
+  // pra amarrar o push ao evento.
+  if (outbox) {
+    const lote = db.batch();
+    for (const e of eventos) lote.create(e.ref, e.dados);
+    lote.create(outbox.ref, outbox.dados);
+    try {
+      await lote.commit();
+      return eventos.length > 0;
+    } catch (err) {
+      if (codigoDe(err) !== ALREADY_EXISTS) throw err;
+    }
+  }
+  let criou = false;
+  for (const e of eventos) {
+    try {
+      await e.ref.create(e.dados);
+      criou = true;
+    } catch (err) {
+      if (codigoDe(err) !== ALREADY_EXISTS) throw err;
+    }
+  }
+  if (outbox) {
+    await outbox.ref.create(outbox.dados).catch((err) => { if (codigoDe(err) !== ALREADY_EXISTS) throw err; });
+  }
+  return criou;
+}
 
 /**
  * Grava o espelho redigido de um evento — criando OU consertando, sem nunca
@@ -99,21 +160,26 @@ export async function createNotificationEventIdempotent(
    * (notification_feed/{email}/itens) e NUNCA pras coleções compartilhadas — a
    * privacidade é da regra do Firestore, não de um filtro no React.
    */
-  opcoes: { audiencia?: string[] } = {},
+  opcoes: {
+    audiencia?: string[];
+    /**
+     * O push deste evento, criado no MESMO lote (S09 — ver criarComPush). O
+     * `pushId` do aviso individual é o próprio `dedupeKey`, então o payload pode
+     * ser montado antes do evento existir.
+     */
+    push?: EspecPush;
+  } = {},
 ): Promise<{ created: boolean; eventId: string }> {
-  if (opcoes.audiencia && opcoes.audiencia.length > 0) return criarEventoPessoal(db, input, opcoes.audiencia);
+  if (opcoes.audiencia && opcoes.audiencia.length > 0) return criarEventoPessoal(db, input, opcoes.audiencia, opcoes.push);
   const ref = db.collection(COL).doc(input.dedupeKey);
   const completo = sanitizeUndefined({
     ...input,
     id: input.dedupeKey,
     createdAt: FieldValue.serverTimestamp(),
   });
-  try {
-    await ref.create(completo);
-  } catch (err) {
-    // ALREADY_EXISTS (code 6) é o caso esperado de retry — qualquer outro
-    // erro (permissão, rede) precisa subir de verdade pra quem chamou saber.
-    if ((err as { code?: number })?.code !== 6) throw err;
+  // ALREADY_EXISTS é o caso esperado de retry — qualquer outro erro (permissão,
+  // rede) sobe de verdade pra quem chamou saber.
+  if (!(await criarComPush(db, [{ ref, dados: completo }], opcoes.push))) {
     await conferirEspelho(db, input.dedupeKey);
     return { created: false, eventId: input.dedupeKey };
   }
@@ -190,25 +256,20 @@ async function criarEventoPessoal(
   db: Firestore,
   input: NewNotificationEvent,
   audiencia: string[],
+  push?: EspecPush,
 ): Promise<{ created: boolean; eventId: string }> {
   const emails = [...new Set(audiencia.map((e) => e.trim().toLowerCase()).filter(Boolean))];
-  let created = false;
-  for (const email of emails) {
-    const ref = db.collection(COLECAO_FEED).doc(email).collection("itens").doc(input.dedupeKey);
-    try {
-      await ref.create(sanitizeUndefined({
-        ...input,
-        id: input.dedupeKey,
-        audiencia: emails,
-        lidoEm: null,
-        dispensadoEm: null,
-        createdAt: FieldValue.serverTimestamp(),
-      }));
-      created = true;
-    } catch (err) {
-      if ((err as { code?: number })?.code !== 6) throw err;
-    }
-  }
+  const created = await criarComPush(db, emails.map((email) => ({
+    ref: db.collection(COLECAO_FEED).doc(email).collection("itens").doc(input.dedupeKey),
+    dados: sanitizeUndefined({
+      ...input,
+      id: input.dedupeKey,
+      audiencia: emails,
+      lidoEm: null,
+      dispensadoEm: null,
+      createdAt: FieldValue.serverTimestamp(),
+    }),
+  })), push);
   return { created, eventId: input.dedupeKey };
 }
 

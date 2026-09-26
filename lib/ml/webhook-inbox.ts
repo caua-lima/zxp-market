@@ -6,8 +6,7 @@ import { fetchML } from "@/lib/ml/fetch-ml";
 import { getValidMlAccessToken } from "@/lib/ml/getToken";
 import { gravarPedidos } from "@/lib/ml/gravar-pedido";
 import { buildPayload, notificarVendaConfirmada } from "@/lib/ml/notificar-venda";
-import { createNotificationEventIdempotent } from "@/lib/notification-events";
-import { enviarEPersistirEntrega } from "@/lib/notification-dispatch";
+import { criarEventoEPublicar, especDoPush } from "@/lib/notification-dispatch";
 import { instanteDaConfirmacao } from "@/lib/domain/confirmacao-de-venda";
 import { estadoDoPedido, mapOrderItems } from "@/lib/domain/estado-do-pedido";
 import { buildCancelContent, buildOrderDeepLink } from "@/lib/domain/notifications";
@@ -228,23 +227,24 @@ export async function processarNotificacaoDePedido(orderId: string, sellerId: st
     const dedupeKey = `sale_cancelled:${orderId}`;
     const valorImpacto = Number(order.total_amount ?? antes?.total_amount ?? 0);
     const content = buildCancelContent(primeiro, items.length, valorImpacto);
-    const { eventId } = await createNotificationEventIdempotent({
+    /**
+     * Publica SEMPRE, também quando o evento já existia: um cancelamento cujo
+     * envio falhou logo depois de criar o evento precisa de nova chance.
+     * Publicar é idempotente — o que já foi aceito não é reenviado. Evento e
+     * push nascem no mesmo lote (S09): a falha de entrega é engolida lá dentro,
+     * mas o push já está no outbox e a varredura o completa.
+     */
+    const payload = buildPayload(dedupeKey, "sale_cancelled", content.title, content.body, {
+      orderId, productName: primeiro, grossAmount: valorImpacto, financialState: "estimated", tag: `sale-${orderId}`,
+    });
+    await criarEventoEPublicar({
       type: "sale_cancelled", severity: "warning", entityType: "order", entityId: orderId, dedupeKey,
       title: content.title, body: content.body,
       orderId, orderExternalId: orderId,
       productName: primeiro, productCount: items.length,
       grossAmount: valorImpacto, financialState: "estimated",
       deepLink: buildOrderDeepLink(orderId),
-    });
-    /**
-     * Publica SEMPRE, também quando o evento já existia: um cancelamento cujo
-     * envio falhou logo depois de criar o evento precisa de nova chance.
-     * Publicar é idempotente — o que já foi aceito não é reenviado.
-     */
-    const payload = buildPayload(eventId, "sale_cancelled", content.title, content.body, {
-      orderId, productName: primeiro, grossAmount: valorImpacto, financialState: "estimated", tag: `sale-${orderId}`,
-    });
-    await enviarEPersistirEntrega(eventId, "sale_cancelled", payload, false, { origem: "webhook:cancelamento" });
+    }, especDoPush(dedupeKey, "sale_cancelled", payload, false, { origem: "webhook:cancelamento" }));
   }
 
   await registrarChamada({

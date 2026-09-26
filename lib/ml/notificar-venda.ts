@@ -8,9 +8,9 @@ import { fatiaDoPedidoNoEnvio, type ItemDoEnvio } from "@/lib/domain/frete-pacot
 const ML_API = "https://api.mercadolibre.com";
 import { getMlAccessToken } from "@/app/api/ml/token";
 import { createNotificationEventIdempotent } from "@/lib/notification-events";
-import { enviarEPersistirEntrega } from "@/lib/notification-dispatch";
+import { criarEventoEPublicar, especDoPush } from "@/lib/notification-dispatch";
 import { dependenciasReais } from "@/lib/notification-outbox";
-import { publicarVendaComRajada } from "@/lib/notification-rajada";
+import { decidirRajada, especDaVendaAvulsa, publicarVendaComRajada } from "@/lib/notification-rajada";
 import {
   buildOrderDeepLink,
   buildSaleContent,
@@ -274,6 +274,20 @@ export async function notificarVendaConfirmada(
    * duplicidade que isto existe pra evitar.
    */
   const dedupeKey = `sale_paid:${pedido.orderId}`;
+  const payload = buildPayload(dedupeKey, type, content.title, content.body, {
+    orderId: pedido.orderId, productName: finance.productName, grossAmount: finance.grossAmount,
+    estimatedProfit: finance.estimatedProfit ?? undefined, estimatedMargin: finance.estimatedMargin ?? undefined,
+    financialState, tag: `sale-${pedido.orderId}`, itens: finance.itens,
+  });
+
+  /**
+   * S09: o push avulso nasce NO MESMO LOTE do evento. Pra isso a posição na
+   * rajada é decidida antes — e pode ser: ela é idempotente por eventId (a
+   * janela reconhece quem já está nela, e o retry relê a decisão gravada no
+   * push). Se a decisão falhar, nada foi criado e quem chamou tenta de novo (o
+   * inbox do webhook, o próximo sync) — em vez de um evento sem push.
+   */
+  const decisao = await decidirRajada(db, { eventId: dedupeKey, type, gross: finance.grossAmount });
   const { created, eventId } = await createNotificationEventIdempotent({
     type, severity: tipoParaSeveridade(type), entityType: "order", entityId: pedido.orderId, dedupeKey,
     title: content.title, body: content.body,
@@ -285,21 +299,15 @@ export async function notificarVendaConfirmada(
     estimatedMargin: finance.estimatedMargin ?? undefined,
     financialState,
     deepLink: buildOrderDeepLink(pedido.orderId),
-  });
+  }, undefined, { push: especDaVendaAvulsa({ eventId: dedupeKey, type, payload }, decisao) });
 
-  const payload = buildPayload(eventId, type, content.title, content.body, {
-    orderId: pedido.orderId, productName: finance.productName, grossAmount: finance.grossAmount,
-    estimatedProfit: finance.estimatedProfit ?? undefined, estimatedMargin: finance.estimatedMargin ?? undefined,
-    financialState, tag: `sale-${pedido.orderId}`, itens: finance.itens,
-  });
-
-  // A posição na rajada e a publicação do aviso avulso e dos resumos (ver lib/notification-rajada).
+  // A entrega do aviso avulso e a publicação dos resumos (ver lib/notification-rajada).
   // Falha de ENTREGA nunca derruba o webhook que a disparou: o que não saiu fica no outbox e a
   // varredura tenta de novo.
   let resultado: Awaited<ReturnType<typeof publicarVendaComRajada>>;
   try {
     resultado = await publicarVendaComRajada(dependenciasReais(), {
-      eventId, type, payload, gross: finance.grossAmount,
+      eventId, type, payload, gross: finance.grossAmount, decisao,
       montarResumo: (pushId, titulo, corpo, tag) => ({
         ...buildPayload(pushId, "sale_paid", titulo, corpo, { orderId: "", tag }),
         // A rajada não é UM pedido, então não há deep link de pedido: abre a lista.
@@ -332,7 +340,17 @@ export async function notificarVendaConfirmada(
  * últimos 90s" seria o oposto do ponto.
  */
 export async function notificarMarco(marco: { chave: string; titulo: string; corpo: string }): Promise<boolean> {
-  const { created, eventId } = await createNotificationEventIdempotent({
+  /**
+   * Publica SEMPRE. `if (!created) return false` tratava "já existe" como "já foi
+   * avisado", e um marco cujo envio falhou logo depois de criar o evento nunca
+   * mais chegava — a única notícia boa do app se perdia em silêncio. Publicar é
+   * idempotente: o que já foi aceito não é reenviado. Evento e push nascem no
+   * mesmo lote (S09).
+   *
+   * O retorno continua sendo "este marco é NOVO", que é o que quem chama usa
+   * pra contar o que foi comemorado agora.
+   */
+  const { created } = await criarEventoEPublicar({
     type: "milestone",
     severity: "success",
     entityType: "system",
@@ -344,25 +362,15 @@ export async function notificarMarco(marco: { chave: string; titulo: string; cor
     // Desempenho, não a raiz: é onde estão reputação e metas, que é o que a
     // pessoa quer ver depois de saber que bateu.
     deepLink: "/?tab=desempenho",
-  });
-  /**
-   * Publica SEMPRE. `if (!created) return false` tratava "já existe" como "já foi
-   * avisado", e um marco cujo envio falhou logo depois de criar o evento nunca
-   * mais chegava — a única notícia boa do app se perdia em silêncio. Publicar é
-   * idempotente: o que já foi aceito não é reenviado.
-   *
-   * O retorno continua sendo "este marco é NOVO", que é o que quem chama usa
-   * pra contar o que foi comemorado agora.
-   */
-  await enviarEPersistirEntrega(
-    eventId,
+  }, especDoPush(
+    marco.chave,
     "milestone",
-    buildPayload(eventId, "milestone", marco.titulo, marco.corpo, {
+    buildPayload(marco.chave, "milestone", marco.titulo, marco.corpo, {
       orderId: "",
       tag: marco.chave,
     }),
     false,
     { origem: "marco" },
-  );
+  ));
   return created;
 }

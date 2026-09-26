@@ -9,7 +9,7 @@ import {
   type DecisaoNaJanela,
 } from "@/lib/domain/janela-de-vendas";
 import { lerJanela, registrarVendaNaJanela } from "@/lib/notification-janelas";
-import { COLECAO_OUTBOX, publicarEEntregar, type Dependencias } from "@/lib/notification-outbox";
+import { COLECAO_OUTBOX, publicarEEntregar, type Dependencias, type EspecPush } from "@/lib/notification-outbox";
 
 /**
  * A orquestração de uma venda numa rajada: decide a posição dela na janela e
@@ -103,6 +103,21 @@ export type ResultadoDaVenda = {
 };
 
 /**
+ * O push avulso de uma venda, dada a decisão de rajada. Uma função só pra o
+ * mesmo push nascer junto do evento (S09) e ser entregue em seguida.
+ */
+export function especDaVendaAvulsa(
+  venda: { eventId: string; type: NotificationEventType; payload: SalePushPayload },
+  decisao: DecisaoNaJanela | null,
+): EspecPush {
+  return {
+    pushId: venda.eventId, eventId: venda.eventId, type: venda.type, payload: venda.payload, origem: "venda",
+    rajada: decisao?.modo === "agrupada" ? "individual_agrupada" : undefined,
+    agrupamento: decisao ? { janelaId: decisao.janelaId, n: decisao.n } : undefined,
+  };
+}
+
+/**
  * Publica uma venda respeitando a rajada.
  *
  * O aviso avulso é publicado SEMPRE — quem agrupa é suprimido no ENVIO, por
@@ -118,16 +133,19 @@ export async function publicarVendaComRajada(
     gross: number;
     /** Monta o payload base de um resumo (deep link, tag). */
     montarResumo: (pushId: string, titulo: string, corpo: string, tag: string) => SalePushPayload;
+    /**
+     * A decisão já tomada por quem chamou — pra criar o push avulso junto do
+     * evento (S09), a decisão vem antes. Ausente, é tomada aqui.
+     */
+    decisao?: DecisaoNaJanela | null;
   },
 ): Promise<ResultadoDaVenda> {
-  const decisao = await decidirRajada(deps.db, { eventId: venda.eventId, type: venda.type, gross: venda.gross }, deps.agora());
+  const decisao = venda.decisao !== undefined
+    ? venda.decisao
+    : await decidirRajada(deps.db, { eventId: venda.eventId, type: venda.type, gross: venda.gross }, deps.agora());
   const agrupada = decisao?.modo === "agrupada";
 
-  const avulso = await publicarEEntregar(deps, {
-    pushId: venda.eventId, eventId: venda.eventId, type: venda.type, payload: venda.payload, origem: "venda",
-    rajada: agrupada ? "individual_agrupada" : undefined,
-    agrupamento: decisao ? { janelaId: decisao.janelaId, n: decisao.n } : undefined,
-  });
+  const avulso = await publicarEEntregar(deps, especDaVendaAvulsa(venda, decisao));
   let aceitas = avulso.aceitas;
   if (decisao && agrupada) aceitas += await publicarResumosDaRajada(deps, decisao, venda.montarResumo);
 

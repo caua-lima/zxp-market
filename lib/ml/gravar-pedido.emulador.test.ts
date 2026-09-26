@@ -59,7 +59,8 @@ vi.mock("@/lib/notification-events", () => ({
   createNotificationEventIdempotent: vi.fn(async () => ({ eventId: "evento-teste", created: true })),
 }));
 vi.mock("@/lib/notification-dispatch", () => ({
-  enviarEPersistirEntrega: vi.fn(async () => {}),
+  criarEventoEPublicar: vi.fn(async () => ({ created: true, eventId: "evento-teste", enviados: 0 })),
+  especDoPush: vi.fn(() => ({})),
   varrerEntregasPendentes: vi.fn(async () => {}),
 }));
 vi.mock("@/lib/ml/getToken", () => ({ getValidMlAccessToken: vi.fn(async () => "token-teste") }));
@@ -75,7 +76,7 @@ const { gravarPedidos } = await import("./gravar-pedido");
 const { syncOrdersRange } = await import("./sync");
 const { POST: webhook } = await import("@/app/api/ml/webhook/route");
 const { estadoDoPedido } = await import("@/lib/domain/estado-do-pedido");
-const { createNotificationEventIdempotent } = await import("@/lib/notification-events");
+const { criarEventoEPublicar } = await import("@/lib/notification-dispatch");
 const { getAdminDb } = await import("@/lib/firebase/admin");
 
 const db = getAdminDb();
@@ -201,7 +202,7 @@ describe("webhook", () => {
     const d = (await doc().get()).data()!;
     expect(d).toMatchObject({ status: "cancelled", last_updated: V2, buyer_id: "555", shipping_cost: 21.5, shipping_status: "shipped" });
     // `antes` lido na transação ainda dizia "paid": o aviso de cancelamento sai.
-    expect(vi.mocked(createNotificationEventIdempotent)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(criarEventoEPublicar)).toHaveBeenCalledTimes(1);
   });
 });
 

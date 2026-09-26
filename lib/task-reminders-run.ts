@@ -1,6 +1,5 @@
 import { getAdminDb } from "@/lib/firebase/admin";
-import { createNotificationEventIdempotent } from "@/lib/notification-events";
-import { enviarEPersistirEntrega } from "@/lib/notification-dispatch";
+import { criarEventoEPublicar, especDoPush } from "@/lib/notification-dispatch";
 import { buildTaskDeepLink, type SalePushPayload } from "@/lib/domain/notifications";
 import { agruparLembretes, textoLembrete, type TarefaPrazo } from "@/lib/domain/task-reminders";
 
@@ -69,17 +68,8 @@ export async function enviarLembretesDeTarefa(diaForcado?: string): Promise<Resu
 
     // Tipo PRÓPRIO ("task_due"): "vence hoje" e "te atribuíram" são coisas diferentes, e o feed
     // é da pessoa — o lembrete dela não aparece na Central de ninguém mais.
-    const { eventId } = await createNotificationEventIdempotent({
-      type: "task_due",
-      severity: grupo.atrasadas.length > 0 ? "warning" : "info",
-      entityType: "task", entityId: destaque.id, dedupeKey,
-      title: texto.title, body: texto.body,
-      deepLink: buildTaskDeepLink(destaque.id),
-      financialState: "unavailable",
-    }, undefined, { audiencia: [grupo.email] });
-
     const payload: SalePushPayload = {
-      eventId, type: "task_due", title: texto.title, body: texto.body,
+      eventId: dedupeKey, type: "task_due", title: texto.title, body: texto.body,
       tag: `task-due-${dia}`, deepLink: buildTaskDeepLink(destaque.id),
       timestamp: new Date().toISOString(),
     };
@@ -89,11 +79,18 @@ export async function enviarLembretesDeTarefa(diaForcado?: string): Promise<Resu
      * aqui tratava "já existe" como "já foi avisado": se o primeiro envio
      * falhasse, a segunda execução do dia (retry do cron, disparo manual) não
      * tentava de novo e a pessoa ficava sem o lembrete. O outbox garante que o
-     * que já foi aceito não é reenviado.
+     * que já foi aceito não é reenviado. Evento e push no mesmo lote (S09).
      */
-    const n = await enviarEPersistirEntrega(eventId, "task_due", payload, false, {
+    const { enviados: n } = await criarEventoEPublicar({
+      type: "task_due",
+      severity: grupo.atrasadas.length > 0 ? "warning" : "info",
+      entityType: "task", entityId: destaque.id, dedupeKey,
+      title: texto.title, body: texto.body,
+      deepLink: buildTaskDeepLink(destaque.id),
+      financialState: "unavailable",
+    }, especDoPush(dedupeKey, "task_due", payload, false, {
       audiencia: [grupo.email], origem: "tarefa:lembrete", atualizaEvento: false,
-    });
+    }), { audiencia: [grupo.email] });
     if (n > 0) enviados += n;
     else jaAvisadoHoje++;
   }

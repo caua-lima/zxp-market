@@ -8,11 +8,11 @@ junto do código.
 
 ```
 produtor (webhook, sync, cron, tarefa…)
-   │  createNotificationEventIdempotent()   → notification_events (+ espelho público)
-   ▼
-enviarEPersistirEntrega()                   lib/notification-dispatch.ts
-   │  publicarPush()                        → notification_outbox/{pushId}        (o QUE enviar)
-   │                                        → notification_entregas/{push}__{aparelho}  (PRA QUEM)
+   │  criarEventoEPublicar()                lib/notification-dispatch.ts
+   │    MESMO LOTE: notification_events (+ espelho) e notification_outbox/{pushId}
+   ▼                                        (evento sem push não existe mais — S09)
+publicarEEntregar()
+   │  fan-out                               → notification_entregas/{push}__{aparelho}  (PRA QUEM)
    ▼
 processarEntregas()                         lib/notification-outbox.ts
    │  1. reivindica o destino (transação, ANTES de chamar o FCM)
@@ -25,9 +25,11 @@ FCM → Service Worker → notificação na barra   (a partir daqui o servidor n
 ```
 
 Quem chama `processarEntregas` não importa: o produtor (entrega imediata), o
-webhook de outro pedido (de carona, depois de responder ao ML), o cron diário e a
-rota `/api/push/processar` fazem a mesma coisa, e a concessão garante que cada
-destino sai por um worker só.
+worker a cada 5 min (`/api/worker`), o webhook de outro pedido (de carona, depois
+de responder ao ML), o cron diário e a rota `/api/push/processar` fazem a mesma
+coisa, e a concessão garante que cada destino sai por um worker só. Se o processo
+morrer logo depois de criar o evento, o push já está no outbox com
+`fanoutPendente: true` e a próxima varredura completa.
 
 ## Os estados de cada destino
 
@@ -93,12 +95,17 @@ pedidos por execução.
 O plano gratuito da Vercel só aceita cron **diário** — e um cron mais frequente
 faz o *deploy inteiro* falhar. Por isso o retry não depende dele:
 
-1. cada webhook do Mercado Livre varre o outbox depois de responder;
-2. o cron diário (`/api/ml/cron`) varre e apaga o que passou de 14 dias;
-3. `GET|POST /api/push/processar` faz a mesma varredura sob demanda. Aceita o
-   `CRON_SECRET` (`Authorization: Bearer …`) ou o dono da conta. Um agendador
-   externo chamando isto a cada minuto dá retry rápido sem mexer no
-   `vercel.json`.
+1. **o worker** (`/api/worker`), chamado a cada 5 min pelo GitHub Actions
+   (`.github/workflows/worker.yml`), varre o inbox do webhook e o outbox. Precisa
+   do segredo `CRON_SECRET` cadastrado no GitHub (Settings → Secrets and
+   variables → Actions), com o mesmo valor da Vercel. Sem ele o workflow só avisa
+   e sai. `/api/ml/diagnostico-push` mostra a última execução (`worker`). O GitHub
+   atrasa agendamentos sob carga (5 a ~15 min na prática) e desliga agendamento de
+   repositório sem commit há 60 dias;
+2. cada webhook do Mercado Livre varre o outbox depois de responder;
+3. o cron diário (`/api/ml/cron`) varre e apaga o que passou de 14 dias;
+4. `GET|POST /api/push/processar` faz a varredura do outbox sob demanda. Aceita o
+   `CRON_SECRET` (`Authorization: Bearer …`) ou o dono da conta.
 
 ## Migração: como aplicar em produção
 
