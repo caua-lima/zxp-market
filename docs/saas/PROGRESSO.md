@@ -121,8 +121,13 @@ descontada. O impacto nos números não foi medido; fica pra quando mexer em dev
   fechado. NENHUMA rota existente usa isso ainda: o app em produção continua single-tenant. O corte
   (trocar `requireAccess` por `requireTenantAccess` e a conexão ML global pela do tenant) não
   começou.
-- **Etapa 5 (migração)**: primeira fatia (membership) escrita, ensaiada no emulador e documentada
-  em `MIGRACAO.md`; não rodada em produção. Dado de negócio: não desenhado.
+- **Etapa 5 (migração)**: as duas fatias escritas, ensaiadas no emulador e documentadas em
+  `MIGRACAO.md` — membros (`migrar-tenant-legado.mjs`) e dado de negócio (`migrar-dados-tenant.mjs`,
+  `lib/domain/migracao-dados.ts`: decisão por coleção com teste de completude que varre o código,
+  cópia idempotente com subcoleções e documento fantasma, conexão ML → `connections/main`,
+  conferência documento a documento, raiz intacta como rollback; 8/8 no emulador + script rodado
+  de ponta a ponta). **Nenhuma rodada em produção** — depende de você (credenciais de produção e
+  autorização; ver o checklist no fim).
 - **Etapas 4, 6, 7, 8**: não iniciadas. `ARQUITETURA.md`, `OPERACAO.md`, `VALIDACAO.md` não existem.
 
 ### Correção de uma leitura errada minha (23/09)

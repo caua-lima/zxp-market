@@ -110,3 +110,33 @@ Nada nesta etapa precisa de rollback de dado: o script só ADICIONA
 `controleAcesso` ou qualquer coleção existente. Desfazer é apagar
 manualmente o documento do tenant e suas subcoleções — o app legado nunca
 percebe, porque nada nele lê esses caminhos ainda.
+
+## Segunda fatia: o dado de negócio (Etapa 5)
+
+`scripts/migrar-dados-tenant.mjs` copia estoque, movimentações, custos, metas,
+pedidos, devoluções, tarefas, notificações etc. da raiz para
+`tenants/{tenantId}/…`, com as subcoleções, e a conexão do ML
+(`ml_tokens/main` → `tenants/{tenantId}/connections/main`). A decisão de cada
+coleção (vai pro tenant, fica na raiz, não copia) está em
+`lib/domain/migracao-dados.ts`, e um teste varre o código-fonte e quebra se
+alguma coleção usada no app ficar sem decisão.
+
+Garantias, todas ensaiadas no emulador (`lib/domain/migracao-dados.emulador.test.ts`, 8/8, e o
+script de linha de comando rodado de ponta a ponta):
+
+- **Não apaga nada na raiz.** A raiz é o rollback, e o app lê dela até a chave
+  `ZXP_MODO_DADOS` virar `tenant`.
+- **Idempotente.** Rodar de novo atualiza a cópia com o que mudou na raiz: a
+  passada final, logo antes de virar a chave, leva o que a operação gravou nesse
+  meio-tempo.
+- **Confere** origem × destino documento a documento depois de copiar, e sai com
+  erro listando o que faltou. `--conferir` roda só a conferência.
+- **Recusa** rodar sem `tenants/{id}` (a primeira fatia tem que vir antes) e
+  recusa copiar coleção que não é da empresa.
+- Documento "fantasma" (só com subcoleção, como `notification_feed/{email}`) é
+  copiado: a leitura é por `listDocuments()`, não por `get()`.
+
+Ordem completa da virada: membros (`migrar-tenant-legado.mjs --aplicar`) →
+dados (`migrar-dados-tenant.mjs --aplicar`) → conferir → virar a chave
+`ZXP_MODO_DADOS=tenant` na Vercel → publicar as regras. O passo a passo com os
+comandos está no checklist do fim de `docs/saas/PROGRESSO.md`.
