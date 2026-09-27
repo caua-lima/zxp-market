@@ -33,6 +33,12 @@ import { getFirebase } from "./client";
 import { assinarComCache, invalidar } from "./cache";
 import { recomputeProdutoComVersao } from "./estoque-recompute";
 import { paginaApos } from "./paginas";
+import {
+  criarMovimentoAuditado,
+  editarMovimentoAuditado,
+  excluirMovimentoAuditado,
+  type TextoDaAuditoria,
+} from "./movimento-auditado";
 import { patchCusto, patchIgnorar, patchReabrir } from "@/lib/domain/remessa-full";
 
 function sanitizeUndefined<T extends Record<string, unknown>>(obj: T): T {
@@ -435,13 +441,12 @@ export function watchRemessasIgnoradas(cb: (ids: Set<string>) => void): () => vo
  * gravação — ver recomputeProduto.
  */
 export async function addMovimento(
-  mov: Omit<EstoqueMovimento, "createdBy" | "createdAt">,
+  mov: Omit<EstoqueMovimento, "createdBy" | "createdAt" | "revisao">,
+  /** O texto do registro de auditoria — gravado no MESMO lote (S20). */
+  auditoria: TextoDaAuditoria = { entidadeLabel: mov.productId },
 ): Promise<void> {
   const email = getCurrentUserEmail();
-  await setDoc(
-    sDoc(MOV_COL, mov.id),
-    sanitizeUndefined({ ...mov, createdBy: email, createdAt: Date.now() }),
-  );
+  await criarMovimentoAuditado(getFirebase().db, mov, email, auditoria);
   /**
    * Se o recálculo falhar, o movimento JÁ está no livro e o produto fica com
    * o número velho. Marca o produto pra a inconsistência não ficar invisível
@@ -485,6 +490,8 @@ export async function updateMovimento(
    * conserta a média sozinho.
    */
   patch: { data?: string; quantidade?: number; obs?: string; custoUnit?: number },
+  /** O texto do registro de auditoria — gravado no MESMO lote (S20). */
+  auditoria: TextoDaAuditoria = { entidadeLabel: productId },
 ): Promise<{ faixasAlteradas: { desde: string; de: number; para: number }[] }> {
   const email = getCurrentUserEmail();
   const snap = await getDoc(sDoc(MOV_COL, id));
@@ -494,7 +501,7 @@ export async function updateMovimento(
     ...atual, ...patch,
     updatedBy: email, updatedAt: Date.now(),
   };
-  await setDoc(sDoc(MOV_COL, id), sanitizeUndefined(proxima));
+  await editarMovimentoAuditado(getFirebase().db, atual, proxima, email, auditoria);
   const { faixasAlteradas: mudancas } = await recomputeProduto(productId);
   invalidar(CHAVE_MOV);
   invalidar("estoque_movimentos:recentes");
@@ -508,8 +515,10 @@ export async function updateMovimento(
 export async function deleteMovimento(
   id: string,
   productId: string,
+  /** O texto do registro de auditoria — gravado no MESMO lote (S20). */
+  auditoria: TextoDaAuditoria = { entidadeLabel: productId },
 ): Promise<{ faixasAlteradas: { desde: string; de: number; para: number }[] }> {
-  await deleteDoc(sDoc(MOV_COL, id));
+  await excluirMovimentoAuditado(getFirebase().db, id, getCurrentUserEmail(), auditoria);
   const { faixasAlteradas: mudancas } = await recomputeProduto(productId);
   invalidar(CHAVE_MOV);
   invalidar("estoque_movimentos:recentes");

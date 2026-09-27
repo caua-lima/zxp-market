@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { TIPO_MOVIMENTO_LABEL, type EstoqueMovimento, type Product } from "@/lib/domain/types";
-import { carregarMovimentosAnteriores, deleteMovimento, logAudit, updateMovimento } from "@/lib/firebase/data";
+import { carregarMovimentosAnteriores, deleteMovimento, updateMovimento } from "@/lib/firebase/data";
 import AvisoMaisAntigos from "@/components/AvisoMaisAntigos";
 import { useMaisAntigos } from "@/components/useMaisAntigos";
 import { fmtBRL } from "@/lib/domain/calc";
@@ -64,12 +64,11 @@ export default function HistoricoMovimentos({ movimentos: primeiraPagina, produc
     const nome = nomePorId.get(m.productId) ?? "produto";
     if (!confirm(`Excluir esta movimentação de "${nome}"?\n\n${TIPO_MOVIMENTO_LABEL[m.tipo]} · ${m.quantidade} un em ${m.data}\n\nO custo médio será recalculado.`)) return;
     try {
-      await deleteMovimento(m.id, m.productId);
-      logAudit({
-        acao: "excluir", entidade: "movimento", entidadeId: m.id,
+      // O registro de auditoria vai no MESMO lote da exclusão (S20).
+      await deleteMovimento(m.id, m.productId, {
         entidadeLabel: `${nome} · ${TIPO_MOVIMENTO_LABEL[m.tipo]}`,
         detalhe: `${m.quantidade} un em ${m.data}`,
-      }).catch(() => {});
+      });
     } catch (e) {
       alert("Não consegui excluir: " + (e instanceof Error ? e.message : String(e)));
     }
@@ -209,15 +208,14 @@ function EditarMovimentoModal({
     if (!data) { alert("Informe a data."); return; }
     setSaving(true);
     try {
+      // O registro de auditoria vai no MESMO lote da correção (S20).
       await updateMovimento(mov.id, mov.productId, {
         data, obs: obs.trim() || undefined,
         ...(editavelQtd ? { quantidade: qNum } : {}),
-      });
-      logAudit({
-        acao: "editar", entidade: "movimento", entidadeId: mov.id,
+      }, {
         entidadeLabel: `${nomeProduto} · ${TIPO_MOVIMENTO_LABEL[mov.tipo]}`,
         detalhe: `${mov.quantidade} un em ${mov.data} → ${qNum} un em ${data}`,
-      }).catch(() => {});
+      });
       onSaved();
     } catch (e) {
       alert("Não consegui salvar: " + (e instanceof Error ? e.message : String(e)));

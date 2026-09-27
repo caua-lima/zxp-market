@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Modal from "@/components/Modal";
 import { fmtBRL } from "@/lib/domain/calc";
-import { logAudit, updateMovimento } from "@/lib/firebase/data";
+import { updateMovimento } from "@/lib/firebase/data";
 import { TIPO_MOVIMENTO_LABEL, type EstoqueMovimento, type Product } from "@/lib/domain/types";
 
 /**
@@ -78,6 +78,10 @@ export default function EditarMovimentoModal({
         quantidade: qNum,
         obs: obs.trim() || undefined,
         ...(temCusto && cNum != null ? { custoUnit: cNum } : {}),
+      }, {
+        // O registro de auditoria vai no MESMO lote da correção (S20).
+        entidadeLabel: `${product.name || "(sem nome)"} · ${TIPO_MOVIMENTO_LABEL[mov.tipo]}`,
+        detalhe: mudancas.join(" · "),
       });
 
       /**
@@ -98,11 +102,6 @@ export default function EditarMovimentoModal({
           " mudou, entao a margem das vendas dessas datas foi reapurada.",
         );
       }
-      await logAudit({
-        acao: "editar", entidade: "movimento", entidadeId: mov.id,
-        entidadeLabel: `${product.name || "(sem nome)"} · ${TIPO_MOVIMENTO_LABEL[mov.tipo]}`,
-        detalhe: mudancas.join(" · "),
-      }).catch(() => {});
       onSaved();
       onClose();
     } catch (e) {

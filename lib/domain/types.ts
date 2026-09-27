@@ -270,6 +270,13 @@ export type EstoqueMovimento = {
   updatedBy?: string;
   updatedAt?: number;
   /**
+   * Versão do lançamento: 1 ao criar, +1 a cada correção (S20). As regras do
+   * Firestore exigem o registro de auditoria `mov_{id}_r{revisao}` no mesmo
+   * lote — ver lib/firebase/movimento-auditado.ts. Ausente = lançamento de
+   * antes disto (conta como 0).
+   */
+  revisao?: number;
+  /**
    * Quanto havia de estoque NO INSTANTE do lançamento, somando Full e o que
    * está fora dele.
    *

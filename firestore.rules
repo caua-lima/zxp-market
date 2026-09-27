@@ -254,10 +254,37 @@ service cloud.firestore {
     }
 
     // Livro de movimentações do estoque (entradas/baixas/ajustes)
+    /**
+     * S20: mexer no livro de estoque muda o custo médio — e com ele o lucro de
+     * vendas JÁ apuradas. O rastro disso não pode depender de o cliente lembrar
+     * de chamar logAudit depois (e engolir o erro, como fazia). Toda criação,
+     * edição e exclusão de movimentação só passa se, NO MESMO LOTE, nascer o
+     * registro de auditoria com id determinístico, a ação certa e assinado por
+     * quem gravou. `revisao` numera as versões (1 ao criar, +1 a cada edição):
+     * é o que torna o id do registro único e barra duas edições simultâneas
+     * sobre a mesma versão. Documento antigo, sem `revisao`, conta como 0.
+     */
+    function idAuditoriaMovimento(id, sufixo) {
+      return /databases/$(database)/documents/auditLog/$("mov_" + id + sufixo);
+    }
+    function auditouMovimento(id, sufixo, acao) {
+      return existsAfter(idAuditoriaMovimento(id, sufixo))
+        && getAfter(idAuditoriaMovimento(id, sufixo)).data.acao == acao
+        && getAfter(idAuditoriaMovimento(id, sufixo)).data.entidade == "movimento"
+        && getAfter(idAuditoriaMovimento(id, sufixo)).data.entidadeId == id
+        && getAfter(idAuditoriaMovimento(id, sufixo)).data.por == request.auth.token.email;
+    }
+
     match /estoque_movimentos/{docId} {
       allow read: if veOperacao();
-      allow write: if podeEditar('estoque') && movimentoValido(request.resource.data);
-      allow delete: if podeEditar('estoque');
+      allow create: if podeEditar('estoque') && movimentoValido(request.resource.data)
+        && request.resource.data.revisao == 1
+        && auditouMovimento(docId, "_r1", "criar");
+      allow update: if podeEditar('estoque') && movimentoValido(request.resource.data)
+        && request.resource.data.revisao == resource.data.get("revisao", 0) + 1
+        && auditouMovimento(docId, "_r" + string(request.resource.data.revisao), "editar");
+      allow delete: if podeEditar('estoque')
+        && auditouMovimento(docId, "_excluido", "excluir");
     }
 
     // Registro manual de alterações de campanha de Ads ("subi o ROAS pra
@@ -492,10 +519,34 @@ service cloud.firestore {
      * pra rotas de servidor — as duas são mudanças de arquitetura, não uma
      * regra.
      */
-    function auditEventValido(d) {
-      return d.em is number
+    /**
+     * S20: o conteúdo do registro também é conferido. `acao`/`entidade` eram
+     * texto livre vindo do cliente; agora são vocabulário fechado, com campos e
+     * tamanhos limitados. E registro de MOVIMENTAÇÃO tem que bater com o livro
+     * depois do lote: id determinístico pela versão, "excluir" só se ela deixou
+     * de existir, "criar"/"editar" só se ela existe NAQUELA versão — não dá pra
+     * inventar um evento que não aconteceu.
+     */
+    function auditEventValido(d, docId) {
+      return d.keys().hasOnly(["id", "acao", "entidade", "entidadeId", "entidadeLabel", "detalhe", "por", "em"])
+        && d.acao in ["criar", "editar", "arquivar", "reativar", "excluir"]
+        && d.entidade in ["custo", "meta", "acesso", "produto", "movimento"]
+        && d.entidadeId is string && d.entidadeId.size() > 0 && d.entidadeId.size() <= 200
+        && d.entidadeLabel is string && d.entidadeLabel.size() <= 200
+        && (!("detalhe" in d) || (d.detalhe is string && d.detalhe.size() <= 500))
+        && d.em is number
         && d.em > request.time.toMillis() - 300000
-        && d.em < request.time.toMillis() + 300000;
+        && d.em < request.time.toMillis() + 300000
+        && (d.entidade != "movimento" || auditoriaDeMovimentoCoerente(d, docId));
+    }
+    function auditoriaDeMovimentoCoerente(d, docId) {
+      let mov = /databases/$(database)/documents/estoque_movimentos/$(d.entidadeId);
+      return d.acao == "excluir"
+        ? (docId == "mov_" + d.entidadeId + "_excluido" && !existsAfter(mov))
+        : (d.acao in ["criar", "editar"]
+            && existsAfter(mov)
+            && docId == "mov_" + d.entidadeId + "_r" + string(getAfter(mov).data.get("revisao", 0))
+            && (d.acao == "editar" || getAfter(mov).data.get("revisao", 0) == 1));
     }
 
     // Trilha de auditoria: qualquer autorizado registra a PRÓPRIA ação
@@ -506,7 +557,7 @@ service cloud.firestore {
       allow read, list: if isOwner();
       allow create: if isAuthorized()
         && request.resource.data.por == request.auth.token.email
-        && auditEventValido(request.resource.data);
+        && auditEventValido(request.resource.data, docId);
       allow update, delete: if false;
     }
 

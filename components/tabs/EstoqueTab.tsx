@@ -1261,12 +1261,11 @@ function MovimentosHistorico({ product, movs, onMov }: { product: Product; movs:
                       </button>
                       <button type="button" className="btn btn-danger btn-xs" title="Excluir movimentação" onClick={() => {
                         if (!confirm("Excluir esta movimentação? O custo médio será recalculado.")) return;
-                        deleteMovimento(m.id, product.id).catch(() => {});
-                        logAudit({
-                          acao: "excluir", entidade: "movimento", entidadeId: m.id,
+                        // O registro de auditoria vai no MESMO lote da exclusão (S20).
+                        deleteMovimento(m.id, product.id, {
                           entidadeLabel: `${product.name || "(sem nome)"} · ${TIPO_MOVIMENTO_LABEL[m.tipo]}`,
                           detalhe: `${m.quantidade} un em ${m.data}`,
-                        }).catch(() => {});
+                        }).catch((e) => alert("Não consegui excluir: " + (e instanceof Error ? e.message : String(e))));
                       }}>Excluir</button>
                     </td>
                   </tr>
@@ -1386,16 +1385,14 @@ function MovimentoModal({ product, tipo, estoqueML, onClose, onSaved }: { produc
          */
         estoqueAntes: isSaldo ? foraDoFull : estoqueAtual,
         custoMedioAntes: avgAtual,
-      });
-      // Entrada muda o custo médio a partir desta data (ver custoNaData) —
-      // registra na trilha o custo informado e o novo médio resultante.
-      logAudit({
-        acao: "criar", entidade: "movimento", entidadeId: movId,
+      }, {
+        // Entrada muda o custo médio a partir desta data (ver custoNaData) —
+        // o registro leva o custo informado e o novo médio. Vai no MESMO lote (S20).
         entidadeLabel: `${product.name || "(sem nome)"} · ${titulo}`,
         detalhe: precisaCusto
           ? `${qNum} un a ${fmtBRL(cNum)} · custo médio ${fmtBRL(avgAtual)} → ${fmtBRL(novoAvg)}`
           : `${qNum} un em ${data}`,
-      }).catch(() => {});
+      });
       onSaved();
     } catch (err: unknown) {
       // O id do lançamento é fixo por abertura: tentar de novo regrava o MESMO documento.

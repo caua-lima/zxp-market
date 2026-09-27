@@ -7,6 +7,7 @@ import {
 } from "@firebase/rules-unit-testing";
 import { doc, getDoc, setDoc, type Firestore } from "firebase/firestore";
 import { recomputeProdutoComVersao } from "./estoque-recompute";
+import { criarMovimentoAuditado } from "./movimento-auditado";
 
 /**
  * Achado S13 da auditoria SaaS, contra o emulador REAL do Firestore
@@ -57,11 +58,12 @@ beforeEach(async () => {
   });
 });
 
+// Pelo lote auditado, como o app grava: desde o S20 as regras recusam
+// movimentação sem o registro de auditoria no mesmo lote.
 async function gravarMovimento(db: Firestore, id: string, quantidade: number) {
-  await setDoc(doc(db, "estoque_movimentos", id), {
+  await criarMovimentoAuditado(db, {
     id, productId: PRODUTO_ID, tipo: "entrada", quantidade, custoUnit: 10, data: "2026-09-20",
-    createdBy: DONO.email, createdAt: Date.now(),
-  });
+  }, DONO.email, { entidadeLabel: "teste" });
 }
 
 describe("recomputeProdutoComVersao — concorrência real (S13)", () => {
