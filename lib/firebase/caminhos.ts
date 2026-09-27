@@ -19,14 +19,31 @@ import { DESTINOS } from "@/lib/domain/migracao-dados";
 
 export type ConfigDeDados = { modo: "raiz" } | { modo: "tenant"; tenantId: string };
 
+/** Só o modo. A empresa vem à parte: no servidor, da requisição (contexto-tenant.ts). */
+export function lerModoDeDados(modo = process.env.NEXT_PUBLIC_ZXP_MODO_DADOS): "raiz" | "tenant" {
+  const m = String(modo ?? "").trim().toLowerCase();
+  if (m === "" || m === "raiz") return "raiz";
+  if (m !== "tenant") throw new Error(`NEXT_PUBLIC_ZXP_MODO_DADOS inválido: "${modo}" (use "raiz" ou "tenant")`);
+  return "tenant";
+}
+
+/**
+ * A empresa de quem está logado NESTE navegador — descoberta no login pela rota
+ * /api/sessao (o navegador não lê memberships). Só no navegador: no servidor
+ * uma variável de módulo vazaria de uma requisição pra outra, de outra empresa.
+ */
+let empresaDoNavegador: string | null = null;
+export function definirEmpresaDoNavegador(tenantId: string | null): void {
+  if (typeof window === "undefined") throw new Error("definirEmpresaDoNavegador é só do navegador");
+  empresaDoNavegador = tenantId;
+}
+
 export function lerConfigDeDados(
   // Referência LITERAL a cada variável: é assim que o Next as embute no navegador.
   modo = process.env.NEXT_PUBLIC_ZXP_MODO_DADOS,
-  tenantId = process.env.NEXT_PUBLIC_ZXP_TENANT_ID,
+  tenantId = empresaDoNavegador ?? process.env.NEXT_PUBLIC_ZXP_TENANT_ID,
 ): ConfigDeDados {
-  const m = String(modo ?? "").trim().toLowerCase();
-  if (m === "" || m === "raiz") return { modo: "raiz" };
-  if (m !== "tenant") throw new Error(`NEXT_PUBLIC_ZXP_MODO_DADOS inválido: "${modo}" (use "raiz" ou "tenant")`);
+  if (lerModoDeDados(modo) === "raiz") return { modo: "raiz" };
   const t = String(tenantId ?? "").trim();
   // Falhar alto: modo empresa sem empresa gravaria no lugar errado em silêncio.
   if (!/^[a-z0-9-]{2,60}$/.test(t)) throw new Error("NEXT_PUBLIC_ZXP_MODO_DADOS=tenant exige NEXT_PUBLIC_ZXP_TENANT_ID válido (ex.: vazxpress)");

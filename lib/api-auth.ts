@@ -3,6 +3,34 @@ import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
 import { podeCapacidade, type Capacidade } from "@/lib/domain/capacidades";
 import { papelDe, type Papel, type PermissionTab } from "@/lib/domain/types";
+import { lerModoDeDados } from "@/lib/firebase/caminhos";
+import { abrirContextoDaRequisicao } from "@/lib/firebase/contexto-tenant";
+
+/**
+ * De onde vem a autorização de quem chama.
+ *
+ * Modo raiz (hoje): `controleAcesso`, a lista única da operação.
+ *
+ * Modo empresa (segundo cliente): o ponteiro `memberships/{email}` diz a
+ * empresa, e o registro `tenants/{t}/members/{email}` diz o papel — nunca o
+ * ponteiro sozinho (pode estar órfão). Achada a empresa, a requisição ENTRA
+ * nela (contexto-tenant.ts): todo acesso ao banco dali em diante vai pro dado
+ * dessa empresa, e de nenhuma outra.
+ */
+async function lerAcesso(email: string, definirEmpresa: (t: string) => void): Promise<{ dados: Record<string, unknown>; tenantId: string | null } | null> {
+  const db = getAdminDb();
+  if (lerModoDeDados() === "raiz") {
+    const snap = await db.collection("controleAcesso").doc(email).get();
+    return snap.exists ? { dados: snap.data() ?? {}, tenantId: null } : null;
+  }
+  const ponteiro = await db.doc(`memberships/${email}`).get();
+  const tenantId = String(ponteiro.data()?.tenantId ?? "").trim();
+  if (!tenantId) return null;
+  const membro = await db.doc(`tenants/${tenantId}/members/${email}`).get();
+  if (!membro.exists) return null;
+  definirEmpresa(tenantId);
+  return { dados: membro.data() ?? {}, tenantId };
+}
 
 export type AuthContext = {
   email: string;
@@ -17,6 +45,8 @@ export type AuthContext = {
   permissoesEdicao: PermissionTab[];
   /** A matriz única de capacidades — ver lib/domain/capacidades.ts. */
   pode: (cap: Capacidade) => boolean;
+  /** A empresa de quem chama (modo empresa). `null` no modo raiz e no cron. */
+  tenantId?: string | null;
 };
 
 function bearer(req: Request): string | null {
@@ -88,6 +118,8 @@ export async function requireAccess(
     capacidade?: Capacidade;
   } = {},
 ): Promise<AuthContext | NextResponse> {
+  // Antes de QUALQUER await — ver abrirContextoDaRequisicao.
+  const definirEmpresa = abrirContextoDaRequisicao();
   const exigida: Capacidade | undefined = opts.capacidade ?? (opts.adminOnly ? "administrar" : undefined);
 
   // Bypass para jobs automatizados (sincronização agendada).
@@ -119,13 +151,13 @@ export async function requireAccess(
     return NextResponse.json({ error: "forbidden", details: "No email in token" }, { status: 403 });
   }
 
-  const snap = await getAdminDb().collection("controleAcesso").doc(email).get();
-  if (!snap.exists) {
+  const acesso = await lerAcesso(email, definirEmpresa);
+  if (!acesso) {
     return NextResponse.json({ error: "forbidden", details: "Not authorized" }, { status: 403 });
   }
 
-  const dados = snap.data() ?? {};
-  const papel = papelDe(dados.role);
+  const dados = acesso.dados;
+  const papel = papelDe(dados.role as Parameters<typeof papelDe>[0]);
   const permissoesEdicao: PermissionTab[] = Array.isArray(dados.permissoesEdicao) ? dados.permissoesEdicao : [];
   const pode = (cap: Capacidade) => podeCapacidade(papel, permissoesEdicao, cap);
 
@@ -144,5 +176,6 @@ export async function requireAccess(
     papel,
     permissoesEdicao,
     pode,
+    tenantId: acesso.tenantId,
   };
 }
