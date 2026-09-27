@@ -10,16 +10,19 @@ escolhas.
 
 ## O que está fora do Firestore e some junto
 
+A lista COMPLETA de variáveis, com valores falsos de exemplo, é o [`.env.example`](../.env.example)
+(um teste confere que ela bate com o código). Abaixo, só as que doem perder.
+
 O dump cobre o banco. **Não cobre** o que mora na Vercel, e sem isto o banco
 restaurado não vira um app funcionando:
 
 | Config | Onde | Se perder |
 |---|---|---|
-| `ML_CLIENT_ID`, `ML_CLIENT_SECRET` | Vercel → Environment Variables | Recriar o app no painel de desenvolvedor do ML. Todos os tokens morrem junto. |
-| `ML_REFRESH_TOKEN` | Vercel | Refazer a autorização OAuth. É recuperável, mas exige o administrador da conta. |
+| `ML_APP_ID`, `ML_SECRET`, `ML_REDIRECT_URI` | Vercel → Environment Variables | Recriar o app no painel de desenvolvedor do ML. Todos os tokens morrem junto. |
+| Token do ML (refresh token) | Firestore: `ml_tokens/main` (modo raiz) ou `tenants/{id}/connections/main` (modo empresa) | Se perder: reconectar a conta na tela (Configurações → Mercado Livre). Exige o administrador da conta ML. |
 | `FIREBASE_PRIVATE_KEY`, `FIREBASE_CLIENT_EMAIL` | Vercel | Gerar chave nova de conta de serviço no console do Firebase. |
 | `BOOTSTRAP_OWNER_EMAILS` | Vercel | Define quem pode virar o primeiro owner. Sem ela e sem `controleAcesso`, o app fica sem ninguém dentro. |
-| `CRON_SECRET` | Vercel | Gerar outro; o cron para até lá. |
+| `CRON_SECRET` | Vercel **e** GitHub (Settings → Secrets → Actions), mesmo valor | Gerar outro e cadastrar nos dois; o cron e o worker param até lá. |
 | `firestore.rules` | neste repositório | Já versionado — é o único item desta tabela que o git cobre. |
 | Índices do Firestore | console do Firebase | **Não versionados.** Ver a nota abaixo. |
 
@@ -96,7 +99,7 @@ depois de descobrir tarde.
 não custa nada e não tem como escrever no lugar errado.
 
 ```bash
-npx -y firebase-tools@latest emulators:start --only firestore --project zxp-ensaio-restauracao
+npx firebase emulators:start --only firestore --project zxp-ensaio-restauracao
 ```
 
 Com o emulador no ar, em outro terminal:
@@ -109,9 +112,9 @@ Com `FIRESTORE_EMULATOR_HOST` definida, o script NÃO pede credencial — o
 emulador não usa nenhuma, e pedir uma chave privada pra não usar seria pedir
 um segredo à toa. A porta 8199 está em `firebase.json`.
 
-`firebase-tools` não é dependência do projeto de propósito: ele traz cinco
-advisories moderadas que poluiriam o `npm audit` por uma ferramenta usada
-uma vez a cada poucos meses. O `npx -y` baixa na hora.
+`firebase-tools` é dependência de desenvolvimento FIXADA no `package.json` (S26): antes era
+`npx -y firebase-tools@latest`, e uma versão nova exigindo Java 21 travou o emulador com Java 17.
+Agora `npx firebase` usa a versão do lockfile, e `npm run test:emulador` confere o Java antes.
 
 ### O app em cima do restaurado
 
@@ -119,7 +122,7 @@ Com o Firestore E o Auth no emulador, da pra abrir o app apontado pra la e
 conferir na tela — sem projeto novo, sem credencial de producao:
 
 ```bash
-npx -y firebase-tools@latest emulators:start --only firestore,auth --project vazxpress-a2350
+npx firebase emulators:start --only firestore,auth --project vazxpress-a2350
 ```
 
 Restaure o dump, crie um usuario no emulador de Auth com um e-mail que exista

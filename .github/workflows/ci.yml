@@ -1,0 +1,61 @@
+# CI (S26 da auditoria SaaS): tipos, lint, testes, build e emulador a cada push
+# e pull request na main. Repositório público: minutos do Actions de graça.
+#
+# Nenhum segredo aqui. O build roda com a configuração FALSA do .env.example —
+# prova que compila sem credencial; nenhuma chave de produção entra no CI.
+# O emulador usa um projeto de mentira (zxp-teste-emulador), nunca a nuvem.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Tipos
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Testes
+        run: npm test
+      - name: Build (configuração falsa do .env.example)
+        run: |
+          cp .env.example .env.production.local
+          npm run build
+
+  emulador:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: npm ci
+      - name: Testes contra o emulador do Firestore
+        run: npm run test:emulador

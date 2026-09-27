@@ -2,19 +2,25 @@
   "name": "zxp-market",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:critical": "vitest run lib/domain",
-    "test:emulador": "npx -y firebase-tools@latest emulators:exec --only firestore --project zxp-teste-emulador \"vitest run --config vitest.emulador.config.ts\"",
+    "pretest:emulador": "node scripts/checar-java.mjs",
+    "test:emulador": "firebase emulators:exec --only firestore --project zxp-teste-emulador \"vitest run --config vitest.emulador.config.ts\"",
     "backup": "node scripts/backup-firestore.mjs --saida ./backups",
     "backup:conferir": "node scripts/restore-firestore.mjs --conferir --dump",
     "backup:podar": "node scripts/podar-backups.mjs",
-    "regras:gerar": "node scripts/gerar-regras-tenant.mjs"
+    "regras:gerar": "node scripts/gerar-regras-tenant.mjs",
+    "emulador": "firebase emulators:start --only firestore --project zxp-teste-emulador"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -34,6 +40,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
+    "firebase-tools": "15.31.0",
     "server-only": "^0.0.1",
     "tailwindcss": "^4",
     "typescript": "^5",

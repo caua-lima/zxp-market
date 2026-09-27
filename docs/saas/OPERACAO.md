@@ -55,15 +55,15 @@ foi escrito pra funcionar com elas.
 
 1. Entre na conta do Firebase (abre o navegador; use a conta dona do projeto):
    ```
-   npx -y firebase-tools@latest login
+   npx firebase login
    ```
 2. Confira que está no projeto certo (tem que aparecer `vazxpress-a2350`):
    ```
-   npx -y firebase-tools@latest use
+   npx firebase use
    ```
 3. Publique **só as regras** (não mexe em mais nada):
    ```
-   npx -y firebase-tools@latest deploy --only firestore:rules --project vazxpress-a2350
+   npx firebase deploy --only firestore:rules --project vazxpress-a2350
    ```
    Tem que terminar com **Deploy complete!**
 4. Abra o app, **recarregue a página** (Ctrl+F5) e faça um teste simples:

@@ -14,7 +14,7 @@ npx next build
 alguns minutos só pra subir. Pra repetir várias vezes, suba uma vez e aponte:
 
 ```
-npx -y firebase-tools@latest emulators:start --only firestore --project zxp-teste-emulador
+npx firebase emulators:start --only firestore --project zxp-teste-emulador
 # em outro terminal:
 $env:FIRESTORE_EMULATOR_HOST="127.0.0.1:8199"; npx vitest run --config vitest.emulador.config.ts
 ```

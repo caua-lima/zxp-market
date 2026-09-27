@@ -25,7 +25,7 @@ lib/domain/migracao-tenant.test.ts`), e só escreve com `--aplicar`.
 node scripts/migrar-tenant-legado.mjs --tenant-id vazxpress --nome "VAZXPRESS"
 
 # 2. Ensaiar no emulador (o caminho normal)
-npx -y firebase-tools@latest emulators:start --only firestore --project zxp-ensaio-tenant
+npx firebase emulators:start --only firestore --project zxp-ensaio-tenant
 # noutro terminal:
 FIRESTORE_EMULATOR_HOST=127.0.0.1:8199 FIREBASE_PROJECT_ID=zxp-ensaio-tenant \
   node scripts/migrar-tenant-legado.mjs --tenant-id vazxpress --nome "VAZXPRESS" --aplicar
