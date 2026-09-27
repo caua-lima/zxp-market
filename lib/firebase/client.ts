@@ -13,6 +13,8 @@ import {
   type Firestore,
   connectFirestoreEmulator,
   initializeFirestore,
+  terminate,
+  clearIndexedDbPersistence,
   persistentLocalCache,
   persistentMultipleTabManager,
 } from "firebase/firestore";
@@ -49,6 +51,14 @@ let auth: Auth | null = null;
  *   3. Só em host local. Uma variável vazada num deploy de preview não
  *      redireciona nada.
  */
+function ligarFirestoreNoEmulador(dbFb: Firestore) {
+  const alvo = process.env.NEXT_PUBLIC_FIREBASE_EMULADOR;
+  if (!alvo || process.env.NODE_ENV === "production") return;
+  if (!/^(localhost|127.0.0.1|[::1])$/.test(window.location.hostname)) return;
+  const [fsHost, fsPorta] = alvo.split(",")[0].trim().split(":");
+  connectFirestoreEmulator(dbFb, fsHost, Number(fsPorta));
+}
+
 function ligarEmulador(appFb: FirebaseApp, dbFb: Firestore, authFb: Auth) {
   const alvo = process.env.NEXT_PUBLIC_FIREBASE_EMULADOR;
   if (!alvo || process.env.NODE_ENV === "production") return;
@@ -81,6 +91,24 @@ function ligarEmulador(appFb: FirebaseApp, dbFb: Firestore, authFb: Auth) {
   void appFb;
 }
 
+/**
+ * Apaga a cópia offline do Firestore deste navegador (S23). Encerra a instância
+ * (é pré-requisito do SDK) e esquece-a: a próxima chamada a getFirebase() cria
+ * uma nova, vazia. Nunca lança — sair da conta não pode travar por isso.
+ */
+export async function apagarDadosLocaisDoFirestore(): Promise<boolean> {
+  if (!db) return true;
+  const alvo = db;
+  db = null;
+  try {
+    await terminate(alvo);
+    await clearIndexedDbPersistence(alvo);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function getFirebase() {
   if (typeof window === "undefined") {
     throw new Error("Firebase client SDK must run in the browser");
@@ -93,7 +121,9 @@ export function getFirebase() {
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager(),
       }),
-    });
+    });    // Recriado depois de apagarDadosLocaisDoFirestore(): o Auth já existe e
+    // ligarEmulador não roda de novo — sem isto, o Firestore novo iria pra nuvem.
+    if (auth) ligarFirestoreNoEmulador(db);
   }
   if (!auth) {
     auth = getAuth(app);

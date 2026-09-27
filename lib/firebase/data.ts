@@ -31,7 +31,7 @@ import {
   type Task,
 } from "@/lib/domain/types";
 import { getFirebase } from "./client";
-import { assinarComCache, invalidar } from "./cache";
+import { assinarComCache, definirEscopoDoCache, invalidar } from "./cache";
 import { recomputeProdutoComVersao } from "./estoque-recompute";
 import { paginaApos } from "./paginas";
 import {
@@ -116,6 +116,8 @@ export async function carregarEmpresaDaSessao(): Promise<string | null> {
   const r = await authedFetch("/api/sessao", { cache: "no-store" }).catch(() => null);
   const tenantId = r && r.ok ? String((await r.json().catch(() => ({})))?.tenantId ?? "") || null : null;
   definirEmpresaDoNavegador(tenantId);
+  // S23: pessoa + empresa. Entrar numa empresa descarta o que foi lido antes dela.
+  definirEscopoDoCache(`${getAuth().currentUser?.uid ?? ""}|${tenantId ?? "sem-empresa"}`);
   return tenantId;
 }
 

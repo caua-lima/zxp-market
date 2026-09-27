@@ -9,7 +9,8 @@ import {
 } from "firebase/auth";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { getFirebase, googleProvider, getGoogleProviderWithAccountSelection } from "./client";
-import { ligarRevalidacaoAutomatica, limparCache } from "./cache";
+import { definirEscopoDoCache, ligarRevalidacaoAutomatica, limparCache } from "./cache";
+import { apagarDadosLocaisDoFirestore } from "./client";
 import { definirUsuarioDoPush, reconciliarPush, soltarPushAoSair } from "./push";
 
 type AuthState = {
@@ -30,6 +31,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const { auth } = getFirebase();
     return onAuthStateChanged(auth, (u) => {
+      // S23: o cache é de UMA pessoa. Trocar de conta (inclusive pelo popup do
+      // Google, sem passar pelo "Sair") descarta o da anterior ANTES de a tela
+      // da nova montar.
+      definirEscopoDoCache(u ? u.uid : "");
       setUser(u);
       setLoading(false);
     });
@@ -107,6 +112,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // limpar, dado da conta anterior continuaria visível pra quem logasse
     // em seguida no mesmo navegador (ver lib/firebase/cache.ts).
     limparCache();
+    // S23 — dispositivo compartilhado: a cópia offline do Firestore (IndexedDB)
+    // guardava documentos da conta que saiu. Apagada na saída; se outra aba do
+    // app estiver aberta, o navegador não deixa apagar agora (a aba segura o
+    // banco) e fica pra próxima saída — dito na política em OPERACAO.md.
+    await apagarDadosLocaisDoFirestore();
   }
 
   return (

@@ -226,7 +226,36 @@ export function assinarComCache<T>(
   };
 }
 
-/** Limpa tudo — usado no logout, pra não vazar dado de uma conta pra outra. */
+/**
+ * Descarta tudo — logout, troca de conta, troca de empresa (S23).
+ *
+ * Não basta `cache.clear()`: uma busca que já estava no ar entregaria o dado
+ * da conta ANTERIOR pros inscritos quando voltasse. Subir a geração de cada
+ * entrada antes de soltar o mapa faz essas respostas serem descartadas (ver
+ * `geracaoNaPartida` em assinarComCache).
+ */
 export function limparCache(): void {
+  for (const e of cache.values()) {
+    e.geracao += 1;
+    e.dados = undefined;
+    e.at = 0;
+    e.inscritos.clear();
+  }
   cache.clear();
+}
+
+/**
+ * O contexto de quem usa o app neste navegador: pessoa + empresa (S23). Mudou,
+ * o cache inteiro é descartado. Chamado pelo login (pessoa) e pela resolução
+ * da empresa (modo empresa). A troca de conta pelo popup do Google entra SEM
+ * passar pelo "Sair" — era por aí que o cache de uma conta sobrevivia na outra.
+ */
+let escopoAtual = "";
+export function definirEscopoDoCache(escopo: string): void {
+  if (escopo === escopoAtual) return;
+  escopoAtual = escopo;
+  limparCache();
+}
+export function escopoDoCache(): string {
+  return escopoAtual;
 }

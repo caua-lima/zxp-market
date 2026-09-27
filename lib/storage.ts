@@ -1,4 +1,5 @@
 "use client";
+import { escopoDoCache } from "@/lib/firebase/cache";
 
 /**
  * Chaves de localStorage do app, com migração do prefixo antigo.
@@ -22,8 +23,20 @@
 const PREFIXO = "zxpmarket:";
 const PREFIXO_ANTIGO = "briefing:";
 
+/**
+ * A chave de uma preferência DESTA pessoa NESTA empresa (S23).
+ *
+ * Era `zxpmarket:{sufixo}`, global no navegador: numa máquina compartilhada, os
+ * filtros salvos e os produtos planejados (ids de produto da empresa) de uma
+ * conta apareciam pra próxima. Com escopo, cada pessoa+empresa tem os seus; sem
+ * escopo ainda (antes do login), cai na chave antiga.
+ */
+export function chaveComEscopo(escopo: string, sufixo: string): string {
+  return escopo ? `${PREFIXO}${escopo}:${sufixo}` : `${PREFIXO}${sufixo}`;
+}
+
 export function chaveApp(sufixo: string): string {
-  return `${PREFIXO}${sufixo}`;
+  return chaveComEscopo(escopoDoCache(), sufixo);
 }
 
 /**
@@ -37,7 +50,12 @@ export function lerChaveApp(sufixo: string): string | null {
     const atual = localStorage.getItem(nova);
     if (atual !== null) return atual;
 
-    const antiga = `${PREFIXO_ANTIGO}${sufixo}`;
+    // Chaves de antes do escopo (S23): herdadas UMA vez, e só no modo raiz — a
+    // operação de uma empresa só, dona desse dado. No modo empresa, herdar a
+    // chave global poderia entregar a preferência de uma empresa pra outra.
+    const semEscopo = `${PREFIXO}${sufixo}`;
+    const herdavel = nova !== semEscopo && process.env.NEXT_PUBLIC_ZXP_MODO_DADOS !== "tenant";
+    const antiga = herdavel && localStorage.getItem(semEscopo) !== null ? semEscopo : `${PREFIXO_ANTIGO}${sufixo}`;
     const legado = localStorage.getItem(antiga);
     if (legado === null) return null;
 

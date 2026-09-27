@@ -188,3 +188,39 @@ describe("limparCache", () => {
     expect(vistos).toEqual(["x"]);
   });
 });
+
+describe("S23 — cache de uma pessoa numa empresa", () => {
+  it("trocar de escopo descarta o dado e a busca em voo da conta anterior", async () => {
+    const { definirEscopoDoCache, escopoDoCache } = await import("./cache");
+    definirEscopoDoCache("pessoa-a|emp-1");
+    let liberar: ((v: string) => void) | null = null;
+    const buscarA = vi.fn(() => new Promise<string>((r) => { liberar = r; }));
+    const vistosA: string[] = [];
+    assinarComCache("produtos", buscarA, (d) => vistosA.push(d));
+    await escoar();
+
+    // Outra pessoa entra (popup do Google) com a busca da primeira ainda em voo.
+    definirEscopoDoCache("pessoa-b|emp-2");
+    expect(escopoDoCache()).toBe("pessoa-b|emp-2");
+    liberar!("dado-da-emp-1");
+    await escoar();
+    expect(vistosA).toEqual([]);
+
+    const vistosB: string[] = [];
+    assinarComCache("produtos", async () => "dado-da-emp-2", (d) => vistosB.push(d));
+    await escoar();
+    expect(vistosB).toEqual(["dado-da-emp-2"]);
+  });
+
+  it("o mesmo escopo de novo não apaga nada (re-render do login)", async () => {
+    const { definirEscopoDoCache } = await import("./cache");
+    definirEscopoDoCache("pessoa-a");
+    const buscar = vi.fn(async () => "x");
+    assinarComCache("k2", buscar, () => {});
+    await escoar();
+    definirEscopoDoCache("pessoa-a");
+    assinarComCache("k2", buscar, () => {});
+    await escoar();
+    expect(buscar).toHaveBeenCalledTimes(1);
+  });
+});
