@@ -24,6 +24,11 @@ const PERMISSION_TAB_LABEL: Record<PermissionTab, string> = {
   custos: "Custos", metas: "Metas", estoque: "Estoque", ads: "Ads (últimas alterações)",
 };
 
+/** Espelha controleAcesso nos membros da empresa (Etapa 3). Falhar não trava a tela: o worker refaz em até 5 min. */
+function sincronizarMembrosDaEmpresa(): void {
+  authedFetch("/api/acesso/sincronizar", { method: "POST" }).catch(() => {});
+}
+
 export default function AccessControlTab({
   uid,
   data,
@@ -163,6 +168,9 @@ export default function AccessControlTab({
         await addAccessEntry(payload);
         logAudit({ acao: "criar", entidade: "acesso", entidadeId: normalizedEmail, entidadeLabel: normalizedEmail, detalhe: `papel: ${effectiveRole}${detalhePermissoes}` }).catch(() => {});
       }
+      // Etapa 3: depois da virada, quem autoriza o dado é a lista de membros da
+      // empresa — espelha já, sem esperar o worker. Antes da virada não faz nada.
+      sincronizarMembrosDaEmpresa();
 
       // Se informou senha, cria/atualiza o login por e-mail/senha
       if (password) {
@@ -204,6 +212,8 @@ export default function AccessControlTab({
       setError("");
       await removeAccessEntry(entryEmail);
       logAudit({ acao: "excluir", entidade: "acesso", entidadeId: entryEmail, entidadeLabel: entryEmail, detalhe: target ? `papel: ${target.role}` : undefined }).catch(() => {});
+      // Removido aqui, removido da empresa — senão as regras ainda o deixariam ler.
+      sincronizarMembrosDaEmpresa();
       if (editingEmail === entryEmail) {
         resetForm();
       }

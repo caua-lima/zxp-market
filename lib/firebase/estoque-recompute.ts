@@ -1,5 +1,6 @@
 "use client";
 
+import { traduzirCaminho } from "./caminhos";
 import {
   type Firestore,
   collection,
@@ -63,7 +64,7 @@ export async function recomputeProdutoComVersao(
   db: Firestore,
   productId: string,
 ): Promise<{ faixasAlteradas: { desde: string; de: number; para: number }[] }> {
-  const prodRef = doc(db, "estoque", productId);
+  const prodRef = doc(db, traduzirCaminho("estoque"), productId);
 
   for (let tentativa = 1; tentativa <= RECOMPUTE_MAX_TENTATIVAS; tentativa++) {
     const prodSnapAntes = await getDoc(prodRef);
@@ -72,7 +73,7 @@ export async function recomputeProdutoComVersao(
       | undefined;
     const versaoAntes = Number(prodData?.estoqueVersao ?? 0);
 
-    const snap = await getDocs(query(collection(db, "estoque_movimentos"), where("productId", "==", productId)));
+    const snap = await getDocs(query(collection(db, traduzirCaminho("estoque_movimentos")), where("productId", "==", productId)));
     const movs = snap.docs.map((d) => d.data() as EstoqueMovimento);
 
     /**

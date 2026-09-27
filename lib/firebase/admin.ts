@@ -3,6 +3,7 @@ import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { getMessaging } from "firebase-admin/messaging";
+import { comCaminhosDeDados } from "./db-de-dados";
 
 function formatPrivateKey(key?: string) {
   if (!key) return undefined;
@@ -29,9 +30,14 @@ function ensureAdminApp() {
   }
 }
 
+/**
+ * O Firestore do servidor. Com NEXT_PUBLIC_ZXP_MODO_DADOS=tenant, o dado da
+ * empresa é lido e gravado em tenants/{id}/… (ver lib/firebase/caminhos.ts);
+ * desligada, é o Firestore de sempre.
+ */
 export function getAdminDb() {
   ensureAdminApp();
-  return getFirestore();
+  return comCaminhosDeDados(getFirestore());
 }
 
 export function getAdminAuth() {

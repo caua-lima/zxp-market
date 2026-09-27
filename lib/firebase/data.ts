@@ -1,5 +1,6 @@
 "use client";
 
+import { traduzirCaminho } from "./caminhos";
 import {
   collection,
   deleteDoc,
@@ -57,12 +58,12 @@ function getCurrentUserEmail(): string {
 // ─── path helpers (apenas coleções globais compartilhadas) ─────
 function sCol(name: string) {
   const { db } = getFirebase();
-  return collection(db, name);
+  return collection(db, traduzirCaminho(name));
 }
 
 function sDoc(name: string, id: string) {
   const { db } = getFirebase();
-  return doc(db, name, id);
+  return doc(db, traduzirCaminho(name), id);
 }
 
 function aDoc(email: string) {

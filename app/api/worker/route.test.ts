@@ -13,6 +13,8 @@ import { registrarExecucaoDoCron } from "@/lib/cron-heartbeat";
 vi.mock("@/lib/ml/webhook-inbox", () => ({ varrerInbox: vi.fn() }));
 vi.mock("@/lib/notification-dispatch", () => ({ varrerEntregasPendentes: vi.fn() }));
 vi.mock("@/lib/cron-heartbeat", () => ({ registrarExecucaoDoCron: vi.fn(async () => undefined) }));
+vi.mock("@/lib/firebase/admin", () => ({ getAdminDb: vi.fn(() => ({})) }));
+vi.mock("@/lib/tenant-membros", () => ({ sincronizarMembros: vi.fn(async () => ({ ativo: false })) }));
 
 const chamada = (auth?: string) => new Request("https://exemplo.com/api/worker", {
   headers: auth ? { authorization: auth } : {},

@@ -1,5 +1,6 @@
 "use client";
 
+import { traduzirCaminho } from "./caminhos";
 import {
   FieldPath,
   collection,
@@ -53,8 +54,8 @@ export type PaginaDoFeed = {
 function refDaFonte(f: FonteDoFeed) {
   const { db } = getFirebase();
   return f.tipo === "time"
-    ? collection(db, f.colecao)
-    : collection(db, COLECAO_FEED, f.email.toLowerCase(), "itens");
+    ? collection(db, traduzirCaminho(f.colecao))
+    : collection(db, traduzirCaminho(COLECAO_FEED), f.email.toLowerCase(), "itens");
 }
 
 function paraPagina(f: FonteDoFeed, docs: QueryDocumentSnapshot[], max: number, doCache: boolean): PaginaDoFeed {
@@ -140,7 +141,7 @@ async function marcar(alvo: AlvoDaMarca, email: string, campoDoTime: "readBy" | 
 
   if (alvo.origem === "pessoal") {
     try {
-      await updateDoc(doc(db, COLECAO_FEED, email.toLowerCase(), "itens", alvo.id), campoPessoal, Date.now());
+      await updateDoc(doc(db, traduzirCaminho(COLECAO_FEED), email.toLowerCase(), "itens", alvo.id), campoPessoal, Date.now());
     } catch (err) {
       if (!ehNaoEncontrado(err)) throw err;
     }
@@ -150,7 +151,7 @@ async function marcar(alvo: AlvoDaMarca, email: string, campoDoTime: "readBy" | 
   const agora = Date.now();
   const resultados = await Promise.allSettled(
     [COLECAO_EVENTOS, COLECAO_EVENTOS_PUBLICA].map((colecao) =>
-      updateDoc(doc(db, colecao, alvo.id), new FieldPath(campoDoTime, email), agora),
+      updateDoc(doc(db, traduzirCaminho(colecao), alvo.id), new FieldPath(campoDoTime, email), agora),
     ),
   );
   const falhou = resultados.find((r): r is PromiseRejectedResult => r.status === "rejected" && !ehNaoEncontrado(r.reason));

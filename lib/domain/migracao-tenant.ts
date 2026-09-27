@@ -130,3 +130,54 @@ export function validarPlano(plano: PlanoMigracaoTenant): string[] {
 
   return problemas;
 }
+
+// ── sincronização contínua (Etapa 3) ─────────────────────────────────────
+
+export type PlanoDeSincronizacao = {
+  gravar: MembroMigrado[];
+  /** E-mails que saíram de controleAcesso: perdem a empresa (membro e ponteiro). */
+  remover: string[];
+  problemas: string[];
+};
+
+/**
+ * Depois da virada as regras autorizam por `tenants/{t}/members`, mas quem
+ * administra o time ainda é a tela de Acesso, que grava `controleAcesso`. Sem
+ * espelhar, quem fosse convidado depois não enxergaria nada — e, o pior, quem
+ * fosse REMOVIDO continuaria lendo o dado da empresa pelas regras.
+ *
+ * O dono da empresa é o que já está em `members` com role owner: controleAcesso
+ * pode ter mais de um owner (o caso da produção), e o tenant só um. Os outros
+ * entram como partner, igual à primeira fatia.
+ */
+export function planoDeSincronizacao(
+  acessos: readonly AccessEntryMinima[],
+  membrosAtuais: readonly { email: string; role: string; permissoesEdicao?: string[] }[],
+  tenantId: string,
+): PlanoDeSincronizacao {
+  const donos = membrosAtuais.filter((m) => m.role === "owner").map((m) => m.email.toLowerCase());
+  const problemas: string[] = [];
+  if (donos.length !== 1) problemas.push(`a empresa ${tenantId} tem ${donos.length} owner(s) em members — precisa de exatamente um`);
+  const dono = donos[0] ?? null;
+
+  const desejado = planoDeMigracaoDeMembros(acessos, { tenantId, nomeDoTenant: tenantId, owner: dono }).membros;
+  const porEmail = new Map(membrosAtuais.map((m) => [m.email.toLowerCase(), m]));
+  const iguais = (a: readonly string[] | undefined, b: readonly string[] | undefined) =>
+    JSON.stringify([...(a ?? [])].sort()) === JSON.stringify([...(b ?? [])].sort());
+
+  const gravar = desejado.filter((m) => {
+    const atual = porEmail.get(m.email);
+    return !atual || atual.role !== m.role || !iguais(atual.permissoesEdicao, m.permissoesEdicao);
+  });
+  const naLista = new Set(desejado.map((m) => m.email));
+  const remover = membrosAtuais
+    .map((m) => m.email.toLowerCase())
+    .filter((e) => !naLista.has(e))
+    // O dono não sai por sincronização: sem ele a empresa fica sem quem administre.
+    .filter((e) => {
+      if (e === dono) { problemas.push(`o owner ${e} não está em controleAcesso — mantido na empresa`); return false; }
+      return true;
+    });
+  if (dono && !naLista.has(dono) && problemas.every((p) => !p.includes(dono))) problemas.push(`o owner ${dono} não está em controleAcesso`);
+  return { gravar, remover, problemas };
+}

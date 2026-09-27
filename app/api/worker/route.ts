@@ -3,6 +3,8 @@ import { motivoRecusaDoCron } from "@/lib/api-auth";
 import { registrarExecucaoDoCron } from "@/lib/cron-heartbeat";
 import { varrerInbox } from "@/lib/ml/webhook-inbox";
 import { varrerEntregasPendentes } from "@/lib/notification-dispatch";
+import { getAdminDb } from "@/lib/firebase/admin";
+import { sincronizarMembros } from "@/lib/tenant-membros";
 
 export const maxDuration = 60;
 
@@ -50,9 +52,17 @@ async function tratar(req: Request) {
     return null;
   });
 
+  // Etapa 3: com a chave em modo tenant, quem entra ou sai de controleAcesso
+  // entra ou sai da empresa — rede de segurança da chamada que a tela de Acesso faz.
+  const membros = await sincronizarMembros(getAdminDb()).catch((err) => {
+    console.error("[worker] sincronizar membros falhou", err);
+    return null;
+  });
+
   const resumo = {
     inbox,
     entregas,
+    membros,
     duracaoMs: Date.now() - inicio,
   };
   await registrarExecucaoDoCron(resumo, "worker");

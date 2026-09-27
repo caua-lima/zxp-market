@@ -116,11 +116,27 @@ descontada. O impacto nos números não foi medido; fica pra quando mexer em dev
 
 ### Etapas 3-8 — onde estão
 
-- **Etapa 3 (isolamento)**: fundação pronta e aditiva — `TenantContext`/`ConnectionContext`,
-  `requireTenantAccess`/`requireConnectionAccess`, regras de isolamento provadas no emulador, S02
-  fechado. NENHUMA rota existente usa isso ainda: o app em produção continua single-tenant. O corte
-  (trocar `requireAccess` por `requireTenantAccess` e a conexão ML global pela do tenant) não
-  começou.
+- **Etapa 3 (isolamento)**: o CORTE está pronto e na `main`, **atrás de uma chave desligada**:
+  `NEXT_PUBLIC_ZXP_MODO_DADOS` (`raiz` = padrão, como sempre; `tenant` = dado da empresa em
+  `tenants/{NEXT_PUBLIC_ZXP_TENANT_ID}/…`). Uma chave só pra servidor e navegador. Servidor: `getAdminDb()`
+  devolve o Firestore com os caminhos traduzidos (`lib/firebase/db-de-dados.ts`) — um ponto só em vez
+  de ~120 chamadas. Cliente: `sCol`/`sDoc` e os módulos que recebem `db` traduzem pelo mesmo
+  `traduzirCaminho` (`lib/firebase/caminhos.ts`). Regras: o dado da empresa dentro de
+  `tenants/{id}` é GERADO das regras da raiz (`npm run regras:gerar`), autorizando por membro da
+  empresa; um teste quebra se a raiz mudar sem regenerar. Membros: `controleAcesso` segue como a
+  fonte da tela de Acesso e é espelhado em `tenants/{id}/members` (entra quem entrou, SAI quem saiu)
+  pela rota `/api/acesso/sincronizar` (chamada pela tela) e pelo worker a cada 5 min. Provas no
+  emulador: isolamento entre empresas (6/6), a virada de ponta a ponta com a chave ligada e
+  desligada (7/7: gravador de pedidos com transação, token do ML, lançamento auditado sob as regras
+  da empresa, sincronização de membros), tradução de caminho (4/4). **Não virada em produção**:
+  depende da migração (Etapa 5) rodar antes — virar sem migrar mostra o painel vazio. **O que ainda
+  não é multi-empresa de verdade**: a empresa é UMA, escolhida pela chave; resolver a empresa por
+  requisição (`requireTenantAccess` em cada rota, cron por empresa) é o passo seguinte, pro 2º
+  cliente.
+- Nota de estabilidade: `notification-events.emulador.test.ts` (10 reparos + 10 marcas
+  concorrentes) falhou uma vez na suíte inteira sob carga (19,8 s) e passou 3/3 isolado e na suíte
+  repetida (229/229) — concorrência de transação no emulador, mesmo tipo do flake já anotado do
+  `push-registro-store`.
 - **Etapa 5 (migração)**: as duas fatias escritas, ensaiadas no emulador e documentadas em
   `MIGRACAO.md` — membros (`migrar-tenant-legado.mjs`) e dado de negócio (`migrar-dados-tenant.mjs`,
   `lib/domain/migracao-dados.ts`: decisão por coleção com teste de completude que varre o código,

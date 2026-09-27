@@ -1,3 +1,4 @@
+import { traduzirCaminho } from "./caminhos";
 import {
   collection,
   documentId,
@@ -40,7 +41,7 @@ export async function paginaApos<T extends { id: string }>(
   tamanho: number,
 ): Promise<Pagina<T>> {
   const snap = await getDocs(query(
-    collection(db, colecao),
+    collection(db, traduzirCaminho(colecao)),
     orderBy(campo, "desc"),
     orderBy(documentId(), "desc"),
     startAfter(ultimo.valor, ultimo.id),

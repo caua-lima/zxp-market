@@ -1,3 +1,4 @@
+import { traduzirCaminho } from "./caminhos";
 import { doc, writeBatch, type Firestore } from "firebase/firestore";
 import type { EstoqueMovimento } from "@/lib/domain/types";
 
@@ -50,8 +51,8 @@ export async function criarMovimentoAuditado(
 ): Promise<void> {
   const r = registro("criar", mov.id, "_r1", email, texto, agora);
   const lote = writeBatch(db);
-  lote.set(doc(db, "estoque_movimentos", mov.id), semIndefinidos({ ...mov, revisao: 1, createdBy: email, createdAt: agora }));
-  lote.set(doc(db, "auditLog", r.id), r.dados);
+  lote.set(doc(db, traduzirCaminho("estoque_movimentos"), mov.id), semIndefinidos({ ...mov, revisao: 1, createdBy: email, createdAt: agora }));
+  lote.set(doc(db, traduzirCaminho("auditLog"), r.id), r.dados);
   await lote.commit();
 }
 
@@ -68,8 +69,8 @@ export async function editarMovimentoAuditado(
   const revisao = (Number(atual.revisao) || 0) + 1;
   const r = registro("editar", atual.id, `_r${revisao}`, email, texto, agora);
   const lote = writeBatch(db);
-  lote.set(doc(db, "estoque_movimentos", atual.id), semIndefinidos({ ...proxima, revisao }));
-  lote.set(doc(db, "auditLog", r.id), r.dados);
+  lote.set(doc(db, traduzirCaminho("estoque_movimentos"), atual.id), semIndefinidos({ ...proxima, revisao }));
+  lote.set(doc(db, traduzirCaminho("auditLog"), r.id), r.dados);
   await lote.commit();
 }
 
@@ -82,7 +83,7 @@ export async function excluirMovimentoAuditado(
 ): Promise<void> {
   const r = registro("excluir", movId, "_excluido", email, texto, agora);
   const lote = writeBatch(db);
-  lote.delete(doc(db, "estoque_movimentos", movId));
-  lote.set(doc(db, "auditLog", r.id), r.dados);
+  lote.delete(doc(db, traduzirCaminho("estoque_movimentos"), movId));
+  lote.set(doc(db, traduzirCaminho("auditLog"), r.id), r.dados);
   await lote.commit();
 }
