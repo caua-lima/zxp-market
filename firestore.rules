@@ -660,6 +660,9 @@ service cloud.firestore {
       function podeEditarT(tab) {
         return isOwnerT() || (veOperacaoT() && tab in requesterDocT().data.get('permissoesEdicao', []));
       }
+      function escritaLiberadaT() {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)).data.get('bloqueio', null) == null;
+      }
       function idAuditoriaMovimentoT(id, sufixo) {
         return /databases/$(database)/documents/tenants/$(tenantId)/auditLog/$("mov_" + id + sufixo);
       }
@@ -693,98 +696,98 @@ service cloud.firestore {
       }
       match /rascunho/{docId} {
         allow read: if veOperacaoT();
-        allow write: if isOwnerT();
+        allow write: if escritaLiberadaT() && (isOwnerT());
       }
       match /dias/{docId} {
         allow read: if veOperacaoT();
-        allow write: if isOwnerT();
+        allow write: if escritaLiberadaT() && (isOwnerT());
       }
       match /metas/{docId} {
         allow read: if veOperacaoT();
-        allow write: if podeEditarT('metas');
+        allow write: if escritaLiberadaT() && (podeEditarT('metas'));
       }
       match /metasHistorico/{docId} {
         allow read: if veOperacaoT();
-        allow write: if podeEditarT('metas');
+        allow write: if escritaLiberadaT() && (podeEditarT('metas'));
       }
       match /custos/{docId} {
         allow read: if veOperacaoT();
-        allow write: if podeEditarT('custos') && custoValido(request.resource.data);
-        allow delete: if podeEditarT('custos');
+        allow write: if escritaLiberadaT() && (podeEditarT('custos') && custoValido(request.resource.data));
+        allow delete: if escritaLiberadaT() && (podeEditarT('custos'));
       }
       match /estoque/{docId} {
         allow read: if veOperacaoT();
-        allow write: if podeEditarT('estoque') && produtoValido(request.resource.data);
-        allow delete: if podeEditarT('estoque');
+        allow write: if escritaLiberadaT() && (podeEditarT('estoque') && produtoValido(request.resource.data));
+        allow delete: if escritaLiberadaT() && (podeEditarT('estoque'));
       }
       match /estoque_movimentos/{docId} {
         allow read: if veOperacaoT();
-        allow create: if podeEditarT('estoque') && movimentoValido(request.resource.data)
+        allow create: if escritaLiberadaT() && (podeEditarT('estoque') && movimentoValido(request.resource.data)
           && request.resource.data.revisao == 1
-          && auditouMovimentoT(docId, "_r1", "criar");
-        allow update: if podeEditarT('estoque') && movimentoValido(request.resource.data)
+          && auditouMovimentoT(docId, "_r1", "criar"));
+        allow update: if escritaLiberadaT() && (podeEditarT('estoque') && movimentoValido(request.resource.data)
           && request.resource.data.revisao == resource.data.get("revisao", 0) + 1
-          && auditouMovimentoT(docId, "_r" + string(request.resource.data.revisao), "editar");
-        allow delete: if podeEditarT('estoque')
-          && auditouMovimentoT(docId, "_excluido", "excluir");
+          && auditouMovimentoT(docId, "_r" + string(request.resource.data.revisao), "editar"));
+        allow delete: if escritaLiberadaT() && (podeEditarT('estoque')
+          && auditouMovimentoT(docId, "_excluido", "excluir"));
       }
       match /ads_alteracoes/{docId} {
         allow read: if veOperacaoT();
-        allow write: if podeEditarT('ads');
+        allow write: if escritaLiberadaT() && (podeEditarT('ads'));
       }
       match /full_remessas/{docId} {
         allow read: if veOperacaoT();
-        allow write: if isOwnerT();
+        allow write: if escritaLiberadaT() && (isOwnerT());
       }
       match /tarefas/{docId} {
-        allow read, write: if veOperacaoT();
+        allow read: if veOperacaoT(); allow write: if escritaLiberadaT() && (veOperacaoT());
       }
       match /alertasDispensados/{docId} {
         allow read: if isAuthorizedT() && resource.data.email == request.auth.token.email;
-        allow create, update: if isAuthorizedT() && request.resource.data.email == request.auth.token.email;
-        allow delete: if isAuthorizedT() && resource.data.email == request.auth.token.email;
+        allow create, update: if escritaLiberadaT() && (isAuthorizedT() && request.resource.data.email == request.auth.token.email);
+        allow delete: if escritaLiberadaT() && (isAuthorizedT() && resource.data.email == request.auth.token.email);
       }
       match /notification_events/{eventId} {
         allow read: if veOperacaoT();
-        allow create, delete: if false;
-        allow update: if isAuthorizedT()
+        allow create, delete: if escritaLiberadaT() && (false);
+        allow update: if escritaLiberadaT() && (isAuthorizedT()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy', 'dismissedBy'])
           && request.resource.data.get('readBy', {}).diff(resource.data.get('readBy', {}))
                .affectedKeys().hasOnly([request.auth.token.email])
           && request.resource.data.get('dismissedBy', {}).diff(resource.data.get('dismissedBy', {}))
-               .affectedKeys().hasOnly([request.auth.token.email]);
+               .affectedKeys().hasOnly([request.auth.token.email]));
       }
       match /notification_events_publico/{eventId} {
         allow read: if isAuthorizedT();
-        allow create, delete: if false;
-        allow update: if isAuthorizedT()
+        allow create, delete: if escritaLiberadaT() && (false);
+        allow update: if escritaLiberadaT() && (isAuthorizedT()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["readBy", "dismissedBy"])
           && request.resource.data.get("readBy", {}).diff(resource.data.get("readBy", {}))
                .affectedKeys().hasOnly([request.auth.token.email])
           && request.resource.data.get("dismissedBy", {}).diff(resource.data.get("dismissedBy", {}))
-               .affectedKeys().hasOnly([request.auth.token.email]);
+               .affectedKeys().hasOnly([request.auth.token.email]));
       }
       match /notification_outbox/{pushId} {
-        allow read, write: if false;
+        allow read: if false; allow write: if escritaLiberadaT() && (false);
       }
       match /notification_entregas/{entregaId} {
-        allow read, write: if false;
+        allow read: if false; allow write: if escritaLiberadaT() && (false);
       }
       match /notification_feed/{email}/itens/{eventId} {
         allow read: if isAuthorizedT() && request.auth.token.email == email;
-        allow create, delete: if false;
-        allow update: if isAuthorizedT() && request.auth.token.email == email
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lidoEm', 'dispensadoEm']);
+        allow create, delete: if escritaLiberadaT() && (false);
+        allow update: if escritaLiberadaT() && (isAuthorizedT() && request.auth.token.email == email
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lidoEm', 'dispensadoEm']));
       }
       match /notification_janelas/{janelaId} {
-        allow read, write: if false;
+        allow read: if false; allow write: if escritaLiberadaT() && (false);
       }
       match /auditLog/{docId} {
         allow read, list: if isOwnerT();
-        allow create: if isAuthorizedT()
+        allow create: if escritaLiberadaT() && (isAuthorizedT()
           && request.resource.data.por == request.auth.token.email
-          && auditEventValidoT(request.resource.data, docId);
-        allow update, delete: if false;
+          && auditEventValidoT(request.resource.data, docId));
+        allow update, delete: if escritaLiberadaT() && (false);
       }
       // </gerado:dados-do-tenant>
 

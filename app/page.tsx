@@ -57,6 +57,7 @@ import { ZxpMark } from "@/components/ZxpMark";
 import { AvatarUpload } from "@/components/AvatarUpload";
 import MyProfileModal from "@/components/MyProfileModal";
 import CommandPalette from "@/components/CommandPalette";
+import AvisoDeAssinatura from "@/components/AvisoDeAssinatura";
 import { SaleNotificationProvider } from "@/components/SaleNotificationProvider";
 import { marcarAberturaDeGrupo } from "@/lib/domain/nav-grupos";
 import {
@@ -710,6 +711,7 @@ function AppShell() {
               </div>
             ) : (
               <>
+                <AvisoDeAssinatura />
                 {/* A mesma pergunta que EstoqueTab/CustosTab/MetasTab/Ads já fazem
                     (canEditTab, por aba) — não `!isOwner` global, que contradizia
                     os próprios botões de editar da aba quando um partner tinha

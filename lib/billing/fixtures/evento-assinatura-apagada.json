@@ -1,0 +1,2 @@
+{ "id": "evt_teste_apagada", "object": "event", "type": "customer.subscription.deleted", "created": 1789000300,
+  "data": { "object": { "id": "sub_teste_1", "object": "subscription", "status": "canceled", "metadata": { "tenantId": "emp-a" } } } }

@@ -88,3 +88,28 @@ describe("dado da empresa isolado por empresa (Etapa 3)", () => {
 // O lote auditado escreve na raiz (modo atual). No modo empresa ele escreve em
 // tenants/{t}/…; o caminho é trocado pela camada de dados — ver lib/firebase/caminhos.ts.
 void criarMovimentoAuditado;
+
+describe("S25 — empresa bloqueada (assinatura vencida/cancelada) só lê", () => {
+  const bloquear = () => env.withSecurityRulesDisabled(async (c) => {
+    await setDoc(doc(c.firestore(), "tenants/a"), { name: "A", bloqueio: { motivo: "cancelada", desde: 1 } });
+  });
+
+  it("o dono continua LENDO tudo (nada some), mas não grava mais", async () => {
+    await bloquear();
+    await assertSucceeds(getDoc(doc(ctx(DONO_A), "tenants/a/estoque/p1")));
+    await assertSucceeds(getDoc(doc(ctx(DONO_A), "tenants/a/custos/c1")));
+    await assertFails(setDoc(doc(ctx(DONO_A), "tenants/a/estoque/p3"), { name: "Nova", custo: "5" }));
+    await assertFails(setDoc(doc(ctx(PARCEIRO_A), "tenants/a/estoque/p2"), { name: "Nova", custo: "5" }));
+  });
+
+  it("o bloqueio de uma empresa não trava a outra", async () => {
+    await bloquear();
+    await assertSucceeds(setDoc(doc(ctx(DONO_B), "tenants/b/estoque/p9"), { name: "B nova", custo: "7" }));
+  });
+
+  it("desbloqueada (pagou), volta a gravar", async () => {
+    await bloquear();
+    await env.withSecurityRulesDisabled(async (c) => { await setDoc(doc(c.firestore(), "tenants/a"), { name: "A" }); });
+    await assertSucceeds(setDoc(doc(ctx(DONO_A), "tenants/a/estoque/p3"), { name: "Nova", custo: "5" }));
+  });
+});

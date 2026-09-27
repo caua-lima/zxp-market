@@ -54,6 +54,13 @@ export const OPCIONAIS = [
   "GITHUB_TOKEN",
   "GITHUB_REPO",
   "GITHUB_BRANCH",
+  // Cobrança (S25) — sem as duas primeiras, a cobrança fica desligada.
+  "STRIPE_SECRET_KEY",
+  "STRIPE_WEBHOOK_SECRET",
+  "STRIPE_PRICE_ESSENCIAL",
+  "STRIPE_PRICE_PROFISSIONAL",
+  "ZXP_COBRANCA_LIVE",
+  "APP_URL",
 ] as const;
 
 const vazio = (v: string | undefined) => v === undefined || v.trim() === "";
@@ -111,6 +118,29 @@ export function conferirAmbiente(env: Ambiente, opcoes: { producao: boolean }): 
   }
 
   if (vazio(env.NEXT_PUBLIC_FIREBASE_VAPID_KEY)) avisos.push("NEXT_PUBLIC_FIREBASE_VAPID_KEY ausente: push desligado");
+
+  // Cobrança (S25).
+  const chaveStripe = env.STRIPE_SECRET_KEY?.trim() ?? "";
+  if (chaveStripe && vazio(env.STRIPE_WEBHOOK_SECRET)) erros.push("STRIPE_SECRET_KEY sem STRIPE_WEBHOOK_SECRET: a cobrança fica desligada");
+  if (!chaveStripe && !vazio(env.STRIPE_WEBHOOK_SECRET)) erros.push("STRIPE_WEBHOOK_SECRET sem STRIPE_SECRET_KEY: a cobrança fica desligada");
+  if (chaveStripe && !/^(sk|rk)_(test|live)_/.test(chaveStripe)) erros.push("STRIPE_SECRET_KEY não parece uma chave secreta do Stripe (sk_test_…)");
+  if (chaveStripe.startsWith("sk_live_") && env.ZXP_COBRANCA_LIVE !== "autorizado") {
+    erros.push("STRIPE_SECRET_KEY é de PRODUÇÃO (sk_live_) sem ZXP_COBRANCA_LIVE=autorizado: a cobrança fica desligada");
+  }
+  if (!vazio(env.STRIPE_WEBHOOK_SECRET) && !env.STRIPE_WEBHOOK_SECRET!.trim().startsWith("whsec_")) erros.push("STRIPE_WEBHOOK_SECRET não parece um segredo de webhook (whsec_…)");
+  if (chaveStripe) {
+    for (const p of ["STRIPE_PRICE_ESSENCIAL", "STRIPE_PRICE_PROFISSIONAL"]) {
+      const v = env[p]?.trim();
+      if (v && !v.startsWith("price_")) erros.push(`${p} não parece um ID de preço do Stripe (price_…)`);
+    }
+    if (vazio(env.STRIPE_PRICE_ESSENCIAL) && vazio(env.STRIPE_PRICE_PROFISSIONAL)) avisos.push("cobrança ligada sem nenhum STRIPE_PRICE_*: nenhum plano aparece pra assinar");
+    if (opcoes.producao && vazio(env.APP_URL)) erros.push("APP_URL ausente: o checkout e o portal não sabem pra onde voltar");
+    if (modo !== "tenant") avisos.push("cobrança configurada no modo raiz: só vale no modo empresa");
+  }
+  if (!vazio(env.APP_URL)) {
+    try { if (opcoes.producao && new URL(env.APP_URL!).protocol !== "https:") erros.push("APP_URL precisa ser https em produção"); }
+    catch { erros.push("APP_URL não é uma URL"); }
+  }
 
   return { erros, avisos };
 }

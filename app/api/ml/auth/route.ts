@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireAccess } from "@/lib/api-auth";
 import { criarTransacao, limparVencidas } from "@/lib/ml/oauth-transacao";
+import { getAdminDb } from "@/lib/firebase/admin";
+import { lerDireitos } from "@/lib/billing/empresa";
+import { podeConectarConta } from "@/lib/domain/assinatura";
 
 /**
  * Início do vínculo com o Mercado Livre — agora autorizado pelo servidor.
@@ -19,6 +22,17 @@ import { criarTransacao, limparVencidas } from "@/lib/ml/oauth-transacao";
 export async function POST(req: Request) {
   const gate = await requireAccess(req, { capacidade: "administrar" });
   if (gate instanceof NextResponse) return gate;
+
+  // Limite do plano (S25). Reconectar a conta principal (`connections/main`)
+  // não conta como conta nova; empresa bloqueada não conecta.
+  if (gate.tenantId) {
+    const db = getAdminDb();
+    const { direitos } = await lerDireitos(db, gate.tenantId);
+    const outras = (await db.collection(`tenants/${gate.tenantId}/connections`).listDocuments()).filter((c) => c.id !== "main").length;
+    if (!podeConectarConta(direitos, outras)) {
+      return NextResponse.json({ error: direitos.bloqueada ? "empresa_bloqueada" : "limite_do_plano", estado: direitos.estado }, { status: 402 });
+    }
+  }
 
   try {
     // Manutenção barata, no único momento em que a coleção cresce.

@@ -13,6 +13,10 @@ import { registrarExecucaoDoCron } from "@/lib/cron-heartbeat";
 import { varrerEntregasPendentes } from "@/lib/notification-dispatch";
 import { podarInbox, varrerInbox } from "@/lib/ml/webhook-inbox";
 import { porEmpresa } from "@/lib/empresas";
+import { getAdminDb } from "@/lib/firebase/admin";
+import { tenantAtual } from "@/lib/firebase/contexto-tenant";
+import { configDeCobranca } from "@/lib/billing/provedor";
+import { reconciliarEmpresa } from "@/lib/billing/sincronizar";
 
 export const maxDuration = 60;
 
@@ -44,6 +48,24 @@ async function getDaEmpresa(req: Request) {
      */
     log.error("cron", { mensagem: `chamada recusada: ${recusa}` });
     return NextResponse.json({ error: "unauthorized", motivo: recusa }, { status: 401 });
+  }
+
+  /**
+   * S25 — antes de tudo, a assinatura da empresa: busca no Stripe (pega o que
+   * um webhook perdido não trouxe) ou aplica o relógio (trial que venceu,
+   * carência que acabou). Empresa bloqueada para aqui: o dado dela fica como
+   * está, sem gastar cota do ML nem mandar aviso.
+   */
+  const empresa = tenantAtual();
+  if (empresa) {
+    const cobranca = configDeCobranca();
+    try {
+      await reconciliarEmpresa(getAdminDb(), cobranca.ligada ? cobranca.provedor : null, empresa, { agora: Date.now(), env: process.env });
+    } catch (err) {
+      log.error("cobranca", { mensagem: "reconciliação da assinatura falhou", erro: err });
+    }
+    const bloqueio = (await getAdminDb().doc(`tenants/${empresa}`).get()).data()?.bloqueio as { motivo?: string } | undefined;
+    if (bloqueio) return NextResponse.json({ ok: true, bloqueada: bloqueio.motivo ?? true });
   }
 
   try {
@@ -276,4 +298,5 @@ async function getDaEmpresa(req: Request) {
 }
 
 // Uma vez por empresa quando é o agendador no modo empresa (segundo cliente) — ver lib/empresas.ts.
-export const GET = porEmpresa(getDaEmpresa);
+// Inclui as bloqueadas: é aqui que a assinatura delas é reconciliada (e desbloqueada, se pagou).
+export const GET = porEmpresa(getDaEmpresa, { incluirBloqueadas: true });

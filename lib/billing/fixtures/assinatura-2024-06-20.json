@@ -1,0 +1,12 @@
+{
+  "id": "sub_teste_1",
+  "object": "subscription",
+  "customer": "cus_teste_1",
+  "status": "active",
+  "cancel_at_period_end": false,
+  "canceled_at": null,
+  "current_period_end": 1790000000,
+  "trial_end": null,
+  "metadata": { "tenantId": "emp-a" },
+  "items": { "object": "list", "data": [{ "id": "si_teste_1", "object": "subscription_item", "price": { "id": "price_teste_essencial", "object": "price" } }] }
+}

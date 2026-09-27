@@ -1,0 +1,2 @@
+{ "id": "evt_teste_fatura_1", "object": "event", "type": "invoice.payment_failed", "created": 1789000100,
+  "data": { "object": { "id": "in_teste_1", "object": "invoice", "subscription": "sub_teste_1", "customer": "cus_teste_1" } } }

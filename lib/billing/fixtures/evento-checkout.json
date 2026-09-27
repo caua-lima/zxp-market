@@ -1,0 +1,2 @@
+{ "id": "evt_teste_checkout", "object": "event", "type": "checkout.session.completed", "created": 1789000000,
+  "data": { "object": { "id": "cs_teste_1", "object": "checkout.session", "mode": "subscription", "client_reference_id": "emp-a", "subscription": "sub_teste_1", "customer": "cus_teste_1", "metadata": { "tenantId": "emp-a" } } } }

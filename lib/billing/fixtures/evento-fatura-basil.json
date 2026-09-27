@@ -1,0 +1,3 @@
+{ "id": "evt_teste_fatura_2", "object": "event", "type": "invoice.paid", "created": 1789000200,
+  "data": { "object": { "id": "in_teste_2", "object": "invoice", "customer": "cus_teste_2",
+    "parent": { "type": "subscription_details", "subscription_details": { "subscription": "sub_teste_2", "metadata": { "tenantId": "emp-b" } } } } } }

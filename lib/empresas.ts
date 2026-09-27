@@ -1,5 +1,5 @@
-import { log } from "@/lib/log";
 import "server-only";
+import { log } from "@/lib/log";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { motivoRecusaDoCron } from "@/lib/api-auth";
 import { lerModoDeDados } from "@/lib/firebase/caminhos";
@@ -18,18 +18,23 @@ import { empresaDaRequisicao } from "@/lib/firebase/db-de-dados";
  * empresas em paralelo dividiriam cota da API do ML e do Firestore sem aviso.
  * Com muitas empresas, o próximo passo é uma fila por empresa.
  */
-export async function listarEmpresas(): Promise<string[]> {
+export async function listarEmpresas(opcoes: { incluirBloqueadas?: boolean } = {}): Promise<string[]> {
   if (lerModoDeDados() === "raiz") return [];
-  const refs = await getAdminDb().collection("tenants").listDocuments();
-  return refs.map((r) => r.id).sort();
+  const db = getAdminDb();
+  const refs = await db.collection("tenants").listDocuments();
+  if (opcoes.incluirBloqueadas || refs.length === 0) return refs.map((r) => r.id).sort();
+  // Empresa bloqueada (assinatura vencida/cancelada — S25): o dado fica congelado
+  // como estava, e as rotinas param de gastar cota do ML e de mandar aviso por ela.
+  const docs = await db.getAll(...refs);
+  return docs.filter((d) => !d.data()?.bloqueio).map((d) => d.id).sort();
 }
 
 export type ResultadoDaEmpresa<T> = { tenantId: string | null; resultado?: T; erro?: string };
 
-export async function paraCadaEmpresa<T>(fn: () => Promise<T>): Promise<ResultadoDaEmpresa<T>[]> {
+export async function paraCadaEmpresa<T>(fn: () => Promise<T>, opcoes: { incluirBloqueadas?: boolean } = {}): Promise<ResultadoDaEmpresa<T>[]> {
   if (lerModoDeDados() === "raiz") return [{ tenantId: null, resultado: await fn() }];
   const saida: ResultadoDaEmpresa<T>[] = [];
-  for (const tenantId of await listarEmpresas()) {
+  for (const tenantId of await listarEmpresas(opcoes)) {
     try {
       saida.push({ tenantId, resultado: await comTenant(tenantId, fn) });
     } catch (err) {
@@ -56,13 +61,16 @@ export function cabecalhoDaEmpresaAtual(): Record<string, string> {
  * modo raiz, ou um usuário logado disparando à mão — roda o handler direto
  * (o usuário já entra na empresa dele pelo gate).
  */
-export function porEmpresa(handler: (req: Request) => Promise<Response>): (req: Request) => Promise<Response> {
+export function porEmpresa(
+  handler: (req: Request) => Promise<Response>,
+  opcoes: { incluirBloqueadas?: boolean } = {},
+): (req: Request) => Promise<Response> {
   return async (req: Request) => {
     if (lerModoDeDados() === "raiz" || motivoRecusaDoCron(req) !== null) return handler(req);
     const resultados = await paraCadaEmpresa(async () => {
       const r = await handler(req.clone());
       return { status: r.status, corpo: (await r.json().catch(() => null)) as unknown };
-    });
+    }, opcoes);
     const ok = resultados.every((x) => !x.erro && (x.resultado?.status ?? 500) < 400);
     return Response.json({ ok, empresas: resultados }, { status: ok ? 200 : 207 });
   };

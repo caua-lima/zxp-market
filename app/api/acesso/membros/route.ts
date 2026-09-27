@@ -3,6 +3,8 @@ import { requireAccess } from "@/lib/api-auth";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { lerModoDeDados } from "@/lib/firebase/caminhos";
 import { papelDe, type PermissionTab } from "@/lib/domain/types";
+import { lerDireitos } from "@/lib/billing/empresa";
+import { podeAdicionarMembro } from "@/lib/domain/assinatura";
 
 /**
  * O time DA EMPRESA de quem chama (segundo cliente, modo empresa).
@@ -50,6 +52,18 @@ export async function POST(req: Request) {
   const ponteiro = await db.doc(`memberships/${email}`).get();
   const outra = ponteiro.data()?.tenantId;
   if (outra && outra !== t) return NextResponse.json({ error: "pessoa_em_outra_empresa" }, { status: 409 });
+
+  // Limite do plano (S25), só pra pessoa NOVA — editar quem já está não conta.
+  // Plano rebaixado com gente acima do limite: ninguém é removido, só não entra mais ninguém.
+  if (!(await db.doc(`tenants/${t}/members/${email}`).get()).exists) {
+    const { direitos, membros } = await lerDireitos(db, t);
+    if (!podeAdicionarMembro(direitos, membros)) {
+      return NextResponse.json(
+        { error: direitos.bloqueada ? "empresa_bloqueada" : "limite_do_plano", limite: direitos.membros, atuais: membros, estado: direitos.estado },
+        { status: 402 },
+      );
+    }
+  }
 
   const lote = db.batch();
   lote.set(db.doc(`tenants/${t}/members/${email}`), {

@@ -108,12 +108,34 @@ const AJUDANTES_T = `
       }
       function podeEditarT(tab) {
         return isOwnerT() || (veOperacaoT() && tab in requesterDocT().data.get('permissoesEdicao', []));
+      }
+      function escritaLiberadaT() {
+        return get(/databases/$(database)/documents/tenants/$(tenantId)).data.get('bloqueio', null) == null;
       }`;
+
+const OPERACOES_DE_ESCRITA = new Set(["write", "create", "update", "delete"]);
+
+/**
+ * S25 — empresa bloqueada (assinatura vencida/cancelada) só LÊ. Toda permissão
+ * de escrita do dado da empresa ganha `escritaLiberadaT() && (...)`; a leitura
+ * fica como estava — nada some, e exportar continua possível. `allow read, write`
+ * é separado em dois pra a trava não pegar a leitura.
+ */
+export function travarEscritas(trecho: string): string {
+  return trecho.replace(/allow ([a-z, ]+):\s*if ([\s\S]*?);/g, (inteiro, ops: string, cond: string) => {
+    const lista = ops.split(",").map((o) => o.trim());
+    const escrita = lista.filter((o) => OPERACOES_DE_ESCRITA.has(o));
+    if (escrita.length === 0) return inteiro;
+    const leitura = lista.filter((o) => !OPERACOES_DE_ESCRITA.has(o));
+    const travada = `allow ${escrita.join(", ")}: if escritaLiberadaT() && (${cond.trim()});`;
+    return leitura.length ? `allow ${leitura.join(", ")}: if ${cond.trim()}; ${travada}` : travada;
+  });
+}
 
 /** A seção gerada, entre os marcadores. */
 export function gerarSecaoDoTenant(regras: string): string {
   const funcoes = FUNCOES_COPIADAS.map((f) => traduzir(extrairBloco(regras, `function ${f}(`)));
-  const blocos = BLOCOS_DO_TENANT.map((b) => traduzir(extrairBloco(regras, `match ${b} {`)));
+  const blocos = BLOCOS_DO_TENANT.map((b) => travarEscritas(traduzir(extrairBloco(regras, `match ${b} {`))));
   return [
     `      ${INICIO}`,
     "      // Autorização por membro da empresa (tenants/{tenantId}/members/{email}), não pela lista legada de acesso.",

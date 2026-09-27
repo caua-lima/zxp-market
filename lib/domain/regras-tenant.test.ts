@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { describe, expect, it } from "vitest";
-import { BLOCOS_DO_TENANT, FIM, INICIO, aplicarSecaoDoTenant } from "./regras-tenant";
+import { BLOCOS_DO_TENANT, FIM, INICIO, aplicarSecaoDoTenant, travarEscritas } from "./regras-tenant";
 import { DESTINOS } from "./migracao-dados";
 
 const regras = fs.readFileSync("firestore.rules", "utf8");
@@ -34,5 +34,30 @@ describe("regras do tenant geradas da raiz (Etapa 3)", () => {
       .map(([c]) => c);
     const cobertas = BLOCOS_DO_TENANT.map((b) => b.split("/")[1]);
     for (const c of comRegraNaRaiz) expect(cobertas).toContain(c);
+  });
+});
+
+describe("S25 — trava de escrita da empresa bloqueada", () => {
+  it("toda escrita ganha a trava; leitura não; `read, write` vira dois", () => {
+    const entrada = [
+      "allow read: if veOperacaoT();",
+      "allow write: if podeEditarT('estoque')\n  && produtoValido(request.resource.data);",
+      "allow read, write: if isOwnerT();",
+      "allow create, delete: if false;",
+    ].join("\n");
+    expect(travarEscritas(entrada)).toBe([
+      "allow read: if veOperacaoT();",
+      "allow write: if escritaLiberadaT() && (podeEditarT('estoque')\n  && produtoValido(request.resource.data));",
+      "allow read: if isOwnerT(); allow write: if escritaLiberadaT() && (isOwnerT());",
+      "allow create, delete: if escritaLiberadaT() && (false);",
+    ].join("\n"));
+  });
+
+  it("nas regras geradas, nenhuma escrita do dado da empresa escapa da trava", () => {
+    const regras = fs.readFileSync("firestore.rules", "utf8").replace(/\r\n/g, "\n");
+    const secao = regras.slice(regras.indexOf(INICIO), regras.indexOf(FIM));
+    const escritas = [...secao.matchAll(/allow ([a-z, ]+):\s*if ([^;]*);/g)].filter(([, ops]) => /write|create|update|delete/.test(ops));
+    expect(escritas.length).toBeGreaterThan(20);
+    for (const [linha, , cond] of escritas) expect(cond.startsWith("escritaLiberadaT() && ("), linha).toBe(true);
   });
 });

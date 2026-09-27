@@ -77,6 +77,7 @@ export const DESTINOS: Readonly<Record<string, DecisaoDeColecao>> = {
   controleAcessoMeta: { destino: "global", motivo: "trava do bootstrap legado" },
   tenants: { destino: "global", motivo: "é o próprio destino" },
   memberships: { destino: "global", motivo: "ponteiro pessoa → tenant" },
+  billing_eventos: { destino: "global", motivo: "eventos do Stripe já recebidos (idempotência do webhook de cobrança, S25)" },
   vendedores: { destino: "global", motivo: "índice vendedor do ML → empresa (roteia o webhook, impede a mesma conta em duas empresas)" },
   // ── conexão ──
   ml_tokens: { destino: "conexao", motivo: "tokens do ML viram a conexão do tenant" },

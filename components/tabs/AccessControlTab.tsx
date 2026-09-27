@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { papelDe, roleLabel, type AccessEntry, type AuditEvent, type PermissionTab } from "@/lib/domain/types";
 import MudancasPanel from "@/components/tabs/acesso/MudancasPanel";
 import ManutencaoPanel from "@/components/tabs/acesso/ManutencaoPanel";
+import PlanoPanel from "@/components/tabs/acesso/PlanoPanel";
 import {
   addAccessEntry,
   logAudit,
@@ -294,6 +295,9 @@ export default function AccessControlTab({
           }] : [],
         })}
       />
+
+      {/* Modo empresa: o plano e a assinatura (S25). No modo raiz não renderiza. */}
+      <PlanoPanel />
 
       <div className="kpi-grid">
         <div className="kpi k-acc"><div className="k-lbl">Acessos</div><div className="k-val">{entries.length}</div></div>

@@ -1,0 +1,11 @@
+{
+  "id": "sub_teste_2",
+  "object": "subscription",
+  "customer": { "id": "cus_teste_2", "object": "customer" },
+  "status": "past_due",
+  "cancel_at_period_end": true,
+  "canceled_at": null,
+  "trial_end": null,
+  "metadata": { "tenantId": "emp-b" },
+  "items": { "object": "list", "data": [{ "id": "si_teste_2", "object": "subscription_item", "current_period_end": 1791000000, "price": { "id": "price_teste_profissional", "object": "price" } }] }
+}
