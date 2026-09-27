@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getMlAccessToken } from "../token";
 import { requireAccess } from "@/lib/api-auth";
+import { sellerIdAtual } from "@/lib/ml/vendedor";
 
-const SELLER_ID = process.env.ML_SELLER_ID || "2420261535";
 
 interface MlOrdersResponse {
   results: Record<string, unknown>[];
@@ -36,7 +36,7 @@ export async function GET(req: Request) {
 
     while (true) {
       const url =
-        `https://api.mercadolibre.com/orders/search?seller=${SELLER_ID}` +
+        `https://api.mercadolibre.com/orders/search?seller=${await sellerIdAtual()}` +
         `&order.date_created.from=${encodeURIComponent(from)}` +
         `&order.date_created.to=${encodeURIComponent(to)}` +
         `&limit=${limit}&offset=${offset}`;

@@ -4,9 +4,9 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
 import { getMlAccessToken } from "../token";
 import { readShippingCosts } from "@/lib/ml/orders";
+import { sellerIdAtual } from "@/lib/ml/vendedor";
 
 const ML_API = "https://api.mercadolibre.com";
-const SELLER_ID = process.env.ML_SELLER_ID || "2420261535";
 
 export const maxDuration = 30;
 
@@ -97,7 +97,7 @@ export async function GET(req: Request) {
     let offset = 0;
     while (true) {
       const u =
-        `${ML_API}/orders/search?seller=${SELLER_ID}` +
+        `${ML_API}/orders/search?seller=${await sellerIdAtual()}` +
         `&order.date_created.from=${encodeURIComponent(fromISO)}` +
         `&order.date_created.to=${encodeURIComponent(toISO)}` +
         `&limit=50&offset=${offset}`;

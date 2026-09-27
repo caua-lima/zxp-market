@@ -76,6 +76,7 @@ export const DESTINOS: Readonly<Record<string, DecisaoDeColecao>> = {
   controleAcessoMeta: { destino: "global", motivo: "trava do bootstrap legado" },
   tenants: { destino: "global", motivo: "é o próprio destino" },
   memberships: { destino: "global", motivo: "ponteiro pessoa → tenant" },
+  vendedores: { destino: "global", motivo: "índice vendedor do ML → empresa (roteia o webhook, impede a mesma conta em duas empresas)" },
   // ── conexão ──
   ml_tokens: { destino: "conexao", motivo: "tokens do ML viram a conexão do tenant" },
   // ── não copia ──
@@ -187,6 +188,9 @@ export async function migrarDados(
     if (token.exists && opcoes.aplicar) {
       await db.doc(caminhoNoTenant(opcoes.tenantId, "connections/main")).set(token.data() ?? {});
       conta.gravados = 1;
+      // O índice que roteia as notificações do ML pra esta empresa.
+      const vendedor = String(token.data()?.user_id ?? "").trim();
+      if (vendedor) await db.doc(`vendedores/${vendedor}`).set({ tenantId: opcoes.tenantId, connectionId: "main" });
     }
     resultados.push(conta);
     log(`${conta.colecao}: ${conta.lidos} lido(s)${opcoes.aplicar ? `, ${conta.gravados} gravado(s)` : ""}`);

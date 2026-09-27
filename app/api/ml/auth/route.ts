@@ -23,7 +23,7 @@ export async function POST(req: Request) {
   try {
     // Manutenção barata, no único momento em que a coleção cresce.
     await limparVencidas();
-    const { url } = await criarTransacao(gate.email);
+    const { url } = await criarTransacao(gate.email, gate.tenantId ?? null);
     return NextResponse.json({ url });
   } catch (err) {
     return NextResponse.json(

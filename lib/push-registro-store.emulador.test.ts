@@ -101,12 +101,15 @@ describe("vincularToken", () => {
       expect(comEsseToken, `rodada ${rodada}`).toHaveLength(1);
       await Promise.all((await db.collection("pushTokens").get()).docs.map((d) => d.ref.delete()));
     }
-  });
+    // Tempo proporcional: transações disputando o MESMO documento se enfileiram
+    // no emulador — isolado leva ~20 s, e na suíte inteira passava dos 30 s do
+    // padrão e derrubava o teste seguinte em cascata.
+  }, 90_000);
 
   it("CONCORRÊNCIA: 20 vínculos simultâneos da mesma instalação não duplicam", async () => {
     await Promise.all(Array.from({ length: 20 }, () => vincularToken(db, "a@zxp.com", { token: TOKEN_A, deviceId: DEV_1 }, "")));
     expect(await todos()).toHaveLength(1);
-  });
+  }, 90_000);
 });
 
 describe("desvincular", () => {

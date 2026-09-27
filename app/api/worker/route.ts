@@ -3,8 +3,7 @@ import { motivoRecusaDoCron } from "@/lib/api-auth";
 import { registrarExecucaoDoCron } from "@/lib/cron-heartbeat";
 import { varrerInbox } from "@/lib/ml/webhook-inbox";
 import { varrerEntregasPendentes } from "@/lib/notification-dispatch";
-import { getAdminDb } from "@/lib/firebase/admin";
-import { sincronizarMembros } from "@/lib/tenant-membros";
+import { porEmpresa } from "@/lib/empresas";
 
 export const maxDuration = 60;
 
@@ -52,17 +51,9 @@ async function tratar(req: Request) {
     return null;
   });
 
-  // Etapa 3: com a chave em modo tenant, quem entra ou sai de controleAcesso
-  // entra ou sai da empresa — rede de segurança da chamada que a tela de Acesso faz.
-  const membros = await sincronizarMembros(getAdminDb()).catch((err) => {
-    console.error("[worker] sincronizar membros falhou", err);
-    return null;
-  });
-
   const resumo = {
     inbox,
     entregas,
-    membros,
     duracaoMs: Date.now() - inicio,
   };
   await registrarExecucaoDoCron(resumo, "worker");
@@ -73,5 +64,6 @@ async function tratar(req: Request) {
   return NextResponse.json({ ok: inbox !== null && entregas !== null, ...resumo });
 }
 
-export const GET = tratar;
-export const POST = tratar;
+// Uma vez por empresa quando é o agendador no modo empresa (segundo cliente).
+export const GET = porEmpresa(tratar);
+export const POST = porEmpresa(tratar);

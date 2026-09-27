@@ -3,8 +3,8 @@ import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
 import { getMlAccessToken } from "../token";
-import { SELLER_ID } from "@/lib/ml/orders";
 import { consolidarEstoqueAnuncios } from "@/lib/domain/estoque";
+import { sellerIdAtual } from "@/lib/ml/vendedor";
 
 const ML_API = "https://api.mercadolibre.com";
 
@@ -88,7 +88,7 @@ export async function GET(req: Request) {
      */
     const ids = new Set<string>(cadastrados);
     for (let offset = 0; offset < 1000; offset += 100) {
-      const res = await fetchML(`${ML_API}/users/${SELLER_ID}/items/search?limit=100&offset=${offset}`, { headers, cache: "no-store" });
+      const res = await fetchML(`${ML_API}/users/${await sellerIdAtual()}/items/search?limit=100&offset=${offset}`, { headers, cache: "no-store" });
       if (!res.ok) break;
       const j = (await res.json()) as { results?: string[] };
       const lote = j.results ?? [];
@@ -310,7 +310,7 @@ export async function GET(req: Request) {
         let novasNaVolta = 0;
         try {
           const path =
-            `/stock/fulfillment/operations/search?seller_id=${SELLER_ID}` +
+            `/stock/fulfillment/operations/search?seller_id=${await sellerIdAtual()}` +
             `&inventory_id=${chunk.join(",")}&type=${tipoBusca}` +
             `&date_from=${from}&date_to=${to}&limit=${LIMITE}` +
             (scroll ? `&scroll=${encodeURIComponent(scroll)}` : "");

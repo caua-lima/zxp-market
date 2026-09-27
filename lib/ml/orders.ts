@@ -1,8 +1,8 @@
 import "server-only";
 import { fetchML } from "./fetch-ml";
+import { sellerIdAtual } from "@/lib/ml/vendedor";
 
 export const ML_API = "https://api.mercadolibre.com";
-export const SELLER_ID = process.env.ML_SELLER_ID || "2420261535";
 
 export type OrderItemDoc = {
   sku?: string;
@@ -61,7 +61,7 @@ export async function fetchOrdersLive(
     let offset = 0;
     while (true) {
       const url =
-        `${ML_API}/orders/search?seller=${SELLER_ID}` +
+        `${ML_API}/orders/search?seller=${await sellerIdAtual()}` +
         `&order.date_created.from=${encodeURIComponent(fromISO)}` +
         `&order.date_created.to=${encodeURIComponent(toISO)}` +
         `&limit=50&offset=${offset}`;

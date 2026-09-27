@@ -9,12 +9,11 @@ import { comCaminhosDeDados } from "@/lib/firebase/db-de-dados";
 import { gravarPedidos } from "@/lib/ml/gravar-pedido";
 import { estadoDoPedido } from "@/lib/domain/estado-do-pedido";
 import { criarMovimentoAuditado } from "@/lib/firebase/movimento-auditado";
-import { sincronizarMembros } from "@/lib/tenant-membros";
 
 /**
  * A VIRADA (Etapa 3) contra o emulador REAL: com a chave em modo tenant, o
- * servidor, o cliente e as regras usam tenants/{id}/… — e a lista de membros
- * acompanha controleAcesso. Com a chave desligada, tudo continua na raiz.
+ * servidor, o cliente e as regras usam tenants/{id}/…. Com a chave desligada,
+ * tudo continua na raiz. O time da empresa: app/api/acesso/membros (teste próprio).
  */
 
 const PROJETO = "zxp-teste-virada";
@@ -84,23 +83,5 @@ describe("cliente com a chave ligada, sob as regras da empresa", () => {
     await admin.doc("tenants/vazxpress/estoque/p1").set({ name: "x", custo: "1" });
     const estranho = env.authenticatedContext("e", { email: "estranho@z.com" }).firestore() as unknown as Firestore;
     await assertFails(getDoc(doc(estranho, "tenants/vazxpress/estoque/p1")));
-  });
-});
-
-describe("membros acompanham controleAcesso", () => {
-  it("convidado entra na empresa; removido sai — senão continuaria lendo pelas regras", async () => {
-    await admin.doc("controleAcesso/novo@z.com").set({ email: "novo@z.com", role: "colaborador", permissoesEdicao: ["estoque"] });
-    await admin.doc("tenants/vazxpress/members/ex@z.com").set({ email: "ex@z.com", role: "partner" });
-    const r = await sincronizarMembros(admin, T);
-    expect(r).toMatchObject({ ativo: true, gravados: 1, removidos: 1 });
-    expect((await admin.doc("tenants/vazxpress/members/novo@z.com").get()).data()).toMatchObject({ role: "partner", permissoesEdicao: ["estoque"] });
-    expect((await admin.doc("memberships/novo@z.com").get()).data()).toMatchObject({ tenantId: "vazxpress" });
-    expect((await admin.doc("tenants/vazxpress/members/ex@z.com").get()).exists).toBe(false);
-  });
-
-  it("chave desligada: não mexe em nada", async () => {
-    await admin.doc("controleAcesso/novo@z.com").set({ email: "novo@z.com", role: "colaborador" });
-    expect(await sincronizarMembros(admin, { modo: "raiz" })).toEqual({ ativo: false });
-    expect((await admin.doc("tenants/vazxpress/members/novo@z.com").get()).exists).toBe(false);
   });
 });

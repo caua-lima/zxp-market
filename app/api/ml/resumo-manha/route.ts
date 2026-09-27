@@ -4,6 +4,8 @@ import { chaveDoResumo, montarResumoManha } from "@/lib/domain/resumo-manha";
 import { hojeBR } from "@/lib/marcos-gatilho";
 import { lerNivelMercadoLider } from "@/lib/marcos-run";
 import { notificarMarco } from "@/lib/ml/notificar-venda";
+import { cabecalhoDaEmpresaAtual } from "@/lib/empresas";
+import { porEmpresa } from "@/lib/empresas";
 
 export const maxDuration = 60;
 
@@ -23,7 +25,7 @@ export const maxDuration = 60;
  * cálculo — em resumo: incluir o dia corrente faria a média despencar toda
  * manhã e subir toda tarde sem nada ter acontecido.
  */
-export async function GET(req: Request) {
+async function getDaEmpresa(req: Request) {
   const gate = await requireAccess(req, { allowCron: true, capacidade: "administrar" });
   if (gate instanceof NextResponse) return gate;
 
@@ -35,7 +37,7 @@ export async function GET(req: Request) {
   let serie: { dia: string; valor: number }[] = [];
   try {
     const r = await fetch(`${origem}/api/ml/metrics?month=${mes}`, {
-      headers: auth ? { Authorization: auth } : {},
+      headers: { ...(auth ? { Authorization: auth } : {}), ...cabecalhoDaEmpresaAtual() },
       cache: "no-store",
     });
     if (!r.ok) {
@@ -81,3 +83,6 @@ export async function GET(req: Request) {
     nivelML: nivel,
   });
 }
+
+// Uma vez por empresa quando é o agendador no modo empresa (segundo cliente) — ver lib/empresas.ts.
+export const GET = porEmpresa(getDaEmpresa);

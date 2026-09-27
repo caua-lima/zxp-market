@@ -5,8 +5,10 @@ import type { User } from "firebase/auth";
 import { useAuth } from "@/lib/firebase/auth-context";
 import {
   bootstrapAccessOwner,
+  carregarEmpresaDaSessao,
   checkAccess,
   getAccessBootstrap,
+  modoEmpresaAtivo,
 } from "@/lib/firebase/data";
 import { papelDe, podeVerAba, type AccessEntry, type Papel, type PermissionTab } from "@/lib/domain/types";
 
@@ -133,7 +135,25 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        const bootstrap = await getAccessBootstrap();
+        /**
+         * Modo empresa (segundo cliente): primeiro descobre a EMPRESA de quem
+         * logou (o servidor sabe; o navegador não lê memberships). Sem empresa,
+         * sem acesso. O "bootstrap" do primeiro dono é do modelo de empresa
+         * única — empresa nova nasce pelo script de criação, com dono.
+         */
+        const modoEmpresa = modoEmpresaAtivo();
+        if (modoEmpresa) {
+          const empresa = await carregarEmpresaDaSessao();
+          if (cancelled) return;
+          if (!empresa) {
+            setAccess((prev) =>
+              prev && prev.email === email && prev.granted === false ? prev : { email, granted: false, entry: null },
+            );
+            return;
+          }
+        }
+
+        const bootstrap = modoEmpresa ? { ownerEmail: "" } : await getAccessBootstrap();
         if (cancelled) return;
 
         if (!bootstrap) {

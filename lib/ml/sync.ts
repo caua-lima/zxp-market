@@ -12,10 +12,10 @@ import {
 import { MAX_AVISOS_POR_SYNC, instanteDaConfirmacao } from "@/lib/domain/confirmacao-de-venda";
 import { estadoDoPedido, mapOrderItems } from "@/lib/domain/estado-do-pedido";
 import { gravarPedidos } from "@/lib/ml/gravar-pedido";
+import { sellerIdAtual } from "@/lib/ml/vendedor";
 
 const ML_API = "https://api.mercadolibre.com";
 const MP_API = "https://api.mercadopago.com";
-const SELLER_ID = process.env.ML_SELLER_ID || "2420261535";
 
 export type SyncRange = { from: string; to: string };
 
@@ -311,7 +311,7 @@ async function fetchAllOrders(
 
   while (true) {
     const url =
-      `${ML_API}/orders/search?seller=${SELLER_ID}` +
+      `${ML_API}/orders/search?seller=${await sellerIdAtual()}` +
       `&order.date_created.from=${encodeURIComponent(range.from)}` +
       `&order.date_created.to=${encodeURIComponent(range.to)}` +
       `${extraQuery}&limit=${limit}&offset=${offset}`;

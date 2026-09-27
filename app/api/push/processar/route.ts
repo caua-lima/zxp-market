@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { motivoRecusaDoCron, requireAccess } from "@/lib/api-auth";
 import { varrerEntregasPendentes } from "@/lib/notification-dispatch";
+import { porEmpresa } from "@/lib/empresas";
 
 export const maxDuration = 60;
 
@@ -26,5 +27,6 @@ async function tratar(req: Request) {
   return NextResponse.json({ ok: true, ...resultado });
 }
 
-export const GET = tratar;
-export const POST = tratar;
+// Uma vez por empresa quando é o agendador no modo empresa (segundo cliente).
+export const GET = porEmpresa(tratar);
+export const POST = porEmpresa(tratar);

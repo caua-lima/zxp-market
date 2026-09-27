@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireAccess } from "@/lib/api-auth";
 import { getMlAccessToken } from "../token";
+import { sellerIdAtual } from "@/lib/ml/vendedor";
 
 const ML_API = "https://api.mercadolibre.com";
-const SELLER_ID = process.env.ML_SELLER_ID || "2420261535";
 
 /** Testa vários endpoints candidatos de inbound do Full e mostra qual responde. */
 export async function GET(req: Request) {
@@ -16,15 +16,15 @@ export async function GET(req: Request) {
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/json", "Api-Version": "1" };
 
     const candidatos = [
-      `/inbound/shipments/search?seller_id=${SELLER_ID}&limit=3`,
-      `/inbound/shipments/search?seller_id=${SELLER_ID}&site_id=MLB&limit=3`,
-      `/fbm/inbound/shipments/search?seller_id=${SELLER_ID}&limit=3`,
-      `/stock/fulfillment/operations/search?seller_id=${SELLER_ID}&limit=3`,
-      `/marketplace/stock/fulfillment/operations/search?seller_id=${SELLER_ID}&limit=3`,
-      `/users/${SELLER_ID}/inbound/shipments`,
-      `/inbound-shipments/search?seller_id=${SELLER_ID}&limit=3`,
-      `/fulfillment/inbound_shipments/search?seller_id=${SELLER_ID}&limit=3`,
-      `/logistics/inbound/shipments/search?seller_id=${SELLER_ID}&limit=3`,
+      `/inbound/shipments/search?seller_id=${await sellerIdAtual()}&limit=3`,
+      `/inbound/shipments/search?seller_id=${await sellerIdAtual()}&site_id=MLB&limit=3`,
+      `/fbm/inbound/shipments/search?seller_id=${await sellerIdAtual()}&limit=3`,
+      `/stock/fulfillment/operations/search?seller_id=${await sellerIdAtual()}&limit=3`,
+      `/marketplace/stock/fulfillment/operations/search?seller_id=${await sellerIdAtual()}&limit=3`,
+      `/users/${await sellerIdAtual()}/inbound/shipments`,
+      `/inbound-shipments/search?seller_id=${await sellerIdAtual()}&limit=3`,
+      `/fulfillment/inbound_shipments/search?seller_id=${await sellerIdAtual()}&limit=3`,
+      `/logistics/inbound/shipments/search?seller_id=${await sellerIdAtual()}&limit=3`,
     ];
 
     const resultados: { url: string; status: number; sample?: unknown }[] = [];
@@ -40,7 +40,7 @@ export async function GET(req: Request) {
       }
     }
 
-    return NextResponse.json({ sellerId: SELLER_ID, resultados });
+    return NextResponse.json({ sellerId: await sellerIdAtual(), resultados });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: "debug_inbound_failed", details: msg }, { status: 500 });

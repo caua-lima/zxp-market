@@ -1,6 +1,6 @@
 "use client";
 
-import { traduzirCaminho } from "./caminhos";
+import { definirEmpresaDoNavegador, lerConfigDeDados, lerModoDeDados, traduzirCaminho } from "./caminhos";
 import {
   collection,
   deleteDoc,
@@ -66,15 +66,60 @@ function sDoc(name: string, id: string) {
   return doc(db, traduzirCaminho(name), id);
 }
 
+/**
+ * O registro de acesso de quem usa o app. Modo raiz: `controleAcesso`, a lista
+ * única. Modo empresa (segundo cliente): os membros DA EMPRESA de quem está
+ * logado — a leitura continua daqui (as regras deixam o membro ler o próprio
+ * registro e o dono ler todos); a escrita vai pela rota /api/acesso/membros,
+ * porque o ponteiro `memberships` só o servidor grava.
+ */
+function modoEmpresaAtivo(): boolean {
+  return lerModoDeDados() === "tenant";
+}
+
+function colecaoDeAcesso(): string {
+  const cfg = lerConfigDeDados();
+  return cfg.modo === "tenant" ? `tenants/${cfg.tenantId}/members` : "controleAcesso";
+}
+
 function aDoc(email: string) {
   const { db } = getFirebase();
-  return doc(db, "controleAcesso", email.toLowerCase());
+  return doc(db, colecaoDeAcesso(), email.toLowerCase());
 }
 
 function aCol() {
   const { db } = getFirebase();
-  return collection(db, "controleAcesso");
+  return collection(db, colecaoDeAcesso());
 }
+
+async function chamarMembros(metodo: "POST" | "PATCH" | "DELETE", corpo?: unknown, email?: string): Promise<void> {
+  const { authedFetch } = await import("@/lib/api/authed-fetch");
+  const url = metodo === "DELETE" ? `/api/acesso/membros?email=${encodeURIComponent(email ?? "")}` : "/api/acesso/membros";
+  const r = await authedFetch(url, {
+    method: metodo,
+    ...(corpo ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) } : {}),
+  });
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    throw new Error(String(j?.details ?? j?.error ?? `falha ${r.status}`));
+  }
+}
+
+/**
+ * A empresa de quem está logado, perguntada ao servidor no login (modo
+ * empresa). A partir daqui os caminhos do navegador apontam pro dado dela.
+ * Devolve null se a pessoa não pertence a empresa nenhuma.
+ */
+export async function carregarEmpresaDaSessao(): Promise<string | null> {
+  if (!modoEmpresaAtivo()) return null;
+  const { authedFetch } = await import("@/lib/api/authed-fetch");
+  const r = await authedFetch("/api/sessao", { cache: "no-store" }).catch(() => null);
+  const tenantId = r && r.ok ? String((await r.json().catch(() => ({})))?.tenantId ?? "") || null : null;
+  definirEmpresaDoNavegador(tenantId);
+  return tenantId;
+}
+
+export { modoEmpresaAtivo };
 
 function accessMetaDoc() {
   const { db } = getFirebase();
@@ -684,6 +729,11 @@ export function watchAccessList(
 }
 
 export async function addAccessEntry(entry: AccessEntry) {
+  if (modoEmpresaAtivo()) {
+    await chamarMembros("POST", entry);
+    invalidar("controleAcesso");
+    return;
+  }
   await setDoc(aDoc(entry.email), sanitizeUndefined({
     ...entry,
     email: entry.email.toLowerCase(),
@@ -722,11 +772,21 @@ export async function updateAccessEntry(
   email: string,
   patch: Partial<AccessEntry>,
 ) {
+  if (modoEmpresaAtivo()) {
+    await chamarMembros("PATCH", { email, patch: sanitizeUndefined(patch) });
+    invalidar("controleAcesso");
+    return;
+  }
   await updateDoc(aDoc(email), sanitizeUndefined(patch));
   invalidar("controleAcesso");
 }
 
 export async function removeAccessEntry(email: string) {
+  if (modoEmpresaAtivo()) {
+    await chamarMembros("DELETE", undefined, email);
+    invalidar("controleAcesso");
+    return;
+  }
   await deleteDoc(aDoc(email));
   invalidar("controleAcesso");
 }

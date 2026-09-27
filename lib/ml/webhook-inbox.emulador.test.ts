@@ -37,7 +37,9 @@ vi.mock("@/lib/firebase/admin", async () => {
   const { getFirestore } = await import("firebase-admin/firestore");
   const app = getApps().find((a) => a.name === "inbox-teste") ?? initializeApp({ projectId: "zxp-teste-inbox" }, "inbox-teste");
   const db = getFirestore(app);
-  return { getAdminDb: () => db };
+  // O mesmo invólucro do admin.ts de verdade: no modo empresa, o caminho sai da empresa da requisição.
+  const { comCaminhosDeDados } = await import("@/lib/firebase/db-de-dados");
+  return { getAdminDb: () => comCaminhosDeDados(db) };
 });
 
 vi.mock("@/lib/ml/notificar-venda", () => ({
@@ -105,7 +107,7 @@ beforeEach(async () => {
   ml.durante = null;
   posResposta.fila = [];
   vi.clearAllMocks();
-  await Promise.all(["ml_orders", COLECAO_INBOX, "webhook_log", "webhook_topicos"].map((c) => db.recursiveDelete(db.collection(c))));
+  await Promise.all(["ml_orders", COLECAO_INBOX, "webhook_log", "webhook_topicos", "vendedores", "tenants"].map((c) => db.recursiveDelete(db.collection(c))));
 });
 
 afterAll(async () => {
@@ -261,5 +263,31 @@ describe("o recurso canônico prova a posse", () => {
     await webhook(notificacao());
     await depoisDaResposta();
     expect((await itemRef().get()).data()).toMatchObject({ estado: "descartado", resultado: "nao_encontrado" });
+  });
+});
+
+describe("modo empresa: o webhook roteia pelo vendedor (segundo cliente)", () => {
+  afterAll(() => { delete process.env.NEXT_PUBLIC_ZXP_MODO_DADOS; });
+
+  it("notificação do vendedor da empresa A: inbox e pedido gravados NA EMPRESA A", async () => {
+    process.env.NEXT_PUBLIC_ZXP_MODO_DADOS = "tenant";
+    await db.doc(`vendedores/${VENDEDOR}`).set({ tenantId: "empresa-a" });
+    const r = await webhook(notificacao());
+    expect(r.status).toBe(200);
+    expect((await db.doc(`tenants/empresa-a/ml_webhook_inbox/orders_v2:${ID}`).get()).exists).toBe(true);
+    await depoisDaResposta();
+    expect((await db.doc(`tenants/empresa-a/ml_orders/${ID}`).get()).data()?.status).toBe("paid");
+    expect((await db.doc(`ml_orders/${ID}`).get()).exists).toBe(false);
+    delete process.env.NEXT_PUBLIC_ZXP_MODO_DADOS;
+  });
+
+  it("vendedor fora do índice (nenhuma empresa conectou essa conta) é recusado sem gravar nada", async () => {
+    process.env.NEXT_PUBLIC_ZXP_MODO_DADOS = "tenant";
+    process.env.NEXT_PUBLIC_ZXP_TENANT_ID = "empresa-a"; // os contadores de recusa caem na empresa padrão
+    const r = await webhook(notificacao());
+    expect(await r.json()).toMatchObject({ ignored: true, motivo: "vendedor_diferente" });
+    expect(ml.chamadas).toHaveLength(0);
+    delete process.env.NEXT_PUBLIC_ZXP_MODO_DADOS;
+    delete process.env.NEXT_PUBLIC_ZXP_TENANT_ID;
   });
 });

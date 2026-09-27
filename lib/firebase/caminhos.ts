@@ -57,12 +57,19 @@ export function lerConfigDeDados(
  * (`ml_tokens`) vira `connections`, e o resto (pessoa, sistema, o próprio
  * `tenants`) fica onde está.
  */
-export function traduzirCaminho(caminho: string, cfg: ConfigDeDados = lerConfigDeDados()): string {
-  if (cfg.modo === "raiz") return caminho;
+export function traduzirCaminho(
+  caminho: string,
+  // Função = resolvida SÓ se o caminho for de empresa. Caminho global (ex.: o
+  // índice `vendedores`, que é justamente o que DESCOBRE a empresa) não pode
+  // exigir uma empresa que ainda não se sabe qual é.
+  cfg: ConfigDeDados | (() => ConfigDeDados) = () => lerConfigDeDados(),
+): string {
   const limpo = caminho.replace(/^\/+/, "");
   const [primeiro, ...resto] = limpo.split("/");
   const destino = DESTINOS[primeiro]?.destino;
-  if (destino === "tenant") return [`tenants/${cfg.tenantId}`, primeiro, ...resto].join("/");
-  if (destino === "conexao") return [`tenants/${cfg.tenantId}/connections`, ...resto].join("/");
-  return limpo;
+  if (destino !== "tenant" && destino !== "conexao") return caminho;
+  const c = typeof cfg === "function" ? cfg() : cfg;
+  if (c.modo === "raiz") return caminho;
+  if (destino === "tenant") return [`tenants/${c.tenantId}`, primeiro, ...resto].join("/");
+  return [`tenants/${c.tenantId}/connections`, ...resto].join("/");
 }

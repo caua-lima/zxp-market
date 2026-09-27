@@ -2,7 +2,6 @@ import "server-only";
 import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { getMlAccessToken } from "@/app/api/ml/token";
-import { SELLER_ID } from "@/lib/ml/orders";
 import { consolidarEstoqueAnuncios, type AnuncioEstoque } from "@/lib/domain/estoque";
 import {
   detectarEstoqueBaixo,
@@ -11,6 +10,7 @@ import {
 } from "@/lib/domain/estoque-alerta";
 import { buildPayload } from "@/lib/ml/notificar-venda";
 import { criarEventoEPublicar, especDoPush } from "@/lib/notification-dispatch";
+import { sellerIdAtual } from "@/lib/ml/vendedor";
 
 const ML_API = "https://api.mercadolibre.com";
 
@@ -112,7 +112,7 @@ async function medirVendasPorProduto(
     const headers = { Authorization: `Bearer ${token}`, Accept: "application/json" };
     for (let offset = 0; offset < 1000; offset += 50) {
       const r = await fetchML(
-        `${ML_API}/orders/search?seller=${SELLER_ID}&order.status=paid`
+        `${ML_API}/orders/search?seller=${await sellerIdAtual()}&order.status=paid`
         + `&order.date_created.from=${desde}&offset=${offset}&limit=50`,
         { headers, cache: "no-store" },
       );

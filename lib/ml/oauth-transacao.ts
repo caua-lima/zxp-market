@@ -43,16 +43,19 @@ const VALIDADE_MS = 10 * 60 * 1000;
 export type TransacaoConsumida = {
   verifier: string;
   solicitante: string;
+  /** A empresa de quem iniciou (modo empresa) — o retorno do ML chega sem login e grava a conexão DELA. */
+  tenantId: string | null;
 };
 
 /** Cria a transação e devolve a URL de autorização já com o `state`. */
-export async function criarTransacao(solicitante: string): Promise<{ state: string; url: string }> {
+export async function criarTransacao(solicitante: string, tenantId: string | null = null): Promise<{ state: string; url: string }> {
   const state = crypto.randomBytes(32).toString("base64url");
   const { verifier, challenge } = generatePkce();
   const agora = Date.now();
 
   await getAdminDb().collection(COLECAO).doc(state).set({
     solicitante,
+    tenantId,
     verifier,
     criadoEm: agora,
     expiraEm: agora + VALIDADE_MS,
@@ -84,7 +87,8 @@ export async function consumirTransacao(state: string | null): Promise<Transacao
 
     // Marca como usada DENTRO da transacao: e isso que impede a segunda volta.
     tx.update(ref, { usado: true, usadoEm: Date.now() });
-    return { verifier: veredito.verifier, solicitante: veredito.solicitante };
+    const tenantId = String(snap.data()?.tenantId ?? "").trim() || null;
+    return { verifier: veredito.verifier, solicitante: veredito.solicitante, tenantId };
   });
 }
 

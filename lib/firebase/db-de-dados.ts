@@ -33,8 +33,8 @@ export function comCaminhosDeDados(
   const resolver = typeof cfg === "function" ? cfg : () => cfg;
   return new Proxy(db, {
     get(alvo, prop) {
-      if (prop === "collection") return (caminho: string) => alvo.collection(traduzirCaminho(caminho, resolver()));
-      if (prop === "doc") return (caminho: string) => alvo.doc(traduzirCaminho(caminho, resolver()));
+      if (prop === "collection") return (caminho: string) => alvo.collection(traduzirCaminho(caminho, resolver));
+      if (prop === "doc") return (caminho: string) => alvo.doc(traduzirCaminho(caminho, resolver));
       const v = Reflect.get(alvo, prop, alvo);
       return typeof v === "function" ? v.bind(alvo) : v;
     },

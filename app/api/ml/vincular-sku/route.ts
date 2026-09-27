@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
 import { getMlAccessToken } from "../token";
-import { SELLER_ID } from "@/lib/ml/orders";
+import { sellerIdAtual } from "@/lib/ml/vendedor";
 
 const ML_API = "https://api.mercadolibre.com";
 export const maxDuration = 60;
@@ -77,7 +77,7 @@ export async function GET(req: Request) {
     // Todos os anúncios do vendedor.
     const todosMlb: string[] = [];
     for (let offset = 0; offset < 2000; offset += 100) {
-      const res = await fetch(`${ML_API}/users/${SELLER_ID}/items/search?limit=100&offset=${offset}`, { headers, cache: "no-store" });
+      const res = await fetch(`${ML_API}/users/${await sellerIdAtual()}/items/search?limit=100&offset=${offset}`, { headers, cache: "no-store" });
       if (!res.ok) break;
       const j = (await res.json()) as { results?: string[] };
       const lote = j.results ?? [];

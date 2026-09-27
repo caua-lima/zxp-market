@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAccess } from "@/lib/api-auth";
 import { getMlAccessToken } from "../token";
-import { SELLER_ID } from "@/lib/ml/orders";
+import { sellerIdAtual } from "@/lib/ml/vendedor";
 
 const ML_API = "https://api.mercadolibre.com";
 export const maxDuration = 30;
@@ -67,7 +67,7 @@ export async function GET(req: Request) {
     const foraDoAlcance = diasAte > MAX_DIAS;
 
     const r = await fetch(
-      `${ML_API}/users/${SELLER_ID}/items_visits/time_window?last=${last}&unit=day`,
+      `${ML_API}/users/${await sellerIdAtual()}/items_visits/time_window?last=${last}&unit=day`,
       { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store" },
     );
     if (!r.ok) {

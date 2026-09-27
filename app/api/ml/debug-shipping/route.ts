@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireAccess } from "@/lib/api-auth";
 import { getMlAccessToken } from "../token";
+import { sellerIdAtual } from "@/lib/ml/vendedor";
 
 const ML_API = "https://api.mercadolibre.com";
-const SELLER_ID = process.env.ML_SELLER_ID || "2420261535";
 
 /**
  * Diagnóstico de frete. Para os últimos pedidos, mostra o shipping.id e as
@@ -24,7 +24,7 @@ export async function GET(req: Request) {
     const from = `${ym}-01T00:00:00.000-03:00`;
 
     const ordRes = await fetch(
-      `${ML_API}/orders/search?seller=${SELLER_ID}&order.date_created.from=${encodeURIComponent(from)}&limit=3&sort=date_desc`,
+      `${ML_API}/orders/search?seller=${await sellerIdAtual()}&order.date_created.from=${encodeURIComponent(from)}&limit=3&sort=date_desc`,
       { headers, cache: "no-store" },
     );
     const ordJson = await ordRes.json();

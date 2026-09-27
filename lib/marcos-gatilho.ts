@@ -1,5 +1,6 @@
 import "server-only";
 import { verificarMarcos, type ResultadoMarcos } from "@/lib/marcos-run";
+import { cabecalhoDaEmpresaAtual } from "@/lib/empresas";
 
 /**
  * Busca os números do mês e dispara a checagem de marcos.
@@ -51,7 +52,7 @@ export async function dispararMarcos(
   let m: Metricas | null = null;
   try {
     const r = await fetch(`${origem}/api/ml/metrics?month=${mes}&dia=${hoje}`, {
-      headers: auth ? { Authorization: auth } : {},
+      headers: { ...(auth ? { Authorization: auth } : {}), ...cabecalhoDaEmpresaAtual() },
       cache: "no-store",
     });
     if (r.ok) m = (await r.json()) as Metricas;

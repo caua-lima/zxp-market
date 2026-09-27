@@ -2,10 +2,10 @@ import "server-only";
 import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { getMlAccessToken } from "@/app/api/ml/token";
-import { SELLER_ID } from "@/lib/ml/orders";
 import { marcoDeReputacao, marcosDeFaturamento, marcosDoDia } from "@/lib/domain/marcos";
 import { RECORDES_VAZIOS, avaliarRecordes, semear, type Recordes } from "@/lib/domain/recordes";
 import { notificarMarco } from "@/lib/ml/notificar-venda";
+import { sellerIdAtual } from "@/lib/ml/vendedor";
 
 const ML_API = "https://api.mercadolibre.com";
 
@@ -57,7 +57,7 @@ export async function lerNivelMercadoLider(): Promise<string | null> {
   try {
     const token = await getMlAccessToken();
     if (!token) return null;
-    const r = await fetchML(`${ML_API}/users/${SELLER_ID}`, {
+    const r = await fetchML(`${ML_API}/users/${await sellerIdAtual()}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
       cache: "no-store",
     });

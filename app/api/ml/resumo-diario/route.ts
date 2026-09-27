@@ -6,6 +6,8 @@ import { calculateBreakEvenRoas } from "@/lib/domain/ads";
 import { findProdutosEmRisco, type RiskProduto } from "@/lib/domain/risk";
 import { getAdminDb } from "@/lib/firebase/admin";
 import type { SalePushPayload } from "@/lib/domain/notifications";
+import { cabecalhoDaEmpresaAtual } from "@/lib/empresas";
+import { porEmpresa } from "@/lib/empresas";
 
 export const maxDuration = 60;
 
@@ -34,7 +36,8 @@ async function handler(req: Request) {
     // Repassa a credencial de quem chamou: as rotas internas exigem acesso, e
     // o cron da Vercel manda o Bearer do CRON_SECRET.
     const auth = req.headers.get("authorization");
-    const headers: Record<string, string> = auth ? { Authorization: auth } : {};
+    // A empresa vai junto: a rota chamada roda no contexto dela (segundo cliente).
+    const headers: Record<string, string> = { ...(auth ? { Authorization: auth } : {}), ...cabecalhoDaEmpresaAtual() };
 
     const [rMetrics, rAds, rForecast] = await Promise.all([
       fetch(`${origem}/api/ml/metrics?from=${hoje}&to=${hoje}`, { headers, cache: "no-store" }),
@@ -136,14 +139,18 @@ async function handler(req: Request) {
 }
 
 /** GET = chamada do Vercel Cron. */
-export async function GET(req: Request) {
+async function getDaEmpresa(req: Request) {
   if (!isCronRequest(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   return handler(req);
 }
 
 /** POST = disparo manual pra testar sem esperar o horário. */
-export async function POST(req: Request) {
+async function postDaEmpresa(req: Request) {
   const gate = await requireAccess(req, { allowCron: true, capacidade: "administrar" });
   if (gate instanceof NextResponse) return gate;
   return handler(req);
 }
+
+// Uma vez por empresa quando é o agendador no modo empresa (segundo cliente) — ver lib/empresas.ts.
+export const GET = porEmpresa(getDaEmpresa);
+export const POST = porEmpresa(postDaEmpresa);

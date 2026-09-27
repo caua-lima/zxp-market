@@ -11,6 +11,7 @@ import { podarWebhookLog } from "@/lib/webhook-log-prune";
 import { registrarExecucaoDoCron } from "@/lib/cron-heartbeat";
 import { varrerEntregasPendentes } from "@/lib/notification-dispatch";
 import { podarInbox, varrerInbox } from "@/lib/ml/webhook-inbox";
+import { porEmpresa } from "@/lib/empresas";
 
 export const maxDuration = 60;
 
@@ -32,7 +33,7 @@ export const maxDuration = 60;
  * Sincroniza o mês atual (pedidos + devoluções) para manter o dashboard
  * sempre atualizado sem depender do botão manual.
  */
-export async function GET(req: Request) {
+async function getDaEmpresa(req: Request) {
   const recusa = motivoRecusaDoCron(req);
   if (recusa) {
     /**
@@ -272,3 +273,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "cron_sync_failed", details: msg }, { status: 500 });
   }
 }
+
+// Uma vez por empresa quando é o agendador no modo empresa (segundo cliente) — ver lib/empresas.ts.
+export const GET = porEmpresa(getDaEmpresa);

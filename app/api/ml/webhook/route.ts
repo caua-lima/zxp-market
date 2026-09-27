@@ -5,7 +5,9 @@ import { varrerEntregasPendentes } from "@/lib/notification-dispatch";
 import { rotuloDaRecusa, validarNotificacao } from "@/lib/domain/webhook-ml";
 import { idDoItem } from "@/lib/domain/webhook-inbox";
 import { processarItem, receberNotificacao, varrerInbox } from "@/lib/ml/webhook-inbox";
-import { SELLER_ID } from "@/lib/ml/orders";
+import { vendedorLegado } from "@/lib/ml/vendedor";
+import { lerModoDeDados } from "@/lib/firebase/caminhos";
+import { comTenant } from "@/lib/firebase/contexto-tenant";
 
 /**
  * Teto do corpo: uma notificacao do ML tem algumas centenas de bytes. Ler um
@@ -131,10 +133,25 @@ export async function POST(req: Request) {
    * objetivo e recusar lixo e engano sem pagar por eles; a garantia de nao
    * duplicar efeito continua sendo a idempotencia pelo dedupeKey.
    */
-  const veredito = validarNotificacao(body, {
-    sellerId: process.env.ML_SELLER_ID || SELLER_ID,
+  /**
+   * Segundo cliente: no modo empresa não há UM vendedor esperado — cada
+   * empresa tem o seu. O vendedor da notificação continua obrigatório, e a
+   * empresa sai do índice `vendedores/{id}` gravado quando ela conectou o ML.
+   * Vendedor fora do índice é recusado como antes era o vendedor diferente.
+   */
+  const modoEmpresa = lerModoDeDados() === "tenant";
+  const veredito0 = validarNotificacao(body, {
+    sellerId: modoEmpresa ? undefined : vendedorLegado(),
     appId: process.env.ML_APP_ID,
   });
+  let tenantId: string | null = null;
+  let veredito = veredito0;
+  if (veredito0.ok && modoEmpresa) {
+    tenantId = String((await getAdminDb().doc(`vendedores/${veredito0.sellerId}`).get()).data()?.tenantId ?? "").trim() || null;
+    if (!tenantId) veredito = { ok: false, motivo: "vendedor_diferente", topic: veredito0.topic };
+  }
+  // Tudo que grava daqui em diante é dado DA EMPRESA do vendedor.
+  const naEmpresa = <T,>(fn: () => Promise<T>): Promise<T> => (tenantId ? comTenant(tenantId, fn) : fn());
 
   if (!veredito.ok) {
     // Contagem por dia, com o motivo: separa "nao configurado" de "configurado
@@ -160,7 +177,8 @@ export async function POST(req: Request) {
    * Ver lib/domain/webhook-inbox.ts.
    */
   try {
-    await receberNotificacao({ topic: veredito.topic, orderId, sellerId: veredito.sellerId });
+    const { topic, sellerId } = veredito;
+    await naEmpresa(() => receberNotificacao({ topic, orderId, sellerId }));
   } catch (err) {
     // Sem registro durável não se confirma recebimento: o erro faz o ML
     // retentar, que é exatamente o que se quer aqui.
@@ -175,11 +193,12 @@ export async function POST(req: Request) {
    * O cron da Vercel só roda uma vez por dia no plano gratuito — cada webhook
    * é uma chance barata de varrer o que ficou pra trás.
    */
-  after(async () => {
-    await processarItem(idDoItem(veredito.topic, orderId)).catch(() => {});
+  const topico = veredito.topic;
+  after(() => naEmpresa(async () => {
+    await processarItem(idDoItem(topico, orderId)).catch(() => {});
     await varrerInbox({ limite: 10, orcamentoMs: 8_000 }).catch(() => {});
     await varrerEntregasPendentes({ limite: 30, orcamentoMs: 10_000 }).catch(() => {});
-  });
+  }));
   return NextResponse.json({ ok: true, recebido: true });
 }
 

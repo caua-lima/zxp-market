@@ -4,7 +4,9 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { exchangeCodeForToken } from "@/lib/ml/client";
 import { consumirTransacao } from "@/lib/ml/oauth-transacao";
 import { relogioDoToken } from "@/lib/domain/token-ml";
-import { SELLER_ID } from "@/lib/ml/orders";
+import { vendedorLegado } from "@/lib/ml/vendedor";
+import { lerModoDeDados } from "@/lib/firebase/caminhos";
+import { comTenant } from "@/lib/firebase/contexto-tenant";
 
 /**
  * A volta do Mercado Livre — onde a conexão é de fato substituída.
@@ -52,6 +54,33 @@ export async function GET(req: Request) {
       return recusar(req, err instanceof Error ? err.message : "state_invalido");
     }
 
+    /**
+     * Segundo cliente: a volta do ML chega SEM login, então a empresa vem da
+     * transação — quem clicou "Conectar" dentro de qual empresa. Tudo daqui em
+     * diante (ler e gravar a conexão) acontece dentro dela.
+     */
+    if (transacao.tenantId) {
+      const tenantId = transacao.tenantId;
+      return await comTenant(tenantId, () => concluir(req, code, transacao, tenantId));
+    }
+    return await concluir(req, code, transacao, null);
+  } catch (error: unknown) {
+    return NextResponse.json(
+      {
+        error: "Unexpected error in callback",
+        details: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 },
+    );
+  }
+}
+
+async function concluir(
+  req: Request,
+  code: string,
+  transacao: { verifier: string; solicitante: string },
+  tenantId: string | null,
+): Promise<NextResponse> {
     const token = await exchangeCodeForToken(code, transacao.verifier);
 
     // O perfil é OBRIGATÓRIO aqui: é ele que diz qual vendedor autorizou.
@@ -70,12 +99,22 @@ export async function GET(req: Request) {
     /**
      * O vendedor esperado: o que já está conectado, ou — na primeira conexão
      * — o da configuração. Conta diferente NÃO substitui a conexão.
+     *
+     * Modo empresa: a primeira conexão de uma empresa nova aceita a conta que
+     * autorizou — mas uma conta do ML que já é de OUTRA empresa é recusada
+     * (índice global `vendedores/{id}`): senão a mesma loja apareceria em duas
+     * empresas, e as notificações dela não teriam dono.
      */
     const db = getAdminDb();
     const atual = await db.collection("ml_tokens").doc("main").get();
     const jaConectado = atual.exists ? atual.data()?.user_id : null;
-    const esperado = String(jaConectado ?? SELLER_ID); // SELLER_ID ja le ML_SELLER_ID
+    const modoEmpresa = lerModoDeDados() === "tenant";
+    const esperado = jaConectado != null ? String(jaConectado) : modoEmpresa ? "" : vendedorLegado();
     const autorizou = String(perfil.id);
+    if (modoEmpresa) {
+      const dono = (await db.doc(`vendedores/${autorizou}`).get()).data()?.tenantId;
+      if (dono && dono !== tenantId) return recusar(req, "vendedor_de_outra_empresa");
+    }
 
     if (esperado && autorizou !== esperado) {
       /**
@@ -116,19 +155,14 @@ export async function GET(req: Request) {
       },
       { merge: true },
     );
+    // O índice que roteia as notificações do ML pra esta empresa.
+    if (modoEmpresa && tenantId) {
+      await db.doc(`vendedores/${autorizou}`).set({ tenantId, connectionId: "main" });
+    }
 
     const resposta = NextResponse.redirect(new URL("/", req.url));
     resposta.cookies.set("ml_disconnected", "false", { maxAge: 0 });
     // Cookie do PKCE antigo: limpa o que tiver sobrado de versões anteriores.
     resposta.cookies.set("ml_pkce_verifier", "", { maxAge: 0, path: "/" });
     return resposta;
-  } catch (error: unknown) {
-    return NextResponse.json(
-      {
-        error: "Unexpected error in callback",
-        details: error instanceof Error ? error.message : String(error),
-      },
-      { status: 500 },
-    );
-  }
 }

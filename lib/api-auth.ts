@@ -124,6 +124,11 @@ export async function requireAccess(
 
   // Bypass para jobs automatizados (sincronização agendada).
   if (opts.allowCron && isCronRequest(req)) {
+    // Chamada interna do cron (ex.: marcos consultando /api/ml/metrics) leva a
+    // empresa no cabeçalho — vale SÓ junto com o segredo do cron, então não é
+    // um jeito de um usuário escolher a empresa.
+    const empresa = req.headers.get("x-zxp-tenant");
+    if (empresa) definirEmpresa(empresa);
     return {
       email: "cron@system",
       uid: "cron",
