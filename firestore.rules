@@ -637,6 +637,157 @@ service cloud.firestore {
     }
 
     match /tenants/{tenantId} {
+      // <gerado:dados-do-tenant> — NÃO EDITE: `npm run regras:gerar` refaz a partir da raiz
+      // Autorização por membro da empresa (tenants/{tenantId}/members/{email}), não pela lista legada de acesso.
+      function acessoT() {
+        return /databases/$(database)/documents/tenants/$(tenantId)/members/$(request.auth.token.email);
+      }
+      function requesterDocT() {
+        return get(acessoT());
+      }
+      function isAuthorizedT() {
+        return signedIn() && exists(acessoT());
+      }
+      function isOwnerT() {
+        return isAuthorizedT() && requesterDocT().data.role == "owner";
+      }
+      function isMemberT() {
+        return isAuthorizedT() && requesterDocT().data.get('role', '') == 'member';
+      }
+      function veOperacaoT() {
+        return isAuthorizedT() && !isMemberT();
+      }
+      function podeEditarT(tab) {
+        return isOwnerT() || (veOperacaoT() && tab in requesterDocT().data.get('permissoesEdicao', []));
+      }
+      function idAuditoriaMovimentoT(id, sufixo) {
+        return /databases/$(database)/documents/tenants/$(tenantId)/auditLog/$("mov_" + id + sufixo);
+      }
+      function auditouMovimentoT(id, sufixo, acao) {
+        return existsAfter(idAuditoriaMovimentoT(id, sufixo))
+          && getAfter(idAuditoriaMovimentoT(id, sufixo)).data.acao == acao
+          && getAfter(idAuditoriaMovimentoT(id, sufixo)).data.entidade == "movimento"
+          && getAfter(idAuditoriaMovimentoT(id, sufixo)).data.entidadeId == id
+          && getAfter(idAuditoriaMovimentoT(id, sufixo)).data.por == request.auth.token.email;
+      }
+      function auditEventValidoT(d, docId) {
+        return d.keys().hasOnly(["id", "acao", "entidade", "entidadeId", "entidadeLabel", "detalhe", "por", "em"])
+          && d.acao in ["criar", "editar", "arquivar", "reativar", "excluir"]
+          && d.entidade in ["custo", "meta", "acesso", "produto", "movimento"]
+          && d.entidadeId is string && d.entidadeId.size() > 0 && d.entidadeId.size() <= 200
+          && d.entidadeLabel is string && d.entidadeLabel.size() <= 200
+          && (!("detalhe" in d) || (d.detalhe is string && d.detalhe.size() <= 500))
+          && d.em is number
+          && d.em > request.time.toMillis() - 300000
+          && d.em < request.time.toMillis() + 300000
+          && (d.entidade != "movimento" || auditoriaDeMovimentoCoerenteT(d, docId));
+      }
+      function auditoriaDeMovimentoCoerenteT(d, docId) {
+        let mov = /databases/$(database)/documents/tenants/$(tenantId)/estoque_movimentos/$(d.entidadeId);
+        return d.acao == "excluir"
+          ? (docId == "mov_" + d.entidadeId + "_excluido" && !existsAfter(mov))
+          : (d.acao in ["criar", "editar"]
+              && existsAfter(mov)
+              && docId == "mov_" + d.entidadeId + "_r" + string(getAfter(mov).data.get("revisao", 0))
+              && (d.acao == "editar" || getAfter(mov).data.get("revisao", 0) == 1));
+      }
+      match /rascunho/{docId} {
+        allow read: if veOperacaoT();
+        allow write: if isOwnerT();
+      }
+      match /dias/{docId} {
+        allow read: if veOperacaoT();
+        allow write: if isOwnerT();
+      }
+      match /metas/{docId} {
+        allow read: if veOperacaoT();
+        allow write: if podeEditarT('metas');
+      }
+      match /metasHistorico/{docId} {
+        allow read: if veOperacaoT();
+        allow write: if podeEditarT('metas');
+      }
+      match /custos/{docId} {
+        allow read: if veOperacaoT();
+        allow write: if podeEditarT('custos') && custoValido(request.resource.data);
+        allow delete: if podeEditarT('custos');
+      }
+      match /estoque/{docId} {
+        allow read: if veOperacaoT();
+        allow write: if podeEditarT('estoque') && produtoValido(request.resource.data);
+        allow delete: if podeEditarT('estoque');
+      }
+      match /estoque_movimentos/{docId} {
+        allow read: if veOperacaoT();
+        allow create: if podeEditarT('estoque') && movimentoValido(request.resource.data)
+          && request.resource.data.revisao == 1
+          && auditouMovimentoT(docId, "_r1", "criar");
+        allow update: if podeEditarT('estoque') && movimentoValido(request.resource.data)
+          && request.resource.data.revisao == resource.data.get("revisao", 0) + 1
+          && auditouMovimentoT(docId, "_r" + string(request.resource.data.revisao), "editar");
+        allow delete: if podeEditarT('estoque')
+          && auditouMovimentoT(docId, "_excluido", "excluir");
+      }
+      match /ads_alteracoes/{docId} {
+        allow read: if veOperacaoT();
+        allow write: if podeEditarT('ads');
+      }
+      match /full_remessas/{docId} {
+        allow read: if veOperacaoT();
+        allow write: if isOwnerT();
+      }
+      match /tarefas/{docId} {
+        allow read, write: if veOperacaoT();
+      }
+      match /alertasDispensados/{docId} {
+        allow read: if isAuthorizedT() && resource.data.email == request.auth.token.email;
+        allow create, update: if isAuthorizedT() && request.resource.data.email == request.auth.token.email;
+        allow delete: if isAuthorizedT() && resource.data.email == request.auth.token.email;
+      }
+      match /notification_events/{eventId} {
+        allow read: if veOperacaoT();
+        allow create, delete: if false;
+        allow update: if isAuthorizedT()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy', 'dismissedBy'])
+          && request.resource.data.get('readBy', {}).diff(resource.data.get('readBy', {}))
+               .affectedKeys().hasOnly([request.auth.token.email])
+          && request.resource.data.get('dismissedBy', {}).diff(resource.data.get('dismissedBy', {}))
+               .affectedKeys().hasOnly([request.auth.token.email]);
+      }
+      match /notification_events_publico/{eventId} {
+        allow read: if isAuthorizedT();
+        allow create, delete: if false;
+        allow update: if isAuthorizedT()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["readBy", "dismissedBy"])
+          && request.resource.data.get("readBy", {}).diff(resource.data.get("readBy", {}))
+               .affectedKeys().hasOnly([request.auth.token.email])
+          && request.resource.data.get("dismissedBy", {}).diff(resource.data.get("dismissedBy", {}))
+               .affectedKeys().hasOnly([request.auth.token.email]);
+      }
+      match /notification_outbox/{pushId} {
+        allow read, write: if false;
+      }
+      match /notification_entregas/{entregaId} {
+        allow read, write: if false;
+      }
+      match /notification_feed/{email}/itens/{eventId} {
+        allow read: if isAuthorizedT() && request.auth.token.email == email;
+        allow create, delete: if false;
+        allow update: if isAuthorizedT() && request.auth.token.email == email
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lidoEm', 'dispensadoEm']);
+      }
+      match /notification_janelas/{janelaId} {
+        allow read, write: if false;
+      }
+      match /auditLog/{docId} {
+        allow read, list: if isOwnerT();
+        allow create: if isAuthorizedT()
+          && request.resource.data.por == request.auth.token.email
+          && auditEventValidoT(request.resource.data, docId);
+        allow update, delete: if false;
+      }
+      // </gerado:dados-do-tenant>
+
       allow read: if ehMembroDoTenant(tenantId);
       // Criação do tenant e mudança de nome/plano passam pelo servidor
       // (Admin SDK) — nenhum cliente cria ou edita o tenant em si.
