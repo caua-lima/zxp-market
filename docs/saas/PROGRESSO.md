@@ -144,7 +144,29 @@ descontada. O impacto nos números não foi medido; fica pra quando mexer em dev
   conferência documento a documento, raiz intacta como rollback; 8/8 no emulador + script rodado
   de ponta a ponta). **Nenhuma rodada em produção** — depende de você (credenciais de produção e
   autorização; ver o checklist no fim).
-- **Etapas 4, 6, 7, 8**: não iniciadas. `ARQUITETURA.md`, `OPERACAO.md`, `VALIDACAO.md` não existem.
+- **Etapa 4 (operação)**: parcial — worker a cada 5 min independente de tráfego (S09), inbox durável
+  do webhook com retry e fila de falhas (S07), carimbos de execução de cron e worker no diagnóstico.
+  Falta: jobs por empresa/conexão (hoje há uma só).
+- **Etapa 6 (cobrança)**: **não iniciada, de propósito** — cobrança de verdade exige escolher o
+  provedor e criar a conta (decisão sua), e cobrança fingida é o que a auditoria proíbe.
+- **Etapa 7 (UX por tela)**: fora deste ciclo; a auditoria de design tem documento próprio.
+- **Etapa 8 (documentação)**: `ARQUITETURA.md`, `OPERACAO.md` (o passo a passo do que depende de
+  você) e `VALIDACAO.md` escritos.
+
+## Checklist final (27/09/2026)
+
+**Feito, testado e na `main`:** Etapa 2 inteira (21/21, cada item com prova inversa); Etapa 3 — o
+corte atrás de uma chave desligada, com regras da empresa geradas da raiz e membros espelhados;
+Etapa 5 — as duas fatias da migração, ensaiadas no emulador; Etapa 8 — os três documentos.
+
+**Depende de você** (passo a passo em `OPERACAO.md`):
+1. **A** — cadastrar `CRON_SECRET` no GitHub (liga o worker).
+2. **B** — publicar `firestore.rules` (as regras não sobem com a Vercel).
+3. **C** — quando decidir: migrar membros e dados e virar a chave na Vercel (tem rollback).
+4. Decidir o provedor de cobrança (Etapa 6).
+
+**Não declarar "SaaS pronto"**: a empresa ainda é uma só (escolhida pela chave), a cobrança não
+existe e a migração não rodou em produção.
 
 ### Correção de uma leitura errada minha (23/09)
 
