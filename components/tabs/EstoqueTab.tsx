@@ -7,7 +7,7 @@ import { mensagemDeErroDeSalvamento, salvarSemPerder } from "@/lib/domain/salvar
 import { motivoDaListaVazia } from "@/lib/domain/estoque-vazio";
 import { linhaCsvSegura } from "@/lib/domain/csv-seguro";
 import { useFormularioSujo } from "@/components/useFormularioSujo";
-import { addMovimento, deleteMovimento, deleteProduct, LIMITE_MOVIMENTOS, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas, recalcularProduto } from "@/lib/firebase/data";
+import { addMovimento, carregarMovimentosAnteriores, deleteMovimento, deleteProduct, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas, recalcularProduto } from "@/lib/firebase/data";
 import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas";
 import { fmtBRL, fmtPct } from "@/lib/domain/calc";
 import { getCoverageStatus, COVERAGE_STATUS_LABEL, ehFullLogistic, estoqueForaDoFull, type CoverageStatus } from "@/lib/domain/estoque";
@@ -23,6 +23,8 @@ import { composicaoDoEstoque } from "@/lib/domain/full-indisponivel";
 import TelaHeader from "@/components/TelaHeader";
 import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
 import Paginacao from "@/components/Paginacao";
+import AvisoMaisAntigos from "@/components/AvisoMaisAntigos";
+import { useMaisAntigos } from "@/components/useMaisAntigos";
 import { paginar } from "@/lib/domain/paginacao";
 import EntradaMassaModal from "@/components/tabs/estoque/EntradaMassaModal";
 import ImpostoMassaModal from "@/components/tabs/estoque/ImpostoMassaModal";
@@ -861,6 +863,10 @@ function MovimentacoesPanel({ movimentos, produtos, busca, pagina, onPagina, tru
   /** O livro bateu o teto de leitura (S22 da auditoria SaaS): pode haver movimentação mais antiga faltando. */
   truncado?: boolean;
 }) {
+  // Paginação de verdade (S22): a primeira página vem de watchMovimentos; as
+  // seguintes, sob demanda, a partir da última que a tela mostra.
+  const maisAntigos = useMaisAntigos(movimentos, Boolean(truncado), (m) => m.data, carregarMovimentosAnteriores);
+  const todos = maisAntigos.itens;
   const nomePorId = useMemo(
     () => new Map(produtos.map((p) => [p.id, p.name || p.id])),
     [produtos],
@@ -870,7 +876,7 @@ function MovimentacoesPanel({ movimentos, produtos, busca, pagina, onPagina, tru
     const chave = (x: unknown) => String(x ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     const termo = chave(busca).trim();
 
-    const lista = movimentos.filter((m) => {
+    const lista = todos.filter((m) => {
       if (!termo) return true;
       const alvo = chave(`${nomePorId.get(m.productId) ?? ""} ${m.obs ?? ""} ${TIPO_MOVIMENTO_LABEL[m.tipo] ?? m.tipo}`);
       return termo.split(/\s+/).every((w) => alvo.includes(w));
@@ -885,7 +891,7 @@ function MovimentacoesPanel({ movimentos, produtos, busca, pagina, onPagina, tru
      */
     return [...lista].sort((a, b) =>
       String(b.data ?? "").localeCompare(String(a.data ?? "")) || String(b.id).localeCompare(String(a.id)));
-  }, [movimentos, nomePorId, busca]);
+  }, [todos, nomePorId, busca]);
 
   const p = paginar(ordenados, pagina, 25);
 
@@ -896,19 +902,22 @@ function MovimentacoesPanel({ movimentos, produtos, busca, pagina, onPagina, tru
         <span className="panel-sub">entradas, ajustes e envios pro Full — do mais recente pro mais antigo</span>
       </div>
 
-      {truncado && (
-        <div style={{ marginBottom: 12, padding: "8px 14px", background: "rgba(212,165,74,.12)", border: "1px solid var(--warning)", borderRadius: 8, fontSize: ".8rem", color: "var(--text)" }}>
-          Mostrando as {LIMITE_MOVIMENTOS} movimentações mais recentes — pode haver lançamentos mais
-          antigos que não aparecem aqui. Isto não afeta o custo médio nem a quantidade em estoque, que
-          são recalculados a partir do livro inteiro.
-        </div>
-      )}
+      <AvisoMaisAntigos
+        total={todos.length}
+        rotulo="movimentações"
+        nota="Isto não afeta o custo médio nem a quantidade em estoque, que são recalculados a partir do livro inteiro."
+        temMais={maisAntigos.temMais}
+        carregando={maisAntigos.carregando}
+        erro={maisAntigos.erro}
+        extras={maisAntigos.extras}
+        onCarregar={() => void maisAntigos.carregarMais()}
+      />
 
       {ordenados.length === 0 ? (
         <div className="empty-state">
           <span className="empty-ico">📋</span>
           {busca.trim()
-            ? <>Nenhuma movimentação bate com <b>{busca.trim()}</b>. Existem {movimentos.length} no total.</>
+            ? <>Nenhuma movimentação bate com <b>{busca.trim()}</b>. Existem {todos.length} carregadas.</>
             : "Nenhuma movimentação lançada ainda."}
         </div>
       ) : (

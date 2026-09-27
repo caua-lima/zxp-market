@@ -32,6 +32,7 @@ import {
 import { getFirebase } from "./client";
 import { assinarComCache, invalidar } from "./cache";
 import { recomputeProdutoComVersao } from "./estoque-recompute";
+import { paginaApos } from "./paginas";
 import { patchCusto, patchIgnorar, patchReabrir } from "@/lib/domain/remessa-full";
 
 function sanitizeUndefined<T extends Record<string, unknown>>(obj: T): T {
@@ -307,6 +308,19 @@ export function watchMovimentos(
 }
 
 /**
+ * A página seguinte do livro, a partir da última movimentação que a tela já
+ * mostra — a paginação de verdade do S22 (ver lib/firebase/paginas.ts). Não
+ * passa pelo cache: é sob demanda, e só quem pediu precisa dela.
+ */
+export function carregarMovimentosAnteriores(
+  ultimo: { id: string; valor: string | number },
+  tamanho = 500,
+) {
+  const { db } = getFirebase();
+  return paginaApos<EstoqueMovimento>(db, MOV_COL, "data", ultimo, tamanho);
+}
+
+/**
  * Versão enxuta pro aviso do Dashboard.
  *
  * AvisoRemessasFull só precisa saber se as remessas dos últimos ~25 dias já
@@ -564,6 +578,15 @@ const CHAVE_TAREFAS = "tarefas";
 
 /** Teto da leitura — ver `truncado` no callback de `watchTasks`. */
 export const LIMITE_TAREFAS = 500;
+
+/** A página seguinte de tarefas, a partir da última que a tela mostra (S22). */
+export function carregarTarefasAnteriores(
+  ultimo: { id: string; valor: string | number },
+  tamanho = 250,
+) {
+  const { db } = getFirebase();
+  return paginaApos<Task>(db, TASK_COL, "createdAt", ultimo, tamanho);
+}
 
 /**
  * `truncado` no callback: o teto foi atingido, então tarefas mais antigas
