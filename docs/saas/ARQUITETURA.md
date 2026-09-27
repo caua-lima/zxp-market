@@ -53,12 +53,23 @@ onde vier.
   (um teste varre o código e quebra se aparecer coleção sem decisão).
 - Regras do dado da empresa: geradas das regras da raiz (`npm run regras:gerar`,
   `lib/domain/regras-tenant.ts`); um teste quebra se ficarem desatualizadas.
-- Membros: `controleAcesso` (tela de Acesso) é espelhado nos membros da empresa
-  por `lib/tenant-membros.ts` — na hora (rota `/api/acesso/sincronizar`) e a
-  cada 5 min (worker).
-- Limite atual: a empresa é UMA, escolhida pela chave. Resolver a empresa por
-  requisição (`requireTenantAccess` em cada rota) e o cron por empresa são o
-  passo seguinte, antes do segundo cliente.
+- **Empresa por requisição** (segundo cliente): no modo empresa, `requireAccess`
+  autoriza pelo membro da empresa (`memberships/{email}` → `tenants/{t}/members/{email}`)
+  e a requisição ENTRA nela (`lib/firebase/contexto-tenant.ts`, AsyncLocalStorage);
+  `getAdminDb()` resolve a empresa a cada caminho — só quando o caminho é de empresa.
+  O navegador pergunta a empresa em `/api/sessao` no login.
+- Time: a tela de Acesso grava nos membros da empresa por `/api/acesso/membros`
+  (um dono, uma pessoa por empresa). `caminhoDoTime()` (lib/empresas.ts) é onde o
+  servidor procura o time (destinatários de push, diretório, criação de login).
+- Mercado Livre: o vendedor sai da conexão da empresa (`lib/ml/vendedor.ts`); a
+  transação OAuth leva a empresa; `vendedores/{id}` → empresa roteia o webhook e
+  impede a mesma conta em duas empresas.
+- Rotinas: `porEmpresa`/`paraCadaEmpresa` (lib/empresas.ts) rodam cron, resumos,
+  snapshot e worker uma vez por empresa, em sequência; chamadas internas levam a
+  empresa no cabeçalho `x-zxp-tenant` (só vale com o segredo do cron).
+- Empresa nova: `scripts/criar-empresa.mjs` (com o dono).
+- Limite: tudo em sequência dentro de 60 s por função — com dezenas de empresas,
+  vira fila por empresa.
 
 ## Integridade
 

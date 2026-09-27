@@ -129,10 +129,15 @@ descontada. O impacto nos números não foi medido; fica pra quando mexer em dev
   emulador: isolamento entre empresas (6/6), a virada de ponta a ponta com a chave ligada e
   desligada (7/7: gravador de pedidos com transação, token do ML, lançamento auditado sob as regras
   da empresa, sincronização de membros), tradução de caminho (4/4). **Não virada em produção**:
-  depende da migração (Etapa 5) rodar antes — virar sem migrar mostra o painel vazio. **O que ainda
-  não é multi-empresa de verdade**: a empresa é UMA, escolhida pela chave; resolver a empresa por
-  requisição (`requireTenantAccess` em cada rota, cron por empresa) é o passo seguinte, pro 2º
-  cliente.
+  depende da migração (Etapa 5) rodar antes — virar sem migrar mostra o painel vazio. **Segundo cliente (27/09, na `main`)**: empresa resolvida POR
+  REQUISIÇÃO (AsyncLocalStorage; o gate de autenticação entra na empresa do membro), tela de
+  Acesso gravando nos membros da empresa (`/api/acesso/membros`), vendedor do ML saindo da
+  conexão da empresa (era fixo em 14 lugares), OAuth levando a empresa, índice `vendedores/{id}`
+  roteando o webhook e barrando a mesma conta em duas empresas, cron/resumos/snapshot/worker uma
+  vez por empresa, `scripts/criar-empresa.mjs`. A sincronização controleAcesso → membros foi
+  REMOVIDA: com duas empresas, a lista global jogaria gente de uma na outra. Provas: contexto
+  isolado entre requisições simultâneas, gate no modo empresa (5/5), rota de membros no emulador
+  (8/8), webhook roteado por vendedor no emulador, rotinas por empresa (3/3).
 - Nota de estabilidade: `notification-events.emulador.test.ts` (10 reparos + 10 marcas
   concorrentes) falhou uma vez na suíte inteira sob carga (19,8 s) e passou 3/3 isolado e na suíte
   repetida (229/229) — concorrência de transação no emulador, mesmo tipo do flake já anotado do
@@ -163,10 +168,11 @@ Etapa 5 — as duas fatias da migração, ensaiadas no emulador; Etapa 8 — os 
 1. **A** — cadastrar `CRON_SECRET` no GitHub (liga o worker).
 2. **B** — publicar `firestore.rules` (as regras não sobem com a Vercel).
 3. **C** — quando decidir: migrar membros e dados e virar a chave na Vercel (tem rollback).
-4. Decidir o provedor de cobrança (Etapa 6).
+4. **D** — cadastrar o segundo cliente (`scripts/criar-empresa.mjs`), depois de C.
+5. Decidir o provedor de cobrança (Etapa 6).
 
-**Não declarar "SaaS pronto"**: a empresa ainda é uma só (escolhida pela chave), a cobrança não
-existe e a migração não rodou em produção.
+**Não declarar "SaaS pronto"**: a cobrança não existe, a migração não rodou em produção e as
+rotinas percorrem as empresas em sequência (com dezenas de empresas, vira fila).
 
 ### Correção de uma leitura errada minha (23/09)
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { lerModoDeDados } from "@/lib/firebase/caminhos";
 import {
   avaliarBootstrap,
   explicarRecusaBootstrap,
@@ -19,6 +20,11 @@ import {
  * ambiente, e as duas gravações acontecem numa transação só.
  */
 export async function POST(req: Request) {
+  // Modo empresa: empresa nasce com dono pelo scripts/criar-empresa.mjs — não há
+  // "primeiro dono" a eleger pelo navegador (e controleAcesso não autoriza nada lá).
+  if (lerModoDeDados() === "tenant") {
+    return NextResponse.json({ error: "so_modo_raiz", details: "No modo empresa, a empresa é criada com o dono pelo script." }, { status: 400 });
+  }
   const auth = req.headers.get("authorization") || "";
   const idToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!idToken) {

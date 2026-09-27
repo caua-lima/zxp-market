@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAccess } from "@/lib/api-auth";
 import { getAdminDb } from "@/lib/firebase/admin";
+import { caminhoDoTime } from "@/lib/empresas";
 
 /**
  * O diretório de quem tem acesso — só e-mail e nome, pra popular o seletor
@@ -20,7 +21,7 @@ export async function GET(req: Request) {
   const gate = await requireAccess(req);
   if (gate instanceof NextResponse) return gate;
 
-  const snap = await getAdminDb().collection("controleAcesso").orderBy("email", "asc").get();
+  const snap = await getAdminDb().collection(caminhoDoTime()).orderBy("email", "asc").get();
   const pessoas = snap.docs.map((d) => {
     const data = d.data() as { email?: string; displayName?: string };
     return { email: data.email ?? d.id, displayName: data.displayName ?? null };

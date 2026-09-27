@@ -3,6 +3,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { motivoRecusaDoCron } from "@/lib/api-auth";
 import { lerModoDeDados } from "@/lib/firebase/caminhos";
 import { comTenant, tenantAtual } from "@/lib/firebase/contexto-tenant";
+import { empresaDaRequisicao } from "@/lib/firebase/db-de-dados";
 
 /**
  * Rotinas agendadas (cron, worker) rodando UMA VEZ POR EMPRESA — segundo cliente.
@@ -64,4 +65,16 @@ export function porEmpresa(handler: (req: Request) => Promise<Response>): (req: 
     const ok = resultados.every((x) => !x.erro && (x.resultado?.status ?? 500) < 400);
     return Response.json({ ok, empresas: resultados }, { status: ok ? 200 : 207 });
   };
+}
+
+/**
+ * Onde está o time de quem usa o app, no servidor. Modo raiz: `controleAcesso`,
+ * a lista única. Modo empresa: os membros DA EMPRESA DA REQUISIÇÃO — ler a
+ * lista global ali trataria como "sem acesso" quem é da segunda empresa (e o
+ * push dela seria suprimido em silêncio).
+ */
+export function caminhoDoTime(): string {
+  if (lerModoDeDados() === "raiz") return "controleAcesso";
+  const cfg = empresaDaRequisicao();
+  return cfg.modo === "tenant" ? `tenants/${cfg.tenantId}/members` : "controleAcesso";
 }

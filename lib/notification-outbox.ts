@@ -25,6 +25,7 @@ import {
 import { lerPreferenciasPorEmail } from "@/lib/notification-preferences";
 import { papelDe, type PermissionTab } from "@/lib/domain/types";
 import { COLECAO_EVENTOS } from "@/lib/domain/notificacao-publico";
+import { caminhoDoTime } from "@/lib/empresas";
 
 /**
  * O outbox: o que garante que um aviso agendado chega a quem devia, mesmo com
@@ -125,7 +126,8 @@ export type Dependencias = {
  * autorização: quem perdeu o acesso não é "alguém que desligou o aviso".
  */
 async function lerAcessosDoBanco(db: Firestore): Promise<Map<string, AcessoDoDestinatario>> {
-  const snap = await db.collection("controleAcesso").get();
+  // O time da empresa do push (modo empresa) ou a lista única (modo raiz).
+  const snap = await db.collection(caminhoDoTime()).get();
   const mapa = new Map<string, AcessoDoDestinatario>();
   for (const d of snap.docs) {
     const dados = d.data() ?? {};

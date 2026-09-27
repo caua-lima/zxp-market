@@ -6,6 +6,7 @@ import { consumirLimiteDaChave } from "@/lib/notification-limites";
 import { avaliarAtribuicao } from "@/lib/domain/atribuicao-de-tarefa";
 import { podeCapacidade } from "@/lib/domain/capacidades";
 import { papelDe, type PermissionTab, type Task } from "@/lib/domain/types";
+import { caminhoDoTime } from "@/lib/empresas";
 import {
   buildTaskAssignedContent,
   buildTaskDeepLink,
@@ -71,7 +72,7 @@ export async function POST(req: Request) {
 
   // O responsável precisa enxergar tarefas: o member não lê a coleção (regras), então avisar seria empurrar
   // uma tarefa que a pessoa não consegue abrir. Sem acesso nenhum, idem.
-  const acessoDoResponsavel = await db.collection("controleAcesso").doc(avaliacao.responsavel).get();
+  const acessoDoResponsavel = await db.collection(caminhoDoTime()).doc(avaliacao.responsavel).get();
   if (!acessoDoResponsavel.exists) return NextResponse.json({ ok: true, skipped: "responsavel_sem_acesso" });
   const dados = acessoDoResponsavel.data() ?? {};
   const papel = papelDe(dados.role);

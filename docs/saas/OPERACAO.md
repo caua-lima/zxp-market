@@ -166,12 +166,50 @@ Vercel e faça **Redeploy**. O app volta a ler da raiz, que ficou intacta. O que
 foi gravado enquanto a chave esteve ligada fica em `tenants/vazxpress` (me
 avise que eu trago de volta).
 
+### Depois da virada: o time da empresa
+
+Com a chave ligada, a tela **Acesso** passa a administrar o time **da empresa**
+(convidar, mudar papel, remover) — `controleAcesso` deixa de valer. Quem já
+usava o app foi levado pelo passo C2. Pra alguém novo: tela Acesso → adicionar,
+como sempre.
+
 ### C6. Limpeza
 ```
 Remove-Item .env.producao
 ```
 
 ---
+
+## D. Cadastrar o segundo cliente (depois de C)
+
+**Pré-requisito:** a parte C feita (app no modo empresa). Cada cliente é uma
+empresa separada: dado, time e conta do Mercado Livre isolados.
+
+1. Escolha um id pra empresa: minúsculas, números e hífen (ex.: `loja-joao`).
+2. Com o `.env.producao` na pasta (passo C1), veja o que seria criado:
+   ```
+   node --env-file=.env.producao scripts/criar-empresa.mjs --tenant-id loja-joao --nome "Loja do João" --dono joao@email.com
+   ```
+3. Crie de verdade (pede pra digitar `vazxpress-a2350`):
+   ```
+   node --env-file=.env.producao scripts/criar-empresa.mjs --tenant-id loja-joao --nome "Loja do João" --dono joao@email.com --aplicar --confirmar-producao
+   ```
+4. Mande pro cliente:
+   - o endereço do app (`https://briefing-master.vercel.app`);
+   - que ele entre com o e-mail `joao@email.com` (Google ou e-mail/senha — se
+     for senha, crie pela tela Acesso dele depois, ou peça pra ele usar "Entrar com
+     Google");
+   - que clique em **Conectar Mercado Livre** e autorize com a conta DELE;
+   - que convide o time dele pela tela **Acesso**.
+5. No dia seguinte, confira em `/api/ml/diagnostico-push` (logado como dono
+   da VAZXPRESS) que o cron rodou — ele agora roda uma vez por empresa.
+
+**Limites de hoje (pra você saber o que prometer):**
+- não há cobrança (Etapa 6): combine o pagamento por fora;
+- uma pessoa pertence a UMA empresa (o mesmo e-mail não entra em duas);
+- uma conta do Mercado Livre pertence a UMA empresa;
+- o cron e o worker percorrem as empresas em sequência dentro de 60 s: com
+  muitas empresas (dezenas), vai precisar de fila — me avise antes de passar de ~5.
 
 ## Rotina — o que olhar de vez em quando
 

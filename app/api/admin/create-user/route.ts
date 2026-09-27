@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAccess } from "@/lib/api-auth";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
+import { caminhoDoTime } from "@/lib/empresas";
 
 /**
  * Cria (ou atualiza a senha de) um usuário de login por e-mail/senha.
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "E-mail e senha (mínimo 6 caracteres) são obrigatórios." }, { status: 400 });
     }
 
-    const acesso = await getAdminDb().collection("controleAcesso").doc(email).get();
+    const acesso = await getAdminDb().collection(caminhoDoTime()).doc(email).get();
     if (!acesso.exists) {
       return NextResponse.json(
         { error: "nao_convidado", details: "Este e-mail ainda não foi adicionado em Acesso. Convide primeiro, depois defina a senha." },
