@@ -15,7 +15,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * contexto-tenant.test.ts).
  */
 
-const armazem = new AsyncLocalStorage<{ tenantId: string | null }>();
+/** `requisicao`: id pra correlacionar as linhas de log de uma mesma chamada (S27). */
+const armazem = new AsyncLocalStorage<{ tenantId: string | null; requisicao?: string }>();
 
 const ID_VALIDO = /^[a-z0-9-]{2,60}$/;
 
@@ -26,14 +27,14 @@ function validar(tenantId: string): string {
 
 /** Roda `fn` dentro da empresa — cron e worker, uma empresa por vez. */
 export function comTenant<T>(tenantId: string, fn: () => T): T {
-  return armazem.run({ tenantId: validar(tenantId) }, fn);
+  return armazem.run({ tenantId: validar(tenantId), requisicao: armazem.getStore()?.requisicao }, fn);
 }
 
 /**
  * Entra na empresa pelo resto desta cadeia assíncrona.
  */
 export function entrarNoTenant(tenantId: string): void {
-  armazem.enterWith({ tenantId: validar(tenantId) });
+  armazem.enterWith({ tenantId: validar(tenantId), requisicao: armazem.getStore()?.requisicao });
 }
 
 /**
@@ -45,10 +46,15 @@ export function entrarNoTenant(tenantId: string): void {
  * (achado pelo teste). Aberto antes, o contexto é o de quem chamou; e o objeto
  * é mutável, então preenchê-lo depois vale pra rota inteira.
  */
-export function abrirContextoDaRequisicao(): (tenantId: string) => void {
-  const caixa: { tenantId: string | null } = { tenantId: null };
+export function abrirContextoDaRequisicao(requisicao?: string): (tenantId: string) => void {
+  const caixa: { tenantId: string | null; requisicao?: string } = { tenantId: null, requisicao };
   armazem.enterWith(caixa);
   return (tenantId: string) => { caixa.tenantId = validar(tenantId); };
+}
+
+/** O id da requisição atual, pra log (x-vercel-id quando a Vercel manda). */
+export function requisicaoAtual(): string | null {
+  return armazem.getStore()?.requisicao ?? null;
 }
 
 export function tenantAtual(): string | null {

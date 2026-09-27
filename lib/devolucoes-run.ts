@@ -1,3 +1,4 @@
+import { log } from "@/lib/log";
 import "server-only";
 import { fetchML } from "@/lib/ml/fetch-ml";
 import { getMlAccessToken } from "@/app/api/ml/token";
@@ -101,7 +102,7 @@ export async function verificarDevolucoes(): Promise<ResultadoDevolucoes> {
       // Só entra em "avisados" quem de fato chegou a algum aparelho.
       if (enviados > 0) avisados.push(aviso.chave);
     } catch (err) {
-      console.error("[devolucoes] falhou ao avisar", aviso.chave, err);
+      log.error("devolucoes", { mensagem: "falhou ao avisar", alvo: aviso.chave, erro: err });
     }
   }
 

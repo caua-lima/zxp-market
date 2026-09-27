@@ -1,3 +1,4 @@
+import { log } from "@/lib/log";
 import "server-only";
 import type { NotificationEventType, SalePushPayload } from "@/lib/domain/notifications";
 import type { ContextoDeRajada } from "@/lib/domain/decisao-destinatario";
@@ -61,7 +62,7 @@ export async function enviarEspec(spec: EspecPush): Promise<number> {
     return r.aceitas;
   } catch (err) {
     const codigo = (err as { code?: unknown })?.code;
-    console.error(`[notificacoes] falha ao publicar ${spec.pushId} (${String(codigo ?? (err instanceof Error ? err.name : "erro"))})`);
+    log.error("notificacoes", { mensagem: `falha ao publicar ${spec.pushId} (${String(codigo ?? (err instanceof Error ? err.name : "erro"))})` });
     return 0;
   }
 }

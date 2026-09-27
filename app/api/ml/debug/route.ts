@@ -1,19 +1,32 @@
-import { NextResponse } from "next/server";
 import { getMlAccessToken } from "../token";
-import { requireAccess } from "@/lib/api-auth";
+import { rotaDeDiagnostico } from "@/lib/diagnostico";
 
-export async function GET(req: Request) {
-  const gate = await requireAccess(req, { adminOnly: true });
-  if (gate instanceof NextResponse) return gate;
-
+/**
+ * A conta do ML conectada (S27): antes devolvia o `/users/me` inteiro (e-mail,
+ * telefone, documento, endereço do vendedor) e os 30 primeiros caracteres do
+ * token. Agora só o que serve pra conferir QUAL conta está conectada.
+ */
+export const GET = rotaDeDiagnostico("debug", async () => {
   const token = await getMlAccessToken();
-  if (!token) return NextResponse.json({ error: "sem token" });
+  if (!token) return { corpo: { error: "sem token" } };
 
   const res = await fetch("https://api.mercadolibre.com/users/me", {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
-
-  const body = await res.json();
-  return NextResponse.json({ status: res.status, body, tokenPreview: token.slice(0, 30) + "..." });
-}
+  const b = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  const rep = (b?.seller_reputation ?? {}) as Record<string, unknown>;
+  return {
+    corpo: {
+      status: res.status,
+      conta: b && {
+        id: b.id,
+        nickname: b.nickname,
+        site_id: b.site_id,
+        user_type: b.user_type,
+        tags: b.tags,
+        seller_reputation: { level_id: rep.level_id, power_seller_status: rep.power_seller_status },
+      },
+    },
+  };
+});

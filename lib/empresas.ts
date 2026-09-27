@@ -1,3 +1,4 @@
+import { log } from "@/lib/log";
 import "server-only";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { motivoRecusaDoCron } from "@/lib/api-auth";
@@ -32,7 +33,7 @@ export async function paraCadaEmpresa<T>(fn: () => Promise<T>): Promise<Resultad
     try {
       saida.push({ tenantId, resultado: await comTenant(tenantId, fn) });
     } catch (err) {
-      console.error(`[empresas] ${tenantId} falhou`, err);
+      log.error("empresas", { mensagem: `${tenantId} falhou`, erro: err });
       saida.push({ tenantId, erro: err instanceof Error ? err.message : String(err) });
     }
   }

@@ -47,6 +47,7 @@ next-env.d.ts
 
 serviceAccountKey.json
 backups/
+exportacoes/
 
 # Logs do emulador do Firebase (ensaio de restauração)
 firebase-debug.log

@@ -1,3 +1,4 @@
+import { log } from "@/lib/log";
 import { NextResponse } from "next/server";
 import { motivoRecusaDoCron } from "@/lib/api-auth";
 import { registrarExecucaoDoCron } from "@/lib/cron-heartbeat";
@@ -43,11 +44,11 @@ async function tratar(req: Request) {
   // Inbox primeiro: o push que sair do processamento de uma notificação vai
   // pro outbox e é entregue na varredura seguinte, na mesma chamada.
   const inbox = await varrerInbox({ limite: 50, orcamentoMs: 20_000 }).catch((err) => {
-    console.error("[worker] varredura do inbox falhou", err);
+    log.error("worker", { mensagem: "varredura do inbox falhou", erro: err });
     return null;
   });
   const entregas = await varrerEntregasPendentes({ limite: 200, orcamentoMs: 25_000 }).catch((err) => {
-    console.error("[worker] varredura do outbox falhou", err);
+    log.error("worker", { mensagem: "varredura do outbox falhou", erro: err });
     return null;
   });
 

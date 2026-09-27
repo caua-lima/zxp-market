@@ -119,7 +119,7 @@ export async function requireAccess(
   } = {},
 ): Promise<AuthContext | NextResponse> {
   // Antes de QUALQUER await — ver abrirContextoDaRequisicao.
-  const definirEmpresa = abrirContextoDaRequisicao();
+  const definirEmpresa = abrirContextoDaRequisicao(req.headers.get("x-vercel-id") ?? undefined);
   const exigida: Capacidade | undefined = opts.capacidade ?? (opts.adminOnly ? "administrar" : undefined);
 
   // Bypass para jobs automatizados (sincronização agendada).

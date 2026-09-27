@@ -1,3 +1,4 @@
+import { log } from "@/lib/log";
 import { NextResponse } from "next/server";
 import { getMlAccessToken } from "../token";
 import { motivoRecusaDoCron } from "@/lib/api-auth";
@@ -41,7 +42,7 @@ async function getDaEmpresa(req: Request) {
      * se resolve na Vercel, segredo errado se resolve conferindo o valor.
      * Nada aqui vaza o segredo — só diz qual dos dois casos é.
      */
-    console.error(`[cron] chamada recusada: ${recusa}`);
+    log.error("cron", { mensagem: `chamada recusada: ${recusa}` });
     return NextResponse.json({ error: "unauthorized", motivo: recusa }, { status: 401 });
   }
 
@@ -113,7 +114,7 @@ async function getDaEmpresa(req: Request) {
     const valores = resultados.map((r, i) => {
       if (r.status === "fulfilled") return r.value;
       const motivo = r.reason instanceof Error ? r.reason.message : String(r.reason);
-      console.error(`[cron] sync ${nomes[i]} falhou`, r.reason);
+      log.error("cron", { mensagem: `sync ${nomes[i]} falhou`, erro: r.reason });
       syncFalhas.push(`${nomes[i]}: ${motivo}`);
       return null;
     });
@@ -147,7 +148,7 @@ async function getDaEmpresa(req: Request) {
     // erro aqui não pode derrubar a sincronização de pedidos, que é o que
     // realmente importa neste endpoint.
     const lembretes = await enviarLembretesDeTarefa().catch((err: unknown) => {
-      console.error("[cron] lembrete de tarefa falhou", err);
+      log.error("cron", { mensagem: "lembrete de tarefa falhou", erro: err });
       return null;
     });
 
@@ -156,7 +157,7 @@ async function getDaEmpresa(req: Request) {
     // domingos. Best-effort: nunca pode derrubar a sincronização de pedidos.
     const backup = ehDomingoBR()
       ? await fazerBackupSemanal().catch((err: unknown) => {
-          console.error("[cron] backup semanal falhou", err);
+          log.error("cron", { mensagem: "backup semanal falhou", erro: err });
           return null;
         })
       : null;
@@ -182,7 +183,7 @@ async function getDaEmpresa(req: Request) {
      * recente possível. Best-effort — nunca derruba o cron.
      */
     const estoqueBaixo = await verificarEstoqueBaixo().catch((err) => {
-      console.error("[cron] alerta de estoque falhou", err);
+      log.error("cron", { mensagem: "alerta de estoque falhou", erro: err });
       return null;
     });
 
@@ -192,7 +193,7 @@ async function getDaEmpresa(req: Request) {
      * outra coisa e já vem pelo webhook.
      */
     const devolucoes = await verificarDevolucoes().catch((err) => {
-      console.error("[cron] aviso de devolucao falhou", err);
+      log.error("cron", { mensagem: "aviso de devolucao falhou", erro: err });
       return null;
     });
 
@@ -203,7 +204,7 @@ async function getDaEmpresa(req: Request) {
      * Antes do outbox de push, pra o aviso que sair daqui ir na mesma rodada.
      */
     const inboxWebhook = await varrerInbox({ limite: 100, orcamentoMs: 15_000 }).catch((err) => {
-      console.error("[cron] varredura do inbox do webhook falhou", err);
+      log.error("cron", { mensagem: "varredura do inbox do webhook falhou", erro: err });
       return null;
     });
 
@@ -214,7 +215,7 @@ async function getDaEmpresa(req: Request) {
      * aviso, pra pegar também o que acabou de ser publicado. Best-effort.
      */
     const entregasPush = await varrerEntregasPendentes({ limpar: true }).catch((err) => {
-      console.error("[cron] varredura do outbox de push falhou", err);
+      log.error("cron", { mensagem: "varredura do outbox de push falhou", erro: err });
       return null;
     });
 
@@ -223,11 +224,11 @@ async function getDaEmpresa(req: Request) {
      * nao pode competir por tempo com nada que o usuario percebe.
      */
     const poda = await podarWebhookLog().catch((err) => {
-      console.error("[cron] poda do webhook_log falhou", err);
+      log.error("cron", { mensagem: "poda do webhook_log falhou", erro: err });
       return null;
     });
     const podaInbox = await podarInbox().catch((err) => {
-      console.error("[cron] poda do inbox do webhook falhou", err);
+      log.error("cron", { mensagem: "poda do inbox do webhook falhou", erro: err });
       return null;
     });
 

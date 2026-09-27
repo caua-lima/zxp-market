@@ -1,3 +1,4 @@
+import { log } from "@/lib/log";
 import "server-only";
 import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
@@ -270,7 +271,7 @@ export async function verificarEstoqueBaixo(): Promise<ResultadoEstoqueAlerta> {
           avisados.push(aviso.produtoId);
         }
       } catch (err) {
-        console.error("[estoque-alerta] falhou ao avisar", aviso.produtoId, err);
+        log.error("estoque-alerta", { mensagem: "falhou ao avisar", alvo: aviso.produtoId, erro: err });
       }
     }
 
@@ -295,7 +296,7 @@ export async function verificarEstoqueBaixo(): Promise<ResultadoEstoqueAlerta> {
       anunciosNaoLidos: naoLidos.size,
     };
   } catch (err) {
-    console.error("[estoque-alerta] falhou", err);
+    log.error("estoque-alerta", { mensagem: "falhou", erro: err });
     return { ...vazio, erro: err instanceof Error ? err.message : String(err) };
   }
 }

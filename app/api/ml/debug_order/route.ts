@@ -1,11 +1,8 @@
-import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
-import { requireAccess } from "@/lib/api-auth";
+import { rotaDeDiagnostico } from "@/lib/diagnostico";
 
-export async function GET(req: Request) {
-  const gate = await requireAccess(req, { adminOnly: true });
-  if (gate instanceof NextResponse) return gate;
-
+/** Diagnóstico de vínculo pedido → estoque (por SKU), na empresa da requisição. */
+export const GET = rotaDeDiagnostico("debug_order", async () => {
   const db = getAdminDb();
 
   const [ordersSnap, estoqueSnap] = await Promise.all([
@@ -33,5 +30,5 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ sample_orders, estoque, diagnostico_vinculo: vinculos });
-}
+  return { corpo: { sample_orders, estoque, diagnostico_vinculo: vinculos } };
+});

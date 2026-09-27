@@ -1,3 +1,4 @@
+import { log } from "@/lib/log";
 import { NextResponse } from "next/server";
 import { requireAccess } from "@/lib/api-auth";
 import { chaveDoResumo, montarResumoManha } from "@/lib/domain/resumo-manha";
@@ -68,7 +69,7 @@ async function getDaEmpresa(req: Request) {
     titulo: resumo.titulo,
     corpo: resumo.corpo,
   }).catch((err) => {
-    console.error("[resumo-manha] falhou ao notificar", err);
+    log.error("resumo-manha", { mensagem: "falhou ao notificar", erro: err });
     return false;
   });
 

@@ -1,3 +1,4 @@
+import { log } from "@/lib/log";
 import "server-only";
 import { getAdminDb } from "@/lib/firebase/admin";
 
@@ -43,7 +44,7 @@ export async function registrarExecucaoDoCron(resumo: Record<string, unknown>, e
       resumo,
     });
   } catch (err) {
-    console.error("[cron] nao consegui registrar a execucao", err);
+    log.error("cron", { mensagem: "nao consegui registrar a execucao", erro: err });
   }
 }
 

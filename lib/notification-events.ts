@@ -1,3 +1,4 @@
+import { log } from "@/lib/log";
 import "server-only";
 import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
@@ -133,7 +134,7 @@ export async function garantirEspelho(
 /** O espelho não pôde ser gravado agora: fica marcado pra ser refeito, em vez de sumir em silêncio. */
 async function marcarEspelhoPendente(db: Firestore, eventId: string, err: unknown): Promise<void> {
   const code = (err as { code?: unknown })?.code;
-  console.error(`[notificacoes] espelho de ${eventId} nao gravado (codigo ${String(code ?? "desconhecido")}); ficou pendente`);
+  log.error("notificacoes", { mensagem: `espelho de ${eventId} nao gravado (codigo ${String(code ?? "desconhecido")}); ficou pendente` });
   await db.collection(COL).doc(eventId).update({ espelhoPendente: true }).catch(() => {});
 }
 
@@ -235,7 +236,7 @@ export async function repararEspelhosPendentes(db: Firestore, limite = 50): Prom
       await d.ref.update({ espelhoPendente: FieldValue.delete() });
       refeitos++;
     } catch (err) {
-      console.error(`[notificacoes] reparo do espelho de ${d.id} falhou (codigo ${String((err as { code?: unknown })?.code ?? "desconhecido")})`);
+      log.error("notificacoes", { mensagem: `reparo do espelho de ${d.id} falhou (codigo ${String((err as { code?: unknown })?.code ?? "desconhecido")})` });
     }
   }
   return refeitos;

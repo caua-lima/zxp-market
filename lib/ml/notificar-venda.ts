@@ -1,3 +1,4 @@
+import { log } from "@/lib/log";
 import "server-only";
 import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
@@ -315,7 +316,7 @@ export async function notificarVendaConfirmada(
       }),
     });
   } catch (err) {
-    console.error(`[notificacoes] falha ao publicar a venda ${eventId} (${String((err as { code?: unknown })?.code ?? "erro")})`);
+    log.error("notificacoes", { mensagem: `falha ao publicar a venda ${eventId} (${String((err as { code?: unknown })?.code ?? "erro")})` });
     return created ? { estado: "notificada", eventId, enviados: 0 } : { estado: "ja_existia", eventId };
   }
 

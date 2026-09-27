@@ -1,3 +1,4 @@
+import { log } from "@/lib/log";
 import "server-only";
 import { verificarMarcos, type ResultadoMarcos } from "@/lib/marcos-run";
 import { cabecalhoDaEmpresaAtual } from "@/lib/empresas";
@@ -56,9 +57,9 @@ export async function dispararMarcos(
       cache: "no-store",
     });
     if (r.ok) m = (await r.json()) as Metricas;
-    else console.error("[marcos] metricas indisponiveis:", r.status);
+    else log.error("marcos", { mensagem: "metricas indisponiveis", detalhe: r.status });
   } catch (err) {
-    console.error("[marcos] metricas falharam", err);
+    log.error("marcos", { mensagem: "metricas falharam", erro: err });
   }
 
   try {
@@ -75,7 +76,7 @@ export async function dispararMarcos(
       serieDiaria: m?.serieDiaria ?? [],
     });
   } catch (err) {
-    console.error("[marcos] falharam", err);
+    log.error("marcos", { mensagem: "falharam", erro: err });
     return null;
   }
 }

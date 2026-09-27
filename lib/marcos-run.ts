@@ -1,3 +1,4 @@
+import { log } from "@/lib/log";
 import "server-only";
 import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
@@ -150,7 +151,7 @@ export async function verificarMarcos(fatos: FatosParaMarcos): Promise<Resultado
       try {
         if (await notificarMarco(m)) destino.push(m.chave);
       } catch (err) {
-        console.error("[marcos] falhou ao avisar", m.chave, err);
+        log.error("marcos", { mensagem: "falhou ao avisar", alvo: m.chave, erro: err });
       }
     }
   };
@@ -187,7 +188,7 @@ export async function verificarMarcos(fatos: FatosParaMarcos): Promise<Resultado
       await salvarRecordes(novos);
     }
   } catch (err) {
-    console.error("[marcos] recordes falharam", err);
+    log.error("marcos", { mensagem: "recordes falharam", erro: err });
   }
 
   // ── Subida de nível ──
@@ -202,7 +203,7 @@ export async function verificarMarcos(fatos: FatosParaMarcos): Promise<Resultado
      */
     await salvarNivel(nivelAtual);
   } catch (err) {
-    console.error("[marcos] reputação indisponível", err);
+    log.error("marcos", { mensagem: "reputação indisponível", erro: err });
   }
 
   return {
