@@ -108,6 +108,7 @@ export function MLConnectButton({ aviso }: { aviso?: string | null } = {}) {
     <button
       type="button"
       onClick={handleConnect}
+      aria-label="Conectar conta do Mercado Livre"
       disabled={connecting}
       style={{
         display: "flex",
@@ -125,7 +126,7 @@ export function MLConnectButton({ aviso }: { aviso?: string | null } = {}) {
         opacity: connecting ? 0.6 : 1,
       }}
     >
-      {connecting ? '⏳ Conectando...' : '🛒 Conectar ML'}
+      {connecting ? <>⏳ <span className="acct-btn-label">Conectando...</span></> : <>🛒 <span className="acct-btn-label">Conectar ML</span></>}
     </button>
     {error && (
       <span style={{ color: "var(--red-text)", fontSize: ".75rem", maxWidth: 220 }}>{error}</span>

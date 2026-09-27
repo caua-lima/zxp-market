@@ -876,11 +876,17 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
   .topbar-actions{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
   .topbar-actions::-webkit-scrollbar{display:none}
   .topbar-actions>*{flex-shrink:0}
-  /* nickname/e-mail já estão no rodapé da sidebar; no topo só ocupavam espaço */
-  .acct-text{display:none!important}
-  /* botões viram só ícone: sino e tomada continuam legíveis sem o rótulo */
-  .push-label,.acct-btn-label,.cmdk-hint{display:none}
   .topbar .btn-xs{padding:6px 9px}
+}
+/* Até tablet deitado: nickname/e-mail já estão no rodapé da sidebar, e os
+   botões do topo viram só ícone (sino, tomada, 🛒 — o nome vai no aria-label).
+   Era só até 720 px; entre 721 e ~900 px, sem ML conectado, o "Conectar ML"
+   empurrava a página 19 px pra fora (S28, medido em 768 px). A rolagem da
+   fileira continua só no celular: no desktop ela cortaria os menus que abrem
+   de dentro dela. */
+@media(max-width:1024px){
+  .acct-text{display:none!important}
+  .push-label,.acct-btn-label,.cmdk-hint{display:none}
 }
 @media(max-width:380px){
   /* telas muito estreitas: o título da aba cede espaço pros controles */
@@ -930,14 +936,19 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
 .pg-eyebrow{font-size:.75rem;text-transform:uppercase;letter-spacing:.07em;color:var(--text-secondary);font-weight:700}
 .pg-info{position:relative;display:inline-flex;color:var(--text-muted);cursor:help;font-size:.75rem;line-height:1;border-radius:50%}
 .pg-info:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+/* S28: escondida, a dica sai do layout (display:none) — com visibility:hidden
+   ela seguia ocupando espaço fora da tela e alargava a página (1395 px numa
+   janela de 1363). Ao abrir, components/InfoDica.tsx põe em --pg-desloca o
+   quanto andar pro lado pra caber. */
 .pg-tooltip{
-  position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);
+  position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(calc(-50% + var(--pg-desloca,0px)));
   background:var(--surface-raised);border:1px solid var(--border-strong);border-radius:8px;
   padding:8px 10px;font-size:.75rem;font-weight:400;color:var(--text-secondary);line-height:1.45;
-  width:210px;visibility:hidden;opacity:0;transition:opacity var(--transition-fast,150ms ease);
+  width:min(210px,calc(100vw - 24px));display:none;
   pointer-events:none;z-index:20;box-shadow:0 8px 24px rgba(0,0,0,.4);
 }
-.pg-info:hover .pg-tooltip,.pg-info:focus .pg-tooltip{visibility:visible;opacity:1}
+.pg-info:hover .pg-tooltip,.pg-info:focus .pg-tooltip{display:block;animation:pgDicaEntra var(--transition-fast,150ms ease)}
+@keyframes pgDicaEntra{from{opacity:0}to{opacity:1}}
 
 .pg-body{display:flex;flex-direction:column;align-items:center;text-align:center;background:none;border:none;padding:0;width:100%;font:inherit;color:inherit}
 .pg-clickable{cursor:pointer;border-radius:10px;transition:background var(--transition-fast,150ms ease)}

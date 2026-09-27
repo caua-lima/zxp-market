@@ -1,5 +1,6 @@
 "use client";
 
+import InfoDica from "@/components/InfoDica";
 import { fmtBRL, fmtPct } from "@/lib/domain/calc";
 
 export type KpiTone = "pos" | "neg" | "acc" | "warn";
@@ -65,10 +66,7 @@ export default function ExecutiveKpis({ items }: { items: ExecutiveKpiItem[] }) 
           <div key={it.key} className="exec-kpi">
             <div className="exec-kpi-head">
               <span className="exec-kpi-label">{it.label}</span>
-              <span className="pg-info" tabIndex={0}>
-                ⓘ
-                <span role="tooltip" className="pg-tooltip">{it.tooltip}</span>
-              </span>
+              <InfoDica>{it.tooltip}</InfoDica>
             </div>
             <div className="exec-kpi-value money" style={{ color: it.indisponivel ? "var(--text-muted)" : color }}>
               {it.indisponivel ? "—" : it.format === "percent" ? `${fmtPct(it.value, 1)}` : fmtBRL(it.value)}

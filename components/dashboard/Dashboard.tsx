@@ -1822,7 +1822,11 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
       setBuscaMetrics((a) => registrarFalha(a, Date.now()));
       if (!silent) setMlMetrics(null);
     } finally {
-      if (!silent && seqMetrics.current.ehAtual(meu)) setMlLoading(false);
+      // Quem desliga o "Carregando" é a busca ATUAL, silenciosa ou não. Antes só a
+      // não-silenciosa desligava: se a atualização silenciosa (depois do sync)
+      // passasse na frente da primeira carga, ninguém desligava e a tela ficava
+      // em "Carregando dados…" pra sempre — reproduzido no emulador.
+      if (seqMetrics.current.ehAtual(meu)) setMlLoading(false);
     }
   }, []);
 

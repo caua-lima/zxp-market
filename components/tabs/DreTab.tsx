@@ -1,5 +1,6 @@
 "use client";
 
+import InfoDica from "@/components/InfoDica";
 import { useCallback, useEffect, useState } from "react";
 import { fmtBRL, isFullMonth, prevPeriod, todayStr, fmtPct } from "@/lib/domain/calc";
 import { linhaCsvSegura } from "@/lib/domain/csv-seguro";
@@ -116,10 +117,7 @@ function Linha({ rotulo, valor, nota, tipo, base, tooltip, indisponivel }: Linha
             {rotulo}
           </span>
           {tooltip && (
-            <span className="pg-info" tabIndex={0} style={{ marginLeft: 5 }}>
-              ⓘ
-              <span role="tooltip" className="pg-tooltip">{tooltip}</span>
-            </span>
+            <InfoDica style={{ marginLeft: 5 }}>{tooltip}</InfoDica>
           )}
           {nota && <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 1 }}>{nota}</div>}
         </div>

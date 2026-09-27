@@ -1,5 +1,6 @@
 "use client";
 
+import InfoDica from "@/components/InfoDica";
 import { useEffect, useId, useState } from "react";
 import { clampGaugePercent, formatarPercentualDaMeta, rawGoalPercent, type GaugeTone } from "@/lib/domain/gauge";
 
@@ -123,10 +124,7 @@ export default function PerformanceGauge({
       <div className="pg-head">
         <span className="pg-eyebrow">{eyebrow ?? title}</span>
         {tooltip && (
-          <span className="pg-info" tabIndex={0} aria-describedby={descId}>
-            ⓘ
-            <span role="tooltip" id={descId} className="pg-tooltip">{tooltip}</span>
-          </span>
+          <InfoDica id={descId}>{tooltip}</InfoDica>
         )}
       </div>
 
