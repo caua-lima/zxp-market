@@ -72,3 +72,53 @@ export function svgFavicon(): string {
 export function comoDataUri(svg: string): string {
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
 }
+
+/**
+ * ─── NOME DA LOJA E TEXTOS DO PRODUTO (S24) ─────────────────────────────
+ *
+ * Nome da loja e textos do produto (S24).
+ *
+ * O app nasceu como o painel de UMA loja (VAZXPRESS), e o nome dela estava
+ * escrito na tela, no título da aba, no manifesto do app instalado e na capa
+ * do DRE. No modo empresa cada cliente vê o nome DELE (tenants/{id}.name, que
+ * o servidor devolve em /api/sessao); no modo raiz — a operação de antes da
+ * virada — continua VAZXPRESS.
+ *
+ */
+
+export const NOME_DA_OPERACAO_LEGADA = "VAZXPRESS";
+
+export function modoEmpresaNaTela(): boolean {
+  return process.env.NEXT_PUBLIC_ZXP_MODO_DADOS === "tenant";
+}
+
+export function cadastroAbertoNaTela(): boolean {
+  return modoEmpresaNaTela() && process.env.NEXT_PUBLIC_ZXP_CADASTRO_ABERTO === "1";
+}
+
+let nomeDaEmpresaAtual: string | null = null;
+
+/** Guardado no login (carregarEmpresaDaSessao), antes da primeira tela da empresa. */
+export function definirNomeDaEmpresa(nome: string | null): void {
+  nomeDaEmpresaAtual = nome?.trim() || null;
+}
+
+export function nomeDaLoja(): string {
+  if (!modoEmpresaNaTela()) return NOME_DA_OPERACAO_LEGADA;
+  return nomeDaEmpresaAtual ?? "Sua loja";
+}
+
+export function frasesDoProduto(): { titulo: string; subtitulo: string; descricao: string } {
+  if (!modoEmpresaNaTela()) {
+    return {
+      titulo: `ZXP Market | Dashboard ${NOME_DA_OPERACAO_LEGADA}`,
+      subtitulo: `Dashboard da ${NOME_DA_OPERACAO_LEGADA} no Mercado Livre`,
+      descricao: `ZXP Market — dashboard financeiro e operacional da ${NOME_DA_OPERACAO_LEGADA} no Mercado Livre. Um produto ZXP Solutions.`,
+    };
+  }
+  return {
+    titulo: "ZXP Market | Gestão para vendedores do Mercado Livre",
+    subtitulo: "Gestão financeira e operacional para quem vende no Mercado Livre",
+    descricao: "ZXP Market — lucro, estoque, metas e operação de quem vende no Mercado Livre Brasil. Um produto ZXP Solutions.",
+  };
+}

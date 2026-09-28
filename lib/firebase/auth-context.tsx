@@ -2,7 +2,10 @@
 
 import {
   type User,
+  createUserWithEmailAndPassword,
   onAuthStateChanged,
+  sendEmailVerification,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut as firebaseSignOut,
@@ -20,6 +23,13 @@ type AuthState = {
   signInWithAccountSelection: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /** S24 — cadastro: cria o login e manda o e-mail de confirmação (Firebase). */
+  criarConta: (email: string, senha: string) => Promise<void>;
+  /** S24 — "Esqueci minha senha": o Firebase manda o link de nova senha. */
+  recuperarSenha: (email: string) => Promise<void>;
+  reenviarConfirmacao: () => Promise<void>;
+  /** Relê o usuário e renova o token — depois de confirmar o e-mail, o servidor precisa ver email_verified. */
+  recarregarSessao: () => Promise<boolean>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -100,6 +110,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await signInWithEmailAndPassword(auth, email.trim(), password);
   }
 
+  async function criarConta(email: string, senha: string) {
+    const { auth } = getFirebase();
+    const cred = await createUserWithEmailAndPassword(auth, email.trim(), senha);
+    await sendEmailVerification(cred.user);
+  }
+
+  async function recuperarSenha(email: string) {
+    const { auth } = getFirebase();
+    await sendPasswordResetEmail(auth, email.trim());
+  }
+
+  async function reenviarConfirmacao() {
+    const { auth } = getFirebase();
+    if (auth.currentUser) await sendEmailVerification(auth.currentUser);
+  }
+
+  async function recarregarSessao() {
+    const { auth } = getFirebase();
+    const u = auth.currentUser;
+    if (!u) return false;
+    await u.reload();
+    await u.getIdToken(true);
+    return auth.currentUser?.emailVerified === true;
+  }
+
   async function signOut() {
     const { auth } = getFirebase();
     // Solta o push ANTES de perder a sessão: sem ela, o servidor não sabe de
@@ -120,7 +155,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signInWithAccountSelection, signInWithEmail, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signInWithAccountSelection, signInWithEmail, signOut, criarConta, recuperarSenha, reenviarConfirmacao, recarregarSessao }}>
       {children}
     </AuthContext.Provider>
   );

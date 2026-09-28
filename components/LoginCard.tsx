@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FirebaseError } from "firebase/app";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { ZxpMark } from "@/components/ZxpMark";
+import { cadastroAbertoNaTela, frasesDoProduto } from "@/lib/marca";
 
 /**
  * Traduz o código de erro do Firebase Auth pra algo que ajuda a diagnosticar
@@ -35,6 +36,10 @@ function mensagemErroLogin(err: unknown): string {
       return "E-mail em formato inválido.";
     case "auth/network-request-failed":
       return "Falha de conexão — confira a internet e tente de novo.";
+    case "auth/email-already-in-use":
+      return "Já existe uma conta com esse e-mail. Entre com ela — ou use \"Esqueci minha senha\".";
+    case "auth/weak-password":
+      return "Senha fraca: use pelo menos 8 caracteres.";
     default:
       // Erro não mapeado: mostra o código cru em vez de esconder — é o que
       // permite diagnosticar um caso novo sem precisar adivinhar de novo.
@@ -43,7 +48,12 @@ function mensagemErroLogin(err: unknown): string {
 }
 
 export default function LoginCard() {
-  const { signIn, signInWithAccountSelection, signInWithEmail } = useAuth();
+  const { signIn, signInWithAccountSelection, signInWithEmail, criarConta, recuperarSenha } = useAuth();
+  // S24: "criar" só existe com o cadastro aberto (modo empresa + chave ligada).
+  const [modo, setModo] = useState<"entrar" | "criar">("entrar");
+  const [aviso, setAviso] = useState<string | null>(null);
+  const cadastroAberto = cadastroAbertoNaTela();
+  const frases = frasesDoProduto();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [email, setEmail] = useState("");
@@ -71,16 +81,40 @@ export default function LoginCard() {
       setErrForm("Informe e-mail e senha.");
       return;
     }
+    if (modo === "criar" && password.length < 8) {
+      setErrForm("Use uma senha com pelo menos 8 caracteres.");
+      return;
+    }
     setBusy(true);
     setErr(null);
     setErrForm(null);
+    setAviso(null);
     try {
-      await signInWithEmail(email, password);
+      // Criada, a conta já entra; a tela seguinte pede a confirmação do e-mail.
+      if (modo === "criar") await criarConta(email, password);
+      else await signInWithEmail(email, password);
     } catch (e) {
       // O e-mail digitado fica: quem errou a senha não deve digitar tudo de novo.
       setErrForm(mensagemErroLogin(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleEsqueci() {
+    if (!email.trim()) {
+      setErrForm("Digite o e-mail da conta e clique de novo.");
+      return;
+    }
+    setBusy(true);
+    setErrForm(null);
+    try {
+      await recuperarSenha(email);
+    } catch {
+      /* A mesma mensagem com ou sem conta: não confirmar quem tem conta aqui. */
+    } finally {
+      setBusy(false);
+      setAviso(`Se existir uma conta com ${email.trim()}, o link pra criar uma senha nova chega em alguns minutos (confira o spam).`);
     }
   }
 
@@ -96,8 +130,10 @@ export default function LoginCard() {
         {/* Nome do PRODUTO, não da matriz: ZXP Solutions (matriz) > VAZXPRESS
             (a loja) > ZXP Market (este dashboard). A assinatura da matriz fica
             no rodapé, onde ela pertence. */}
-        <p style={{ marginBottom: 2 }}>Dashboard da VAZXPRESS no Mercado Livre</p>
-        <p style={{ fontSize: ".8rem" }}>Entre com e-mail e senha ou com sua conta Google.</p>
+        <p style={{ marginBottom: 2 }}>{frases.subtitulo}</p>
+        <p style={{ fontSize: ".8rem" }}>
+          {modo === "criar" ? "Crie sua conta com e-mail e senha, ou entre direto com o Google." : "Entre com e-mail e senha ou com sua conta Google."}
+        </p>
 
         {/*
           Rótulos VISÍVEIS e associados. Eram só `placeholder`, que some ao
@@ -120,7 +156,7 @@ export default function LoginCard() {
             <div className="login-senha">
               <input
                 id="login-senha" name="password" type={verSenha ? "text" : "password"} className="login-input"
-                value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password"
+                value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={modo === "criar" ? "new-password" : "current-password"}
                 aria-invalid={errForm ? true : undefined} aria-describedby={errForm ? "login-erro" : undefined}
               />
               <button
@@ -132,9 +168,20 @@ export default function LoginCard() {
             </div>
           </div>
           {errForm && <p id="login-erro" role="alert" className="login-erro">{errForm}</p>}
+          {aviso && <p role="status" style={{ fontSize: ".8rem", color: "var(--muted)", margin: "0 0 10px" }}>{aviso}</p>}
           <button type="submit" className="btn btn-primary" disabled={busy} style={{ width: "100%", justifyContent: "center" }}>
-            {busy ? "Entrando…" : "Entrar"}
+            {busy ? "Aguarde…" : modo === "criar" ? "Criar conta" : "Entrar"}
           </button>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 8, fontSize: ".78rem" }}>
+            {modo === "entrar" ? (
+              <button type="button" className="login-link" onClick={handleEsqueci} disabled={busy}>Esqueci minha senha</button>
+            ) : <span />}
+            {cadastroAberto && (
+              <button type="button" className="login-link" onClick={() => { setModo(modo === "entrar" ? "criar" : "entrar"); setErrForm(null); setAviso(null); }}>
+                {modo === "entrar" ? "Criar conta" : "Já tenho conta"}
+              </button>
+            )}
+          </div>
         </form>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "14px 0", color: "var(--muted)", fontSize: ".75rem" }}>

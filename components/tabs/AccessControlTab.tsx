@@ -16,6 +16,7 @@ import {
 import type { UserData } from "@/components/useUserData";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import { useAccess } from "@/components/tabs/AccessGuard";
+import { useAuth } from "@/lib/firebase/auth-context";
 import TelaHeader from "@/components/TelaHeader";
 import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
 import { fonteCarregada, FONTE_CARREGANDO } from "@/lib/domain/estado-fonte";
@@ -34,9 +35,11 @@ export default function AccessControlTab({
 }) {
   void uid;
   void data;
-  const { canEdit } = useAccess();
+  const { canEdit, email: meuEmail } = useAccess();
+  const { recuperarSenha } = useAuth();
 
   const [entries, setEntries] = useState<AccessEntry[]>([]);
+  const [convite, setConvite] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -180,8 +183,42 @@ export default function AccessControlTab({
       }
 
       resetForm();
+    } catch (e) {
+      // S25: o servidor recusa pelo plano — dizer isso, não um "não foi possível" genérico.
+      const motivo = e instanceof Error ? e.message : "";
+      setError(
+        motivo === "limite_do_plano"
+          ? "O plano atual chegou ao limite de pessoas. Troque de plano em Plano, acima, ou remova alguém."
+          : motivo === "empresa_bloqueada"
+            ? "A empresa está em modo somente leitura (assinatura). Reative em Plano, acima."
+            : "Não foi possível salvar a entrada de acesso.",
+      );
+    }
+  }
+
+  /**
+   * S24 — convite por e-mail: o servidor garante o login (sem senha) e o
+   * Firebase manda pra PRÓPRIA pessoa o link de criar a senha. Quem usa Google
+   * nem precisa: é só entrar com o Google usando este e-mail.
+   */
+  async function enviarConvite(entryEmail: string) {
+    setError("");
+    setConvite(null);
+    try {
+      const r = await authedFetch("/api/acesso/convite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: entryEmail }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => null);
+        setError(j?.details ?? j?.error ?? `Falhou (${r.status}).`);
+        return;
+      }
+      await recuperarSenha(entryEmail);
+      setConvite(`Convite enviado pra ${entryEmail}: o e-mail traz o link pra criar a senha (confira o spam). Quem usa Google pode só entrar com o Google.`);
     } catch {
-      setError("Não foi possível salvar a entrada de acesso.");
+      setError("Não foi possível enviar o convite agora.");
     }
   }
 
@@ -297,7 +334,7 @@ export default function AccessControlTab({
       />
 
       {/* Modo empresa: o plano e a assinatura (S25). No modo raiz não renderiza. */}
-      <PlanoPanel />
+      <PlanoPanel atualizarCom={entries.length} />
 
       <div className="kpi-grid">
         <div className="kpi k-acc"><div className="k-lbl">Acessos</div><div className="k-val">{entries.length}</div></div>
@@ -427,6 +464,7 @@ export default function AccessControlTab({
               </div>
             )}
 
+            {convite && <div className="note" role="status" style={{ marginBottom: 8 }}>{convite}</div>}
             {error ? (
               <div className="note note-danger" role="alert">{error}</div>
             ) : null}
@@ -480,6 +518,11 @@ export default function AccessControlTab({
                   {canEdit && (
                     <div className="row-actions">
                       <button type="button" className="btn btn-warning btn-xs" onClick={() => startEdit(entry)}>Editar</button>
+                      {entry.email !== meuEmail && (
+                        <button type="button" className="btn btn-ghost btn-xs" onClick={() => enviarConvite(entry.email)} title="Manda pra pessoa o link de criar a senha">
+                          Enviar convite
+                        </button>
+                      )}
                       <button
                         type="button" className="btn btn-danger btn-xs" onClick={() => deleteEntry(entry.email)}
                         disabled={entry.role === "owner" && owners <= 1}

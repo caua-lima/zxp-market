@@ -3,6 +3,7 @@ import { etapaFalhou, resumir } from "@/lib/domain/sync-resultado";
 import { getMlAccessToken } from "../token";
 import { requireAccess } from "@/lib/api-auth";
 import { dispararMarcos } from "@/lib/marcos-gatilho";
+import { marcarPrimeiraSincronizacao } from "@/lib/ml/primeira-sincronizacao";
 import {
   currentMonthRangeBR,
   lastNDaysRangeBR,
@@ -57,6 +58,8 @@ export async function POST(req: Request) {
       syncClaimsRange(accessToken, range).catch((e) => etapaFalhou("reclamacoes", e)),
     ]);
     const resumo = resumir(etapas);
+    // S24: a primeira sincronização completa destrava o passo "vendas importadas" do checklist.
+    if (resumo.completo) await marcarPrimeiraSincronizacao(etapas[0].gravados);
 
     /**
      * Marcos, DEPOIS do sync: as vendas que acabaram de entrar ja contam.

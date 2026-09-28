@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { frasesDoProduto } from "@/lib/marca";
 
 // Convenção de arquivo do Next.js: isto vira /manifest.webmanifest e é
 // linkado no <head> automaticamente — é o que faz o navegador (Android/
@@ -7,9 +8,9 @@ import type { MetadataRoute } from "next";
 // não é suficiente lá.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "ZXP Market — Dashboard VAZXPRESS",
+    name: frasesDoProduto().titulo.replace(" | ", " — "),
     short_name: "ZXP Market",
-    description: "ZXP Market — dashboard financeiro e operacional da VAZXPRESS no Mercado Livre. Um produto ZXP Solutions.",
+    description: frasesDoProduto().descricao,
     start_url: "/",
     scope: "/",
     display: "standalone",

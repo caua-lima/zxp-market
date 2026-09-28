@@ -184,3 +184,21 @@ export async function requireAccess(
     tenantId: acesso.tenantId,
   };
 }
+
+/**
+ * Só a identidade do token, SEM exigir acesso a empresa nenhuma (S24): o
+ * cadastro self-service é justamente de quem ainda não tem empresa. Nada aqui
+ * libera dado — quem usa isto decide o que a pessoa pode fazer.
+ */
+export async function lerIdentidade(req: Request): Promise<{ email: string; uid: string; emailVerificado: boolean } | NextResponse> {
+  const idToken = bearer(req);
+  if (!idToken) return NextResponse.json({ error: "unauthorized", details: "Missing token" }, { status: 401 });
+  try {
+    const d = await getAdminAuth().verifyIdToken(idToken);
+    const email = (d.email || "").toLowerCase();
+    if (!email) return NextResponse.json({ error: "forbidden", details: "No email in token" }, { status: 403 });
+    return { email, uid: d.uid, emailVerificado: d.email_verified === true };
+  } catch {
+    return NextResponse.json({ error: "unauthorized", details: "Invalid token" }, { status: 401 });
+  }
+}

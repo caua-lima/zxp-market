@@ -61,6 +61,9 @@ export const OPCIONAIS = [
   "STRIPE_PRICE_PROFISSIONAL",
   "ZXP_COBRANCA_LIVE",
   "APP_URL",
+  // Cadastro self-service de empresa (S24) — a mesma chave na tela e no servidor.
+  "ZXP_CADASTRO_ABERTO",
+  "NEXT_PUBLIC_ZXP_CADASTRO_ABERTO",
 ] as const;
 
 const vazio = (v: string | undefined) => v === undefined || v.trim() === "";
@@ -137,6 +140,13 @@ export function conferirAmbiente(env: Ambiente, opcoes: { producao: boolean }): 
     if (opcoes.producao && vazio(env.APP_URL)) erros.push("APP_URL ausente: o checkout e o portal não sabem pra onde voltar");
     if (modo !== "tenant") avisos.push("cobrança configurada no modo raiz: só vale no modo empresa");
   }
+  // Cadastro self-service (S24).
+  const cadastroServidor = env.ZXP_CADASTRO_ABERTO?.trim() === "1";
+  const cadastroTela = env.NEXT_PUBLIC_ZXP_CADASTRO_ABERTO?.trim() === "1";
+  if (cadastroServidor !== cadastroTela) erros.push("ZXP_CADASTRO_ABERTO e NEXT_PUBLIC_ZXP_CADASTRO_ABERTO diferentes: a tela e o servidor discordam sobre o cadastro");
+  if ((cadastroServidor || cadastroTela) && modo !== "tenant") erros.push("cadastro aberto fora do modo empresa: não tem efeito");
+  if (cadastroServidor && !chaveStripe) avisos.push("cadastro aberto sem cobrança: o teste grátis das empresas novas acaba em somente leitura, sem como assinar");
+
   if (!vazio(env.APP_URL)) {
     try { if (opcoes.producao && new URL(env.APP_URL!).protocol !== "https:") erros.push("APP_URL precisa ser https em produção"); }
     catch { erros.push("APP_URL não é uma URL"); }

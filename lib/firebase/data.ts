@@ -41,6 +41,7 @@ import {
   type TextoDaAuditoria,
 } from "./movimento-auditado";
 import { patchCusto, patchIgnorar, patchReabrir } from "@/lib/domain/remessa-full";
+import { definirNomeDaEmpresa } from "@/lib/marca";
 
 function sanitizeUndefined<T extends Record<string, unknown>>(obj: T): T {
   return Object.fromEntries(
@@ -114,8 +115,10 @@ export async function carregarEmpresaDaSessao(): Promise<string | null> {
   if (!modoEmpresaAtivo()) return null;
   const { authedFetch } = await import("@/lib/api/authed-fetch");
   const r = await authedFetch("/api/sessao", { cache: "no-store" }).catch(() => null);
-  const tenantId = r && r.ok ? String((await r.json().catch(() => ({})))?.tenantId ?? "") || null : null;
+  const sessao = r && r.ok ? ((await r.json().catch(() => ({}))) as { tenantId?: string; nomeDaEmpresa?: string }) : {};
+  const tenantId = String(sessao.tenantId ?? "") || null;
   definirEmpresaDoNavegador(tenantId);
+  definirNomeDaEmpresa(sessao.nomeDaEmpresa ?? null);
   // S23: pessoa + empresa. Entrar numa empresa descarta o que foi lido antes dela.
   definirEscopoDoCache(`${getAuth().currentUser?.uid ?? ""}|${tenantId ?? "sem-empresa"}`);
   return tenantId;

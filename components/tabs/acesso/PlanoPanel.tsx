@@ -31,7 +31,8 @@ type Estado = {
 const data = (ms: number | null | undefined) => (ms ? new Date(ms).toLocaleDateString("pt-BR") : "—");
 const limite = (n: number | null | undefined) => (n == null ? "sem limite" : String(n));
 
-export default function PlanoPanel() {
+/** `atualizarCom`: muda quando o time muda — o uso ("2 de 3") tem que acompanhar. */
+export default function PlanoPanel({ atualizarCom }: { atualizarCom?: unknown } = {}) {
   const { papel } = useAccess();
   const [estado, setEstado] = useState<Estado | null>(null);
   const [acao, setAcao] = useState<{ rodando: boolean; erro?: string }>({ rodando: false });
@@ -49,7 +50,7 @@ export default function PlanoPanel() {
     let n = 0;
     const id = voltouDoCheckout ? window.setInterval(() => { n += 1; void carregar(); if (n >= 6) window.clearInterval(id); }, 5000) : undefined;
     return () => { vivo = false; if (id) window.clearInterval(id); };
-  }, [voltouDoCheckout]);
+  }, [voltouDoCheckout, atualizarCom]);
 
   if (!estado || estado.modo !== "tenant" || !estado.direitos) return null;
   const d = estado.direitos;

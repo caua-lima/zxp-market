@@ -10,6 +10,7 @@ import {
   residuoDaCascata,
   type DadosDre,
 } from "@/lib/domain/dre-apresentacao";
+import { nomeDaLoja } from "@/lib/marca";
 
 /**
  * O fechamento do mês em formato de apresentação, pra mandar pro sócio.
@@ -46,7 +47,7 @@ function Pagina({ children, n, total, periodo }: {
     <section className="apres-pagina">
       <div className="apres-conteudo">{children}</div>
       <footer className="apres-rodape">
-        <span>VAZXPRESS · {periodo}</span>
+        <span>{nomeDaLoja()} · {periodo}</span>
         <span>{n} / {total}</span>
       </footer>
     </section>
@@ -259,7 +260,7 @@ export function Folhas({ dados, anterior, periodo, geradoEm }: {
             <div className="apres-capa-topo">
               <Marca tamanho={44} />
               <div>
-                <div className="apres-capa-marca">VAZXPRESS</div>
+                <div className="apres-capa-marca">{nomeDaLoja()}</div>
                 <div className="apres-capa-sub">Mercado Livre · relatório gerencial</div>
               </div>
             </div>

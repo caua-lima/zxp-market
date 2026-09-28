@@ -11,6 +11,8 @@ import {
   modoEmpresaAtivo,
 } from "@/lib/firebase/data";
 import { papelDe, podeVerAba, type AccessEntry, type Papel, type PermissionTab } from "@/lib/domain/types";
+import { cadastroAbertoNaTela } from "@/lib/marca";
+import CriarEmpresa from "@/components/CriarEmpresa";
 
 type AccessInfo = {
   role: AccessEntry["role"];
@@ -239,7 +241,15 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
     }
 
     async function hydrateAndCheck(u: User) {
-      const cached = readCachedAccess(email);
+      /**
+       * Modo empresa: o acesso em cache NÃO libera a tela. Ele não diz de qual
+       * empresa é (nem de qual modo — um "liberado" da operação antiga ficava
+       * no sessionStorage), e a tela abriria antes de o navegador saber a
+       * empresa: o primeiro componente que lê o banco quebrava (achado na
+       * verificação do cadastro, S24). A conferência roda sempre; custa o
+       * "Verificando acesso…" por um instante.
+       */
+      const cached = modoEmpresaAtivo() ? null : readCachedAccess(email);
 
       if (!cancelled) {
         setAccess(cached ?? null);
@@ -261,8 +271,11 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
   const isPending = !access || access.email !== currentEmail;
 
   if (isPending) return <LoadingScreen />;
-  if (!access.granted)
+  if (!access.granted) {
+    // S24: com o cadastro aberto, quem ainda não tem empresa cria a sua.
+    if (cadastroAbertoNaTela() && currentEmail) return <CriarEmpresa user={user} onSair={signOut} />;
     return <DeniedScreen onLogout={signOut} userEmail={user.email ?? ""} />;
+  }
 
   const role = access.entry?.role ?? "colaborador";
   const papel = papelDe(role);

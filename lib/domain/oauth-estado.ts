@@ -67,7 +67,7 @@ export function explicarRecusa(motivo: string): string {
     case "perfil_indisponivel":
       return "Não deu para confirmar qual conta autorizou. A conexão atual foi mantida.";
     case "vendedor_inesperado":
-      return "A conta autorizada no Mercado Livre não é a da VAZXPRESS. A conexão atual foi mantida.";
+      return "A conta autorizada no Mercado Livre não é a desta empresa. A conexão atual foi mantida.";
     default:
       return "Não foi possível concluir a conexão com o Mercado Livre.";
   }

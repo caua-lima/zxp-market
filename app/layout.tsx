@@ -3,6 +3,7 @@ import { Inter, Sora } from "next/font/google";
 import { AuthProvider } from "@/lib/firebase/auth-context";
 import ViewportVisivel from "@/components/ViewportVisivel";
 import "./globals.css";
+import { frasesDoProduto } from "@/lib/marca";
 
 // Inter pro corpo (menus, tabelas, filtros, botões) — otimizada pra leitura
 // rápida em interface e números densos. Sora só nos títulos e KPIs
@@ -17,8 +18,9 @@ export const metadata: Metadata = {
   // ZXP Market (ESTE dashboard). O app se apresentava como "ZXP Solutions",
   // que é a matriz, não o produto — o nome do repositório (zxp-market) já
   // refletia isso antes do app.
-  title: "ZXP Market | Dashboard VAZXPRESS",
-  description: "ZXP Market — dashboard financeiro e operacional da VAZXPRESS no Mercado Livre. Um produto ZXP Solutions.",
+  // S24: no modo empresa o título não é de uma loja só (lib/marca.ts).
+  title: frasesDoProduto().titulo,
+  description: frasesDoProduto().descricao,
   applicationName: "ZXP Market",
   // manifest.ts na raiz do app já é linkado automaticamente pelo Next — isto
   // aqui é só a parte que o manifest NÃO cobre: o iOS Safari ignora o

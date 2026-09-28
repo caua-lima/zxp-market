@@ -22,6 +22,8 @@ export async function iniciarVinculoML(): Promise<string | null> {
     if (!res.ok) {
       if (res.status === 401) return "Entre na sua conta para conectar o Mercado Livre.";
       if (res.status === 403) return "Só o administrador pode conectar o Mercado Livre.";
+      // S25: limite do plano ou empresa em modo somente leitura.
+      if (res.status === 402) return "O plano da empresa não permite conectar agora. Veja Acesso → Plano.";
       return "Não foi possível iniciar a conexão com o Mercado Livre.";
     }
     const { url } = await res.json();

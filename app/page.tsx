@@ -64,6 +64,7 @@ import {
   lerContexto, sincronizarUrl, CONTEXTO_VAZIO,
   type ContextoUrl,
 } from "@/lib/domain/contexto-url";
+import { nomeDaLoja } from "@/lib/marca";
 
 type Tab = "dashboard" | "pedidos" | "ads" | "preco" | "metas" | "custos" | "estoque" | "full" | "desempenho" | "dre" | "tarefas" | "acesso";
 
@@ -503,7 +504,7 @@ function AppShell() {
                   ZXP MARKET
                 </div>
                 <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 1 }}>
-                  VAZXPRESS · Mercado Livre
+                  {nomeDaLoja()} · Mercado Livre
                 </div>
               </div>
             </div>

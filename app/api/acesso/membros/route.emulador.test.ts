@@ -101,3 +101,23 @@ describe("o time da empresa (segundo cliente)", () => {
     expect((await POST(req("POST", { email: "z@a.com", role: "partner" }))).status).toBe(400);
   });
 });
+
+describe("S25 — limite de pessoas do plano", () => {
+  it("em teste grátis (3 pessoas), a quarta é recusada com 402; editar quem já está continua valendo", async () => {
+    const { trialNovo } = await import("@/lib/domain/assinatura");
+    await db.doc("tenants/empresa-a").set({ name: "A", assinatura: trialNovo(Date.now()) });
+    for (const e of ["p1@a.com", "p2@a.com"]) expect((await POST(req("POST", { email: e, role: "member" }))).status).toBe(200);
+    const quarta = await POST(req("POST", { email: "p3@a.com", role: "member" }));
+    expect(quarta.status).toBe(402);
+    expect(await quarta.json()).toMatchObject({ error: "limite_do_plano", limite: 3, atuais: 3 });
+    expect((await db.doc("tenants/empresa-a/members/p3@a.com").get()).exists).toBe(false);
+    expect((await POST(req("POST", { email: "p1@a.com", role: "partner" }))).status).toBe(200);
+  });
+
+  it("empresa bloqueada não convida ninguém", async () => {
+    await db.doc("tenants/empresa-a").set({ name: "A", assinatura: { plano: "essencial", estado: "cancelada" } });
+    const r = await POST(req("POST", { email: "novo@a.com", role: "member" }));
+    expect(r.status).toBe(402);
+    expect(await r.json()).toMatchObject({ error: "empresa_bloqueada" });
+  });
+});

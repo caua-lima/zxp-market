@@ -140,7 +140,7 @@ function textoSemFinanceiro(
     case "sync_warning":
       return { title: "Aviso de sincronização", body: "Confira a central de avisos" };
     case "milestone":
-      return { title: "Marco batido 🏆", body: "A VAZXPRESS bateu mais uma meta" };
+      return { title: "Marco batido 🏆", body: "A loja bateu mais uma meta" };
     default:
       return { title: "Novo aviso", body: "Confira a central de avisos" };
   }

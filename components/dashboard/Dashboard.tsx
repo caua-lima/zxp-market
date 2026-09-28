@@ -1,5 +1,6 @@
 "use client";
 
+import ChecklistDeAtivacao from "@/components/dashboard/ChecklistDeAtivacao";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { BUSCA_INICIAL, corpoEhSucesso, criarSequenciador, registrarFalha, registrarSucesso } from "@/lib/domain/resposta-tardia";
 import type { Goals } from "@/lib/domain/types";
@@ -2106,6 +2107,9 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
           </div>
         );
       })()}
+
+      {/* S24: primeiros passos da empresa nova (só o dono, só no modo empresa). */}
+      <ChecklistDeAtivacao data={data} onNavigate={onNavigate} />
 
       {/* ── Conteúdo ── */}
       {mlLoading ? (
