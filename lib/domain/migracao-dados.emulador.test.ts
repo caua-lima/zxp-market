@@ -84,7 +84,20 @@ describe("migração do dado de negócio (Etapa 5)", () => {
     await migrarDados(db, { tenantId: T, aplicar: true });
     await db.doc("custos/c1").set({ nome: "Aluguel" }); // entrou depois e não foi copiado
     const d = await conferirMigracao(db, T);
-    expect(d).toEqual([{ colecao: "custos", soNaOrigem: ["c1"], soNoDestino: [] }]);
+    expect(d).toEqual([{ colecao: "custos", soNaOrigem: ["c1"], soNoDestino: [], diferentes: [] }]);
+  });
+
+  it("conferência por CONTEÚDO: documento presente dos dois lados mas com campo diferente é apontado", async () => {
+    await migrarDados(db, { tenantId: T, aplicar: true });
+    expect(await conferirMigracao(db, T)).toEqual([]);
+    // Mudou na origem depois da cópia (ou a cópia saiu errada): o id bate, o conteúdo não.
+    await db.doc("estoque/p1").update({ custo: "11" });
+    await db.doc(`tenants/${T}/notification_feed/dono@zxp.com/itens/aviso-1`).update({ title: "outro" });
+    const d = await conferirMigracao(db, T);
+    expect(d).toEqual([
+      { colecao: "estoque", soNaOrigem: [], soNoDestino: [], diferentes: ["p1"] },
+      { colecao: "notification_feed", soNaOrigem: [], soNoDestino: [], diferentes: ["dono@zxp.com/itens/aviso-1"] },
+    ]);
   });
 
   it("sem o tenant criado (a primeira fatia), recusa — a ordem importa", async () => {

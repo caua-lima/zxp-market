@@ -68,12 +68,14 @@ const db = getFirestore();
 if (soConferir) {
   const d = await conferirMigracao(db, tenantId);
   if (d.length === 0) {
-    console.log("\nConferência: origem e destino batem, documento a documento.");
+    console.log("\nConferência: origem e destino batem, documento a documento e campo a campo.");
     process.exit(0);
   }
   for (const x of d) {
-    console.log(`\n${x.colecao}: ${x.soNaOrigem.length} só na origem, ${x.soNoDestino.length} só no destino`);
+    console.log(`\n${x.colecao}: ${x.soNaOrigem.length} só na origem, ${x.soNoDestino.length} só no destino, ${x.diferentes.length} com conteúdo diferente`);
     for (const c of x.soNaOrigem.slice(0, 10)) console.log(`  falta copiar: ${c}`);
+    // Depois da virada da chave o app grava no destino, e diferença passa a ser esperada.
+    for (const c of x.diferentes.slice(0, 10)) console.log(`  conteúdo diferente: ${c}`);
   }
   process.exit(1);
 }
@@ -111,7 +113,7 @@ if (!aplicar) {
 const divergencias = await conferirMigracao(db, tenantId);
 if (divergencias.length > 0) {
   console.error("\nA conferência encontrou diferença — NÃO vire a chave ainda:");
-  for (const x of divergencias) console.error(`  ${x.colecao}: ${x.soNaOrigem.length} só na origem`);
+  for (const x of divergencias) console.error(`  ${x.colecao}: ${x.soNaOrigem.length} só na origem, ${x.diferentes.length} com conteúdo diferente`);
   process.exit(1);
 }
-console.log("\nConferência: origem e destino batem, documento a documento. A raiz continua intacta (é o rollback).");
+console.log("\nConferência: origem e destino batem, documento a documento e campo a campo. A raiz continua intacta (é o rollback).");

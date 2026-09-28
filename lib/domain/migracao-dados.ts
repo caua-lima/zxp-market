@@ -25,6 +25,7 @@
  * código rodar contra o emulador nos testes.
  */
 
+import { createHash } from "node:crypto";
 import type { DocumentReference, Firestore } from "firebase-admin/firestore";
 
 export type DestinoNaMigracao =
@@ -200,22 +201,55 @@ export async function migrarDados(
   return resultados;
 }
 
-/** Todos os caminhos de documento sob uma coleção, relativos a ela, com subcoleções. */
-async function caminhosSob(db: Firestore, base: string, prefixo = ""): Promise<string[]> {
-  const saida: string[] = [];
+/**
+ * Forma canônica de um valor do Firestore: chaves em ordem, Timestamp pelo
+ * instante exato (segundos + nanos), referência pelo caminho, bytes em base64.
+ * Duas cópias fiéis dão o mesmo texto; qualquer campo diferente muda o texto.
+ */
+export function formaCanonica(v: unknown): string {
+  if (v === null || v === undefined) return "null";
+  if (typeof v === "number") return Number.isNaN(v) ? '"NaN"' : Object.is(v, -0) ? "-0" : JSON.stringify(v);
+  if (typeof v === "string" || typeof v === "boolean") return JSON.stringify(v);
+  if (Array.isArray(v)) return `[${v.map(formaCanonica).join(",")}]`;
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown> & { seconds?: number; nanoseconds?: number; toMillis?: unknown; path?: string; firestore?: unknown; latitude?: number; longitude?: number };
+    if (typeof o.toMillis === "function" && typeof o.seconds === "number") return `"T:${o.seconds}.${o.nanoseconds ?? 0}"`;
+    if (typeof o.path === "string" && o.firestore) return `"R:${o.path}"`;
+    if (typeof o.latitude === "number" && typeof o.longitude === "number" && Object.keys(o).length <= 2) return `"G:${o.latitude},${o.longitude}"`;
+    if (v instanceof Uint8Array) return `"B:${Buffer.from(v).toString("base64")}"`;
+    return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${formaCanonica(o[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(String(v));
+}
+
+export function impressaoDigital(dados: Record<string, unknown>): string {
+  return createHash("sha256").update(formaCanonica(dados)).digest("hex");
+}
+
+/** Todos os documentos sob uma coleção (com subcoleções), caminho relativo → impressão digital do conteúdo. */
+async function documentosSob(db: Firestore, base: string, prefixo = ""): Promise<Map<string, string>> {
+  const saida = new Map<string, string>();
   for (const ref of await db.collection(base).listDocuments()) {
-    if ((await ref.get()).exists) saida.push(`${prefixo}${ref.id}`);
+    const s = await ref.get();
+    if (s.exists) saida.set(`${prefixo}${ref.id}`, impressaoDigital(s.data() ?? {}));
     for (const sub of await ref.listCollections()) {
-      saida.push(...await caminhosSob(db, `${base}/${ref.id}/${sub.id}`, `${prefixo}${ref.id}/${sub.id}/`));
+      for (const [c, h] of await documentosSob(db, `${base}/${ref.id}/${sub.id}`, `${prefixo}${ref.id}/${sub.id}/`)) saida.set(c, h);
     }
   }
   return saida;
 }
 
-export type Divergencia = { colecao: string; soNaOrigem: string[]; soNoDestino: string[] };
+export type Divergencia = {
+  colecao: string;
+  soNaOrigem: string[];
+  soNoDestino: string[];
+  /** Existe dos dois lados, mas o CONTEÚDO não bate (Etapa 5 — conferência por conteúdo). */
+  diferentes: string[];
+};
 
 /**
- * Confere origem × destino documento a documento. Lista vazia = cópia completa.
+ * Confere origem × destino documento a documento — presença E conteúdo.
+ * Lista vazia = cópia completa e fiel.
  * `soNoDestino` não é erro de cópia (pode ser dado que o app já gravou no
  * modo tenant), mas aparece pra ninguém se surpreender.
  */
@@ -227,14 +261,13 @@ export async function conferirMigracao(
   const divergencias: Divergencia[] = [];
   for (const colecao of colecoes) {
     const [origem, destino] = await Promise.all([
-      caminhosSob(db, colecao),
-      caminhosSob(db, caminhoNoTenant(tenantId, colecao)),
+      documentosSob(db, colecao),
+      documentosSob(db, caminhoNoTenant(tenantId, colecao)),
     ]);
-    const o = new Set(origem);
-    const d = new Set(destino);
-    const soNaOrigem = origem.filter((c) => !d.has(c));
-    const soNoDestino = destino.filter((c) => !o.has(c));
-    if (soNaOrigem.length || soNoDestino.length) divergencias.push({ colecao, soNaOrigem, soNoDestino });
+    const soNaOrigem = [...origem.keys()].filter((c) => !destino.has(c));
+    const soNoDestino = [...destino.keys()].filter((c) => !origem.has(c));
+    const diferentes = [...origem.keys()].filter((c) => destino.has(c) && destino.get(c) !== origem.get(c));
+    if (soNaOrigem.length || soNoDestino.length || diferentes.length) divergencias.push({ colecao, soNaOrigem, soNoDestino, diferentes });
   }
   return divergencias;
 }
