@@ -71,10 +71,11 @@ Branch de trabalho: `saas-v2/isolamento-tenant`.
 
 ## Etapa 4 — jobs, inbox, snapshots, observabilidade
 
-- [ ] Inbox durável do webhook (idempotência por versão, não só `resource`)
-- [ ] Worker/job independente de tráfego web
-- [ ] Snapshot de reputação com `SourceState`
-- [ ] Logs estruturados com redação, correlação por tenant/conexão
+- [x] Inbox durável do webhook (idempotência por versão, não só `resource`) — S07 (`lib/ml/webhook-inbox.ts`) + S12 (versão = `last_updated`).
+- [x] Worker/job independente de tráfego web — S09 (`/api/worker` a cada 5 min pelo GitHub Actions), uma vez por empresa (`porEmpresa`).
+- [x] Snapshot de reputação com `SourceState` — retrato diário por empresa em `snapshots_diarios` (`app/api/ml/snapshot`, reputação + anúncios, avisa só piora) e estado da fonte/cache por geração da conexão (S10, `lib/domain/fonte-desempenho.ts`).
+- [x] Logs estruturados com redação, correlação por tenant/conexão — S27 (`lib/log.ts`: `tenantId` + `requisicao`).
+- [x] Saúde por empresa — `lib/domain/saude.ts` (veredito por item: rotina diária, rotina de 5 min, conta do ML, fila de notificações, push, API do ML em 7 dias, assinatura), contador diário de 429/5xx/sem resposta do ML por empresa (`lib/ml/saude-ml.ts`, gravado só quando dá errado, sem atrasar a chamada), painel do dono em Acesso (`/api/saude`) e `scripts/saude-das-empresas.mjs` (todas as empresas, só leitura). Provas: 6 testes da avaliação, contador no emulador (7 incrementos em paralelo somam certo), script ensaiado no emulador.
 
 ## Etapa 5 — migração da operação atual
 

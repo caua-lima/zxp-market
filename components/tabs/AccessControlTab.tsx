@@ -5,6 +5,7 @@ import { papelDe, roleLabel, type AccessEntry, type AuditEvent, type PermissionT
 import MudancasPanel from "@/components/tabs/acesso/MudancasPanel";
 import ManutencaoPanel from "@/components/tabs/acesso/ManutencaoPanel";
 import PlanoPanel from "@/components/tabs/acesso/PlanoPanel";
+import SaudePanel from "@/components/tabs/acesso/SaudePanel";
 import {
   addAccessEntry,
   logAudit,
@@ -591,6 +592,9 @@ export default function AccessControlTab({
         {/* Rotinas de uma vez so, pra nao dependerem de alguem montar um POST
             com ID token na mao — instrucao que ninguem segue. So o owner ve. */}
         <ManutencaoPanel />
+
+        {/* Etapa 4: as rotinas e filas desta empresa, num olhar. */}
+        <SaudePanel />
       </div>
     </div>
   );

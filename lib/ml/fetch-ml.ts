@@ -56,6 +56,11 @@ export async function fetchML(
       ultimoErro = err;
     }
 
+    // Etapa 4: conta 429/5xx/sem resposta por empresa. Import tardio e sem
+    // await — o contador nunca atrasa nem derruba a chamada ao ML.
+    const ruim = res ? (res.status === 429 ? "429" : res.status >= 500 ? "5xx" : null) : "timeout";
+    if (ruim) void import("./saude-ml").then((m) => m.registrarRespostaRuimDoML(ruim)).catch(() => {});
+
     const decisao: DecisaoRetry = decidirRetry({
       status: res ? res.status : null,
       tentativa,
