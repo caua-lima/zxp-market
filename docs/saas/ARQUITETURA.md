@@ -80,9 +80,30 @@ onde vier.
 - Desempenho/reputação: uma busca pros dois painéis, cache por geração da
   conexão, janela oficial do ML (S10, `lib/domain/fonte-desempenho.ts`).
 
+## Cobrança, cadastro e operação por empresa
+
+- Cobrança (S25, ADR 0004): `config/planos.ts` (limites, sem preço), `lib/domain/assinatura.ts`
+  (máquina de estados e direitos), `lib/billing/` (Stripe por REST, webhook idempotente com
+  estado pela busca, reconciliação diária no cron). Empresa bloqueada só lê: as regras geradas
+  travam a escrita (`escritaLiberadaT`) e as rotinas a pulam.
+- Cadastro e ativação (S24): `/api/empresa` (conta confirmada → empresa com dona, teste grátis,
+  aceite dos termos), checklist no Dashboard (`lib/domain/ativacao.ts`), convite por e-mail.
+  Chave `ZXP_CADASTRO_ABERTO`.
+- Acesso (Etapa 6): transferência de propriedade (`/api/acesso/dono`) e acesso com prazo
+  (`lib/domain/acesso-temporario.ts`, vale no servidor, na tela e nas regras).
+- Observabilidade (Etapa 4): log JSON com empresa e requisição e redação (`lib/log.ts`), saúde
+  por empresa (`lib/domain/saude.ts`, `/api/saude`, `scripts/saude-das-empresas.mjs`), contador
+  de 429/5xx do ML.
+- Segurança (S27): rotas de diagnóstico auditadas e sem dado pessoal (`lib/diagnostico.ts`),
+  cabeçalhos e CSP em relatório (`lib/config/cabecalhos.ts`), conferência da configuração na
+  subida (`lib/config/ambiente.ts`), exportação/exclusão por empresa e pessoa
+  (`scripts/dados-empresa.mjs`).
+- No navegador (S23): cache e preferências por pessoa+empresa; cópia offline apagada no "Sair".
+
 ## Onde está o resto
 
 - Progresso item a item: `docs/saas/PROGRESSO.md`
 - Migração: `docs/saas/MIGRACAO.md`
 - O que você precisa rodar: `docs/saas/OPERACAO.md`
 - Como validar: `docs/saas/VALIDACAO.md`
+- Decisões: `docs/saas/adr/` · Segurança: `SEGURANCA.md` · Privacidade: `PRIVACIDADE.md` · UX por tela: `UX-POR-TELA.md`

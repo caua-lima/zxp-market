@@ -5,8 +5,18 @@ credencial passa pelo código nem pelo Claude. Os comandos são para o terminal
 do Windows (PowerShell) aberto **na pasta do projeto**
 (`C:\Users\caual\Downloads\PESSOAL\zxp-market`).
 
-Ordem recomendada: **A → B** agora (5 a 10 min cada). **C** só quando decidir
-virar o app para o modelo de várias empresas (leva ~30 min e tem rollback).
+Ordem recomendada:
+
+| Quando | Parte | Tempo |
+|---|---|---|
+| Agora | **A** worker de 5 min · **B** publicar regras · **H1–H3** segurança básica | ~30 min |
+| Antes de vender pra alguém | **E** plano da Vercel | ~10 min |
+| Quando for virar pra várias empresas | **C** migração + chave (tem rollback) | ~30 min |
+| Depois de C | **D** segundo cliente por script · **F** cobrança em teste · **G** cadastro aberto | ~1 h |
+| Quando pedirem | **I** exportar/apagar dados (LGPD) | ~10 min |
+
+Nada aqui é obrigatório pro app de hoje continuar funcionando: sem C, ele segue
+no modo de uma empresa só, igual antes.
 
 ---
 
@@ -137,7 +147,7 @@ Copie de verdade (pede de novo o nome do projeto):
 node --env-file=.env.producao scripts/migrar-dados-tenant.mjs --tenant-id vazxpress --aplicar --confirmar-producao
 ```
 No fim tem que aparecer **"Conferência: origem e destino batem, documento a
-documento."** Se aparecer diferença, **pare** e me mande a saída.
+documento e campo a campo."** Se aparecer diferença, **pare** e me mande a saída.
 
 ### C4. Virar a chave
 
@@ -157,8 +167,10 @@ documento."** Se aparecer diferença, **pare** e me mande a saída.
 
 - Abra o app: Dashboard, Pedidos, Estoque e Custos têm que mostrar os mesmos
   números de antes.
-- `https://briefing-master.vercel.app/api/ml/diagnostico-push` → em
-  `worker.ultimoResumo.membros`, `ativo: true`.
+- Acesso → **Saúde da operação** (painel do dono): nada em vermelho além de
+  "Rotina diária ainda não rodou" no primeiro dia.
+- Acesso → **Plano**: aparece "Sem cobrança pelo app" (a VAZXPRESS é a empresa
+  interna — sem limite, sem cobrança).
 - Lance e exclua uma movimentação de teste no Estoque.
 
 **Rollback (se algo estiver errado):** apague as duas variáveis do passo C4 na
@@ -205,16 +217,170 @@ empresa separada: dado, time e conta do Mercado Livre isolados.
    da VAZXPRESS) que o cron rodou — ele agora roda uma vez por empresa.
 
 **Limites de hoje (pra você saber o que prometer):**
-- não há cobrança (Etapa 6): combine o pagamento por fora;
+- empresa criada por este script é **interna** (sem limite e sem cobrança pelo
+  app) — combine o pagamento por fora, ou use o cadastro aberto (G) com a
+  cobrança (F), que já nasce em teste grátis;
 - uma pessoa pertence a UMA empresa (o mesmo e-mail não entra em duas);
 - uma conta do Mercado Livre pertence a UMA empresa;
 - o cron e o worker percorrem as empresas em sequência dentro de 60 s: com
   muitas empresas (dezenas), vai precisar de fila — me avise antes de passar de ~5.
 
+## E. Plano da Vercel (antes de cobrar de alguém)
+
+**Por quê:** o plano **Hobby** da Vercel é só pra uso pessoal, **não comercial**.
+Vender o app (mesmo pra um cliente só) exige o plano **Pro**. De quebra, o Pro
+permite cron mais frequente.
+
+1. <https://vercel.com> → seu time → **Settings** → **Billing** → confira o
+   plano. Se for Hobby: **Upgrade to Pro** (pago; o valor aparece na tela).
+2. Ambientes separados (pra testar sem mexer na produção): **Settings** →
+   **Environment Variables** → confira que `FIREBASE_*` e `NEXT_PUBLIC_FIREBASE_*`
+   de **produção** estão marcadas **só em Production**. Em **Preview**, use as do
+   projeto de teste (`controleml-saas`, as mesmas do seu `.env.local`). Assim um
+   deploy de teste nunca grava no banco da operação.
+3. Nada muda no código.
+
+---
+
+## F. Cobrança em modo de TESTE (Stripe) — depois de C
+
+**Por quê:** a cobrança (S25) está pronta no código, mas desligada: sem as
+chaves do Stripe ela não aparece. Em **modo de teste** nenhum cartão de verdade
+é cobrado. Só faz sentido no modo empresa (parte C).
+
+1. Crie a conta em <https://dashboard.stripe.com/register> e deixe ligado o
+   botão **Test mode** (canto superior direito) em todos os passos abaixo.
+2. **Produtos e preços** (você decide o valor): Product catalog → **Add
+   product** → nome "ZXP Market Essencial" → **Recurring**, **Monthly**, o valor
+   → **Save**. Abra o produto e copie o **Price ID** (começa com `price_`).
+   Repita pra "ZXP Market Profissional". Os limites de cada plano (pessoas e
+   contas do ML) estão em `config/planos.ts`: Essencial 3 pessoas, Profissional
+   10 — me diga se quiser outros números.
+3. **Chave secreta**: Developers → **API keys** → **Secret key** → Reveal →
+   copie (começa com `sk_test_`).
+4. **Webhook**: Developers → **Webhooks** → **Add endpoint**:
+   - URL: `https://briefing-master.vercel.app/api/billing/webhook`
+   - versão da API: `2024-06-20` se a tela deixar escolher (o código lê as
+     versões novas também);
+   - eventos: `checkout.session.completed`, `customer.subscription.created`,
+     `customer.subscription.updated`, `customer.subscription.deleted`,
+     `customer.subscription.paused`, `customer.subscription.resumed`,
+     `invoice.paid`, `invoice.payment_succeeded`, `invoice.payment_failed`.
+
+   Salve e copie o **Signing secret** (começa com `whsec_`).
+5. **Portal do cliente**: Settings → **Billing** → **Customer portal** → ative:
+   atualizar forma de pagamento, ver faturas, **cancelar no fim do período** e
+   **trocar de plano** entre os dois produtos do passo 2 → Save.
+6. **Vercel** → Settings → Environment Variables → **Production**:
+
+   | Variável | Valor |
+   |---|---|
+   | `STRIPE_SECRET_KEY` | a do passo 3 |
+   | `STRIPE_WEBHOOK_SECRET` | a do passo 4 |
+   | `STRIPE_PRICE_ESSENCIAL` | Price ID do Essencial |
+   | `STRIPE_PRICE_PROFISSIONAL` | Price ID do Profissional |
+   | `APP_URL` | `https://briefing-master.vercel.app` |
+
+   Depois: Deployments → último → **⋯ → Redeploy**.
+7. **Teste** com uma empresa de teste (criada pela parte G ou D, nunca a
+   VAZXPRESS): entre como dono → **Acesso → Plano → Assinar** → no checkout use
+   o cartão `4242 4242 4242 4242`, validade futura qualquer, CVC qualquer →
+   volta pro app → em alguns segundos o Plano mostra **Ativa**.
+   - Falha de pagamento: no Stripe (test mode) → Customers → o cliente → troque
+     o cartão por `4000 0000 0000 0341` e avance a renovação com um *test clock*
+     (ou espere): o app mostra "Pagamento pendente" e, depois de 7 dias,
+     "somente leitura".
+   - Cancelar: Plano → **Gerenciar assinatura** → cancelar → o app mostra
+     "Termina em …".
+8. Se algo não bater: Stripe → Webhooks → o endpoint → **Event deliveries**
+   (tem que estar 200). 400 = `STRIPE_WEBHOOK_SECRET` errado.
+
+**Cobrar de verdade** é outro passo, só depois de termos e preços revisados:
+chave `sk_live_`, webhook criado em modo live e a variável
+`ZXP_COBRANCA_LIVE=autorizado`. Sem essa última, o app se recusa a usar chave de
+produção (trava de segurança).
+
+---
+
+## G. Cadastro aberto de empresas — depois de C (e de F, se for cobrar)
+
+**Por quê:** hoje empresa nova só nasce pelo script (D). Com o cadastro aberto,
+o cliente cria a conta, confirma o e-mail, cria a empresa (em teste grátis de
+14 dias) e segue o checklist de primeiros passos sozinho.
+
+1. **Termos**: leia `/termos` e `/privacidade` no app (versão preliminar) e
+   passe por um advogado. Mudou o texto? Me diga — a versão sobe e o aceite
+   registra a nova.
+2. **Firebase** → Authentication → **Sign-in method**: **Email/Password** e
+   **Google** ligados. Em **Settings → Authorized domains**, confira o domínio do
+   app. Em **Templates**, troque o idioma pra **Português (Brasil)** (e-mails de
+   confirmação e de nova senha).
+3. **Vercel** → Environment Variables → Production: `ZXP_CADASTRO_ABERTO` = `1`
+   e `NEXT_PUBLIC_ZXP_CADASTRO_ABERTO` = `1` (as duas iguais; o app avisa no log
+   se divergirem) → **Redeploy**.
+4. Teste numa janela anônima: **Criar conta** → confirme o e-mail → crie uma
+   empresa "Teste" → o Dashboard mostra **Primeiros passos · 0 de 6**.
+5. Sem a cobrança (F), o teste grátis acaba em somente leitura sem como assinar
+   — ligue F antes, ou combine por fora.
+
+Fechar de novo: apague as duas variáveis e Redeploy.
+
+---
+
+## H. Segurança (S27) — detalhes em `SEGURANCA.md`
+
+**H1. CI:** nada a fazer — roda sozinho a cada push (GitHub → Actions → **ci**).
+Se ficar vermelho, me avise antes de publicar regras ou mexer na Vercel.
+
+**H2. Validade do registro de diagnóstico (1 ano):**
+<https://console.firebase.google.com> → vazxpress-a2350 → **Firestore** → aba
+**TTL** → **Create policy** → Collection group: `acessos_diagnostico` →
+Timestamp field: `apagarEm` → Save.
+
+**H3. Conferir a configuração no ar:** Vercel → projeto → **Logs** → filtre por
+`[config]`. Pode aparecer o aviso de push ou de `ML_SELLER_ID`; qualquer linha
+com "ausente" em variável obrigatória, "diferentes" ou "curto" é pra corrigir
+na hora (a própria linha diz qual variável).
+
+**H4. Menor privilégio (quando tiver 20 min):** siga "Menor privilégio (IAM)" em
+`SEGURANCA.md` — conta de serviço só com o necessário, troca a chave da Vercel.
+
+**H5. CSP (uma semana depois do deploy):** Vercel → Logs → filtre
+`csp.violacao`. Me mande o que aparecer (ou "nada") que eu ligo o bloqueio.
+
+**H6. Canal de contato de segurança/privacidade:** defina um e-mail (ex.:
+`privacidade@…`) e me passe — ele entra nos termos e na política.
+
+---
+
+## I. Pedido de exportação ou exclusão de dados (LGPD)
+
+Com o `.env.producao` (C1) na pasta. **Sem `--aplicar` nada é apagado.**
+
+- Exportar os dados de uma pessoa (vai pra pasta `exportacoes`, que o git ignora):
+  ```
+  node --env-file=.env.producao scripts/dados-empresa.mjs exportar-pessoa --email pessoa@exemplo.com
+  ```
+- Apagar uma pessoa (primeiro o ensaio, depois de verdade):
+  ```
+  node --env-file=.env.producao scripts/dados-empresa.mjs excluir-pessoa --email pessoa@exemplo.com
+  node --env-file=.env.producao scripts/dados-empresa.mjs excluir-pessoa --email pessoa@exemplo.com --aplicar --confirmar-producao --apagar-login
+  ```
+- Empresa que saiu: `exportar-empresa --tenant-id <id>` (entregue o arquivo ao
+  cliente), depois `excluir-empresa --tenant-id <id>` e, conferido, repita com
+  `--aplicar --confirmar-producao`.
+
+Entregue o arquivo por canal seguro e apague a cópia local. O que dizer ao
+titular está em `PRIVACIDADE.md`.
+
+---
+
 ## Rotina — o que olhar de vez em quando
 
 | Onde | O que tem que estar | Se não estiver |
 |---|---|---|
+| App → Acesso → **Saúde da operação** | tudo ✓ | o próprio item diz o que fazer |
+| `node --env-file=.env.producao scripts/saude-das-empresas.mjs` (depois de C) | nenhuma empresa com ✕ | idem, por empresa |
 | `/api/ml/diagnostico-push` → `cron.saudavel` | `true` (rodou nas últimas 36 h) | `CRON_SECRET` sumiu da Vercel |
 | `/api/ml/diagnostico-push` → `worker.saudavel` | `true` (rodou nos últimos 30 min) | parte A; ou o GitHub desligou o agendamento por 60 dias sem commit — `gh workflow enable worker -R caua-lima/zxp-market` |
 | Firestore → `webhook_topicos` → motivo `campo_ausente` | zero | o Mercado Livre mudou o formato das notificações — me avise |

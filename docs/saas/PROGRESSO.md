@@ -54,9 +54,9 @@ Branch de trabalho: `saas-v2/isolamento-tenant`.
 ## Etapa 3 — isolamento por tenant/conexão (o núcleo do S01–S03, S23)
 
 - [x] `TenantContext`/`ConnectionContext` (tipos) + `requireTenantAccess` — `lib/domain/tenant.ts` (tipos puros, caminhos do Firestore, `capacidadesDoPapel`), `lib/tenant-auth.ts` (resolução server-side: token → `memberships/{email}` → `tenants/{id}/members/{email}`), `firestore.rules` (isolamento aditivo: `tenants/*`, `memberships/*` — nada disso é lido pelas rotas/telas atuais ainda), `app/api/tenant/whoami` (rota de diagnóstico, primeiro consumidor real). Isolamento testado contra o emulador REAL (`lib/test/regras-tenant.emulador.test.ts`, 8/8: membro de A nunca lê nada de B, nem o dono de B; ninguém escreve tenant/membro pelo cliente; `memberships` nunca é legível/gravável pelo cliente). `requireTenantAccess` testado com 7 casos (sem token, token inválido, sem vínculo, ponteiro órfão, owner/partner/member resolvidos corretamente, nunca escala por omissão). `capacidadesDoPapel` com 5 casos. `tsc`/lint/suite completa (2309/2309)/`npm run build` limpos. `requireConnectionAccess` (a parte de S03) ainda não existe — depende do modelo de `Connection` por tenant, que é o próprio S03
-- [ ] S01 — dados e autorização hoje são globais (`controleAcesso`, coleções sem `tenantId`)
+- [x] S01 — dados e autorização globais → por empresa: dado em `tenants/{id}/…` pela tradução de caminho (servidor e navegador), autorização pelo membro da empresa (`requireAccess` + regras geradas), empresa resolvida por requisição. Atrás da chave `NEXT_PUBLIC_ZXP_MODO_DADOS` — a virada em produção é a parte C da OPERACAO. Provas: isolamento entre empresas nas regras, virada de ponta a ponta, contexto isolado entre requisições simultâneas (ADR 0001).
 - [x] S02 — rota admin reseta senha de QUALQUER usuário por e-mail, sem checar organização. Fix: o alvo já precisa existir em `controleAcesso` (a fila real já grava lá antes de chamar a rota, fluxo legítimo intacto). `app/api/admin/create-user/route.ts`, `.test.ts` (novo, 3/3). `tsc`/lint/suite completa (2293/2293)/build limpos. Fechado independente do resto do S01/S03 — é o P0 mais autocontido dos três
-- [~] S03 — conexão ML única/global (`SELLER_ID` fallback fixo) → modelo `Connection` por tenant. Feito: `ConnectionContext` (já em `lib/domain/tenant.ts`), `requireConnectionAccess` em `lib/tenant-auth.ts` (resolve a conexão ATIVA do tenant — hoje um só por tenant, `connectionId` explícito fica pra quando existir mais de uma de verdade), regra `tenants/{id}/connections/{id}` trancada pro cliente (nem o owner lê — token de acesso no navegador é token roubável por script injetado), `connections` classificada no inventário de backup (`rebuscavel` — diferente de `ml_oauth_transacoes`, aqui reconectar é o caminho de recuperação, não é NUNCA_RESTAURAR). Testado: 4 casos novos de `requireConnectionAccess` (sem token, sem conexão ativa, resolve certo, capacidade ausente barra antes de consultar) + 1 caso novo no emulador (conexão nunca legível nem gravável pelo cliente, nem pelo dono do próprio tenant). **O que falta, e é o grosso do S03**: `lib/ml/client.ts`/`lib/ml/token.ts`/`lib/ml/orders.ts` (que hoje exportam `SELLER_ID` fixo e leem token de env var, não do Firestore) continuam intocados — migrar CADA rota que fala com o ML pra `requireConnectionAccess` é o corte que precisa do script de migração (criar a `Connection` do tenant legado a partir do `ML_REFRESH_TOKEN`/`ML_SELLER_ID` de hoje) rodado e ensaiado antes, não uma troca de código isolada. `tsc`/lint/suite completa (2313/2313)/`npm run build` limpos
+- [x] S03 — conexão ML por empresa: token em `tenants/{id}/connections/main` (trancado pro navegador), vendedor saindo da conexão (`lib/ml/vendedor.ts`, era fixo em 14 lugares), OAuth levando a empresa, índice `vendedores/{id}` roteando o webhook e barrando a mesma conta em duas empresas, limite de contas do plano no início do OAuth (S25). Modo raiz segue com `ml_tokens/main` até a virada.
 - [x] S23 — cache/localStorage/IndexedDB sem escopo por tenant/conexão/geração. Cache em memória com escopo pessoa+empresa (`definirEscopoDoCache` em `lib/firebase/cache.ts`, chamado na troca de conta — inclusive pelo popup, sem "Sair" — e ao resolver a empresa da sessão); a troca descarta dado E busca em voo da conta anterior (geração). Preferências locais (`estoque:planejados`, `pedidos:filtros-salvos`) com chave `zxpmarket:{uid|empresa}:…` (`lib/storage.ts`); no modo empresa nunca herda a chave global. Cópia offline do Firestore (IndexedDB) apagada no "Sair" (`apagarDadosLocaisDoFirestore` em `lib/firebase/client.ts`; com outra aba aberta o navegador segura o banco e fica pra próxima saída). Prova: `cache.test.ts` (2 novos) e `storage.test.ts` (3); mutação (troca de escopo sem limpar) derruba o teste da busca em voo.
 
 ## Achados de lançamento (S24–S28)
@@ -82,49 +82,68 @@ Branch de trabalho: `saas-v2/isolamento-tenant`.
 - [x] `docs/saas/MIGRACAO.md` — primeira fatia (só membership: controleAcesso → tenants/{id}/members + memberships)
 - [x] Script de migração idempotente, dry-run primeiro — `scripts/migrar-tenant-legado.mjs`, lógica pura testada em `lib/domain/migracao-tenant.ts`/`.test.ts` (10/10: mapeamento de papel legado→novo, permissoesEdicao só quando existe, validarPlano barra plano sem owner/com owner duplicado/vazio)
 - [x] Ensaio em staging (emulador) — rodado nesta sessão: dry-run mostrou o plano certo, aplicado gravou 7 documentos corretos, REAPLICADO deu o mesmo resultado (idempotência confirmada), conferido lendo direto do Firestore. Detalhes em `docs/saas/MIGRACAO.md`. **Reconciliação por hash** ainda não existe — a conferência foi por leitura direta, suficiente pro volume de teste (3 registros), não pro volume real
-- [ ] Estratégia de corte e rollback — rollback desta fatia é trivial (o script só ADICIONA, nunca apaga/modifica `controleAcesso` ou qualquer coleção existente); o CORTE (trocar `requireAccess` por `requireTenantAccess` nas rotas que já existem) ainda não está desenhado
-- [ ] Migração de DADO DE NEGÓCIO (estoque, custos, metas, pedidos, tarefas) — nem desenhada; é outra fatia, depois desta (membership) estar rodada e conferida em produção
-- [ ] Rodar contra produção real (`vazxpress-a2350`) — não feito nesta sessão, precisa de autorização específica separada (ver nota abaixo)
+- [x] Estratégia de corte e rollback — `OPERACAO.md` parte C: copiar (nunca apagar), conferir, virar a chave, copiar de novo logo antes do redeploy; rollback = apagar as variáveis e redeployar (a raiz fica intacta).
+- [x] Migração de dado de negócio — `scripts/migrar-dados-tenant.mjs` + `lib/domain/migracao-dados.ts`: decisão por coleção com teste de completude, cópia idempotente com subcoleções e documento fantasma, conexão ML → `connections/main`, conferência por presença E conteúdo (impressão digital SHA-256 do JSON canônico). 9 testes no emulador; mutação (ignorar o conteúdo) derruba.
+- [ ] Rodar contra produção real (`vazxpress-a2350`) — **depende de você** (credenciais de produção): OPERACAO parte C.
 
 ## Etapa 6 — onboarding, time, UX por tela
 
-- [~] Ver seção 7 do prompt (Dashboard, Estoque, Ads, Custos, DRE, Pedidos, Full, Preço, Metas,
-      Desempenho, Tarefas, Acesso, Notificações, Login/onboarding). Feito nesta leva (28/09):
-      **Acesso** — transferir a propriedade (`/api/acesso/dono`, transação + histórico) e acesso com prazo
-      de 1/7/30 dias pra suporte (`lib/domain/acesso-temporario.ts`: vale no servidor, na tela e nas regras
-      geradas — vencido não lê nem grava); **Estrutura** — quem não é dono não vê mais Conectar/Reconectar ML;
-      **Tarefas** — visão em lista (status por seletor, concluídas recolhidas, cartões no celular) e erro
-      explicado quando mover/excluir falha (antes era engolido); **Estoque** — prazo do fornecedor e lote
-      mínimo no plano de reposição, com aviso de "acaba antes de a compra chegar". Provas: 2+5 testes
-      puros, 3 de rota e 1 de regra no emulador (mutação sem a trava de prazo derruba), tela no emulador
-      (lista, falha ao mover com empresa bloqueada, 12 abas sem estouro em 320 px). A matriz tela a tela
-      (o que já existia de auditorias anteriores × o que falta) ainda não foi escrita.
+- [x] Onboarding e time — S24 (cadastro, verificação, empresa, checklist, convite), Acesso com transferência de propriedade e acesso com prazo (Etapa 6).
+- [~] UX por tela (seção 7 do prompt) — matriz critério a critério em `docs/saas/UX-POR-TELA.md`. Feito nesta auditoria: marca da empresa, menu do ML por capacidade, dica que não estoura, Dashboard que não trava, checklist de ativação, reposição com prazo do fornecedor e lote mínimo, Tarefas em lista com erro explicado, transferência de dono, acesso de suporte com prazo. **Em aberto** (decisão de produto ou medição que falta): fechamento do DRE com versão, fonte/horário por pedido e das taxas do Preço, revisão de KPIs repetidos do Dashboard, e medir 360/390/1280/1440 px, zoom 200%, leitor de tela e Safari/iOS.
 
 ## Etapa 7 — billing em sandbox
 
-- [ ] ADR de fornecedor único (Stripe Billing test mode como padrão, se nada foi decidido)
-- [ ] `BillingProvider` adapter, catálogo de planos, entitlements no servidor
+- [x] ADR de fornecedor único — `docs/saas/adr/0004-cobranca-stripe.md` (Stripe Billing, modo de teste).
+- [x] Adaptador, catálogo de planos, direitos no servidor — S25 (ver a linha na tabela de achados de lançamento).
+- [ ] Exercitar contra o Stripe real — **depende de você** (chaves de teste): OPERACAO parte F.
 
 ## Etapa 8 — operação, segurança, QA, piloto
 
-- [ ] `docs/saas/ARQUITETURA.md` + ADRs
-- [ ] `docs/saas/OPERACAO.md`
-- [ ] `docs/saas/VALIDACAO.md`
-- [ ] Relatório final
+- [x] `docs/saas/ARQUITETURA.md` + ADRs 0001 (modelo de empresa), 0002 (regras geradas), 0003 (worker), 0004 (cobrança)
+- [x] `docs/saas/OPERACAO.md` — partes A a I, cada uma com o passo a passo
+- [x] `docs/saas/VALIDACAO.md` — o que rodar, o que cada suíte prova, verificação na tela, o que não foi medido
+- [x] `docs/saas/SEGURANCA.md`, `PRIVACIDADE.md` (pra revisão jurídica), `UX-POR-TELA.md`
+- [x] Relatório final — abaixo
 
-## O que falta e por quê (atualizado a cada etapa)
+## Relatório final (28/09/2026)
 
-**Não declarar "SaaS pronto"** — nada abaixo chegou perto disso ainda. O que existe até aqui é a
-Etapa 2 (bugs do main atual) majoritariamente fechada, com teste de verdade em cada item — a maior
-parte contra o emulador real, não mock. As Etapas 3-8 (o núcleo do pedido: isolamento por tenant,
-billing, migração, UX por tela, operação) **não começaram**.
+### Em uma frase
 
-### Etapa 2 — o que ficou
+O código da transformação em SaaS está completo e testado na `main`, **desligado
+por chaves**: o app de hoje segue funcionando como sempre, e cada passo seguinte
+(migrar, virar a chave, cobrar, abrir cadastro) é uma ação sua, descrita em
+`OPERACAO.md`, com rollback.
 
-21 de 21 achados corrigidos e testados: S04, S05, S06, S07, S08, S09, S10, S11, S12, S13, S14,
-S15, S16, S17, S18, S19, S20, S21, S22, S29, S30.
+### Placar
 
-Nenhum achado da Etapa 2 sem tratamento. O que cada um NÃO cobre está na própria linha da tabela.
+| Frente | Situação |
+|---|---|
+| Etapa 2 — 21 bugs do app atual (S04–S22, S29, S30) | 21/21 corrigidos, cada um com prova inversa |
+| Etapa 3 — isolamento por empresa (S01, S02, S03, S23) | feito, atrás da chave `NEXT_PUBLIC_ZXP_MODO_DADOS` |
+| Etapa 4 — jobs, inbox, observabilidade | feito (worker, inbox, log com redação, saúde por empresa) |
+| Etapa 5 — migração | scripts prontos, ensaiados e conferidos por conteúdo; **não rodada em produção** |
+| Etapa 6 — onboarding, time, UX por tela | onboarding e time feitos; UX por tela parcial (matriz em `UX-POR-TELA.md`) |
+| Etapa 7 — cobrança | feita em modo de teste; **não exercitada contra o Stripe real** |
+| Etapa 8 — operação, segurança, documentação | feito (S26, S27, S28, docs e ADRs) |
+
+Suítes no último commit: unidade 2528/2528, emulador 264/264, `tsc`, lint e
+build limpos; CI verde no GitHub.
+
+### O que NÃO está pronto (não declarar "SaaS pronto" antes disto)
+
+1. **Virada em produção** (OPERACAO C): a operação real ainda roda no modo de
+   uma empresa só.
+2. **Cobrança real**: testada só com provedor falso e fixtures; falta o sandbox
+   do Stripe (OPERACAO F) e, pra cobrar de verdade, preços, termos e
+   `ZXP_COBRANCA_LIVE`.
+3. **Termos e privacidade** marcados como preliminares — revisão jurídica.
+4. **Plano da Vercel**: Hobby não permite uso comercial (OPERACAO E).
+5. **Escala**: as rotinas percorrem as empresas em sequência dentro de 60 s por
+   função; com dezenas de empresas precisa de fila.
+6. **UX**: itens em aberto e medições não feitas listados em `UX-POR-TELA.md`.
+   Também não refeitos: confirmação visual com uma conta de colaborador real
+   (S17/S19) e o ensaio de restauração do backup (S15, `docs/backup.md`).
+7. Pendência antiga, fora do escopo SaaS:
 
 Visto no S12 e **não** corrigido nele — `ml_returns` tem outra corrida, sync × sync (o webhook não
 grava lá): `syncReturnsRange` (cancelamentos) e `syncClaimsRange` (devoluções) rodam em paralelo no
@@ -134,78 +153,18 @@ chamador no app) grava o `status` do PEDIDO por cima do `status` da devolução,
 trata status fora da lista "em aberto" como concluída — uma devolução em disputa passaria a ser
 descontada. O impacto nos números não foi medido; fica pra quando mexer em devolução.
 
-### Etapas 3-8 — onde estão
+### Achados durante a execução (não estavam na auditoria)
 
-- **Etapa 3 (isolamento)**: o CORTE está pronto e na `main`, **atrás de uma chave desligada**:
-  `NEXT_PUBLIC_ZXP_MODO_DADOS` (`raiz` = padrão, como sempre; `tenant` = dado da empresa em
-  `tenants/{NEXT_PUBLIC_ZXP_TENANT_ID}/…`). Uma chave só pra servidor e navegador. Servidor: `getAdminDb()`
-  devolve o Firestore com os caminhos traduzidos (`lib/firebase/db-de-dados.ts`) — um ponto só em vez
-  de ~120 chamadas. Cliente: `sCol`/`sDoc` e os módulos que recebem `db` traduzem pelo mesmo
-  `traduzirCaminho` (`lib/firebase/caminhos.ts`). Regras: o dado da empresa dentro de
-  `tenants/{id}` é GERADO das regras da raiz (`npm run regras:gerar`), autorizando por membro da
-  empresa; um teste quebra se a raiz mudar sem regenerar. Membros: `controleAcesso` segue como a
-  fonte da tela de Acesso e é espelhado em `tenants/{id}/members` (entra quem entrou, SAI quem saiu)
-  pela rota `/api/acesso/sincronizar` (chamada pela tela) e pelo worker a cada 5 min. Provas no
-  emulador: isolamento entre empresas (6/6), a virada de ponta a ponta com a chave ligada e
-  desligada (7/7: gravador de pedidos com transação, token do ML, lançamento auditado sob as regras
-  da empresa, sincronização de membros), tradução de caminho (4/4). **Não virada em produção**:
-  depende da migração (Etapa 5) rodar antes — virar sem migrar mostra o painel vazio. **Segundo cliente (27/09, na `main`)**: empresa resolvida POR
-  REQUISIÇÃO (AsyncLocalStorage; o gate de autenticação entra na empresa do membro), tela de
-  Acesso gravando nos membros da empresa (`/api/acesso/membros`), vendedor do ML saindo da
-  conexão da empresa (era fixo em 14 lugares), OAuth levando a empresa, índice `vendedores/{id}`
-  roteando o webhook e barrando a mesma conta em duas empresas, cron/resumos/snapshot/worker uma
-  vez por empresa, `scripts/criar-empresa.mjs`. A sincronização controleAcesso → membros foi
-  REMOVIDA: com duas empresas, a lista global jogaria gente de uma na outra. Provas: contexto
-  isolado entre requisições simultâneas, gate no modo empresa (5/5), rota de membros no emulador
-  (8/8), webhook roteado por vendedor no emulador, rotinas por empresa (3/3).
-- Nota de estabilidade: `notification-events.emulador.test.ts` (10 reparos + 10 marcas
-  concorrentes) falhou uma vez na suíte inteira sob carga (19,8 s) e passou 3/3 isolado e na suíte
-  repetida (229/229) — concorrência de transação no emulador, mesmo tipo do flake já anotado do
-  `push-registro-store`.
-- **Etapa 5 (migração)**: as duas fatias escritas, ensaiadas no emulador e documentadas em
-  `MIGRACAO.md` — membros (`migrar-tenant-legado.mjs`) e dado de negócio (`migrar-dados-tenant.mjs`,
-  `lib/domain/migracao-dados.ts`: decisão por coleção com teste de completude que varre o código,
-  cópia idempotente com subcoleções e documento fantasma, conexão ML → `connections/main`,
-  conferência documento a documento, raiz intacta como rollback; 8/8 no emulador + script rodado
-  de ponta a ponta). **Nenhuma rodada em produção** — depende de você (credenciais de produção e
-  autorização; ver o checklist no fim).
-- **Etapa 4 (operação)**: parcial — worker a cada 5 min independente de tráfego (S09), inbox durável
-  do webhook com retry e fila de falhas (S07), carimbos de execução de cron e worker no diagnóstico.
-  Falta: jobs por empresa/conexão (hoje há uma só).
-- **Etapa 6 (cobrança)**: **não iniciada, de propósito** — cobrança de verdade exige escolher o
-  provedor e criar a conta (decisão sua), e cobrança fingida é o que a auditoria proíbe.
-- **Etapa 7 (UX por tela)**: fora deste ciclo; a auditoria de design tem documento próprio.
-- **Etapa 8 (documentação)**: `ARQUITETURA.md`, `OPERACAO.md` (o passo a passo do que depende de
-  você) e `VALIDACAO.md` escritos.
+- `/api/ml/debug` devolvia o `/users/me` inteiro e os 30 primeiros caracteres do
+  token do ML; rotas de diagnóstico devolviam endereço de comprador (S27).
+- O Dashboard podia ficar preso em "Carregando dados…" pra sempre (S28).
+- No modo empresa, o acesso em cache abria a tela antes de o navegador saber a
+  empresa (S24).
+- Tarefas engolia erro ao mover/excluir (Etapa 6).
+- `docs/backup.md` citava variáveis do ML que o código não usa (S26).
 
-## Checklist final (27/09/2026)
+### Onde está cada coisa
 
-**Feito, testado e na `main`:** Etapa 2 inteira (21/21, cada item com prova inversa); Etapa 3 — o
-corte atrás de uma chave desligada, com regras da empresa geradas da raiz e membros espelhados;
-Etapa 5 — as duas fatias da migração, ensaiadas no emulador; Etapa 8 — os três documentos.
-
-**Depende de você** (passo a passo em `OPERACAO.md`):
-1. **A** — cadastrar `CRON_SECRET` no GitHub (liga o worker).
-2. **B** — publicar `firestore.rules` (as regras não sobem com a Vercel).
-3. **C** — quando decidir: migrar membros e dados e virar a chave na Vercel (tem rollback).
-4. **D** — cadastrar o segundo cliente (`scripts/criar-empresa.mjs`), depois de C.
-5. Decidir o provedor de cobrança (Etapa 6).
-
-**Não declarar "SaaS pronto"**: a cobrança não existe, a migração não rodou em produção e as
-rotinas percorrem as empresas em sequência (com dezenas de empresas, vira fila).
-
-### Correção de uma leitura errada minha (23/09)
-
-O teste `app/api/ml/cron/route.test.ts` (S08) falhou por timeout 5 vezes na suíte completa e
-nunca isolado — registrei como "carga da máquina". Não era: o teste fazia `vi.resetModules()` e
-reimportava a rota DENTRO de cada caso, e a rota puxa `firebase-admin` de verdade via
-`lib/api-auth`. Sob a suíte, esse import passava de 5 s. Corrigido com import estático (o custo
-vai pra coleta do arquivo) — suíte completa 2339/2339.
-
-### Verificação ainda pendente (fora do alcance de `vitest`/emulador)
-
-- S17/S19: confirmação visual com conta de colaborador de verdade (permissão parcial).
-- S15: ensaio de restauração depois de qualquer mudança no backup.
-- Ambiente: `test:emulador` tem uma instabilidade pré-existente sob carga prolongada (ver nota no
-  S21) — não afeta os testes tocados nesta sessão rodados isoladamente, mas vale investigar antes de
-  depender dela em CI.
+`ARQUITETURA.md` (como as peças se encaixam), `adr/` (as quatro decisões),
+`OPERACAO.md` (o que você roda), `VALIDACAO.md` (como provar),
+`SEGURANCA.md`, `PRIVACIDADE.md`, `UX-POR-TELA.md`, `MIGRACAO.md`.
