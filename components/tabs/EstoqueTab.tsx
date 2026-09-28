@@ -1864,10 +1864,16 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
 }) {
   const [dias, setDias] = useState("30");
   const [folga, setFolga] = useState("7");
+  // Etapa 6: prazo do fornecedor e lote mínimo — mudam pouco, então ficam
+  // guardados (por pessoa+empresa, S23) em vez de voltar ao padrão a cada visita.
+  const [prazoForn, setPrazoForn] = useState(() => lerChaveApp("estoque:prazo-fornecedor") ?? "0");
+  const [lote, setLote] = useState(() => lerChaveApp("estoque:lote-minimo") ?? "1");
   const [aberto, setAberto] = useState(false);
 
   const diasN = Math.max(0, Math.round(parseNum(dias) || 0));
   const folgaN = Math.max(0, Math.round(parseNum(folga) || 0));
+  const prazoN = Math.max(0, Math.round(parseNum(prazoForn) || 0));
+  const loteN = Math.max(1, Math.round(parseNum(lote) || 1));
 
   const [aba, setAba] = useState<"pedir" | "full" | "todos">("pedir");
   const [busca, setBusca] = useState("");
@@ -1958,8 +1964,8 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
   }), [produtos, estoqueML, forecast, retencaoPorProduto]);
 
   const plano = useMemo(
-    () => montarPlanoReposicao(paraDominio, diasN, folgaN),
-    [paraDominio, diasN, folgaN],
+    () => montarPlanoReposicao(paraDominio, diasN, folgaN, { prazoFornecedorDias: prazoN, loteMinimo: loteN }),
+    [paraDominio, diasN, folgaN, prazoN, loteN],
   );
 
   /** Só pro aviso: quanto do plano se apoia em unidade que ainda não vende. */
@@ -2047,9 +2053,25 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
           </div>
           <div id="repor-folga-dica" className="hint">Pra não raspar o zero num dia de venda forte.</div>
         </div>
+        <div className="config-field" style={{ margin: 0, maxWidth: 230 }}>
+          <label htmlFor="repor-prazo">Prazo do fornecedor</label>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input id="repor-prazo" inputMode="numeric" value={prazoForn} onChange={(e) => { setPrazoForn(e.target.value); gravarChaveApp("estoque:prazo-fornecedor", e.target.value); }} style={{ width: 90 }} aria-describedby="repor-prazo-un repor-prazo-dica" />
+            <span id="repor-prazo-un" style={{ color: "var(--muted)", fontSize: ".85rem" }}>dias até chegar</span>
+          </div>
+          <div id="repor-prazo-dica" className="hint">O estoque de hoje é que vende enquanto a compra não chega.</div>
+        </div>
+        <div className="config-field" style={{ margin: 0, maxWidth: 200 }}>
+          <label htmlFor="repor-lote">Lote mínimo</label>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input id="repor-lote" inputMode="numeric" value={lote} onChange={(e) => { setLote(e.target.value); gravarChaveApp("estoque:lote-minimo", e.target.value); }} style={{ width: 90 }} aria-describedby="repor-lote-un" />
+            <span id="repor-lote-un" style={{ color: "var(--muted)", fontSize: ".85rem" }}>un. por pedido</span>
+          </div>
+        </div>
         <div style={{ fontSize: ".82rem", color: "var(--muted)", paddingTop: 26 }}>
           Pedindo para <b style={{ color: "var(--text)" }}>{plano.diasACobrir} dias</b>
-          {folgaN > 0 ? ` (${diasN} + ${folgaN} de folga)` : ""}
+          {prazoN > 0 || folgaN > 0 ? ` (${prazoN > 0 ? `${prazoN} até chegar + ` : ""}${diasN}${folgaN > 0 ? ` + ${folgaN} de folga` : ""})` : ""}
+          {loteN > 1 ? `, em lotes de ${loteN}` : ""}
         </div>
       </div>
 
@@ -2058,6 +2080,14 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
           <b>Sem folga, o estoque chega a zero exatamente no dia {diasN}.</b> Como metade dos
           dias vende acima da média, uma semana boa antecipa a ruptura — e no Full ficar sem
           estoque derruba a posição do anúncio.
+        </div>
+      )}
+
+      {plano.zeramAntesDeChegar.length > 0 && (
+        <div className="note note-danger" style={{ marginBottom: 12 }}>
+          <b>{plano.zeramAntesDeChegar.length} produto(s) acabam antes de a compra chegar</b> ({prazoN} dias
+          de prazo do fornecedor). Comprar hoje não evita a falta: mande do galpão, peça com urgência
+          ou segure as vendas.
         </div>
       )}
 

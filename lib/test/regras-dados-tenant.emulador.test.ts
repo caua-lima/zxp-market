@@ -113,3 +113,18 @@ describe("S25 — empresa bloqueada (assinatura vencida/cancelada) só lê", () 
     await assertSucceeds(setDoc(doc(ctx(DONO_A), "tenants/a/estoque/p3"), { name: "Nova", custo: "5" }));
   });
 });
+
+describe("Etapa 6 — acesso com prazo vencido não lê nem grava", () => {
+  const SUPORTE = { uid: "sup", email: "suporte@z.com" };
+  it("dentro do prazo lê; vencido, nada", async () => {
+    await env.withSecurityRulesDisabled(async (c) => {
+      await setDoc(doc(c.firestore(), "tenants/a/members", SUPORTE.email), { email: SUPORTE.email, role: "partner", permissoesEdicao: ["estoque"], expiraEm: Date.now() + 3_600_000 });
+    });
+    await assertSucceeds(getDoc(doc(ctx(SUPORTE), "tenants/a/estoque/p1")));
+    await env.withSecurityRulesDisabled(async (c) => {
+      await setDoc(doc(c.firestore(), "tenants/a/members", SUPORTE.email), { email: SUPORTE.email, role: "partner", permissoesEdicao: ["estoque"], expiraEm: Date.now() - 1000 });
+    });
+    await assertFails(getDoc(doc(ctx(SUPORTE), "tenants/a/estoque/p1")));
+    await assertFails(setDoc(doc(ctx(SUPORTE), "tenants/a/estoque/p9"), { name: "X", custo: "1" }));
+  });
+});

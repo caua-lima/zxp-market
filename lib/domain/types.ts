@@ -357,6 +357,10 @@ export type AccessEntry = {
    * sempre (colaborador só lê) — campo aditivo, não muda ninguém já existente.
    */
   permissoesEdicao?: PermissionTab[];
+  /** Acesso com prazo (suporte temporário): quando vence, em ms. Ausente = permanente. Só o servidor grava. */
+  expiraEm?: number;
+  /** Só na criação, no modo empresa: prazo pedido em dias (1 a 30). O servidor converte em `expiraEm`. */
+  expiraEmDias?: number;
 };
 
 /**

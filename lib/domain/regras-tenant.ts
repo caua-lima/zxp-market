@@ -95,7 +95,10 @@ const AJUDANTES_T = `
         return get(acessoT());
       }
       function isAuthorizedT() {
-        return signedIn() && exists(acessoT());
+        return signedIn() && exists(acessoT()) && naoExpiradoT();
+      }
+      function naoExpiradoT() {
+        return !('expiraEm' in requesterDocT().data) || request.time.toMillis() < requesterDocT().data.expiraEm;
       }
       function isOwnerT() {
         return isAuthorizedT() && requesterDocT().data.role == "owner";

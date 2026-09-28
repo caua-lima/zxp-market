@@ -18,6 +18,7 @@ import { authedFetch } from "@/lib/api/authed-fetch";
 import TelaHeader from "@/components/TelaHeader";
 import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
 import { fonteCarregada, FONTE_CARREGANDO } from "@/lib/domain/estado-fonte";
+import { gravarChaveApp, lerChaveApp } from "@/lib/storage";
 
 /**
  * Só e-mail e nome — o que o seletor de responsável precisa. Vem de
@@ -74,6 +75,14 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
   const [pessoas, setPessoas] = useState<PessoaDiretorio[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<Filtro>("todas");
+  // Etapa 6: quadro OU lista (a lista é a alternativa ao arrastar — teclado,
+  // leitor de tela, celular). A escolha fica por pessoa+empresa (S23).
+  const [vista, setVista] = useState<"quadro" | "lista">(() => (lerChaveApp("tarefas:vista") === "lista" ? "lista" : "quadro"));
+  const [falha, setFalha] = useState<string | null>(null);
+  function trocarVista(v: "quadro" | "lista") {
+    setVista(v);
+    gravarChaveApp("tarefas:vista", v);
+  }
   const [responsavelFiltro, setResponsavelFiltro] = useState("");
   const [prioridadeFiltro, setPrioridadeFiltro] = useState<TaskPriority | "">("");
   const [somenteAtrasadas, setSomenteAtrasadas] = useState(false);
@@ -166,12 +175,17 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
       por: email, em: Date.now(),
       detalhe: `${COLS.find((c) => c.status === t.status)?.label} → ${COLS.find((c) => c.status === status)?.label}`,
     };
-    await upsertTask({ ...t, status, lastEditedBy: email, atividade: appendAtividade(t.atividade, evento) }).catch(() => {});
+    setFalha(null);
+    // Falhou (sem rede, sem permissão): o card volta pra coluna de antes — e
+    // agora a tela DIZ por quê, em vez de parecer que o arrasto não pegou.
+    await upsertTask({ ...t, status, lastEditedBy: email, atividade: appendAtividade(t.atividade, evento) })
+      .catch((err) => setFalha(`Não consegui mover "${t.title}": ${mensagemDeErroDeSalvamento(err)}`));
   }
 
   async function excluir(t: Task) {
     if (!confirm(`Excluir a tarefa "${t.title}"?`)) return;
-    await deleteTask(t.id).catch(() => {});
+    setFalha(null);
+    await deleteTask(t.id).catch((err) => setFalha(`Não consegui excluir "${t.title}": ${mensagemDeErroDeSalvamento(err)}`));
   }
 
   const minhas = tasks.filter((t) => t.assignedTo === email).length;
@@ -267,8 +281,23 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
         )}
       </div>
 
+      <div className="seg" role="group" aria-label="Como ver as tarefas" style={{ alignSelf: "flex-start" }}>
+        <button type="button" className={`seg-btn ${vista === "quadro" ? "active" : ""}`} aria-pressed={vista === "quadro"} onClick={() => trocarVista("quadro")}>Quadro</button>
+        <button type="button" className={`seg-btn ${vista === "lista" ? "active" : ""}`} aria-pressed={vista === "lista"} onClick={() => trocarVista("lista")}>Lista</button>
+      </div>
+
+      {falha && <div className="note note-danger" role="alert">{falha}</div>}
+
       {loading ? (
         <div className="empty-state">Carregando…</div>
+      ) : vista === "lista" ? (
+        <ListaDeTarefas
+          tarefas={visiveis}
+          nomeDe={(e) => pessoas.find((p) => p.email === e)?.displayName || e || "—"}
+          onMover={mover}
+          onEditar={setEditTask}
+          onExcluir={excluir}
+        />
       ) : (
         <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
           <div className="kanban-board">
@@ -304,6 +333,67 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
       )}
       {editTask && (
         <TaskModal pessoas={pessoas} minhaEmail={email} task={editTask} onClose={() => setEditTask(null)} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * A lista (Etapa 6): tabela com o status num seletor — mover sem arrastar,
+ * pelo teclado ou leitor de tela. As concluídas ficam recolhidas: são o que
+ * mais acumula e o que menos se consulta.
+ */
+function ListaDeTarefas({ tarefas, nomeDe, onMover, onEditar, onExcluir }: {
+  tarefas: Task[];
+  nomeDe: (email?: string) => string;
+  onMover: (t: Task, s: TaskStatus) => void;
+  onEditar: (t: Task) => void;
+  onExcluir: (t: Task) => void;
+}) {
+  const [verConcluidas, setVerConcluidas] = useState(false);
+  const peso = (t: Task) => (t.status === "doing" ? 0 : t.status === "todo" ? 1 : 2);
+  const ordenadas = [...tarefas].sort((a, b) => peso(a) - peso(b) || (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999"));
+  const abertas = ordenadas.filter((t) => t.status !== "done");
+  const concluidas = ordenadas.filter((t) => t.status === "done");
+  const linhas = verConcluidas ? [...abertas, ...concluidas] : abertas;
+
+  if (tarefas.length === 0) return <div className="empty-state">Nenhuma tarefa com estes filtros.</div>;
+  return (
+    <div>
+      <div className="table-wrapper" role="region" aria-label="Tarefas em lista" tabIndex={0}>
+        {/* tbl-cards: no celular cada linha vira cartão (padrão do app, globals.css) —
+            tabela de 6 colunas em 320 px alargava a página inteira. */}
+        <table className="tbl-modern tbl-cards">
+          <thead>
+            <tr><th>Tarefa</th><th>Responsável</th><th>Prazo</th><th>Prioridade</th><th>Status</th><th><span className="sr-only">Ações</span></th></tr>
+          </thead>
+          <tbody>
+            {linhas.map((t) => (
+              <tr key={t.id}>
+                <td data-label="Tarefa" style={{ fontWeight: 600, textDecoration: t.status === "done" ? "line-through" : undefined }}>{t.title}</td>
+                <td data-label="Responsável">{nomeDe(t.assignedTo)}</td>
+                <td data-label="Prazo" style={{ color: isTaskAtrasada(t) ? "var(--red-text)" : undefined, whiteSpace: "nowrap" }}>
+                  {t.dueDate ? fmtData(t.dueDate) : "—"}{isTaskAtrasada(t) ? " · atrasada" : ""}
+                </td>
+                <td data-label="Prioridade">{t.priority ? PRIORIDADE_META[t.priority].label : "—"}</td>
+                <td data-label="Status">
+                  <select value={t.status} aria-label={`Status de ${t.title}`} onChange={(e) => onMover(t, e.target.value as TaskStatus)}>
+                    {COLS.map((c) => <option key={c.status} value={c.status}>{c.label}</option>)}
+                  </select>
+                </td>
+                <td data-label="Ações" style={{ whiteSpace: "nowrap" }}>
+                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => onEditar(t)} aria-label={`Editar ${t.title}`}>Editar</button>{" "}
+                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => onExcluir(t)} aria-label={`Excluir ${t.title}`}>Excluir</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {concluidas.length > 0 && (
+        <button type="button" className="btn btn-ghost btn-xs" style={{ marginTop: 8 }} aria-expanded={verConcluidas} onClick={() => setVerConcluidas((v) => !v)}>
+          {verConcluidas ? "Esconder concluídas" : `Mostrar concluídas (${concluidas.length})`}
+        </button>
       )}
     </div>
   );

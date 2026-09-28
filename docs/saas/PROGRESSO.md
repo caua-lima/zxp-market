@@ -88,8 +88,17 @@ Branch de trabalho: `saas-v2/isolamento-tenant`.
 
 ## Etapa 6 — onboarding, time, UX por tela
 
-- [ ] Ver seção 7 do prompt (Dashboard, Estoque, Ads, Custos, DRE, Pedidos, Full, Preço, Metas,
-      Desempenho, Tarefas, Acesso, Notificações, Login/onboarding)
+- [~] Ver seção 7 do prompt (Dashboard, Estoque, Ads, Custos, DRE, Pedidos, Full, Preço, Metas,
+      Desempenho, Tarefas, Acesso, Notificações, Login/onboarding). Feito nesta leva (28/09):
+      **Acesso** — transferir a propriedade (`/api/acesso/dono`, transação + histórico) e acesso com prazo
+      de 1/7/30 dias pra suporte (`lib/domain/acesso-temporario.ts`: vale no servidor, na tela e nas regras
+      geradas — vencido não lê nem grava); **Estrutura** — quem não é dono não vê mais Conectar/Reconectar ML;
+      **Tarefas** — visão em lista (status por seletor, concluídas recolhidas, cartões no celular) e erro
+      explicado quando mover/excluir falha (antes era engolido); **Estoque** — prazo do fornecedor e lote
+      mínimo no plano de reposição, com aviso de "acaba antes de a compra chegar". Provas: 2+5 testes
+      puros, 3 de rota e 1 de regra no emulador (mutação sem a trava de prazo derruba), tela no emulador
+      (lista, falha ao mover com empresa bloqueada, 12 abas sem estouro em 320 px). A matriz tela a tela
+      (o que já existia de auditorias anteriores × o que falta) ainda não foi escrita.
 
 ## Etapa 7 — billing em sandbox
 

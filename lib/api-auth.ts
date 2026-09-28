@@ -1,3 +1,4 @@
+import { acessoExpirado } from "@/lib/domain/acesso-temporario";
 import "server-only";
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
@@ -21,13 +22,14 @@ async function lerAcesso(email: string, definirEmpresa: (t: string) => void): Pr
   const db = getAdminDb();
   if (lerModoDeDados() === "raiz") {
     const snap = await db.collection("controleAcesso").doc(email).get();
-    return snap.exists ? { dados: snap.data() ?? {}, tenantId: null } : null;
+    return snap.exists && !acessoExpirado(snap.data(), Date.now()) ? { dados: snap.data() ?? {}, tenantId: null } : null;
   }
   const ponteiro = await db.doc(`memberships/${email}`).get();
   const tenantId = String(ponteiro.data()?.tenantId ?? "").trim();
   if (!tenantId) return null;
   const membro = await db.doc(`tenants/${tenantId}/members/${email}`).get();
-  if (!membro.exists) return null;
+  // Acesso com prazo (suporte): vencido, é como se não existisse.
+  if (!membro.exists || acessoExpirado(membro.data(), Date.now())) return null;
   definirEmpresa(tenantId);
   return { dados: membro.data() ?? {}, tenantId };
 }

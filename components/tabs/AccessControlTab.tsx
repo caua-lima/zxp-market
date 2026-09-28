@@ -9,6 +9,7 @@ import SaudePanel from "@/components/tabs/acesso/SaudePanel";
 import {
   addAccessEntry,
   logAudit,
+  modoEmpresaAtivo,
   removeAccessEntry,
   updateAccessEntry,
   watchAccessList,
@@ -18,6 +19,7 @@ import type { UserData } from "@/components/useUserData";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import { useAccess } from "@/components/tabs/AccessGuard";
 import { useAuth } from "@/lib/firebase/auth-context";
+import { recarregarPagina } from "@/lib/ir-para";
 import TelaHeader from "@/components/TelaHeader";
 import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
 import { fonteCarregada, FONTE_CARREGANDO } from "@/lib/domain/estado-fonte";
@@ -41,6 +43,11 @@ export default function AccessControlTab({
 
   const [entries, setEntries] = useState<AccessEntry[]>([]);
   const [convite, setConvite] = useState<string | null>(null);
+  /** Etapa 6: prazo do acesso ("" = permanente), só ao adicionar e só no modo empresa. */
+  const [prazo, setPrazo] = useState("");
+  const modoEmpresa = modoEmpresaAtivo();
+  // Relógio lido uma vez, ao abrir a tela (render puro): basta pra dizer "vencido".
+  const [abertaEm] = useState(() => Date.now());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -108,6 +115,7 @@ export default function AccessControlTab({
     setPhotoURL("");
     setPassword("");
     setPermissoesEdicao([]);
+    setPrazo("");
     setError("");
   }
 
@@ -145,6 +153,7 @@ export default function AccessControlTab({
       // Owner edita tudo sempre — gravar permissoesEdicao pra ele seria um
       // campo morto que some assim que a UI reabrisse a edição.
       const payload: AccessEntry = {
+        ...(modoEmpresa && !editingEmail && prazo ? { expiraEmDias: Number(prazo) } : {}),
         email: normalizedEmail,
         role: effectiveRole,
         displayName: displayName.trim() || undefined,
@@ -220,6 +229,26 @@ export default function AccessControlTab({
       setConvite(`Convite enviado pra ${entryEmail}: o e-mail traz o link pra criar a senha (confira o spam). Quem usa Google pode só entrar com o Google.`);
     } catch {
       setError("Não foi possível enviar o convite agora.");
+    }
+  }
+
+  /** Etapa 6 — transferência de propriedade: a pessoa vira dona; você vira parceiro com edição em tudo. */
+  async function transferirDono(entryEmail: string) {
+    if (!confirm(`Passar a propriedade da empresa para ${entryEmail}?
+
+Ela passa a administrar o time, o plano e a conexão com o Mercado Livre. Você continua com acesso, como parceiro com edição em todas as abas.`)) return;
+    setError("");
+    try {
+      const r = await authedFetch("/api/acesso/dono", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: entryEmail }),
+      });
+      if (r.ok) { recarregarPagina(); return; }
+      const j = await r.json().catch(() => null);
+      setError(j?.details ?? j?.error ?? `Falhou (${r.status}).`);
+    } catch {
+      setError("Não foi possível transferir agora.");
     }
   }
 
@@ -378,6 +407,18 @@ export default function AccessControlTab({
               />
             </div>
 
+            {modoEmpresa && !editingEmail && (
+              <div className="config-field" style={{ margin: 0 }}>
+                <label htmlFor="acesso-prazo">Prazo do acesso</label>
+                <select id="acesso-prazo" value={prazo} onChange={(e) => setPrazo(e.target.value)}>
+                  <option value="">Permanente</option>
+                  <option value="1">1 dia (suporte)</option>
+                  <option value="7">7 dias (suporte)</option>
+                  <option value="30">30 dias</option>
+                </select>
+              </div>
+            )}
+
             <div className="config-field" style={{ margin: 0 }}>
               <label htmlFor="acesso-senha">Senha de login (opcional)</label>
               <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
@@ -513,6 +554,11 @@ export default function AccessControlTab({
                           ? ` · edita ${entry.permissoesEdicao.map((t) => PERMISSION_TAB_LABEL[t]).join(", ")}`
                           : papelDe(entry.role) === "partner" ? " · só leitura" : ""}
                         {entry.addedAt ? ` · desde ${new Date(entry.addedAt).toLocaleDateString("pt-BR")}` : ""}
+                        {entry.expiraEm ? (
+                          <span style={{ color: entry.expiraEm <= abertaEm ? "var(--red-text)" : "var(--warning)" }}>
+                            {entry.expiraEm <= abertaEm ? " · acesso vencido" : ` · expira em ${new Date(entry.expiraEm).toLocaleDateString("pt-BR")}`}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -522,6 +568,11 @@ export default function AccessControlTab({
                       {entry.email !== meuEmail && (
                         <button type="button" className="btn btn-ghost btn-xs" onClick={() => enviarConvite(entry.email)} title="Manda pra pessoa o link de criar a senha">
                           Enviar convite
+                        </button>
+                      )}
+                      {modoEmpresa && entry.email !== meuEmail && entry.role !== "owner" && !entry.expiraEm && (
+                        <button type="button" className="btn btn-ghost btn-xs" onClick={() => transferirDono(entry.email)} title="Passa a propriedade da empresa pra esta pessoa">
+                          Tornar dono
                         </button>
                       )}
                       <button

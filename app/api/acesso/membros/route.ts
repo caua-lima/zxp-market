@@ -5,6 +5,8 @@ import { lerModoDeDados } from "@/lib/firebase/caminhos";
 import { papelDe, type PermissionTab } from "@/lib/domain/types";
 import { lerDireitos } from "@/lib/billing/empresa";
 import { podeAdicionarMembro } from "@/lib/domain/assinatura";
+import { expiraEmDe } from "@/lib/domain/acesso-temporario";
+import { FieldValue } from "firebase-admin/firestore";
 
 /**
  * O time DA EMPRESA de quem chama (segundo cliente, modo empresa).
@@ -47,6 +49,9 @@ export async function POST(req: Request) {
   const { email, papel, permissoesEdicao } = normalizar(corpo);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return NextResponse.json({ error: "email_invalido" }, { status: 400 });
   if (papel === "owner") return NextResponse.json({ error: "um_dono_so", details: "A empresa tem um dono só." }, { status: 400 });
+  // Acesso com prazo (suporte temporário): 1 a 30 dias; sem prazo = permanente.
+  const expiraEm = expiraEmDe(corpo.expiraEmDias, Date.now());
+  if (expiraEm === "invalido") return NextResponse.json({ error: "prazo_invalido", details: "O prazo vai de 1 a 30 dias." }, { status: 400 });
 
   const db = getAdminDb();
   const ponteiro = await db.doc(`memberships/${email}`).get();
@@ -70,6 +75,7 @@ export async function POST(req: Request) {
     email, role: papel,
     ...(papel === "partner" && permissoesEdicao.length ? { permissoesEdicao } : {}),
     ...(typeof corpo.displayName === "string" ? { displayName: corpo.displayName.slice(0, 120) } : {}),
+    expiraEm: expiraEm ?? FieldValue.delete(),
     addedAt: Date.now(), addedBy: gate.email,
   }, { merge: true });
   lote.set(db.doc(`memberships/${email}`), { email, tenantId: t });

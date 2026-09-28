@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { MLConnectButton } from "./MLConnectButton";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import { iniciarVinculoML, motivoDaVolta } from "@/lib/ml/iniciar-vinculo";
+import { useAccess } from "@/components/tabs/AccessGuard";
 
 type Account = {
   connected: boolean;
@@ -12,6 +13,11 @@ type Account = {
 };
 
 export function MlAccountStatus() {
+  // Etapa 6: conectar/reconectar é do dono (o servidor recusa os outros com
+  // 403). Pra quem não pode, o topo mostra só o estado — sem um botão que
+  // ocupa espaço e só serve pra dar erro.
+  const { papel } = useAccess();
+  const podeConectar = papel === "owner";
   const [data, setData] = useState<Account | null>(null);
   const [loading, setLoading] = useState(true);
   const [swapLoading, setSwapLoading] = useState(false);
@@ -44,7 +50,14 @@ export function MlAccountStatus() {
     load();
   }, []);
 
-  if (loading) return <MLConnectButton aviso={recusa} />;
+  if (!podeConectar && !loading && (!data || !data.connected)) {
+    return (
+      <span className="acct-text" title="Só o dono da empresa conecta a conta do Mercado Livre" style={{ fontSize: '.78rem', color: 'var(--warning)' }}>
+        ML desconectado
+      </span>
+    );
+  }
+  if (loading) return podeConectar ? <MLConnectButton aviso={recusa} /> : null;
   if (!data || !data.connected) return <MLConnectButton aviso={recusa} />;
 
   async function swapAccount() {
@@ -72,7 +85,7 @@ export function MlAccountStatus() {
         <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{data.user?.nickname || data.user_id}</div>
         <div style={{ color: 'var(--muted)', fontSize: '.72rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{data.user?.email || data.user?.site_id || ''}</div>
       </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
+      {podeConectar && <div style={{ display: 'flex', gap: 8, alignItems: 'center', minWidth: 0 }}>
         <button
           onClick={swapAccount}
           disabled={swapLoading}
@@ -98,7 +111,7 @@ export function MlAccountStatus() {
             {feedback.message}
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

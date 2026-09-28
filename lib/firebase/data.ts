@@ -1,5 +1,6 @@
 "use client";
 
+import { acessoExpirado } from "@/lib/domain/acesso-temporario";
 import { definirEmpresaDoNavegador, lerConfigDeDados, lerModoDeDados, traduzirCaminho } from "./caminhos";
 import {
   collection,
@@ -798,7 +799,9 @@ export async function removeAccessEntry(email: string) {
 
 export async function checkAccess(email: string): Promise<AccessEntry | null> {
   const snap = await getDoc(aDoc(email));
-  return snap.exists() ? (snap.data() as AccessEntry) : null;
+  // Acesso com prazo vencido: a tela diz "sem acesso", igual ao servidor e às regras.
+  if (!snap.exists() || acessoExpirado(snap.data(), Date.now())) return null;
+  return snap.data() as AccessEntry;
 }
 
 /** Acompanha em tempo real o registro de acesso de UM e-mail (ex.: a própria foto de perfil). */

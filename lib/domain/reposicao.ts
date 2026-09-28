@@ -64,6 +64,11 @@ export type ItemDoPlano = {
   vaiZerarAntes: boolean;
   /** Quanto do pedido já está em casa e só precisa ir pro Full. */
   jaTemEmCasa: number;
+  /**
+   * Etapa 6: acaba ANTES de a compra chegar (dura menos que o prazo do
+   * fornecedor). Comprar hoje não salva — só mandar do galpão ou pedir urgente.
+   */
+  zeraAntesDeChegar: boolean;
 };
 
 export type PlanoReposicao = {
@@ -81,8 +86,14 @@ export type PlanoReposicao = {
   diasAlvo: number;
   /** Folga aplicada, em dias. */
   diasFolga: number;
-  /** Janela efetivamente comprada (alvo + folga). */
+  /** Janela efetivamente comprada (prazo do fornecedor + alvo + folga). */
   diasACobrir: number;
+  /** Dias entre pedir e receber do fornecedor. */
+  prazoFornecedorDias: number;
+  /** A compra sai em múltiplos deste lote. 1 = unidade a unidade. */
+  loteMinimo: number;
+  /** Os que acabam antes de a compra chegar. */
+  zeramAntesDeChegar: ItemDoPlano[];
 };
 
 /**
@@ -120,10 +131,18 @@ export function montarPlanoReposicao(
   produtos: ProdutoReposicao[],
   diasAlvo: number,
   diasFolga: number,
+  /**
+   * Etapa 6 (Estoque: "lead time, dias de segurança e lote mínimo
+   * configuráveis"). O prazo do fornecedor entra na janela: o que se compra
+   * hoje só chega daqui a N dias, e até lá o estoque de hoje é que vende.
+   */
+  opcoes: { prazoFornecedorDias?: number; loteMinimo?: number } = {},
 ): PlanoReposicao {
   const alvo = Math.max(0, Math.floor(diasAlvo) || 0);
   const folga = Math.max(0, Math.floor(diasFolga) || 0);
-  const diasACobrir = alvo + folga;
+  const prazo = Math.max(0, Math.floor(opcoes.prazoFornecedorDias ?? 0) || 0);
+  const lote = Math.max(1, Math.floor(opcoes.loteMinimo ?? 1) || 1);
+  const diasACobrir = prazo + alvo + folga;
 
   const itens: ItemDoPlano[] = [];
   let suficientes = 0;
@@ -141,7 +160,9 @@ export function montarPlanoReposicao(
     }
 
     const necessario = necessarioParaJanela(media, diasACobrir);
-    const comprar = Math.max(0, necessario - estoque);
+    const falta = Math.max(0, necessario - estoque);
+    // Lote do fornecedor: arredonda PRA CIMA pro múltiplo — sobra um pouco, nunca falta.
+    const comprar = falta > 0 ? Math.ceil(falta / lote) * lote : 0;
     const duraDias = duracaoDoEstoque(estoque, media) ?? 0;
     const faltamDias = Math.max(0, alvo - duraDias);
     const vaiZerarAntes = duraDias < alvo;
@@ -170,6 +191,7 @@ export function montarPlanoReposicao(
        * mandá-las é mais rápido que esperar o fornecedor.
        */
       jaTemEmCasa: Math.min(emCasa, comprar),
+      zeraAntesDeChegar: prazo > 0 && duraDias < prazo,
     });
   }
 
@@ -193,6 +215,9 @@ export function montarPlanoReposicao(
     diasAlvo: alvo,
     diasFolga: folga,
     diasACobrir,
+    prazoFornecedorDias: prazo,
+    loteMinimo: lote,
+    zeramAntesDeChegar: itens.filter((i) => i.zeraAntesDeChegar),
   };
 }
 
