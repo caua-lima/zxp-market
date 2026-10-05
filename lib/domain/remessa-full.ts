@@ -37,6 +37,12 @@ export const CAMPOS_FINANCEIROS_DA_REMESSA = [
   "custoManual",
   "custoInformadoPor",
   "custoInformadoEm",
+  // A data e as unidades da remessa vão junto do custo: é o que diz a que MÊS
+  // ele pertence quando o ML já não devolve a remessa (ver lib/domain/coleta-full.ts).
+  "data",
+  "recebido",
+  "dataInformadaPor",
+  "dataInformadaEm",
 ] as const;
 
 export type PatchRemessa = Record<string, unknown>;
@@ -88,14 +94,41 @@ export function patchLimparCusto(por: string): PatchRemessa {
   };
 }
 
-/** Informa (ou corrige) o custo da coleta. */
-export function patchCusto(por: string, custo: number | null): PatchRemessa {
+/** Contexto da remessa que acompanha o custo — o que o editor já tem na mão ao digitar. */
+export type ContextoDaRemessa = { data?: string | null; recebido?: number | null };
+
+const DIA = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Informa (ou corrige) o custo da coleta.
+ *
+ * Grava também a DATA da remessa (e as unidades) quando se sabe: sem ela, o
+ * custo só encontra seu mês enquanto o ML ainda devolve aquela remessa (janela
+ * de 55 dias) — depois disso ele continuava salvo e não entrava em DRE nenhuma.
+ * Só entra no patch o que veio válido: nunca sobrescreve uma data boa por vazio.
+ */
+export function patchCusto(por: string, custo: number | null, ctx: ContextoDaRemessa = {}): PatchRemessa {
   const valor = custo == null || !Number.isFinite(Number(custo)) ? null : Number(custo);
   return {
     custoManual: valor,
     custoInformadoPor: por,
     custoInformadoEm: Date.now(),
+    ...(typeof ctx.data === "string" && DIA.test(ctx.data) ? { data: ctx.data } : {}),
+    ...(typeof ctx.recebido === "number" && Number.isFinite(ctx.recebido) && ctx.recebido >= 0 ? { recebido: ctx.recebido } : {}),
   };
+}
+
+/**
+ * Informa a DATA de uma remessa cujo custo foi digitado sem ela. Não toca no
+ * valor do custo. `null` se a data não for um dia válido (AAAA-MM-DD) — quem
+ * chama recusa em vez de gravar lixo.
+ */
+export function patchData(por: string, data: string): PatchRemessa | null {
+  if (!DIA.test(String(data ?? ""))) return null;
+  const d = new Date(`${data}T00:00:00Z`);
+  // Rejeita dia que o calendário não tem (2026-02-31 vira 03-03 e não bate de volta).
+  if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== data) return null;
+  return { data, dataInformadaPor: por, dataInformadaEm: Date.now() };
 }
 
 /** Um patch operacional cita algum campo financeiro? Deve ser sempre `false`. */

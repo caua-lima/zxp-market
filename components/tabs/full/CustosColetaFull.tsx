@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { fmtBRL } from "@/lib/domain/calc";
-import { salvarCustoRemessaFull } from "@/lib/firebase/data";
+import { salvarCustoRemessaFull, salvarDataDaRemessaFull } from "@/lib/firebase/data";
+import type { SemData } from "@/lib/domain/coleta-full";
 import { diffCustos, parseCusto, totalInformado, type LinhaCusto } from "@/lib/domain/custo-coleta";
 
 /**
@@ -34,6 +35,8 @@ export type RemessaCusto = {
 
 type Props = {
   remessas: RemessaCusto[];
+  /** Custos digitados cujo dia da remessa ninguém sabe: ficam fora de qualquer mês até serem datados. */
+  semData?: SemData[];
   /** Recarrega os dados — chamado UMA vez, no fim do lote. */
   onSalvo: () => void | Promise<void>;
   /** Começa aberto quando há pendência (uso na DRE, onde a falta aparece). */
@@ -41,8 +44,53 @@ type Props = {
   titulo?: string;
 };
 
+/**
+ * Um custo digitado antes de a data da remessa ser gravada junto. Sem o dia,
+ * ele não pertence a mês nenhum e a DRE não o soma — então aqui se informa o dia.
+ */
+function CustoSemData({ item, onSalvo }: { item: SemData; onSalvo: () => void | Promise<void> }) {
+  const [dia, setDia] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  async function salvar() {
+    if (!dia || salvando) return;
+    setSalvando(true);
+    setErro("");
+    try {
+      await salvarDataDaRemessaFull(item.remessa, dia);
+      await onSalvo();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div style={{
+      display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: 8, alignItems: "center",
+      padding: "8px 10px", borderRadius: 8, background: "var(--surface2)", border: "1px solid rgba(255,138,31,.45)",
+    }}>
+      <span style={{ fontFamily: "ui-monospace,monospace", fontSize: ".82rem", fontWeight: 700 }}>#{item.remessa}</span>
+      <span style={{ fontSize: ".78rem", color: "var(--muted)" }}>custo {fmtBRL(item.custo)}</span>
+      <span style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+        <input
+          type="date" value={dia} onChange={(e) => setDia(e.target.value)}
+          aria-label={`Dia da remessa ${item.remessa}`}
+          style={{ fontSize: 16, padding: "5px 8px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 7, color: "var(--text)" }}
+        />
+        <button type="button" className="btn btn-success btn-xs" disabled={!dia || salvando} onClick={salvar}>
+          {salvando ? "Salvando…" : "Salvar dia"}
+        </button>
+      </span>
+      {erro && <span role="alert" style={{ gridColumn: "1 / -1", fontSize: ".78rem", color: "var(--red-text)" }}>{erro}</span>}
+    </div>
+  );
+}
+
 export default function CustosColetaFull({
-  remessas, onSalvo, iniciarAberto = false, titulo = "Custos de coleta do Full",
+  remessas, semData = [], onSalvo, iniciarAberto = false, titulo = "Custos de coleta do Full",
 }: Props) {
   const [aberto, setAberto] = useState(iniciarAberto);
   const [rascunho, setRascunho] = useState<Record<string, string>>({});
@@ -87,8 +135,12 @@ export default function CustosColetaFull({
     try {
       // Sequencial de propósito: são poucas linhas, e em paralelo um erro no
       // meio deixaria metade gravada sem dizer quais.
+      const porId = new Map(lista.map((r) => [r.remessa, r]));
       for (const a of alteracoes) {
-        await salvarCustoRemessaFull(a.remessa, a.valor);
+        // O dia e as unidades da remessa vão junto do custo: é o que faz ele
+        // continuar achando o mês dele quando o ML já não devolve a remessa.
+        const r = porId.get(a.remessa);
+        await salvarCustoRemessaFull(a.remessa, a.valor, { data: r?.data, recebido: r?.recebido });
       }
       const n = alteracoes.length;
       setRascunho({});
@@ -107,7 +159,7 @@ export default function CustosColetaFull({
     setErro("");
   }
 
-  if (lista.length === 0) return null;
+  if (lista.length === 0 && semData.length === 0) return null;
 
   return (
     <section className="panel" style={{ marginTop: 12 }}>
@@ -127,6 +179,9 @@ export default function CustosColetaFull({
             {comCusto.length} de {lista.length} informado(s) · {fmtBRL(total)} no total
             {semCusto.length > 0 && (
               <b style={{ color: "var(--warning)" }}> · {semCusto.length} pendente(s)</b>
+            )}
+            {semData.length > 0 && (
+              <b style={{ color: "var(--warning)" }}> · {semData.length} custo(s) sem data</b>
             )}
           </span>
         </span>
@@ -246,6 +301,20 @@ export default function CustosColetaFull({
           {salvos > 0 && !erro && (
             <div style={{ marginTop: 10, fontSize: ".82rem", color: "var(--green)", fontWeight: 600 }}>
               ✓ {salvos} custo(s) salvo(s).
+            </div>
+          )}
+
+          {semData.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: ".8rem", fontWeight: 700, marginBottom: 4 }}>Custos sem data da remessa</div>
+              <div style={{ fontSize: ".75rem", color: "var(--muted)", lineHeight: 1.6, marginBottom: 8 }}>
+                Estes custos foram digitados antes de o app guardar o dia da remessa, e nenhuma baixa de estoque
+                diz quando ela foi. <b>Não entram em mês nenhum</b> até você informar o dia (está em Envios ›
+                detalhe do envio).
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {semData.map((x) => <CustoSemData key={x.remessa} item={x} onSalvo={onSalvo} />)}
+              </div>
             </div>
           )}
 

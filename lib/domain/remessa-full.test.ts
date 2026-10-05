@@ -4,6 +4,7 @@ import {
   patchCusto,
   patchIgnorar,
   patchLimparCusto,
+  patchData,
   patchReabrir,
   tocaFinanceiro,
 } from "./remessa-full";
@@ -37,6 +38,7 @@ describe("acao operacional nao encosta no financeiro", () => {
     // aqui tambem — senao a protecao acima passa a ignora-lo em silencio.
     expect([...CAMPOS_FINANCEIROS_DA_REMESSA]).toEqual([
       "custoManual", "custoInformadoPor", "custoInformadoEm",
+      "data", "recebido", "dataInformadaPor", "dataInformadaEm",
     ]);
   });
 });
@@ -91,5 +93,37 @@ describe("custo — apagar e uma operacao explicita", () => {
 
   it("zero e um custo valido, nao ausencia", () => {
     expect(patchCusto("a@b.com", 0).custoManual).toBe(0);
+  });
+});
+
+describe("data da remessa junto do custo (a DRE de período antigo depende dela)", () => {
+  it("custo grava a data e as unidades quando se sabe", () => {
+    const p = patchCusto("dono@zxp.com", 97.38, { data: "2026-08-06", recebido: 120 });
+    expect(p).toMatchObject({ custoManual: 97.38, data: "2026-08-06", recebido: 120 });
+  });
+
+  it("sem contexto (ou contexto inválido), NÃO escreve data nem unidades — não apaga a que já existe", () => {
+    const sem = patchCusto("dono@zxp.com", 10);
+    expect("data" in sem).toBe(false);
+    expect("recebido" in sem).toBe(false);
+    const ruim = patchCusto("dono@zxp.com", 10, { data: "06/08/2026", recebido: -3 });
+    expect("data" in ruim).toBe(false);
+    expect("recebido" in ruim).toBe(false);
+  });
+
+  it("patchData só aceita dia real do calendário e não mexe no custo", () => {
+    const p = patchData("dono@zxp.com", "2026-08-06")!;
+    expect(p).toMatchObject({ data: "2026-08-06", dataInformadaPor: "dono@zxp.com" });
+    expect("custoManual" in p).toBe(false);
+    expect(patchData("a@b.com", "2026-02-31")).toBeNull();
+    expect(patchData("a@b.com", "06/08/2026")).toBeNull();
+    expect(patchData("a@b.com", "")).toBeNull();
+  });
+
+  it("data e unidades contam como campo financeiro: marcar/reabrir remessa nunca os toca", () => {
+    expect(tocaFinanceiro({ data: "2026-08-06" })).toBe(true);
+    expect(tocaFinanceiro({ recebido: 1 })).toBe(true);
+    expect(tocaFinanceiro(patchIgnorar("a@b.com", "x"))).toBe(false);
+    expect(tocaFinanceiro(patchReabrir())).toBe(false);
   });
 });

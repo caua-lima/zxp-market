@@ -7,7 +7,9 @@ import { linhaCsvSegura } from "@/lib/domain/csv-seguro";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import DateRangePicker from "@/components/dashboard/DateRangePicker";
 import { Delta } from "@/components/dashboard/ExecutiveKpis";
-import CustosColetaFull, { type RemessaCusto } from "@/components/tabs/full/CustosColetaFull";
+import CustosColetaFull from "@/components/tabs/full/CustosColetaFull";
+import { carregarColetaFull } from "@/lib/coleta-full-cliente";
+import { descreverColeta, JANELA_MAX_DIAS_FULL, type ColetaFull } from "@/lib/domain/coleta-full";
 import ApresentacaoDre from "@/components/tabs/dre/ApresentacaoDre";
 import CustoForm from "@/components/custos/CustoForm";
 import TelaHeader from "@/components/TelaHeader";
@@ -172,25 +174,16 @@ function GrupoDre({ children }: { children: React.ReactNode }) {
  * Até agora esse custo não entrava em conta nenhuma do app, então o resultado
  * saía otimista pelo valor dele.
  *
- * `parcial` = alguma remessa do período veio sem custo da API do ML; o total
- * abaixo é só do que veio, então é PISO, não o valor fechado.
- * `foraDaJanela` = o período pedido é mais antigo do que a janela que a rota
- * de gestão do Full consegue buscar (limite do próprio ML) — nesse caso não
- * temos como afirmar nada, e a linha aparece como indisponível em vez de R$ 0.
+ * A lista é montada em lib/domain/coleta-full.ts do que está SALVO (custos
+ * digitados e baixas de estoque) com o ML como complemento.
+ * `parcial` = alguma remessa do período ainda sem custo; o total é PISO, não o
+ * valor fechado.
+ * `foraDaJanela` = o ML não foi consultado (período mais antigo que a janela
+ * dele): a linha vem só do que está salvo, e só vira "indisponível" se nada
+ * salvo existir pra aquele período.
  */
-type CustoColetaFull = {
-  total: number; parcial: boolean; foraDaJanela: boolean; remessas: number;
-  /**
-   * TODAS as remessas do período, com custo ou sem. Antes guardava só as sem
-   * custo, e por isso não havia como rever nem corrigir um valor já informado
-   * — que entra direto no Resultado líquido.
-   */
-  todas: RemessaCusto[];
-  /** Quantas ainda estão sem custo — só pro alerta do cabeçalho. */
-  pendentes: number;
-};
+type CustoColetaFull = ColetaFull;
 
-const JANELA_MAX_DIAS_FULL = 55; // teto do ML na busca de operações de estoque
 
 export default function DreTab() {
   const [range, setRange] = useState(() => monthRange());
@@ -254,45 +247,10 @@ export default function DreTab() {
       // nada a fazer: `loading` sai do render.
     }
 
-    // Coleta pro Full: best-effort, nunca trava a DRE. Só as remessas que
-    // caem DENTRO do período é que entram — a rota devolve uma janela em dias
-    // corridos a partir de hoje, então filtramos pela data de cada remessa.
+    // Coleta pro Full: best-effort, nunca trava a DRE. A base é o que está salvo
+    // (custos digitados e baixas) e o ML é complemento — ver lib/coleta-full-cliente.ts.
     try {
-      const hoje = todayStr();
-      const diasAte = Math.ceil((Date.parse(`${hoje}T00:00:00Z`) - Date.parse(`${range.from}T00:00:00Z`)) / 86400000) + 1;
-      if (!Number.isFinite(diasAte) || diasAte > JANELA_MAX_DIAS_FULL) {
-        setRespColeta({ periodo: pedido, c: { total: 0, parcial: false, foraDaJanela: true, remessas: 0, todas: [], pendentes: 0 } });
-      } else {
-        const rf = await authedFetch(
-          `/api/ml/gestao-full?dias=${Math.max(diasAte, 1)}${forcar ? "&forcar=1" : ""}`,
-          { cache: "no-store" },
-        );
-        if (!rf.ok) setRespColeta({ periodo: pedido, c: null });
-        else {
-          const j = (await rf.json()) as {
-            remessas?: { remessa: string; data: string; recebido?: number; custo?: number | null; ehTransferencia?: boolean; custoEstimado?: boolean }[];
-          };
-          // Transferência entre centros do ML não é coleta sua — não tem taxa sua.
-          const noPeriodo = (j.remessas ?? []).filter(
-            (x) => !x.ehTransferencia && x.data >= range.from && x.data <= range.to,
-          );
-          const total = noPeriodo.reduce((s, x) => s + (x.custo ?? 0), 0);
-          setRespColeta({ periodo: pedido, c: {
-            total,
-            parcial: noPeriodo.some((x) => x.custo == null),
-            foraDaJanela: false,
-            remessas: noPeriodo.length,
-            todas: noPeriodo.map((x) => ({
-              remessa: x.remessa,
-              data: x.data,
-              recebido: Number(x.recebido ?? 0),
-              custo: x.custo ?? null,
-              custoEstimado: x.custoEstimado === true,
-            })),
-            pendentes: noPeriodo.filter((x) => x.custo == null).length,
-          } });
-        }
-      }
+      setRespColeta({ periodo: pedido, c: await carregarColetaFull(pedido, { hoje: todayStr(), forcar }) });
     } catch {
       setRespColeta({ periodo: pedido, c: null });
     }
@@ -371,7 +329,7 @@ export default function DreTab() {
    * duas telas coerentes E deixa o Resultado líquido correto — mesmo
    * tratamento que já é dado a pró-labore/contador (custosDre).
    */
-  const custoColetaFull = coletaFull && !coletaFull.foraDaJanela ? coletaFull.total : 0;
+  const custoColetaFull = coletaFull ? coletaFull.total : 0;
   const resultadoLiquido = resultadoOperacional - m.custosDre - custoColetaFull;
 
   /**
@@ -397,7 +355,7 @@ export default function DreTab() {
 
   const pendencias: Pendencia[] = [
     ...pendenciaDeProjecao(range.to, todayStr()),
-    ...(coletaFull ? pendenciasDaColetaFull(coletaFull) : [{
+    ...(coletaFull ? pendenciasDaColetaFull({ ...coletaFull, semData: coletaFull.semData.length }) : [{
       chave: "coleta-nao-carregou",
       titulo: "Não consegui carregar os custos de coleta pro Full",
       detalhe:
@@ -757,47 +715,32 @@ export default function DreTab() {
 
         <GrupoDre>Despesas da empresa</GrupoDre>
         <Linha rotulo="Pró-labore, contador, retirada" valor={m.custosDre} tipo="deducao" base={base} nota="só aparecem aqui, fora do lucro do Dashboard" />
-        {coletaFull?.foraDaJanela ? (
-          <Linha
-            rotulo="Coleta pro Full (taxa de envio ao centro)"
-            valor={0}
-            tipo="deducao"
-            base={base}
-            indisponivel
-            nota={`o Mercado Livre só devolve as remessas dos últimos ${JANELA_MAX_DIAS_FULL} dias — período antigo demais pra consultar`}
-          />
-        ) : coletaFull ? (
-          <Linha
-            rotulo="Coleta pro Full (taxa de envio ao centro)"
-            valor={coletaFull.total}
-            tipo="deducao"
-            base={base}
-            indisponivel={coletaFull.remessas > 0 && coletaFull.total === 0}
-            nota={
-              coletaFull.remessas === 0
-                ? "nenhuma remessa pro Full neste período"
-                : coletaFull.total === 0
-                  // Zero com remessas no periodo nao e "coleta de graca": e
-                  // custo nao informado. Mostrar R$ 0,00 aqui inflaria o
-                  // resultado liquido, entao a linha vira "—" com o caminho
-                  // exato de onde tirar o numero.
-                  ? `${coletaFull.remessas} remessa(s) sem custo informado — o Mercado Livre não expõe esse valor pela API. Pegue em Envios › detalhe do envio › Tarifas › Custo da coleta Full e informe na aba Full.`
-                  : coletaFull.parcial
-                    ? `${coletaFull.remessas} remessa(s) — parte ainda sem custo informado, então este valor é o mínimo (informe o resto na aba Full)`
-                    : `${coletaFull.remessas} remessa(s) enviada(s) no período`
-            }
-          />
-        ) : null}
+        {coletaFull && (() => {
+          // O texto e o "—" são decididos em lib/domain/coleta-full.ts (com teste):
+          // zero com remessa sem custo NÃO é "coleta de graça".
+          const d = descreverColeta(coletaFull, JANELA_MAX_DIAS_FULL);
+          return (
+            <Linha
+              rotulo="Coleta pro Full (taxa de envio ao centro)"
+              valor={coletaFull.total}
+              tipo="deducao"
+              base={base}
+              indisponivel={d.indisponivel}
+              nota={d.nota}
+            />
+          );
+        })()}
         {/* Preencher o custo aqui mesmo. A API publica do ML nao expoe a taxa
             da coleta (a doc de Fulfillment e explicita: so estoque e
             operacoes), e sem esse numero o Resultado liquido fica otimista —
             que e exatamente o oposto do que a DRE existe pra mostrar. Obrigar
             a ir ate a aba Full pra digitar tornava provavel ficar sem. */}
-        {!!coletaFull?.todas.length && (
+        {coletaFull && (coletaFull.todas.length > 0 || coletaFull.semData.length > 0) && (
           <CustosColetaFull
             remessas={coletaFull.todas}
+            semData={coletaFull.semData}
             onSalvo={() => load(true)}
-            iniciarAberto={coletaFull.pendentes > 0}
+            iniciarAberto={coletaFull.pendentes > 0 || coletaFull.semData.length > 0}
             titulo="Custos de coleta do Full no período"
           />
         )}

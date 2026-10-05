@@ -41,7 +41,8 @@ import {
   excluirMovimentoAuditado,
   type TextoDaAuditoria,
 } from "./movimento-auditado";
-import { patchCusto, patchIgnorar, patchReabrir } from "@/lib/domain/remessa-full";
+import { patchCusto, patchData, patchIgnorar, patchReabrir, type ContextoDaRemessa } from "@/lib/domain/remessa-full";
+import { lerFonteDaColeta } from "./coleta-full";
 import { definirNomeDaEmpresa } from "@/lib/marca";
 
 function sanitizeUndefined<T extends Record<string, unknown>>(obj: T): T {
@@ -460,16 +461,41 @@ export async function reabrirRemessaFull(remessa: string): Promise<void> {
  * da DRE. `merge: true` de proposito: a mesma colecao guarda a marcacao de
  * "remessa ja resolvida" (ignorarRemessaFull) e um nao pode apagar o outro.
  */
-export async function salvarCustoRemessaFull(remessa: string, custo: number | null): Promise<void> {
+export async function salvarCustoRemessaFull(
+  remessa: string,
+  custo: number | null,
+  /** Dia e unidades da remessa: gravados junto, pra o custo achar o mês dele sem o ML. */
+  ctx: ContextoDaRemessa = {},
+): Promise<void> {
   await setDoc(
     sDoc(REMESSA_COL, remessa),
     // null limpa o valor: quem digitou errado precisa conseguir voltar pro
     // estado "sem custo informado", que e diferente de "custou zero". Fica
     // registrado quem apagou e quando, igual a informar.
-    sanitizeUndefined({ remessa, ...patchCusto(getCurrentUserEmail(), custo) }),
+    sanitizeUndefined({ remessa, ...patchCusto(getCurrentUserEmail(), custo, ctx) }),
     { merge: true },
   );
   invalidar(CHAVE_REMESSAS);
+}
+
+/**
+ * Informa o DIA de uma remessa cujo custo foi digitado antes de a data ser
+ * gravada junto. Não mexe no valor do custo. Recusa data que não existe.
+ */
+export async function salvarDataDaRemessaFull(remessa: string, data: string): Promise<void> {
+  const patch = patchData(getCurrentUserEmail(), data);
+  if (!patch) throw new Error("Informe um dia válido (dia/mês/ano).");
+  await setDoc(sDoc(REMESSA_COL, remessa), sanitizeUndefined({ remessa, ...patch }), { merge: true });
+  invalidar(CHAVE_REMESSAS);
+}
+
+/**
+ * O que o Firestore sabe da coleta pro Full no período (custos digitados e
+ * baixas de estoque) — a parte da DRE que não depende do ML responder.
+ */
+export async function carregarFonteDaColetaFull(periodo: { from: string; to: string }) {
+  const { db } = getFirebase();
+  return lerFonteDaColeta(db, periodo);
 }
 
 const CHAVE_REMESSAS = "full_remessas";

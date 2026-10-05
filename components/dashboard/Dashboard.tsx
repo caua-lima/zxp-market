@@ -1,6 +1,9 @@
 "use client";
 
 import ChecklistDeAtivacao from "@/components/dashboard/ChecklistDeAtivacao";
+import ColetaFullDoPeriodo from "@/components/dashboard/ColetaFullDoPeriodo";
+import CurvaABC from "@/components/dashboard/CurvaABC";
+import type { VendaBrutaDoAnuncio } from "@/lib/domain/vendas-brutas";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { BUSCA_INICIAL, corpoEhSucesso, criarSequenciador, registrarFalha, registrarSucesso } from "@/lib/domain/resposta-tardia";
 import type { Goals } from "@/lib/domain/types";
@@ -134,6 +137,8 @@ type MlMetrics = {
   margemSemCustos:    number;
   margemComCustos:    number;
   anuncios:           AnuncioResult[];
+  /** Vendas brutas por anúncio (como no Seller Center) — a base da Curva ABC de vendas. Ausente em payload antigo em cache. */
+  curvaBruta?:        VendaBrutaDoAnuncio[];
   pedidosSemVinculo:  number;
   hoje:               HojeBreakdown;
   serieDiaria:        { data: string; faturamento: number }[];
@@ -273,54 +278,6 @@ function LastUpdated({ at, falhou = false }: { at: number | null; falhou?: boole
       <span style={{ width: 7, height: 7, borderRadius: "50%", background: falhou ? "var(--warning)" : "var(--green)", boxShadow: falhou ? "none" : "0 0 0 3px rgba(54,179,126,.15)" }} />
       {falhou ? `Desatualizado — dado de ${txt}` : `Atualizado ${txt} · auto 15min`}
     </span>
-  );
-}
-
-// ── Curva ABC (Pareto de lucro) ────────────────────────────────
-function CurvaABC({ anuncios }: { anuncios: AnuncioResult[] }) {
-  const vendidos = anuncios.filter((a) => !a.semVenda);
-  if (!vendidos.length) return null;
-  const sorted = [...vendidos].sort((a, b) => b.lucro - a.lucro);
-  const totalPos = sorted.reduce((s, a) => s + Math.max(a.lucro, 0), 0) || 1;
-  const shares = sorted.map((a) => (Math.max(a.lucro, 0) / totalPos) * 100);
-  const rows = sorted.map((a, i) => {
-    const share = shares[i];
-    const cum = shares.slice(0, i + 1).reduce((s, v) => s + v, 0);
-    const classe = a.lucro < 0 ? "C" : cum <= 80 ? "A" : cum <= 95 ? "B" : "C";
-    return { a, share, acc: cum, classe };
-  });
-  const cor = (c: string) => (c === "A" ? "var(--green)" : c === "B" ? "var(--yellow)" : "var(--red)");
-
-  return (
-    <div className="panel">
-      <div className="panel-title" style={{ marginBottom: 6 }}>Curva ABC — quem puxa o lucro</div>
-      <div style={{ fontSize: ".75rem", color: "var(--muted)", marginBottom: 12 }}>
-        A = topo (até 80% do lucro) · B = 80–95% · C = restante / prejuízo
-      </div>
-      <div className="table-wrapper" style={{ border: "none" }}>
-        <table className="tbl-modern tbl-cards tbl-cards-plain">
-          <thead><tr><th>Classe</th><th style={{ textAlign: "left" }}>Anúncio</th><th>Lucro</th><th>% do lucro</th><th>Acumulado</th></tr></thead>
-          <tbody>
-            {rows.map(({ a, share, acc: cum, classe }) => (
-              <tr key={a.item_id}>
-                <td data-label="Classe"><span className="tag" style={{ background: "transparent", color: cor(classe), border: `1px solid ${cor(classe)}` }}>{classe}</span></td>
-                <td data-label="Anúncio" style={{ fontWeight: 600, textAlign: "left" }}>{a.title}</td>
-                <td data-label="Lucro" style={{ color: a.lucro >= 0 ? "var(--green)" : "var(--red)", fontWeight: 700 }}>{fmtBRL(a.lucro)}</td>
-                <td data-label="% do lucro" style={{ color: "var(--muted)" }}>{fmtPct(share, 1)}</td>
-                <td data-label="Acumulado">
-                  <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ width: 60, height: 6, borderRadius: 99, background: "var(--surface2)", overflow: "hidden" }}>
-                      <div style={{ width: `${Math.min(cum, 100)}%`, height: "100%", background: cor(classe) }} />
-                    </div>
-                    <span style={{ color: "var(--muted)", fontSize: ".82rem" }}>{fmtPct(cum, 0)}</span>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
   );
 }
 
@@ -2257,6 +2214,10 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
             </div>
           </section>
 
+          {/* Custos de coleta pro Full do período, editáveis (só o dono). Não entram
+              no lucro daqui — vão pro Resultado líquido da DRE. */}
+          <ColetaFullDoPeriodo from={mlMetrics?.from} to={mlMetrics?.to} />
+
           <ConversaoVisitas
             from={mlMetrics?.from}
             to={mlMetrics?.to}
@@ -2391,8 +2352,12 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
           {/* Melhores dias da semana */}
           <MelhoresDias serie={melhoresDiasMetrics?.serieDiaria ?? []} from={melhoresDiasMetrics?.from} to={melhoresDiasMetrics?.to} />
 
-          {/* Curva ABC de produtos */}
-          <CurvaABC anuncios={mlMetrics?.anuncios ?? []} />
+          {/* Curva ABC: vendas brutas e lucro (mesma classificação) */}
+          <CurvaABC
+            curvaBruta={mlMetrics?.curvaBruta}
+            vendasBrutasDoPeriodo={mlMetrics ? (mlMetrics.conciliacao?.vendasBrutas ?? fatLiquido) : undefined}
+            anuncios={mlMetrics?.anuncios ?? []}
+          />
 
           {/* Devoluções detalhadas */}
           <DevolucoesPanel total={mlMetrics?.devolucoes ?? 0} emAndamento={mlMetrics?.devolucoesEmAndamento} detalhe={mlMetrics?.devolucoesDetalhe ?? []} />

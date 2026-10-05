@@ -286,7 +286,7 @@ export default function RemessasFull({ movimentos }: { movimentos: EstoqueMovime
                         if (bruto !== "" && (!Number.isFinite(n) || (n as number) < 0)) { alert("Informe um valor válido."); return; }
                         setSalvandoCusto(r.remessa);
                         try {
-                          await salvarCustoRemessaFull(r.remessa, n);
+                          await salvarCustoRemessaFull(r.remessa, n, { data: r.data, recebido: r.recebido });
                           await buscar(true);
                         } catch (e) {
                           alert("Não consegui salvar o custo: " + (e instanceof Error ? e.message : String(e)));

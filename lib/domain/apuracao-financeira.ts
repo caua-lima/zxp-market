@@ -186,29 +186,70 @@ export function pendenciasDaColetaFull(f: {
   parcial: boolean;
   remessas: number;
   pendentes: number;
+  /** O ML foi consultado e não respondeu (token, cota, fora do ar). */
+  mlFalhou?: boolean;
+  /** Quantos custos digitados não têm data de remessa conhecida. */
+  semData?: number;
 }): Pendencia[] {
-  if (f.foraDaJanela) {
-    return [{
+  const out: Pendencia[] = [];
+  const semBaseNenhuma = f.foraDaJanela && f.remessas === 0;
+
+  if (semBaseNenhuma) {
+    // Nada salvo (nem baixa, nem custo) pra este período e o ML não alcança.
+    out.push({
       chave: "coleta-fora-da-janela",
       titulo: "Custo das coletas pro Full não pôde ser buscado neste período",
       detalhe:
         "O ML só devolve operações de estoque numa janela recente. Pro período " +
-        "pedido não há como consultar, então a linha aparece como indisponível " +
-        "— e o resultado sai otimista pelo valor que essas coletas custaram.",
+        "pedido não há como consultar, e nenhuma remessa dele tem baixa de estoque " +
+        "ou custo informado — então a linha aparece como indisponível " +
+        "e o resultado sai otimista pelo valor que essas coletas custaram.",
       efeito: "otimista",
-    }];
+    });
+  } else if (f.foraDaJanela) {
+    // A lista existe, mas só do que está salvo: remessa sem baixa e sem custo não aparece.
+    out.push({
+      chave: "coleta-so-do-banco",
+      titulo: "Coletas pro Full deste período vêm só do que está salvo",
+      detalhe:
+        "O ML não devolve remessas de período antigo. Aparecem as remessas que têm " +
+        "baixa de estoque ou custo informado; uma remessa que nunca teve nenhum dos " +
+        "dois não aparece aqui, e o resultado fica otimista pelo custo dela.",
+      efeito: "indefinido",
+    });
+  } else if (f.mlFalhou) {
+    out.push({
+      chave: "coleta-ml-indisponivel",
+      titulo: "O Mercado Livre não respondeu a lista de remessas",
+      detalhe:
+        "Mostrando só o que está salvo (baixas de estoque e custos informados). " +
+        "Uma remessa recente que ainda não tem baixa nem custo pode estar faltando.",
+      efeito: "indefinido",
+    });
   }
-  if (f.parcial) {
-    return [{
+
+  if (f.parcial && !semBaseNenhuma) {
+    out.push({
       chave: "coleta-parcial",
       titulo: `${f.pendentes} de ${f.remessas} coletas pro Full ainda sem custo`,
       detalhe:
         "O total das coletas é o que já veio — é PISO, não o valor fechado. " +
         "Cada coleta sem custo faz o resultado sair otimista.",
       efeito: "otimista",
-    }];
+    });
   }
-  return [];
+
+  if ((f.semData ?? 0) > 0) {
+    out.push({
+      chave: "coleta-sem-data",
+      titulo: `${f.semData} custo(s) de coleta pro Full sem data de remessa`,
+      detalhe:
+        "O custo foi informado, mas não se sabe o dia da remessa, então ele não entra em " +
+        "mês nenhum. Informe a data no painel de custos de coleta (abaixo da linha da coleta).",
+      efeito: "otimista",
+    });
+  }
+  return out;
 }
 
 /**

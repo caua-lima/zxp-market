@@ -14,6 +14,7 @@ import { custoNaData, impostoNaData, type CustoFaixa, type ImpostoFaixa } from "
 import { diaBRDe, recortarPorDiaBR } from "@/lib/domain/periodo-br";
 import { classificarVenda, detectarPedidosSubstituidos } from "@/lib/domain/venda-status";
 import { ratearFretePorPedido } from "@/lib/domain/frete-pacote";
+import { vendasBrutasPorAnuncio, type PedidoParaVendasBrutas, type VendaBrutaDoAnuncio } from "@/lib/domain/vendas-brutas";
 
 export const maxDuration = 30;
 
@@ -69,6 +70,8 @@ type Aggregates = {
   totalAds: number;
   adsNaoVinculado: number;
   anuncios: AnuncioResult[];
+  /** Vendas brutas por anúncio (como no Seller Center: sem cancelados/devolvidos) — a base da Curva ABC. */
+  curvaBruta: VendaBrutaDoAnuncio[];
   pedidosSemVinculo: number;
   ordersCount: number;
   /** Unidades das vendas que valeram — comparável a "Unidades vendidas" do Seller Center. */
@@ -216,6 +219,7 @@ function computeAggregates(
     })),
   );
 
+  const pedidosParaCurva: PedidoParaVendasBrutas[] = [];
   const anunciosMap = new Map<string, AnuncioResult>();
   // Um pedido pode ter várias unidades do mesmo anúncio: 'vendas' conta o
   // PEDIDO uma vez só, enquanto 'qty' soma as unidades.
@@ -254,6 +258,14 @@ function computeAggregates(
       substituidasUnidades += ((o.items as OrderItem[]) ?? []).reduce((s2, it) => s2 + Number(it.quantity ?? 1), 0);
       continue;
     }
+
+    // Curva ABC de vendas brutas: guarda o pedido com a classe dele. Quem soma e
+    // separa válido de cancelado/devolvido é lib/domain/vendas-brutas.ts (com teste).
+    pedidosParaCurva.push({
+      orderId: oid,
+      classe: classe.classe === "valida" ? "valida" : classe.classe === "devolvida" ? "devolvida" : "cancelada",
+      itens: (o.items as OrderItem[]) ?? [],
+    });
 
     // Faturamento BRUTO inclui tudo (inclusive cancelado/devolvido).
     faturamentoBruto += totalAmt;
@@ -414,6 +426,15 @@ function computeAggregates(
     totalAds: totalAdsFull,
     adsNaoVinculado,
     anuncios,
+    curvaBruta: vendasBrutasPorAnuncio(
+      pedidosParaCurva,
+      // A MESMA chave do agregado por anúncio acima: id sem "MLB", ou o SKU.
+      (it) => normalizeItemId(String(it.item_id ?? "")) || String(it.sku ?? "").trim(),
+      (it) => {
+        const produto = porMlb.get(normalizeItemId(String(it.item_id ?? ""))) ?? porSku.get(normalizeSku(String(it.sku ?? "")));
+        return produto?.name || undefined;
+      },
+    ),
     pedidosSemVinculo,
     ordersCount,
     unidadesVendidas,
@@ -874,6 +895,8 @@ export async function GET(req: Request) {
       margemSemCustos,
       margemComCustos,
       anuncios: agg.anuncios,
+      // Receita por anúncio (sem custo): não é campo financeiro — o member já vê o produto que mais faturou.
+      curvaBruta: agg.curvaBruta,
       pedidosSemVinculo: agg.pedidosSemVinculo,
       // Conferência da margem contra o líquido real do Mercado Pago.
       reconc: agg.reconc,

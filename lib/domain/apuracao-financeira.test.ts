@@ -126,10 +126,27 @@ describe("pendenciasDaColetaFull", () => {
     expect(pendenciasDaColetaFull({ foraDaJanela: false, parcial: false, remessas: 8, pendentes: 0 })).toHaveLength(0);
   });
 
-  it("fora da janela ganha da parcial — não há o que ser parcial", () => {
-    const ps = pendenciasDaColetaFull({ foraDaJanela: true, parcial: true, remessas: 5, pendentes: 5 });
+  it("fora da janela SEM nenhuma remessa conhecida: só o aviso de indisponível (não há o que ser parcial)", () => {
+    const ps = pendenciasDaColetaFull({ foraDaJanela: true, parcial: true, remessas: 0, pendentes: 0 });
     expect(ps).toHaveLength(1);
     expect(ps[0].chave).toBe("coleta-fora-da-janela");
+  });
+
+  it("fora da janela COM remessas salvas: avisa que a lista é só do banco, e a parcial segue valendo", () => {
+    const ps = pendenciasDaColetaFull({ foraDaJanela: true, parcial: true, remessas: 5, pendentes: 2 });
+    expect(ps.map((p) => p.chave)).toEqual(["coleta-so-do-banco", "coleta-parcial"]);
+    expect(ps[0].efeito).toBe("indefinido");
+  });
+
+  it("o ML falhou mas há lista salva: avisa sem derrubar a linha", () => {
+    const ps = pendenciasDaColetaFull({ foraDaJanela: false, mlFalhou: true, parcial: false, remessas: 3, pendentes: 0 });
+    expect(ps.map((p) => p.chave)).toEqual(["coleta-ml-indisponivel"]);
+  });
+
+  it("custo digitado sem data vira pendência própria, otimista", () => {
+    const [p] = pendenciasDaColetaFull({ foraDaJanela: false, parcial: false, remessas: 3, pendentes: 0, semData: 2 });
+    expect(p).toMatchObject({ chave: "coleta-sem-data", efeito: "otimista" });
+    expect(p.titulo).toContain("2 custo(s)");
   });
 });
 

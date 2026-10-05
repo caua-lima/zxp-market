@@ -22,6 +22,8 @@ só se afirma o que foi conferido no código atual.
 | Dashboard | Primeira dobra com resultado, qualidade e próximas ações | ✓ | Resumo executivo (`ExecutiveKpis`), selo de estado (`TelaHeader`), checklist de ativação (S24) |
 | | Sem números contraditórios / tooltip de fórmula antiga | ✓ | Margem única (S14); dica que não estoura a tela (S28) |
 | | Carregamento que termina | ✓ novo | "Carregando dados…" preso pra sempre, corrigido (S28) |
+| | Curva ABC de vendas brutas | ✓ novo | `components/dashboard/CurvaABC.tsx` (seletor Vendas brutas / Lucro, mesma classificação em `lib/domain/curva-abc.ts`). Base = "Vendas brutas" do Seller Center (sem cancelados/devolvidos), todos os anúncios — com ou sem produto vinculado; a soma fecha com `conciliacao.vendasBrutas` e a tela avisa se não fechar. O cancelado/devolvido de cada anúncio aparece à parte |
+| | Custos de coleta do Full editáveis | ✓ novo | `ColetaFullDoPeriodo` (só o dono): mesmo painel da DRE, no período do Dashboard. Não entra no lucro do Dashboard (continua só no Resultado líquido da DRE) |
 | | Menos KPIs repetidos, velocímetros mais baixos | ◐ | Velocímetro compacto existe (`pg-compact`); revisão de quais KPIs repetem não foi feita |
 | Estoque | "Resolver agora", filtros por problema | ✓ | `lib/domain/estoque-situacao.ts`, `EstoqueTab` |
 | | Disponível por local; não somar anúncio próprio ao galpão | ✓ | `estoqueForaDoFull`, `consolidarEstoqueAnuncios` |
@@ -32,6 +34,7 @@ só se afirma o que foi conferido no código atual.
 | Custos | Competência, centro de custo, vigência, arquivamento | ✓ | `CustosTab`, `custos-lista.ts`, `custo-form.ts` |
 | | Histórico financeiro preservado em edição/reativação | ✓ | Auditoria de alterações (`auditLog`), vigência por versão |
 | DRE | Pendências de informação, estimado × recebido | ✓ | Pendências coletadas e mostradas (`DreTab`); repasse estimado × recebido |
+| | Coleta pro Full sempre na linha | ✓ novo | A lista vem do que está SALVO (custos digitados + baixas de estoque, que já trazem o dia da remessa) e o ML é só complemento (`lib/domain/coleta-full.ts`, `lib/coleta-full-cliente.ts`). Antes, período com mais de 55 dias ou ML fora do ar fazia a linha virar "—" mesmo com o custo digitado. O custo agora grava o dia e as unidades da remessa; custo antigo sem dia é datado pela baixa, pelo ML (enquanto ele devolve a remessa) ou pelo painel "Custos sem data" |
 | | Fechamento com versão | ✗ | Não existe "fechar mês" com versão congelada — decisão de produto |
 | | Exportação preserva período, empresa e fórmula | ✓ novo | Apresentação com o nome da empresa e o período (S24); CSV seguro (S30) |
 | Pedidos | Paginação real | ✓ | Cursor por (campo, id) (S22) |

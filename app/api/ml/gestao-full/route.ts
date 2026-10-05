@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { remessasParaDatar } from "@/lib/domain/coleta-full";
 import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
@@ -528,11 +529,14 @@ export async function GET(req: Request) {
      * digitado e o que de fato alimenta a DRE.
      */
     const custoManualPorRemessa = new Map<string, number>();
+    /** Documentos com custo e SEM a data da remessa — a data entra abaixo, enquanto o ML ainda a devolve. */
+    const semDataGravada = new Set<string>();
     try {
       const remessaSnap = await db.collection("full_remessas").get();
       for (const doc of remessaSnap.docs) {
         const v = Number(doc.data()?.custoManual);
         if (Number.isFinite(v) && v > 0) custoManualPorRemessa.set(doc.id, v);
+        if (doc.data()?.custoManual != null && typeof doc.data()?.data !== "string") semDataGravada.add(doc.id);
       }
     } catch { /* sem custo manual: segue so com o que a API devolveu */ }
 
@@ -550,6 +554,24 @@ export async function GET(req: Request) {
       };
     });
     const custoTotalRemessas = remessasComCusto.reduce((s, r) => s + (r.custo ?? 0), 0);
+
+    /**
+     * Data e unidades nos custos digitados ANTES de elas serem gravadas junto.
+     *
+     * O ML só devolve a remessa por 55 dias; depois disso o custo continuava
+     * salvo, mas sem o dia da remessa a DRE não sabia a que mês ele pertence.
+     * Enquanto a remessa ainda aparece aqui, o dia dela é conhecido — então é
+     * agora que se grava (idempotente, best-effort: falhar não afeta a resposta).
+     */
+    const aDatar = remessasParaDatar(remessas, semDataGravada);
+    if (aDatar.length > 0) {
+      await Promise.allSettled(aDatar.map((r) =>
+        db.collection("full_remessas").doc(r.remessa).set(
+          { remessa: r.remessa, data: r.data, recebido: r.recebido },
+          { merge: true },
+        ),
+      ));
+    }
 
     // Recalculado apos o merge: o que interessa pra tela e quantas remessas
     // continuam sem NENHUM custo (nem da API, nem digitado).
