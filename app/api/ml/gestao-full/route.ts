@@ -52,7 +52,8 @@ export async function GET(req: Request) {
   if (gate instanceof NextResponse) return gate;
 
   const params = new URL(req.url).searchParams;
-  const chaveCache = params.get("dias") ?? "padrao";
+  // Com a empresa: o cache é do processo, dividido entre todas as empresas.
+  const chaveCache = `${gate.tenantId ?? "raiz"}|${params.get("dias") ?? "padrao"}`;
   if (!params.has("forcar")) {
     const hit = cache.get(chaveCache);
     if (hit && Date.now() - hit.at < CACHE_TTL) {

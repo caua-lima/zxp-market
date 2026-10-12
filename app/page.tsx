@@ -58,6 +58,7 @@ import { AvatarUpload } from "@/components/AvatarUpload";
 import MyProfileModal from "@/components/MyProfileModal";
 import CommandPalette from "@/components/CommandPalette";
 import AvisoDeAssinatura from "@/components/AvisoDeAssinatura";
+import BarraAoVivo from "@/components/BarraAoVivo";
 import { SaleNotificationProvider } from "@/components/SaleNotificationProvider";
 import { marcarAberturaDeGrupo } from "@/lib/domain/nav-grupos";
 import {
@@ -650,6 +651,9 @@ function AppShell() {
         >
           {/* Topbar — layout em classe (não style inline) porque precisa de
               media query pra compactar no celular; ver .topbar em globals.css */}
+          {/* Topo + barra ao vivo grudam JUNTOS no alto: quem gruda é o invólucro
+              (.topo-fixo), senão a barra rolaria pra baixo do topo e sumiria. */}
+          <div className="topo-fixo">
           <header className="topbar">
             {/* Hamburger for mobile */}
             <button
@@ -696,6 +700,8 @@ function AppShell() {
               <MlAccountStatus />
             </div>
           </header>
+          <BarraAoVivo onAbrir={() => setTab("dashboard")} />
+          </div>
 
           {/* Tab content */}
           <main className="app-content" style={{ flex: 1, minWidth: 0 }}>

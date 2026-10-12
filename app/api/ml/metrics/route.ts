@@ -531,7 +531,10 @@ export async function GET(req: Request) {
      */
     const diaFoco = url.searchParams.get("dia") ?? "";
     const geracaoConexao = await geracaoDaConexao();
-    const cacheKey = `${fromStr}|${toStr}|${diaFoco}|g${geracaoConexao}`;
+    // A EMPRESA entra na chave: o cache é do processo, e duas empresas no mesmo
+    // processo quente (com a mesma geração de conexão) dividiam a entrada — uma
+    // receberia os números da outra por até um minuto.
+    const cacheKey = `${gate.tenantId ?? "raiz"}|${fromStr}|${toStr}|${diaFoco}|g${geracaoConexao}`;
     const bust = url.searchParams.get("fresh") === "1";
     if (!bust) {
       const cached = metricsCache.get(cacheKey);
