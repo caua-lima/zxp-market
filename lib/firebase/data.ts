@@ -43,6 +43,7 @@ import {
 } from "./movimento-auditado";
 import { patchCusto, patchData, patchIgnorar, patchReabrir, type ContextoDaRemessa } from "@/lib/domain/remessa-full";
 import { lerFonteDaColeta } from "./coleta-full";
+import { validarEnvio, type EnvioFullAgendado, type NovoEnvio, type StatusEnvioAgendado } from "@/lib/domain/envio-full-agendado";
 import { definirNomeDaEmpresa } from "@/lib/marca";
 
 function sanitizeUndefined<T extends Record<string, unknown>>(obj: T): T {
@@ -507,6 +508,74 @@ export function watchRemessasIgnoradas(cb: (ids: Set<string>) => void): () => vo
     // e um doc que só tem custo NÃO pode sumir da lista de pendentes.
     return new Set(snap.docs.filter((d) => d.data()?.ignorada === true).map((d) => d.id));
   }, cb);
+}
+
+// ── Envios agendados pro Full ──────────────────────────────────
+// Reserva sobre o estoque de casa, não lançamento: não mexe no livro nem no
+// custo médio. Ver lib/domain/envio-full-agendado.ts.
+const ENVIO_COL = "full_envios_agendados";
+const CHAVE_ENVIOS = "full_envios_agendados";
+
+/** Hoje em Brasília (yyyy-mm-dd): o dia do agendamento é o do vendedor, não o do servidor. */
+function hojeEmBrasilia(): string {
+  return new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+export function watchEnviosAgendados(cb: (envios: EnvioFullAgendado[]) => void): () => void {
+  return assinarComCache(CHAVE_ENVIOS, async () => {
+    const snap = await getDocs(sCol(ENVIO_COL));
+    return snap.docs.map((d) => d.data() as EnvioFullAgendado);
+  }, cb);
+}
+
+/** Agenda um envio. Recusa (com o motivo em português) o que não faz sentido. */
+export async function criarEnvioAgendado(e: NovoEnvio & { obs?: string }): Promise<string> {
+  const hoje = hojeEmBrasilia();
+  const erro = validarEnvio(e, hoje);
+  if (erro) throw new Error(erro);
+  const email = getCurrentUserEmail();
+  const ref = doc(sCol(ENVIO_COL));
+  const envio: EnvioFullAgendado = {
+    id: ref.id,
+    productId: e.productId,
+    quantidade: e.quantidade,
+    data: e.data,
+    criadoEm: hoje,
+    status: "agendado",
+    obs: e.obs?.trim() || undefined,
+    createdBy: email,
+    createdAt: Date.now(),
+  };
+  await setDoc(ref, sanitizeUndefined(envio));
+  invalidar(CHAVE_ENVIOS);
+  return ref.id;
+}
+
+/** Muda quantidade, dia ou observação de um envio ainda em aberto. */
+export async function editarEnvioAgendado(
+  id: string,
+  patch: { quantidade?: number; data?: string; obs?: string },
+): Promise<void> {
+  const snap = await getDoc(sDoc(ENVIO_COL, id));
+  if (!snap.exists()) throw new Error("Envio não encontrado — pode já ter sido removido.");
+  const atual = snap.data() as EnvioFullAgendado;
+  const quantidade = patch.quantidade ?? atual.quantidade;
+  const data = patch.data ?? atual.data;
+  // Manter o dia que já estava (atrasado, por exemplo) não é "agendar no passado".
+  const erro = validarEnvio({ productId: atual.productId, quantidade, data }, data === atual.data ? atual.data : hojeEmBrasilia());
+  if (erro) throw new Error(erro);
+  await updateDoc(sDoc(ENVIO_COL, id), sanitizeUndefined({
+    quantidade, data,
+    ...(patch.obs !== undefined ? { obs: patch.obs.trim() } : {}),
+    updatedBy: getCurrentUserEmail(), updatedAt: Date.now(),
+  }));
+  invalidar(CHAVE_ENVIOS);
+}
+
+/** "enviado" e "cancelado" soltam a reserva; "agendado" reabre. */
+export async function mudarStatusEnvioAgendado(id: string, status: StatusEnvioAgendado): Promise<void> {
+  await updateDoc(sDoc(ENVIO_COL, id), { status, updatedBy: getCurrentUserEmail(), updatedAt: Date.now() });
+  invalidar(CHAVE_ENVIOS);
 }
 
 /**

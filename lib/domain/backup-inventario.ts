@@ -70,6 +70,14 @@ export const INVENTARIO: readonly ItemDeBackup[] = [
       "Perdido, só voltaria conferindo envio por envio no painel do ML.",
   },
   {
+    colecao: "full_envios_agendados",
+    classe: "irrecuperavel",
+    conteudo: "Envios agendados pro Full: produto, quantidade e dia combinado.",
+    perda:
+      "O ML não expõe o agendamento pela API. Perdido, as agências voltam a anunciar " +
+      "unidades que já têm destino no Full, até alguém refazer a lista de cabeça.",
+  },
+  {
     colecao: "metas",
     classe: "irrecuperavel",
     conteudo: "Metas de faturamento e margem em vigor.",
@@ -271,6 +279,7 @@ export const ORDEM_DE_RESTAURACAO: readonly string[] = [
   "estoque_movimentos",
   "custos",
   "full_remessas",
+  "full_envios_agendados",
   "metas",
   "metasHistorico",
   "dias",

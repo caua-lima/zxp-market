@@ -300,6 +300,14 @@ service cloud.firestore {
       allow write: if isOwner();
     }
 
+    // Envios AGENDADOS pro Full: unidades com destino marcado, que as agências
+    // não podem mais anunciar. É plano, não estoque — não mexe no livro. Quem
+    // edita estoque agenda (o dono não é o único que dá entrada na mercadoria).
+    match /full_envios_agendados/{docId} {
+      allow read: if veOperacao();
+      allow write: if podeEditar('estoque');
+    }
+
     // Tarefas (Kanban): owner e colaborador leem E escrevem igual — é o
     // ponto do quadro, um atribui tarefa pro outro e vice-versa.
     match /tarefas/{docId} {
@@ -741,6 +749,10 @@ service cloud.firestore {
       match /full_remessas/{docId} {
         allow read: if veOperacaoT();
         allow write: if escritaLiberadaT() && (isOwnerT());
+      }
+      match /full_envios_agendados/{docId} {
+        allow read: if veOperacaoT();
+        allow write: if escritaLiberadaT() && (podeEditarT('estoque'));
       }
       match /tarefas/{docId} {
         allow read: if veOperacaoT(); allow write: if escritaLiberadaT() && (veOperacaoT());
