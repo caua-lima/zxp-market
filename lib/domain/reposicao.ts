@@ -40,6 +40,13 @@ export type ProdutoReposicao = {
   custoUnitario: number;
   /** Produto desativado não entra no plano. */
   ativo: boolean;
+  /**
+   * Unidades JÁ AGENDADAS pra seguir pro Full (ver envio-full-agendado.ts).
+   * Ainda estão no galpão, mas têm destino: o plano de envio não pode sugerir
+   * mandar de novo o que já está marcado, nem contar com elas como estoque
+   * livre em casa. Ausente = nada agendado.
+   */
+  agendadoFull?: number;
 };
 
 export type ItemDoPlano = {
@@ -342,6 +349,8 @@ export type ItemEnvioFull = {
   faltaComprar: number;
   /** O Full acaba antes do alvo. */
   vaiZerar: boolean;
+  /** Já agendado pro Full e a caminho: foi abatido do que falta enviar. */
+  agendado: number;
 };
 
 export type PlanoEnvioFull = {
@@ -373,11 +382,13 @@ export function planoEnvioParaFull(
 
     const noFull = Math.max(Number(p.noFull) || 0, 0);
     const emCasa = Math.max(Number(p.emCasa) || 0, 0);
+    const agendado = Math.max(Number(p.agendadoFull) || 0, 0);
     const precisaNoFull = necessarioParaJanela(media, alvo);
-    const falta = Math.max(0, precisaNoFull - noFull);
+    // O agendado chega ao Full: conta como cobertura, e sai do galpão livre.
+    const falta = Math.max(0, precisaNoFull - noFull - agendado);
     if (falta <= 0) continue;
 
-    const enviar = Math.min(falta, emCasa);
+    const enviar = Math.min(falta, Math.max(emCasa - agendado, 0));
     const duraFull = duracaoDoEstoque(noFull, media);
 
     itens.push({
@@ -391,6 +402,7 @@ export function planoEnvioParaFull(
       enviar,
       faltaComprar: falta - enviar,
       vaiZerar: duraFull != null && duraFull < alvo,
+      agendado,
     });
   }
 
@@ -452,6 +464,8 @@ export type ItemEnvioAteData = {
   faltaComprar: number;
   /** O Full atual não chega na data. */
   naoChega: boolean;
+  /** Já agendado pro Full e a caminho: foi abatido do que falta enviar. */
+  agendado: number;
 };
 
 export type PlanoAteData = {
@@ -521,11 +535,12 @@ export function planoEnvioAteData(
      * A janela inclui o trânsito: o que sai hoje só vende depois de
      * processado, e até lá quem atende é o estoque que já está no Full.
      */
+    const agendado = Math.max(Number(p.agendadoFull) || 0, 0);
     const precisaNoFull = necessarioParaJanela(media, diasAteAlvo + transito);
-    const falta = Math.max(0, precisaNoFull - noFull);
+    const falta = Math.max(0, precisaNoFull - noFull - agendado);
     if (falta <= 0) continue;
 
-    const enviar = Math.min(falta, emCasa);
+    const enviar = Math.min(falta, Math.max(emCasa - agendado, 0));
     const duraFull = duracaoDoEstoque(noFull, media) ?? 0;
 
     itens.push({
@@ -539,6 +554,7 @@ export function planoEnvioAteData(
       enviar,
       faltaComprar: falta - enviar,
       naoChega: duraFull < diasAteAlvo,
+      agendado,
     });
   }
 
