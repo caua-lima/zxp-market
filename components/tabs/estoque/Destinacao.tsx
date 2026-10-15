@@ -74,6 +74,7 @@ function LinhaDestino({
       </td>
       <td data-label="Em casa" style={{ textAlign: "right", fontWeight: 700, whiteSpace: "nowrap" }}>{Math.max(emCasa, 0)} un</td>
       <td data-label="Vai pro Full" style={{ textAlign: "right" }}>
+        <div style={{ minWidth: 0 }}>
         <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap", alignItems: "center" }}>
           <input
             type="number" min="0" step="1" inputMode="numeric" aria-label={`Unidades de ${nome} que vão pro Full`}
@@ -90,14 +91,19 @@ function LinhaDestino({
           )}
         </div>
         {precisaDia && dia && <div style={{ fontSize: ".75rem", color: "var(--muted)", marginTop: 2 }}>{rotuloDoDia(dia)} · {quandoFalta(dia, hoje)}</div>}
+        </div>
       </td>
       <td data-label="Fica pras agências" style={{ textAlign: "right", whiteSpace: "nowrap", fontWeight: 800, color: d.livre > 0 ? "var(--green)" : "var(--red-text)" }}>
-        {d.livre} un
-        {d.faltam > 0 && <div style={{ fontSize: ".75rem", fontWeight: 700 }}>faltam {d.faltam} em casa</div>}
+        <div style={{ minWidth: 0 }}>
+          {d.livre} un
+          {d.faltam > 0 && <div style={{ fontSize: ".75rem", fontWeight: 700 }}>faltam {d.faltam} em casa</div>}
+        </div>
       </td>
       <td data-label="Anúncio hoje" style={{ textAlign: "right", whiteSpace: "nowrap", color: anuncioAcima ? "var(--warning)" : "var(--muted)" }}>
-        {noAnuncio} un
-        {anuncioAcima && <div style={{ fontSize: ".75rem", fontWeight: 700 }}>ajuste o anúncio p/ {d.livre}</div>}
+        <div style={{ minWidth: 0 }}>
+          {noAnuncio} un
+          {anuncioAcima && <div style={{ fontSize: ".75rem", fontWeight: 700 }}>ajuste o anúncio p/ {d.livre}</div>}
+        </div>
       </td>
       {podeEditar && (
         <td data-label="Ações" data-cell="acoes">

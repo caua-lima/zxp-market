@@ -294,18 +294,24 @@ export function EnviosAgendadosPainel({
                     {e.obs && <div style={{ fontWeight: 400, fontSize: ".75rem", color: "var(--muted)" }}>{e.obs}</div>}
                   </td>
                   <td data-label="Dia" style={{ textAlign: "left", whiteSpace: "nowrap" }}>
-                    {rotuloDoDia(e.data)}
-                    <div style={{ fontSize: ".75rem", color: item.atrasado ? "var(--red-text)" : "var(--muted)", fontWeight: item.atrasado ? 700 : 400 }}>
-                      {quandoFalta(e.data, hoje)}{item.atrasado && " — sem baixa ainda"}
+                    <div style={{ minWidth: 0 }}>
+                      {rotuloDoDia(e.data)}
+                      <div style={{ fontSize: ".75rem", color: item.atrasado ? "var(--red-text)" : "var(--muted)", fontWeight: item.atrasado ? 700 : 400 }}>
+                        {quandoFalta(e.data, hoje)}{item.atrasado && " — sem baixa ainda"}
+                      </div>
                     </div>
                   </td>
                   <td data-label="Reservado" style={{ textAlign: "right", fontWeight: 700, whiteSpace: "nowrap" }}>
-                    {item.restante} un
-                    {item.atendido > 0 && <div style={{ fontSize: ".75rem", color: "var(--muted)", fontWeight: 400 }}>{item.atendido} de {e.quantidade} já saíram</div>}
+                    <div style={{ minWidth: 0 }}>
+                      {item.restante} un
+                      {item.atendido > 0 && <div style={{ fontSize: ".75rem", color: "var(--muted)", fontWeight: 400 }}>{item.atendido} de {e.quantidade} já saíram</div>}
+                    </div>
                   </td>
                   <td data-label="Livre pras agências" style={{ textAlign: "right", fontWeight: 700, whiteSpace: "nowrap", color: d.livre > 0 ? "var(--green)" : "var(--red-text)" }}>
-                    {d.livre} un
-                    {d.faltam > 0 && <div style={{ fontSize: ".75rem", fontWeight: 700 }}>faltam {d.faltam} em casa</div>}
+                    <div style={{ minWidth: 0 }}>
+                      {d.livre} un
+                      {d.faltam > 0 && <div style={{ fontSize: ".75rem", fontWeight: 700 }}>faltam {d.faltam} em casa</div>}
+                    </div>
                   </td>
                   {podeEditar && (
                     <td data-label="Ações" data-cell="acoes">
