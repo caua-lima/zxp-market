@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   dataValida,
   disponivelParaAgencias,
+  planejarDestino,
+  proximosDias,
   quandoFalta,
   reservasPorProduto,
   rotuloDoDia,
@@ -146,5 +148,57 @@ describe("texto do dia", () => {
     expect(quandoFalta("2026-10-16", HOJE)).toBe("amanhã");
     expect(quandoFalta("2026-10-21", HOJE)).toBe("em 6 dias");
     expect(quandoFalta("2026-10-13", HOJE)).toBe("há 2 dias");
+  });
+});
+
+describe("atalhos de data", () => {
+  it("lista os próximos dias a partir de hoje, atravessando o mês", () => {
+    expect(proximosDias("2026-10-30", 4)).toEqual(["2026-10-30", "2026-10-31", "2026-11-01", "2026-11-02"]);
+  });
+  it("hoje inválido ou n zero não devolve nada", () => {
+    expect(proximosDias("xx", 3)).toEqual([]);
+    expect(proximosDias(HOJE, 0)).toEqual([]);
+  });
+});
+
+describe("planejarDestino — a tela de destinação", () => {
+  const reservaDe = (envios: EnvioFullAgendado[], saidas: SaidaFull[] = []) => reservasPorProduto(envios, saidas, HOJE).get("limao") ?? null;
+
+  it("sem envio e alvo > 0: cria", () => {
+    expect(planejarDestino(null, 199, "2026-10-21", HOJE)).toEqual({ acao: "criar", quantidade: 199, data: "2026-10-21" });
+  });
+  it("sem envio e alvo 0: nada a fazer", () => {
+    expect(planejarDestino(null, 0, "", HOJE)).toEqual({ acao: "nada" });
+  });
+  it("criar exige um dia que existe e não passou", () => {
+    expect(planejarDestino(null, 10, "", HOJE)).toMatchObject({ acao: "invalido" });
+    expect(planejarDestino(null, 10, "2026-10-14", HOJE)).toMatchObject({ acao: "invalido" });
+  });
+  it("um envio em aberto: muda a quantidade (os 199 viraram 150)", () => {
+    const r = reservaDe([envio({ id: "a" })]);
+    expect(planejarDestino(r, 150, "2026-10-21", HOJE)).toEqual({ acao: "editar", id: "a", quantidade: 150, data: "2026-10-21" });
+  });
+  it("sem tocar na data, mantém a que já estava", () => {
+    const r = reservaDe([envio({ id: "a" })]);
+    expect(planejarDestino(r, 150, "", HOJE)).toMatchObject({ acao: "editar", data: "2026-10-21" });
+  });
+  it("mesma quantidade e mesmo dia: nada", () => {
+    const r = reservaDe([envio({ id: "a" })]);
+    expect(planejarDestino(r, 199, "2026-10-21", HOJE)).toEqual({ acao: "nada" });
+  });
+  it("com parte já baixada, a quantidade gravada soma o que saiu", () => {
+    const r = reservaDe([envio({ id: "a" })], [saida(150, "2026-10-21")]); // restam 49
+    expect(planejarDestino(r, 60, "", HOJE)).toMatchObject({ acao: "editar", quantidade: 210 });
+  });
+  it("alvo 0: cancela se nada saiu, marca como enviado se parte já saiu", () => {
+    expect(planejarDestino(reservaDe([envio({ id: "a" })]), 0, "", HOJE)).toEqual({ acao: "encerrar", id: "a", status: "cancelado" });
+    expect(planejarDestino(reservaDe([envio({ id: "a" })], [saida(100, "2026-10-21")]), 0, "", HOJE)).toEqual({ acao: "encerrar", id: "a", status: "enviado" });
+  });
+  it("dois envios em aberto: não adivinha qual mudar", () => {
+    const r = reservaDe([envio({ id: "a", quantidade: 100 }), envio({ id: "b", quantidade: 50, data: "2026-10-28" })]);
+    expect(planejarDestino(r, 120, "", HOJE)).toEqual({ acao: "varios" });
+  });
+  it("recusa quantidade negativa, fracionada ou NaN", () => {
+    for (const q of [-1, 1.5, NaN]) expect(planejarDestino(null, q, "2026-10-21", HOJE)).toMatchObject({ acao: "invalido" });
   });
 });

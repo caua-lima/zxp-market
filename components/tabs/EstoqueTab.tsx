@@ -27,6 +27,10 @@ import AvisoMaisAntigos from "@/components/AvisoMaisAntigos";
 import { useMaisAntigos } from "@/components/useMaisAntigos";
 import { paginar } from "@/lib/domain/paginacao";
 import EntradaMassaModal from "@/components/tabs/estoque/EntradaMassaModal";
+import DestinacaoPanel from "@/components/tabs/estoque/Destinacao";
+import { AgendarEnvioModal, EnviosAgendadosPainel, ResumoDisponibilidade, novoIdDeEnvio, useReservasFull } from "@/components/tabs/estoque/EnviosAgendados";
+import { criarEnvioAgendado } from "@/lib/firebase/data";
+import { disponivelParaAgencias, proximosDias, rotuloDoDia, validarEnvio, type ReservaDoProduto } from "@/lib/domain/envio-full-agendado";
 import ImpostoMassaModal from "@/components/tabs/estoque/ImpostoMassaModal";
 import VincularSkuModal from "@/components/tabs/estoque/VincularSkuModal";
 import { DIAS_ALVO, hojeBR, todayISO, parseNum, mlbsDe, normMlb, custoMedioDe, anunciosDe, fullDe, precosDe, previsaoDe, coberturaFmt } from "@/components/tabs/estoque/estoque-compartilhado";
@@ -91,6 +95,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
   const [movModal, setMovModal] = useState<{ product: Product; tipo: MovimentoTipo } | null>(null);
   const [entradaMassa, setEntradaMassa] = useState(false);
   const [agenciasProduct, setAgenciasProduct] = useState<Product | null>(null);
+  const [agendarProduct, setAgendarProduct] = useState<Product | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   useEffect(() => {
     if (!expanded) return;
@@ -101,7 +106,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
   const [impostoMassa, setImpostoMassa] = useState(false);
 
   /** A vista: o recorte da lista. O padrão é a pergunta que se faz ao abrir. */
-  const [vista, setVista] = useState<"acao" | "todos" | "movimentos">("acao");
+  const [vista, setVista] = useState<"acao" | "todos" | "movimentos" | "destinacao">("acao");
   /** Página da vista de movimentações. Volta pra 1 quando a busca muda. */
   const [paginaMov, setPaginaMov] = useState(1);
   const [filtroEstoque, setFiltroEstoque] = useState<FiltroEstoque>(FILTRO_ESTOQUE_VAZIO);
@@ -157,6 +162,13 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
   }, [carregarEstoque]);
   useEffect(() => watchMovimentos((movs, truncado) => { setMovimentos(movs); setMovimentosTruncados(truncado); }), []);
   useEffect(() => watchRemessasIgnoradas(setRemessasIgnoradas), []);
+  /** Envios agendados pro Full e o que cada produto tem reservado (já abatido pelas baixas do livro). */
+  const { reservas } = useReservasFull(movimentos);
+  /** O "em casa" de um produto: o mesmo número da coluna, pra o painel e a linha não discordarem. */
+  const emCasaDe = useCallback((p: Product) => {
+    const f = fullDe(p, estoqueML);
+    return estoqueForaDoFull(Math.max(p.qtdLocal ?? 0, 0), f.proprio, f.ehFull);
+  }, [estoqueML]);
 
   /**
    * Unidades contadas duas vezes: já no Full e ainda no livro do galpão,
@@ -462,7 +474,9 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
 
       {/* Antes da lista de produtos: e decisao de COMPRA, e vem antes de
           qualquer ajuste fino de cadastro. */}
-      <ReposicaoPanel produtos={data.products} estoqueML={estoqueML} forecast={forecast} retencao={retencao} retencaoVeio={retencaoVeio} />
+      <EnviosAgendadosPainel produtos={data.products} reservas={reservas} podeEditar={canEdit} emCasaDe={emCasaDe} />
+
+      <ReposicaoPanel produtos={data.products} estoqueML={estoqueML} forecast={forecast} retencao={retencao} retencaoVeio={retencaoVeio} reservas={reservas} />
 
       {/* Produto cadastrado sem nenhum anúncio ligado nunca recebe venda no
           cálculo de lucro — o pedido chega, não acha o produto e o CMV entra
@@ -522,6 +536,13 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
             onClick={() => setVista("movimentos")}
           >
             Movimentações ({movimentos.length})
+          </button>
+          {/* O que fica pras agências e o que vai pro Full — editável a qualquer hora. */}
+          <button
+            type="button" className={`seg-btn ${vista === "destinacao" ? "active" : ""}`}
+            onClick={() => setVista("destinacao")}
+          >
+            Full × Agências
           </button>
         </div>
 
@@ -629,7 +650,16 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
         infinita não tem endereço. Não dá pra voltar pro mesmo ponto nem
         dizer a alguém onde olhar.
       */}
-      {vista === "movimentos" ? (
+      {vista === "destinacao" ? (
+        <DestinacaoPanel
+          produtos={data.products}
+          reservas={reservas}
+          podeEditar={canEdit}
+          emCasaDe={emCasaDe}
+          noAnuncioDe={(p) => fullDe(p, estoqueML).proprio}
+          busca={search}
+        />
+      ) : vista === "movimentos" ? (
         <MovimentacoesPanel
           movimentos={movimentos}
           produtos={data.products}
@@ -718,6 +748,8 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
                     onEdit={() => setEditProduct({ ...p, mlbs: mlbsDe(p) })}
                     onMov={(tipo) => setMovModal({ product: p, tipo })}
                     onAgencias={() => setAgenciasProduct(p)}
+                    onAgendar={() => setAgendarProduct(p)}
+                    reserva={reservas.get(p.id) ?? null}
                     duplicadas={duplicadasPorProduto.get(p.id) ?? 0}
                   />
                 ))}
@@ -788,8 +820,19 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
           product={movModal.product}
           tipo={movModal.tipo}
           estoqueML={estoqueML}
+          reservado={reservas.get(movModal.product.id)?.reservado ?? 0}
           onClose={() => setMovModal(null)}
           onSaved={() => setMovModal(null)}
+        />
+      )}
+
+      {agendarProduct && (
+        <AgendarEnvioModal
+          product={agendarProduct}
+          emCasa={emCasaDe(agendarProduct)}
+          reservado={reservas.get(agendarProduct.id)?.reservado ?? 0}
+          onClose={() => setAgendarProduct(null)}
+          onSaved={() => setAgendarProduct(null)}
         />
       )}
 
@@ -975,7 +1018,7 @@ function MovimentacoesPanel({ movimentos, produtos, busca, pagina, onPagina, tru
   );
 }
 function ProductRow({
-  product, estoqueML, expanded, onToggle, onEdit, onMov, onAgencias, duplicadas = 0, situacao = null,
+  product, estoqueML, expanded, onToggle, onEdit, onMov, onAgencias, onAgendar, reserva, duplicadas = 0, situacao = null,
 }: {
   product: Product;
   uid: string;
@@ -989,6 +1032,9 @@ function ProductRow({
   onEdit: () => void;
   onMov: (tipo: MovimentoTipo) => void;
   onAgencias: () => void;
+  onAgendar: () => void;
+  /** Envios agendados pro Full que ainda seguram unidades deste produto. */
+  reserva: ReservaDoProduto | null;
 }) {
   const imposto = parseNum(product.imposto ?? "0");
   const anuncios = anunciosDe(product, estoqueML);
@@ -1097,6 +1143,30 @@ function ProductRow({
               ⚠ {duplicadas} un já no Full
             </span>
           )}
+          {reserva && reserva.reservado > 0 && (() => {
+            const d = disponivelParaAgencias(casaExibida, reserva.reservado);
+            return (
+              <>
+                <span
+                  title={`${reserva.reservado} un deste produto já têm envio agendado pro Full (próximo: ${reserva.proximaData ? rotuloDoDia(reserva.proximaData) : "sem dia"}). Continuam em casa no livro, mas não são mais das agências. Quando a baixa do envio for lançada, a reserva some sozinha.`}
+                  style={{ display: "block", fontSize: ".75rem", color: "var(--warning)", fontWeight: 700, cursor: "help" }}
+                >
+                  −{reserva.reservado} pro Full{reserva.proximaData ? ` · ${rotuloDoDia(reserva.proximaData)}` : ""}
+                </span>
+                <span
+                  title="O que as agências podem anunciar: o que está em casa menos o que já tem envio agendado pro Full."
+                  style={{ display: "block", fontSize: ".75rem", color: d.livre > 0 ? "var(--green)" : "var(--red-text)", fontWeight: 800 }}
+                >
+                  {d.livre} livres p/ agências
+                </span>
+                {d.faltam > 0 && (
+                  <span style={{ display: "block", fontSize: ".75rem", color: "var(--red-text)", fontWeight: 700 }}>
+                    faltam {d.faltam} p/ cobrir o Full
+                  </span>
+                )}
+              </>
+            );
+          })()}
           {proprioCompartilhado && !ehFull && (
             <span
               title="Este produto está em mais de um anúncio fora do Full, e os dois vendem do MESMO estoque de casa. O total usa o maior declarado, não a soma: anunciar 18 e 18 é a mesma pilha de 18 unidades, não 36."
@@ -1126,6 +1196,7 @@ function ProductRow({
           <div className="row-actions" style={{ justifyContent: "center" }}>
             <button type="button" className="btn btn-success btn-xs" title="Entrada (compra)" onClick={() => onMov("entrada")}>＋ Entrada</button>
             <button type="button" className="btn btn-ghost btn-xs" title="Enviar de casa pro Full (baixa, não é venda)" onClick={() => onMov("saida_full")}>Enviar Full</button>
+            <button type="button" className="btn btn-ghost btn-xs" title="Marcar unidades que já têm dia de envio pro Full: elas deixam de contar como livres pras agências" onClick={onAgendar}>Agendar Full</button>
             {ehFull && full > 0 && (
               <button
                 type="button"
@@ -1279,7 +1350,7 @@ function MovimentosHistorico({ product, movs, onMov }: { product: Product; movs:
   );
 }
 
-function MovimentoModal({ product, tipo, estoqueML, onClose, onSaved }: { product: Product; tipo: MovimentoTipo; estoqueML: EstoqueML; onClose: () => void; onSaved: () => void }) {
+function MovimentoModal({ product, tipo, estoqueML, reservado, onClose, onSaved }: { product: Product; tipo: MovimentoTipo; estoqueML: EstoqueML; reservado: number; onClose: () => void; onSaved: () => void }) {
   const isEntrada = tipo === "entrada";
   const isSaldo = tipo === "saldo_inicial";
   const isAjuste = tipo === "ajuste";
@@ -1296,6 +1367,13 @@ function MovimentoModal({ product, tipo, estoqueML, onClose, onSaved }: { produc
   const [data, setData] = useState(todayISO());
   const [obs, setObs] = useState("");
   const [saving, setSaving] = useState(false);
+  /**
+   * Entrada com parte já destinada ao Full: "379 entraram, 199 vão na quarta".
+   * Agenda o envio junto, pra as agências já verem 180 e não 379.
+   */
+  const [destinoFull, setDestinoFull] = useState("");
+  const [diaFull, setDiaFull] = useState("");
+  const idDoEnvio = useRef(novoIdDeEnvio());
 
   const titulo = isEntrada ? "＋ Entrada (compra)" : isSaldo ? "Custo do que está no Full" : tipo === "saida_full" ? "Envio pro Full" : "Ajuste de estoque";
 
@@ -1336,12 +1414,17 @@ function MovimentoModal({ product, tipo, estoqueML, onClose, onSaved }: { produc
   const idDoLancamento = useRef(newMovId());
   /** A mensagem fica no formulário até a próxima tentativa (o `alert` sumia e deixava só a dúvida). */
   const [erro, setErro] = useState<string | null>(null);
-  const sujo = useFormularioSujo({ qtd, custo, obs, data });
+  const sujo = useFormularioSujo({ qtd, custo, obs, data, destinoFull, diaFull });
+  const destinoNum = Number(destinoFull);
 
   async function handleSave() {
     if (saving) return;
     setErro(null);
     if (!qNum || (!isAjuste && qNum <= 0)) { setErro("Informe a quantidade."); return; }
+    if (isEntrada && destinoFull.trim() !== "") {
+      const invalido = validarEnvio({ productId: product.id, quantidade: destinoNum, data: diaFull }, hojeBR());
+      if (invalido) { setErro(`Envio pro Full: ${invalido}`); return; }
+    }
     if (precisaCusto && cNum <= 0) { setErro("Informe o custo unitário."); return; }
     if (!obs.trim()) { setErro("Informe o motivo desta movimentação — fica registrado no histórico do produto."); return; }
     // Ajuste negativo tira estoque sem ser nem venda nem envio — a confirmação
@@ -1393,6 +1476,11 @@ function MovimentoModal({ product, tipo, estoqueML, onClose, onSaved }: { produc
           ? `${qNum} un a ${fmtBRL(cNum)} · custo médio ${fmtBRL(avgAtual)} → ${fmtBRL(novoAvg)}`
           : `${qNum} un em ${data}`,
       });
+      // A entrada JÁ está no livro. Se só o agendamento falhar, tentar de novo
+      // regrava a mesma entrada (id fixo) e o mesmo envio (id fixo): sem duplicar nada.
+      if (isEntrada && destinoFull.trim() !== "") {
+        await criarEnvioAgendado({ productId: product.id, quantidade: destinoNum, data: diaFull, obs: obs.trim() }, idDoEnvio.current);
+      }
       onSaved();
     } catch (err: unknown) {
       // O id do lançamento é fixo por abertura: tentar de novo regrava o MESMO documento.
@@ -1436,6 +1524,37 @@ function MovimentoModal({ product, tipo, estoqueML, onClose, onSaved }: { produc
       {tipo === "saida_full" && (
         <div style={{ margin: "4px 0 12px", padding: "8px 12px", borderRadius: 8, background: "rgba(var(--brand-rgb),.08)", border: "1px solid rgba(var(--brand-rgb),.25)", fontSize: ".82rem", color: "var(--muted)" }}>
           Baixa por <b>envio ao Full</b> — sai de casa e vai pro Full, mas <b>não é venda</b>. Não afeta o lucro; o custo só entra quando o produto vende.
+        </div>
+      )}
+
+      {isEntrada && (
+        <div style={{ margin: "4px 0 12px", padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface2)" }}>
+          <div style={{ fontWeight: 700, fontSize: ".85rem", marginBottom: 4 }}>Parte desta compra já vai pro Full? <span style={{ fontWeight: 400, color: "var(--muted)" }}>(opcional)</span></div>
+          <div style={{ fontSize: ".78rem", color: "var(--muted)", marginBottom: 8, lineHeight: 1.5 }}>
+            Lance a compra <b>inteira</b> e diga quantas unidades já têm envio marcado. O estoque entra todo; só que essas
+            unidades deixam de contar como livres pras agências — quando a baixa do envio sair, o galpão fica certo.
+          </div>
+          <div className="config-field">
+            <label htmlFor="mov-full-qtd">Unidades que vão pro Full</label>
+            <input id="mov-full-qtd" type="number" min="1" step="1" inputMode="numeric" placeholder="Ex: 199" value={destinoFull} onChange={(e) => setDestinoFull(e.target.value)} />
+          </div>
+          {destinoFull.trim() !== "" && (
+            <>
+              <div className="config-field">
+                <label htmlFor="mov-full-dia">Dia do envio</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }} role="group" aria-label="Atalhos de dia">
+                  {proximosDias(hojeBR(), 8).slice(1).map((d) => (
+                    <button key={d} type="button" className={d === diaFull ? "btn btn-primary btn-xs" : "btn btn-ghost btn-xs"} aria-pressed={d === diaFull} onClick={() => setDiaFull(d)}>{rotuloDoDia(d)}</button>
+                  ))}
+                </div>
+                <input id="mov-full-dia" type="date" min={hojeBR()} value={diaFull} onChange={(e) => setDiaFull(e.target.value)} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", color: "var(--text)", fontSize: ".9rem", outline: "none" }} />
+              </div>
+              <ResumoDisponibilidade
+                emCasa={foraDoFull + (qNum > 0 ? qNum : 0)}
+                reservado={reservado + (Number.isInteger(destinoNum) && destinoNum > 0 ? destinoNum : 0)}
+              />
+            </>
+          )}
         </div>
       )}
 
@@ -1853,8 +1972,10 @@ export function ProductModal({ product: initial, isNew, onClose, onSave }: { pro
  * Por isso a folga vem preenchida. Dá pra zerar o campo, e a tela avisa o
  * que isso significa em vez de deixar acontecer calado.
  */
-function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio }: {
+function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio, reservas }: {
   produtos: Product[];
+  /** Envios já agendados pro Full: o plano de envio não sugere mandar de novo o que já tem dia marcado. */
+  reservas: Map<string, ReservaDoProduto>;
   estoqueML: EstoqueML;
   forecast: Forecast;
   /** Unidades retidas no Full, por produto — vem de quem busca a gestão do Full. */
@@ -1951,6 +2072,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
       emTransitoNoFull,
       retidoSemVolta,
       emCasa: f.casa,
+      agendadoFull: reservas.get(p.id)?.reservado ?? 0,
       // Separados do total: a aba de envio precisa do Full sozinho.
       noFull: f.full,
       ehFull: f.ehFull,
@@ -1961,7 +2083,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio 
       /** Esteve à venda menos que a janela inteira — a tela explica a base. */
       parcial: diasBase < forecast.dias,
     };
-  }), [produtos, estoqueML, forecast, retencaoPorProduto]);
+  }), [produtos, estoqueML, forecast, retencaoPorProduto, reservas]);
 
   const plano = useMemo(
     () => montarPlanoReposicao(paraDominio, diasN, folgaN, { prazoFornecedorDias: prazoN, loteMinimo: loteN }),

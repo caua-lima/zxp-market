@@ -194,3 +194,58 @@ export function quandoFalta(data: string, hoje: string): string {
   if (n === -1) return "ontem";
   return n > 0 ? `em ${n} dias` : `há ${-n} dias`;
 }
+
+/** Os próximos `n` dias a partir de `hoje` (inclusive), em yyyy-mm-dd — atalhos de data. */
+export function proximosDias(hoje: string, n: number): string[] {
+  if (!dataValida(hoje)) return [];
+  const base = Date.parse(`${hoje}T00:00:00Z`);
+  return Array.from({ length: Math.max(0, n) }, (_, i) => new Date(base + i * 86400000).toISOString().slice(0, 10));
+}
+
+export type PlanoDoDestino =
+  | { acao: "nada" }
+  | { acao: "criar"; quantidade: number; data: string }
+  | { acao: "editar"; id: string; quantidade: number; data: string }
+  | { acao: "encerrar"; id: string; status: "enviado" | "cancelado" }
+  /** Há mais de um envio em aberto: o total não diz qual deles mudar. */
+  | { acao: "varios" }
+  | { acao: "invalido"; motivo: string };
+
+/**
+ * O que gravar pra o produto passar a ter `alvo` unidades destinadas ao Full
+ * (o restante em casa fica pras agências), no dia `data`.
+ *
+ * É a operação da tela "Destinação": a pessoa diz "199 pro Full" e não precisa
+ * saber se isso é criar, editar ou cancelar um envio. Pode ser refeita a
+ * qualquer hora — o estoque mudou, muda o destino.
+ *
+ * `alvo` é o que AINDA vai sair (o restante). Se parte do envio já foi baixada,
+ * a quantidade gravada soma o que já saiu, pra baixa feita não "desfazer" a reserva.
+ */
+export function planejarDestino(
+  reserva: ReservaDoProduto | null,
+  alvo: number,
+  data: string,
+  hoje: string,
+): PlanoDoDestino {
+  if (!Number.isInteger(alvo) || alvo < 0) return { acao: "invalido", motivo: "A quantidade precisa ser um número inteiro, zero ou mais." };
+  const abertos = (reserva?.envios ?? []).filter((e) => e.restante > 0);
+  if (abertos.length > 1) return { acao: "varios" };
+
+  if (abertos.length === 0) {
+    if (alvo === 0) return { acao: "nada" };
+    if (!dataValida(data)) return { acao: "invalido", motivo: "Informe o dia do envio (dia/mês/ano)." };
+    if (data < hoje) return { acao: "invalido", motivo: "Esse dia já passou. Agende a partir de hoje." };
+    return { acao: "criar", quantidade: alvo, data };
+  }
+
+  const [it] = abertos;
+  if (alvo === 0) return { acao: "encerrar", id: it.envio.id, status: it.atendido > 0 ? "enviado" : "cancelado" };
+
+  const dia = data || it.envio.data;
+  if (!dataValida(dia)) return { acao: "invalido", motivo: "Informe o dia do envio (dia/mês/ano)." };
+  if (dia !== it.envio.data && dia < hoje) return { acao: "invalido", motivo: "Esse dia já passou. Agende a partir de hoje." };
+  const quantidade = it.atendido + alvo;
+  if (quantidade === it.envio.quantidade && dia === it.envio.data) return { acao: "nada" };
+  return { acao: "editar", id: it.envio.id, quantidade, data: dia };
+}

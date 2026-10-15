@@ -529,12 +529,19 @@ export function watchEnviosAgendados(cb: (envios: EnvioFullAgendado[]) => void):
 }
 
 /** Agenda um envio. Recusa (com o motivo em português) o que não faz sentido. */
-export async function criarEnvioAgendado(e: NovoEnvio & { obs?: string }): Promise<string> {
+export async function criarEnvioAgendado(
+  e: NovoEnvio & { obs?: string },
+  /**
+   * Id fixo por abertura da tela: gravar de novo (retry depois de um timeout,
+   * duplo clique) cai no MESMO documento em vez de agendar o envio duas vezes.
+   */
+  id?: string,
+): Promise<string> {
   const hoje = hojeEmBrasilia();
   const erro = validarEnvio(e, hoje);
   if (erro) throw new Error(erro);
   const email = getCurrentUserEmail();
-  const ref = doc(sCol(ENVIO_COL));
+  const ref = id ? sDoc(ENVIO_COL, id) : doc(sCol(ENVIO_COL));
   const envio: EnvioFullAgendado = {
     id: ref.id,
     productId: e.productId,
