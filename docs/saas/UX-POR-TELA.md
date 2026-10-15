@@ -27,6 +27,7 @@ só se afirma o que foi conferido no código atual.
 | | Menos KPIs repetidos, velocímetros mais baixos | ◐ | Velocímetro compacto existe (`pg-compact`); revisão de quais KPIs repetem não foi feita |
 | Estoque | "Resolver agora", filtros por problema | ✓ | `lib/domain/estoque-situacao.ts`, `EstoqueTab` |
 | | Disponível por local; não somar anúncio próprio ao galpão | ✓ | `estoqueForaDoFull`, `consolidarEstoqueAnuncios` |
+| | Destinação do estoque em casa: Full × agências | ✓ novo | Vista “Full × Agências”: por produto, quantas unidades vão pro Full (e em que dia); o resto fica pras agências, com aviso quando o anúncio declara mais que o livre. Editável a qualquer hora (`lib/domain/envio-full-agendado.ts`, `planejarDestino`). A reserva é plano, não lançamento: não mexe no livro nem no custo médio, e se desfaz sozinha quando a saída pro Full é lançada. A entrada continua inteira (379), com campo opcional “parte já vai pro Full” que agenda junto. O plano de envio pro Full desconta o já agendado. Limite: o ML não expõe o agendamento da coleta pela API — o envio é registrado aqui. Sem anúncio no Full, “em casa” vem do anúncio, não do livro |
 | | Cobertura única | ✓ | `getCoverageStatus` compartilhado (S16) |
 | | Lead time, dias de segurança e lote mínimo configuráveis | ✓ novo | Prazo do fornecedor e lote mínimo no plano de reposição (`lib/domain/reposicao.ts`), aviso "acaba antes de a compra chegar" |
 | Ads | Receita atribuída/total, lucro após Ads, ROAS/ACOS/TACOS com base | ✓ | `components/tabs/ads/*` (`ads-explicacoes.ts`) |

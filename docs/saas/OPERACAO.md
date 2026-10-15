@@ -79,6 +79,11 @@ foi escrito pra funcionar com elas.
 4. Abra o app, **recarregue a página** (Ctrl+F5) e faça um teste simples:
    lance e depois exclua uma movimentação de estoque de teste. Tem que funcionar.
 
+> **Envios agendados pro Full** (aba Estoque › “Full × Agências”) usam uma coleção
+> nova, `full_envios_agendados`. **Sem publicar as regras, agendar dá “sem
+> permissão”** — o resto do app não é afetado. Quem edita estoque agenda; o member
+> não vê.
+
 **Se algo que funcionava passar a dar "sem permissão":** no console do Firebase
 (<https://console.firebase.google.com> → vazxpress-a2350 → Firestore →
 **Regras**) há o histórico de versões: escolha a anterior e clique em
