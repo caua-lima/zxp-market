@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { haQuantoTempo, prepararPedidosAoVivo, relogioBR, resumirAoVivo, ritmoVsOntem, type PedidoAoVivo } from "./ao-vivo";
+import { haQuantoTempo, prepararPedidosAoVivo, redigirOperacao, relogioBR, resumirAoVivo, ritmoVsOntem, type PedidoAoVivo } from "./ao-vivo";
 
 // 12/10/2026 14:30 em Brasília = 17:30 UTC.
 const AGORA = Date.parse("2026-10-12T14:30:00.000-03:00");
@@ -139,5 +139,73 @@ describe("ao vivo — a frase do ritmo", () => {
   it("o relógio é o de Brasília", () => {
     expect(relogioBR(AGORA)).toBe("14:30");
     expect(relogioBR(Date.parse("2026-10-12T02:05:00.000Z"))).toBe("23:05");
+  });
+});
+
+describe("ao vivo — compradores e produtos do dia", () => {
+  const item = (itemId: string, titulo: string, qty: number, valor: number) => ({ itemId, titulo, qty, valor });
+  const v = (id: string, quando: string, total: number, comprador: string, itens: ReturnType<typeof item>[], x: Partial<PedidoAoVivo> = {}): PedidoAoVivo =>
+    ({ orderId: id, dateCreated: quando, totalAmount: total, unidades: itens.reduce((s, i) => s + i.qty, 0), classe: "valida", compradorId: comprador, itens, ...x });
+
+  it("conta compradores DISTINTOS entre as vendas válidas de hoje", () => {
+    const r = resumirAoVivo([
+      v("1", "2026-10-12T09:00:00.000-03:00", 10, "A", [item("X", "x", 1, 10)]),
+      v("2", "2026-10-12T10:00:00.000-03:00", 10, "A", [item("X", "x", 1, 10)]),
+      v("3", "2026-10-12T11:00:00.000-03:00", 10, "B", [item("X", "x", 1, 10)]),
+      v("4", "2026-10-12T11:00:00.000-03:00", 10, "C", [item("X", "x", 1, 10)], { classe: "cancelada" }),
+      v("5", "2026-10-11T11:00:00.000-03:00", 10, "D", [item("X", "x", 1, 10)]),
+    ], AGORA);
+    expect(r.compradores).toBe(2);
+  });
+
+  it("ranqueia produtos por RECEITA, não por unidades, e soma pedidos e unidades", () => {
+    const r = resumirAoVivo([
+      v("1", "2026-10-12T09:00:00.000-03:00", 745, "A", [item("CARO", "Açaí", 1, 745)]),
+      v("2", "2026-10-12T10:00:00.000-03:00", 60, "B", [item("BARATO", "Erva", 6, 60)]),
+      v("3", "2026-10-12T11:00:00.000-03:00", 60, "C", [item("BARATO", "Erva", 6, 60)]),
+    ], AGORA);
+    expect(r.topProdutos.map((p) => p.itemId)).toEqual(["CARO", "BARATO"]);
+    expect(r.topProdutos[1]).toEqual({ itemId: "BARATO", titulo: "Erva", receita: 120, unidades: 12, pedidos: 2 });
+  });
+
+  it("cancelado e ontem não entram no ranking; o ranking tem no máximo 5", () => {
+    const itens = ["A", "B", "C", "D", "E", "F", "G"].map((id, i) => item(id, id, 1, 100 - i));
+    const r = resumirAoVivo([
+      ...itens.map((i, n) => v(String(n), "2026-10-12T09:00:00.000-03:00", i.valor, "c" + n, [i])),
+      v("c", "2026-10-12T09:00:00.000-03:00", 5000, "z", [item("CANC", "cancelado", 1, 5000)], { classe: "cancelada" }),
+      v("o", "2026-10-11T09:00:00.000-03:00", 5000, "z", [item("ONTEM", "ontem", 1, 5000)]),
+    ], AGORA);
+    expect(r.topProdutos.map((p) => p.itemId)).toEqual(["A", "B", "C", "D", "E"]);
+  });
+
+  it("empate de receita desempata pelo id (ranking estável)", () => {
+    const r = resumirAoVivo([
+      v("1", "2026-10-12T09:00:00.000-03:00", 10, "a", [item("B", "b", 1, 10)]),
+      v("2", "2026-10-12T09:00:00.000-03:00", 10, "b", [item("A", "a", 1, 10)]),
+    ], AGORA);
+    expect(r.topProdutos.map((p) => p.itemId)).toEqual(["A", "B"]);
+  });
+
+  it("prepararPedidosAoVivo leva comprador e itens (valor = preço × quantidade)", () => {
+    const [p] = prepararPedidosAoVivo([{
+      order_id: "1", status: "paid", date_created: "2026-10-12T10:00:00.000-03:00", total_amount: 90, buyer_id: 777,
+      items: [{ item_id: "MLB1", quantity: 3, title: "Erva", unit_price: 30 }],
+    }], new Set(), new Set());
+    expect(p.compradorId).toBe("777");
+    expect(p.itens).toEqual([{ itemId: "MLB1", titulo: "Erva", qty: 3, valor: 90 }]);
+  });
+});
+
+describe("ao vivo — o que o member não vê", () => {
+  const corpo = { visitas: 167, receita: 1260, topProdutos: [{ itemId: "A", estoque: 47 }, { itemId: "B", estoque: null }] };
+  it("quem vê a operação recebe tudo, intacto", () => {
+    expect(redigirOperacao(corpo, true)).toBe(corpo);
+  });
+  it("quem não vê: visitas e estoque viram null (nunca zero) e o resto fica", () => {
+    const r = redigirOperacao(corpo, false);
+    expect(r.visitas).toBeNull();
+    expect(r.topProdutos).toEqual([{ itemId: "A", estoque: null }, { itemId: "B", estoque: null }]);
+    expect(r.receita).toBe(1260);
+    expect(corpo.visitas).toBe(167); // não mutou o original (o cache guarda a versão completa)
   });
 });

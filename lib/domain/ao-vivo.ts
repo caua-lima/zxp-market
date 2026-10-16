@@ -38,7 +38,13 @@ export type PedidoAoVivo = {
   classe: "valida" | "cancelada" | "devolvida";
   /** Título do item principal — só pra "última venda". */
   titulo?: string;
+  /** Quem comprou — pra contar compradores distintos. */
+  compradorId?: string;
+  /** Os itens do pedido, pra ranquear os produtos do dia. `valor` = preço × quantidade. */
+  itens?: { itemId: string; titulo: string; qty: number; valor: number }[];
 };
+
+export type ProdutoAoVivo = { itemId: string; titulo: string; receita: number; unidades: number; pedidos: number };
 
 export type TotalAoVivo = { vendas: number; pedidos: number; unidades: number };
 
@@ -53,7 +59,14 @@ export type ResumoAoVivo = {
   /** Vendas por hora do dia (24 posições), hoje e ontem — o desenho do ritmo. */
   porHora: { hoje: number[]; ontem: number[] };
   ultimaVenda: { em: number; valor: number; titulo: string } | null;
+  /** Compradores distintos entre as vendas válidas de hoje. */
+  compradores: number;
+  /** Os produtos que mais faturaram hoje (no máximo 5), por receita. */
+  topProdutos: ProdutoAoVivo[];
 };
+
+/** Quantos produtos o ranking do dia mostra. */
+export const TOP_PRODUTOS = 5;
 
 /** Dia (AAAA-MM-DD) e milissegundos desde a meia-noite, em Brasília. */
 function noFusoBR(ms: number): { dia: string; doDia: number } {
@@ -74,6 +87,8 @@ export function resumirAoVivo(pedidos: readonly PedidoAoVivo[], agoraMs: number)
   const ontemInteiro = zero();
   const porHora = { hoje: Array<number>(24).fill(0), ontem: Array<number>(24).fill(0) };
   let ultimaVenda: ResumoAoVivo["ultimaVenda"] = null;
+  const compradores = new Set<string>();
+  const porProduto = new Map<string, ProdutoAoVivo>();
 
   const somar = (t: TotalAoVivo, p: PedidoAoVivo) => {
     t.vendas += p.totalAmount;
@@ -99,6 +114,15 @@ export function resumirAoVivo(pedidos: readonly PedidoAoVivo[], agoraMs: number)
       somar(hoje, p);
       porHora.hoje[hora] += p.totalAmount;
       if (!ultimaVenda || ms > ultimaVenda.em) ultimaVenda = { em: ms, valor: p.totalAmount, titulo: p.titulo ?? "" };
+      if (p.compradorId) compradores.add(p.compradorId);
+      for (const it of p.itens ?? []) {
+        if (!it.itemId) continue;
+        const atual = porProduto.get(it.itemId) ?? { itemId: it.itemId, titulo: it.titulo, receita: 0, unidades: 0, pedidos: 0 };
+        atual.receita += it.valor;
+        atual.unidades += it.qty;
+        atual.pedidos += 1;
+        porProduto.set(it.itemId, atual);
+      }
     } else {
       somar(ontemInteiro, p);
       porHora.ontem[hora] += p.totalAmount;
@@ -111,6 +135,11 @@ export function resumirAoVivo(pedidos: readonly PedidoAoVivo[], agoraMs: number)
     dia: agora.dia,
     horaAtual: Math.floor(agora.doDia / HORA_MS),
     hoje, ontemAteAgora, ontemInteiro, porHora, ultimaVenda,
+    compradores: compradores.size,
+    // Receita igual desempata pelo id: o ranking não pode dançar entre duas leituras.
+    topProdutos: [...porProduto.values()]
+      .sort((a, b) => b.receita - a.receita || a.itemId.localeCompare(b.itemId))
+      .slice(0, TOP_PRODUTOS),
   };
 }
 
@@ -131,7 +160,7 @@ export type PedidoBrutoAoVivo = {
   total_amount?: unknown;
   pack_id?: unknown;
   buyer_id?: unknown;
-  items?: { item_id?: unknown; quantity?: unknown; title?: unknown }[];
+  items?: { item_id?: unknown; quantity?: unknown; title?: unknown; unit_price?: unknown }[];
 };
 
 /**
@@ -178,6 +207,13 @@ export function prepararPedidosAoVivo(
       unidades: itens.reduce((s, it) => s + Number(it.quantity ?? 1), 0),
       classe,
       titulo: String(itens[0]?.title ?? ""),
+      compradorId: o.buyer_id ? String(o.buyer_id) : undefined,
+      itens: itens.map((it) => ({
+        itemId: String(it.item_id ?? ""),
+        titulo: String(it.title ?? ""),
+        qty: Number(it.quantity ?? 1),
+        valor: (Number(it.unit_price ?? 0) || 0) * Number(it.quantity ?? 1),
+      })),
     });
   }
   return saida;
@@ -206,4 +242,17 @@ export function ritmoVsOntem(hoje: number, ontemAteAgora: number, relogio: strin
 export function relogioBR(ms: number): string {
   const m = Math.floor(noFusoBR(ms).doDia / 60_000);
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Visitas e estoque por produto são da OPERAÇÃO (`ver_operacao`); o `member` vê
+ * só o resultado. Sai da resposta como `null` — ausência, nunca zero: "0 visitas"
+ * é um fato falso sobre a conta, "sem acesso" é só a verdade.
+ */
+export function redigirOperacao<T extends { visitas: number | null; topProdutos: { estoque: number | null }[] }>(
+  corpo: T,
+  veOperacao: boolean,
+): T {
+  if (veOperacao) return corpo;
+  return { ...corpo, visitas: null, topProdutos: corpo.topProdutos.map((p) => ({ ...p, estoque: null })) };
 }

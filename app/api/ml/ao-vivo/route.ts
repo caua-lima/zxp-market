@@ -3,9 +3,10 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
 import { devolucaoConcluida } from "@/lib/domain/devolucao-estado";
 import { diaBRDe, recortarPorDiaBR } from "@/lib/domain/periodo-br";
-import { prepararPedidosAoVivo, resumirAoVivo, type ResumoAoVivo } from "@/lib/domain/ao-vivo";
+import { prepararPedidosAoVivo, redigirOperacao, resumirAoVivo, type ProdutoAoVivo, type ResumoAoVivo } from "@/lib/domain/ao-vivo";
 import { fetchOrdersLive, loadOrders } from "@/lib/ml/orders";
 import { getMlAccessToken } from "../token";
+import { sellerIdAtual } from "@/lib/ml/vendedor";
 
 export const maxDuration = 20;
 
@@ -22,11 +23,19 @@ export const maxDuration = 20;
  * dias. A regra de venda válida é a MESMA do Dashboard
  * (lib/domain/ao-vivo.ts → classificarVenda), pra os dois nunca discordarem.
  *
- * Só faturamento e contagem: nada de custo, margem ou lucro. Por isso o
- * `member` também recebe (`ver_resumo`), sem redação.
+ * Faturamento e contagem: nada de custo, margem ou lucro. Por isso o `member`
+ * também recebe (`ver_resumo`). Visitas e estoque por produto são da OPERAÇÃO
+ * (`ver_operacao`): saem da resposta de quem não tem — ausência, nunca zero.
  */
 
-type Corpo = ResumoAoVivo & { fonte: "ml" | "banco"; atualizadoEm: number };
+type ProdutoDoDia = ProdutoAoVivo & { imagem: string | null; estoque: number | null };
+type Corpo = Omit<ResumoAoVivo, "topProdutos"> & {
+  topProdutos: ProdutoDoDia[];
+  /** Visitas de hoje (API do ML, não deduplicadas por visitante). `null` = não consegui perguntar. */
+  visitas: number | null;
+  fonte: "ml" | "banco";
+  atualizadoEm: number;
+};
 
 /** Por empresa: o cache é do processo, e duas empresas dividem o mesmo processo. */
 const cache = new Map<string, { at: number; body: Corpo }>();
@@ -34,6 +43,48 @@ const TTL_ML = 45 * 1000;
 /** Sem o ML, cada leitura é paga no Firestore e o dado nem é ao vivo: segura mais. */
 const TTL_BANCO = 5 * 60 * 1000;
 const TTL_URGENTE = 10 * 1000;
+
+const ML_API = "https://api.mercadolibre.com";
+
+/** Visitas de hoje. `null` quando o ML não responde — "ninguém visitou" é outra coisa. */
+async function visitasDeHoje(token: string, sellerId: string, hoje: string): Promise<number | null> {
+  try {
+    const r = await fetch(`${ML_API}/users/${sellerId}/items_visits/time_window?last=2&unit=day`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store",
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!r.ok) return null;
+    const j = (await r.json()) as { results?: { date?: string; total?: number }[] };
+    const dia = (j.results ?? []).find((d) => String(d?.date ?? "").slice(0, 10) === hoje);
+    return dia ? Number(dia.total ?? 0) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Foto e estoque dos anúncios do ranking, numa chamada só. Sem resposta, o ranking vai sem foto. */
+async function detalhesDosAnuncios(token: string, ids: string[]): Promise<Map<string, { imagem: string | null; estoque: number | null }>> {
+  const mapa = new Map<string, { imagem: string | null; estoque: number | null }>();
+  if (ids.length === 0) return mapa;
+  try {
+    const r = await fetch(`${ML_API}/items?ids=${ids.join(",")}&attributes=id,thumbnail,secure_thumbnail,available_quantity`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store",
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!r.ok) return mapa;
+    const lista = (await r.json()) as { code?: number; body?: { id?: string; thumbnail?: string; secure_thumbnail?: string; available_quantity?: number } }[];
+    for (const e of lista) {
+      if (e.code !== 200 || !e.body?.id) continue;
+      const foto = String(e.body.secure_thumbnail || e.body.thumbnail || "");
+      mapa.set(e.body.id, {
+        // Só https: a foto vai pra <img> numa página https.
+        imagem: foto.startsWith("https://") ? foto : foto.startsWith("http://") ? foto.replace("http://", "https://") : null,
+        estoque: Number.isFinite(Number(e.body.available_quantity)) ? Number(e.body.available_quantity) : null,
+      });
+    }
+  } catch { /* sem foto, o ranking continua */ }
+  return mapa;
+}
 
 function diaBR(ms: number): string {
   const d = new Date(ms - 3 * 3600 * 1000);
@@ -56,7 +107,7 @@ export async function GET(req: Request) {
     const urgente = new URL(req.url).searchParams.get("fresh") === "1";
     const validade = urgente ? TTL_URGENTE : guardado?.body.fonte === "ml" ? TTL_ML : TTL_BANCO;
     if (guardado && agora - guardado.at < validade) {
-      return NextResponse.json({ ...guardado.body, doCache: true });
+      return NextResponse.json({ ...redigirOperacao(guardado.body, gate.pode("ver_operacao")), doCache: true });
     }
 
     const db = getAdminDb();
@@ -97,12 +148,28 @@ export async function GET(req: Request) {
       ...prepararPedidosAoVivo(recortarPorDiaBR(pedidos, hoje, hoje).dentro, cancelIds, devolIds),
     ];
 
-    const body: Corpo = { ...resumirAoVivo(classificados, agora), fonte, atualizadoEm: agora };
+    const resumo = resumirAoVivo(classificados, agora);
+    // Visitas e fotos só existem com o ML respondendo: sem token, ficam de fora (null).
+    const sellerId = token ? String(await sellerIdAtual()) : "";
+    const [visitas, detalhes] = token
+      ? await Promise.all([
+          visitasDeHoje(token, sellerId, hoje),
+          detalhesDosAnuncios(token, resumo.topProdutos.map((p) => p.itemId)),
+        ])
+      : [null, new Map<string, { imagem: string | null; estoque: number | null }>()];
+
+    const body: Corpo = {
+      ...resumo,
+      topProdutos: resumo.topProdutos.map((p) => ({ ...p, imagem: detalhes.get(p.itemId)?.imagem ?? null, estoque: detalhes.get(p.itemId)?.estoque ?? null })),
+      visitas,
+      fonte,
+      atualizadoEm: agora,
+    };
     cache.set(chave, { at: agora, body });
     // O dia virou: o que ficou do dia anterior não serve mais pra ninguém.
     for (const k of cache.keys()) if (!k.endsWith(`|${hoje}`)) cache.delete(k);
 
-    return NextResponse.json(body);
+    return NextResponse.json(redigirOperacao(body, gate.pode("ver_operacao")));
   } catch (e) {
     console.error("[ao-vivo]", e instanceof Error ? e.message : e);
     return NextResponse.json({ error: "ao_vivo_indisponivel" }, { status: 500 });

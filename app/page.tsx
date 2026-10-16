@@ -700,7 +700,7 @@ function AppShell() {
               <MlAccountStatus />
             </div>
           </header>
-          <BarraAoVivo onAbrir={() => setTab("dashboard")} />
+          <BarraAoVivo />
           </div>
 
           {/* Tab content */}
