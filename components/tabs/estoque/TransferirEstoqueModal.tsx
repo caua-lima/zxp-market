@@ -89,7 +89,7 @@ export default function TransferirEstoqueModal({
   return (
     <Modal open onClose={onClose} titulo="Transferir estoque" confirmarDescarte={sujo && !saving}>
       <div className="modal-title">Transferir estoque</div>
-      <div className="modal-sub">de <b>{origem.name || "Sem nome"}</b> · {origem.qtdLocal ?? 0} un em casa</div>
+      <div className="modal-sub">de <b>{origem.name || "Sem nome"}</b> · {origem.qtdLocal ?? 0} un em casa <span style={{ color: "var(--muted)" }}>(pelo livro)</span></div>
 
       <div style={{ fontSize: ".82rem", color: "var(--muted)", marginBottom: 10, lineHeight: 1.5 }}>
         Move unidades pro <b>mesmo produto em outro anúncio</b> (agências ↔ Full). Sai de um estoque e entra no outro num lançamento só,

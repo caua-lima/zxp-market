@@ -31,7 +31,7 @@ import DestinacaoPanel from "@/components/tabs/estoque/Destinacao";
 import TransferirEstoqueModal from "@/components/tabs/estoque/TransferirEstoqueModal";
 import { AgendarEnvioModal, EnviosAgendadosPainel, ResumoDisponibilidade, novoIdDeEnvio, useReservasFull } from "@/components/tabs/estoque/EnviosAgendados";
 import { criarEnvioAgendado } from "@/lib/firebase/data";
-import { canalOposto, gruposExistentes, ROTULO_CANAL, sugerirCanal, sugerirGrupo, sugerirVersao, type Canal } from "@/lib/domain/grupo-produto";
+import { agruparProdutos, canalOposto, gruposExistentes, ROTULO_CANAL, sugerirCanal, sugerirGrupo, sugerirVersao, type Canal } from "@/lib/domain/grupo-produto";
 import { disponivelParaAgencias, proximosDias, rotuloDoDia, validarEnvio, type ReservaDoProduto } from "@/lib/domain/envio-full-agendado";
 import ImpostoMassaModal from "@/components/tabs/estoque/ImpostoMassaModal";
 import VincularSkuModal from "@/components/tabs/estoque/VincularSkuModal";
@@ -239,6 +239,26 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
   }), [data.products, estoqueML, forecast, duplicadasPorProduto]);
 
   const porId = useMemo(() => new Map(paraSituacao.map((x) => [x.id, x])), [paraSituacao]);
+
+  /**
+   * O estoque do MESMO produto nos dois anúncios, somado: cada cadastro mostra o
+   * seu (é assim que o controle é separado), e a linha diz quanto há juntos —
+   * "Limão Caipira: 150 no Full + 130 nas agências = 280".
+   */
+  const grupoInfoPorId = useMemo(() => {
+    const mapa = new Map<string, { nome: string; cadastros: number; totalUn: number; partes: string[] }>();
+    for (const g of agruparProdutos(data.products.filter((p) => p.ativo))) {
+      if (g.produtos.length < 2) continue;
+      const un = (p: Product) => { const f = fullDe(p, estoqueML); return f.qtd + estoqueForaDoFull(Math.max(p.qtdLocal ?? 0, 0), f.proprio, f.ehFull); };
+      const info = {
+        nome: g.nome, cadastros: g.produtos.length,
+        totalUn: g.produtos.reduce((s, p) => s + un(p), 0),
+        partes: g.produtos.map((p) => `${un(p)} ${p.canal ? ROTULO_CANAL[p.canal] : (p.sku || p.name || "cadastro")}`),
+      };
+      for (const p of g.produtos) mapa.set(p.id, info);
+    }
+    return mapa;
+  }, [data.products, estoqueML]);
 
 
   const sinaisContados = useMemo(() => contarSinais(paraSituacao), [paraSituacao]);
@@ -755,6 +775,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
                     onAgencias={() => setAgenciasProduct(p)}
                     onAgendar={() => setAgendarProduct(p)}
                     onTransferir={() => setTransferirDe(p)}
+                    grupoInfo={grupoInfoPorId.get(p.id) ?? null}
                     onVersao={() => {
                       const f = fullDe(p, estoqueML);
                       const atual: Canal | null = p.canal ?? (f.ehFull ? "full" : f.proprio > 0 ? "agencias" : null);
@@ -762,7 +783,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
                       const v = sugerirVersao(p, destino);
                       setVersao({
                         origem: p,
-                        novo: { id: newId(), name: v.nome, sku: v.sku, grupo: v.grupo, canal: destino, custo: String(custoMedioDe(p) || p.custo || ""), imposto: p.imposto, mlbs: [""], ativo: true },
+                        novo: { id: newId(), name: v.nome, sku: v.sku, grupo: v.grupo, canal: destino, custo: String(custoMedioDe(p) || p.custo || ""), ...(p.imposto ? { imposto: p.imposto } : {}), mlbs: [""], ativo: true },
                       });
                     }}
                     reserva={reservas.get(p.id) ?? null}
@@ -1066,7 +1087,7 @@ function MovimentacoesPanel({ movimentos, produtos, busca, pagina, onPagina, tru
   );
 }
 function ProductRow({
-  product, estoqueML, expanded, onToggle, onEdit, onMov, onAgencias, onAgendar, onTransferir, onVersao, reserva, duplicadas = 0, situacao = null,
+  product, estoqueML, expanded, onToggle, onEdit, onMov, onAgencias, onAgendar, onTransferir, onVersao, grupoInfo, reserva, duplicadas = 0, situacao = null,
 }: {
   product: Product;
   uid: string;
@@ -1083,6 +1104,8 @@ function ProductRow({
   onAgendar: () => void;
   /** Move estoque pro mesmo produto em outro anúncio (agências ↔ Full). */
   onTransferir: () => void;
+  /** O mesmo produto em outro anúncio: o estoque dos dois somado. */
+  grupoInfo: { nome: string; cadastros: number; totalUn: number; partes: string[] } | null;
   /** Abre o cadastro do mesmo produto no outro canal (Full ↔ agências). */
   onVersao: () => void;
   /** Envios agendados pro Full que ainda seguram unidades deste produto. */
@@ -1125,6 +1148,11 @@ function ProductRow({
                   </span>
                 ))}
               </div>
+              {grupoInfo && (
+                <div style={{ marginTop: 3, fontSize: ".75rem", color: "var(--muted)" }} title={`Os ${grupoInfo.cadastros} cadastros do grupo “${grupoInfo.nome}” são o mesmo produto em anúncios diferentes.`}>
+                  Grupo <b style={{ color: "var(--text)" }}>{grupoInfo.nome}</b> · {grupoInfo.partes.join(" + ")} = <b style={{ color: "var(--text)" }}>{grupoInfo.totalUn} un</b> juntos
+                </div>
+              )}
               <button
                 type="button" className="tr-fin-btn" aria-expanded={verFinanceiro}
                 onClick={() => setVerFinanceiro((v) => !v)}
@@ -1187,6 +1215,15 @@ function ProductRow({
               parece erro de cálculo. Mostramos o tamanho exato da diferença em
               vez de descontar na tela: a baixa é lançamento de verdade (mexe no
               custo médio), e corrigir só aqui faria o painel discordar do livro. */}
+          {/* Sem Full, "Em casa" é o que o ANÚNCIO declara; o livro (entradas − saídas − transferências) pode diferir — e é ele que a transferência usa. */}
+          {!ehFull && proprio > 0 && casa !== proprio && (
+            <span
+              title="Saldo pelo livro de movimentações (entradas − saídas − transferências), sem contar vendas. O número acima é o que o anúncio declara no ML. É o do livro que vale pra transferir estoque."
+              style={{ display: "block", fontSize: ".75rem", color: "var(--muted)", fontWeight: 400, cursor: "help" }}
+            >
+              livro: {casa} un
+            </span>
+          )}
           {duplicadas > 0 && (
             <span
               title={`${duplicadas} unidade(s) já chegaram no Full mas a baixa não foi lançada, então continuam contadas aqui TAMBÉM. O total deste produto está inflado nessas unidades. Resolva na aba Full › Remessas pro Full.`}

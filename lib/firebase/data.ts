@@ -274,7 +274,8 @@ export function watchProducts(
 
 export async function upsertProduct(_uid: string, product: Product) {
   const email = getCurrentUserEmail();
-  await setDoc(sDoc("estoque", product.id), { ...product, createdBy: email });
+  // Campo opcional ausente é `undefined` no objeto, e o Firestore recusa — sai antes de gravar.
+  await setDoc(sDoc("estoque", product.id), sanitizeUndefined({ ...product, createdBy: email }));
   invalidar(CHAVE_PRODUTOS);
 }
 
