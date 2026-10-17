@@ -199,6 +199,14 @@ export type Product = {
   impostoFaixas?: ImpostoFaixa[];
   mlb?: string;              // 1º código MLB (compat); ver mlbs
   mlbs?: string[];           // vários anúncios (MLB) do mesmo produto
+  /**
+   * O MESMO produto em outro anúncio: "Limão Caipira" (Full) e "Limão Caipira
+   * Agências" têm cada um o seu SKU e o seu estoque, e o mesmo `grupo`. É o elo
+   * que deixa as análises somarem Full + agências. Ver lib/domain/grupo-produto.ts.
+   */
+  grupo?: string;
+  /** De que lado do estoque este cadastro está. O fato (logística do anúncio no ML) vale mais, quando existe. */
+  canal?: "full" | "agencias";
   ativo: boolean;
   createdBy?: string;
   // Calculados pelo livro de movimentações (média móvel ponderada):
