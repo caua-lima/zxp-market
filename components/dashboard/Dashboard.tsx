@@ -3,6 +3,7 @@
 import ChecklistDeAtivacao from "@/components/dashboard/ChecklistDeAtivacao";
 import ColetaFullDoPeriodo from "@/components/dashboard/ColetaFullDoPeriodo";
 import CurvaABC from "@/components/dashboard/CurvaABC";
+import VendasPorCanal from "@/components/dashboard/VendasPorCanal";
 import type { VendaBrutaDoAnuncio } from "@/lib/domain/vendas-brutas";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { BUSCA_INICIAL, corpoEhSucesso, criarSequenciador, registrarFalha, registrarSucesso } from "@/lib/domain/resposta-tardia";
@@ -2351,6 +2352,9 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
 
           {/* Melhores dias da semana */}
           <MelhoresDias serie={melhoresDiasMetrics?.serieDiaria ?? []} from={melhoresDiasMetrics?.from} to={melhoresDiasMetrics?.to} />
+
+          {/* O mesmo produto nos dois anúncios: só agências, só Full e os dois juntos */}
+          <VendasPorCanal curvaBruta={mlMetrics?.curvaBruta} produtos={data.products} />
 
           {/* Curva ABC: vendas brutas e lucro (mesma classificação) */}
           <CurvaABC
