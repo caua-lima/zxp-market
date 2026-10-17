@@ -30,6 +30,7 @@ import EntradaMassaModal from "@/components/tabs/estoque/EntradaMassaModal";
 import DestinacaoPanel from "@/components/tabs/estoque/Destinacao";
 import { AgendarEnvioModal, EnviosAgendadosPainel, ResumoDisponibilidade, novoIdDeEnvio, useReservasFull } from "@/components/tabs/estoque/EnviosAgendados";
 import { criarEnvioAgendado } from "@/lib/firebase/data";
+import { canalOposto, gruposExistentes, ROTULO_CANAL, sugerirCanal, sugerirGrupo, sugerirVersao, type Canal } from "@/lib/domain/grupo-produto";
 import { disponivelParaAgencias, proximosDias, rotuloDoDia, validarEnvio, type ReservaDoProduto } from "@/lib/domain/envio-full-agendado";
 import ImpostoMassaModal from "@/components/tabs/estoque/ImpostoMassaModal";
 import VincularSkuModal from "@/components/tabs/estoque/VincularSkuModal";
@@ -96,6 +97,8 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
   const [entradaMassa, setEntradaMassa] = useState(false);
   const [agenciasProduct, setAgenciasProduct] = useState<Product | null>(null);
   const [agendarProduct, setAgendarProduct] = useState<Product | null>(null);
+  /** Cadastro do MESMO produto em outro anúncio: o novo produto e de qual ele nasceu. */
+  const [versao, setVersao] = useState<{ novo: Product; origem: Product } | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   useEffect(() => {
     if (!expanded) return;
@@ -749,6 +752,16 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
                     onMov={(tipo) => setMovModal({ product: p, tipo })}
                     onAgencias={() => setAgenciasProduct(p)}
                     onAgendar={() => setAgendarProduct(p)}
+                    onVersao={() => {
+                      const f = fullDe(p, estoqueML);
+                      const atual: Canal | null = p.canal ?? (f.ehFull ? "full" : f.proprio > 0 ? "agencias" : null);
+                      const destino: Canal = atual ? canalOposto(atual) : "agencias";
+                      const v = sugerirVersao(p, destino);
+                      setVersao({
+                        origem: p,
+                        novo: { id: newId(), name: v.nome, sku: v.sku, grupo: v.grupo, canal: destino, custo: String(custoMedioDe(p) || p.custo || ""), imposto: p.imposto, mlbs: [""], ativo: true },
+                      });
+                    }}
                     reserva={reservas.get(p.id) ?? null}
                     duplicadas={duplicadasPorProduto.get(p.id) ?? 0}
                   />
@@ -777,10 +790,32 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
         <VincularSkuModal uid={uid} produtos={data.products} onClose={() => setVincularSku(false)} />
       )}
 
+      {versao && (
+        <ProductModal
+          product={versao.novo}
+          isNew
+          todosProdutos={data.products}
+          onClose={() => setVersao(null)}
+          onSave={async (prod) => {
+            await upsertProduct(uid, prod);
+            // O elo vale pros DOIS lados: se o original ainda não tinha grupo, ganha o mesmo.
+            if (!(versao.origem.grupo ?? "").trim() && prod.grupo) {
+              await upsertProduct(uid, { ...versao.origem, grupo: prod.grupo, canal: versao.origem.canal ?? (prod.canal ? canalOposto(prod.canal) : undefined) });
+            }
+            logAudit({
+              acao: "criar", entidade: "produto", entidadeId: prod.id, entidadeLabel: prod.name || "(sem nome)",
+              detalhe: `versão ${prod.canal ? ROTULO_CANAL[prod.canal] : "outro anúncio"} de ${versao.origem.name}`,
+            }).catch(() => {});
+            setVersao(null);
+          }}
+        />
+      )}
+
       {editProduct && (
         <ProductModal
           product={editProduct}
           isNew={!data.products.some((p) => p.id === editProduct.id)}
+          todosProdutos={data.products}
           onClose={() => setEditProduct(null)}
           onSave={async (prod) => {
             const ehNovo = !data.products.some((p) => p.id === prod.id);
@@ -1018,7 +1053,7 @@ function MovimentacoesPanel({ movimentos, produtos, busca, pagina, onPagina, tru
   );
 }
 function ProductRow({
-  product, estoqueML, expanded, onToggle, onEdit, onMov, onAgencias, onAgendar, reserva, duplicadas = 0, situacao = null,
+  product, estoqueML, expanded, onToggle, onEdit, onMov, onAgencias, onAgendar, onVersao, reserva, duplicadas = 0, situacao = null,
 }: {
   product: Product;
   uid: string;
@@ -1033,6 +1068,8 @@ function ProductRow({
   onMov: (tipo: MovimentoTipo) => void;
   onAgencias: () => void;
   onAgendar: () => void;
+  /** Abre o cadastro do mesmo produto no outro canal (Full ↔ agências). */
+  onVersao: () => void;
   /** Envios agendados pro Full que ainda seguram unidades deste produto. */
   reserva: ReservaDoProduto | null;
 }) {
@@ -1214,6 +1251,7 @@ function ProductRow({
             {proprio > 0 && (
               <button type="button" className="btn btn-ghost btn-xs" title="Ver o estoque de cada anúncio fora do Full (envio por conta sua/agência)" onClick={onAgencias}>Agências</button>
             )}
+            <button type="button" className="btn btn-ghost btn-xs" title="Cadastra o MESMO produto no outro tipo de anúncio (Full ↔ agências), com SKU e estoque próprios, ligados pelo grupo" onClick={onVersao}>＋ Outro anúncio</button>
             <button type="button" className="btn btn-warning btn-xs" title="Editar produto" onClick={onEdit}>Editar</button>
             <button type="button" className="btn btn-danger btn-xs" title="Remover produto" onClick={() => {
               if (!confirm(`Remover "${product.name}"?`)) return;
@@ -1766,7 +1804,7 @@ function PrevisaoPanel({ products, estoqueML, forecast }: { products: Product[];
   );
 }
 
-export function ProductModal({ product: initial, isNew, onClose, onSave }: { product: Product; isNew: boolean; onClose: () => void; onSave: (p: Product) => Promise<void> }) {
+export function ProductModal({ product: initial, isNew, onClose, onSave, todosProdutos = [] }: { product: Product; isNew: boolean; onClose: () => void; onSave: (p: Product) => Promise<void>; /** Pra sugerir os grupos que já existem. */ todosProdutos?: Product[] }) {
   const [p, setP] = useState<Product>({ ...initial, mlbs: mlbsDe(initial).length ? mlbsDe(initial) : [""] });
   // Custo do estoque atual (custo médio efetivo). É o ponto de partida do blend.
   const [custoStr, setCustoStr] = useState(
@@ -1802,6 +1840,9 @@ export function ProductModal({ product: initial, isNew, onClose, onSave }: { pro
     const cleaned = mlbs.map((m) => m.trim()).filter(Boolean);
     // O custo digitado vira o custo médio efetivo (base do estoque atual).
     const saveObj: Product = { ...p, mlbs: cleaned, mlb: cleaned[0] ?? "", custo: custoStr };
+    // Grupo em branco ou canal "não definido" saem do documento em vez de gravar texto vazio.
+    if (!(saveObj.grupo ?? "").trim()) delete saveObj.grupo; else saveObj.grupo = saveObj.grupo!.trim();
+    if (!saveObj.canal) delete saveObj.canal;
     if (custoStr.trim()) saveObj.custoMedio = parseNum(custoStr);
     else delete saveObj.custoMedio;
 
@@ -1858,6 +1899,45 @@ export function ProductModal({ product: initial, isNew, onClose, onSave }: { pro
         <label htmlFor="produto-sku">SKU (código interno)</label>
         <input id="produto-sku" type="text" placeholder="Ex: 250" value={p.sku ?? ""} onChange={(e) => set({ sku: e.target.value })} />
         <div className="hint">Deve ser <strong>idêntico</strong> ao <code>sku</code> que aparece nos pedidos do ML.</div>
+      </div>
+
+      {/*
+        O mesmo produto em outro anúncio (Full × agências): cada um com o seu SKU
+        e o seu estoque, ligados pelo grupo. Sem isso as análises tratam
+        "Limão Caipira" e "Limão Caipira Agências" como dois produtos sem relação.
+      */}
+      <div className="config-field">
+        <label htmlFor="produto-grupo">Grupo — o mesmo produto em outro anúncio (opcional)</label>
+        <input
+          id="produto-grupo" type="text" list="produto-grupos" placeholder="Ex: Limão Caipira"
+          value={p.grupo ?? ""} onChange={(e) => set({ grupo: e.target.value })}
+        />
+        <datalist id="produto-grupos">
+          {gruposExistentes(todosProdutos).map((g) => <option key={g} value={g} />)}
+        </datalist>
+        {!(p.grupo ?? "").trim() && p.name.trim() && sugerirGrupo(p.name) !== p.name.trim() && (
+          <button type="button" className="btn btn-ghost btn-xs" style={{ marginTop: 6 }} onClick={() => set({ grupo: sugerirGrupo(p.name), canal: p.canal ?? sugerirCanal(p.name) ?? undefined })}>
+            Usar “{sugerirGrupo(p.name)}”
+          </button>
+        )}
+        <div className="hint">
+          Dê o <strong>mesmo grupo</strong> aos cadastros do mesmo produto (ex.: o do Full e o das agências). Cada um mantém o
+          seu SKU e o seu estoque; o grupo só liga os dois pra análise somar as vendas.
+        </div>
+      </div>
+
+      <div className="config-field">
+        <label htmlFor="produto-canal">Canal deste cadastro</label>
+        <select
+          id="produto-canal" value={p.canal ?? ""}
+          onChange={(e) => set({ canal: (e.target.value || undefined) as Product["canal"] })}
+          style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "9px 12px", color: "var(--text)", fontSize: ".9rem", outline: "none" }}
+        >
+          <option value="">Não definido</option>
+          <option value="full">Full</option>
+          <option value="agencias">Agências</option>
+        </select>
+        <div className="hint">Se o anúncio já informa a logística (Full ou não), o app usa essa — este campo vale quando o ML não responde.</div>
       </div>
 
       <div className="config-field">
