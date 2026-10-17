@@ -36,6 +36,7 @@ import { assinarComCache, definirEscopoDoCache, invalidar } from "./cache";
 import { recomputeProdutoComVersao } from "./estoque-recompute";
 import { paginaApos } from "./paginas";
 import {
+  criarTransferenciaAuditada,
   criarMovimentoAuditado,
   editarMovimentoAuditado,
   excluirMovimentoAuditado,
@@ -43,6 +44,7 @@ import {
 } from "./movimento-auditado";
 import { patchCusto, patchData, patchIgnorar, patchReabrir, type ContextoDaRemessa } from "@/lib/domain/remessa-full";
 import { lerFonteDaColeta } from "./coleta-full";
+import type { PlanoDaTransferencia } from "@/lib/domain/transferencia-estoque";
 import { validarEnvio, type EnvioFullAgendado, type NovoEnvio, type StatusEnvioAgendado } from "@/lib/domain/envio-full-agendado";
 import { definirNomeDaEmpresa } from "@/lib/marca";
 
@@ -617,6 +619,37 @@ export async function addMovimento(
   invalidar(CHAVE_MOV);
   invalidar("estoque_movimentos:recentes");
   invalidar(CHAVE_PRODUTOS); // recomputeProduto mexe em qtdLocal/custoMedio
+}
+
+/**
+ * Transfere estoque entre dois cadastros do mesmo produto (ver
+ * lib/domain/transferencia-estoque.ts): as duas pernas e os dois registros de
+ * auditoria vão num lote só, e depois cada produto tem o custo e o saldo
+ * refeitos do livro. Ids fixos por abertura da tela: repetir cai nos mesmos
+ * documentos.
+ */
+export async function transferirEstoque(plano: Extract<PlanoDaTransferencia, { ok: true }>, nomes: { de: string; para: string }): Promise<void> {
+  const email = getCurrentUserEmail();
+  const { saida, entrada } = plano;
+  await criarTransferenciaAuditada(getFirebase().db, [saida, entrada], email, [
+    { entidadeLabel: `${nomes.de} · Transferência`, detalhe: `${-saida.quantidade} un para ${nomes.para}` },
+    { entidadeLabel: `${nomes.para} · Transferência`, detalhe: `${entrada.quantidade} un de ${nomes.de}${plano.custoUnit != null ? ` a ${plano.custoUnit}` : ""}` },
+  ]);
+  // Os dois produtos mudaram. Se o recálculo de um falhar, o outro ainda precisa ser tentado:
+  // marca o que falhou (a inconsistência não pode ficar invisível) e relança no fim.
+  let falha: unknown = null;
+  for (const id of [saida.productId, entrada.productId]) {
+    try {
+      await recomputeProduto(id);
+    } catch (err) {
+      falha = err;
+      await updateDoc(sDoc("estoque", id), { custoDesatualizado: true }).catch(() => {});
+    }
+  }
+  invalidar(CHAVE_MOV);
+  invalidar("estoque_movimentos:recentes");
+  invalidar(CHAVE_PRODUTOS);
+  if (falha) throw falha;
 }
 
 /**

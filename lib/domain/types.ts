@@ -302,6 +302,10 @@ export type EstoqueMovimento = {
   estoqueAntes?: number;
   /** A média que valia no instante do lançamento. Só pra auditoria: o recálculo usa a média que o replay acumulou, não esta. */
   custoMedioAntes?: number;
+  /** Par de uma transferência entre dois cadastros do mesmo produto (ver transferencia-estoque.ts): as duas pernas levam o mesmo id. */
+  transferenciaId?: string;
+  /** O outro produto da transferência. */
+  transferenciaCom?: string;
 };
 
 // Tipo do que foi alterado — estruturado (Fase 6 da reforma de Ads) pra dar
