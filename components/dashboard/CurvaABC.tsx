@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { fmtBRL, fmtPct } from "@/lib/domain/calc";
 import { classificarABC, CORTE_A, CORTE_B, type ClasseABC } from "@/lib/domain/curva-abc";
+import { vendasPorCanal, type ProdutoParaCanal } from "@/lib/domain/vendas-por-canal";
 import type { VendaBrutaDoAnuncio } from "@/lib/domain/vendas-brutas";
 
 /**
@@ -25,6 +26,8 @@ type Props = {
   /** O "Vendas brutas" do período vindo da conciliação — pra conferir que a soma da curva fecha. */
   vendasBrutasDoPeriodo?: number;
   anuncios?: AnuncioDeLucro[];
+  /** Cadastros, pra juntar o mesmo produto em anúncios diferentes (Full + agências) numa linha só. */
+  produtos?: readonly ProdutoParaCanal[];
 };
 
 type Visao = "vendas" | "lucro";
@@ -32,12 +35,22 @@ type Visao = "vendas" | "lucro";
 const COR: Record<ClasseABC, string> = { A: "var(--green)", B: "var(--yellow)", C: "var(--muted)" };
 const LINHAS_INICIAIS = 15;
 
-export default function CurvaABC({ curvaBruta, vendasBrutasDoPeriodo, anuncios = [] }: Props) {
+export default function CurvaABC({ curvaBruta, vendasBrutasDoPeriodo, anuncios = [], produtos = [] }: Props) {
   const temVendas = (curvaBruta?.length ?? 0) > 0;
   const lucroVendidos = useMemo(() => anuncios.filter((a) => !a.semVenda), [anuncios]);
   const temLucro = lucroVendidos.length > 0;
   const [escolhida, setEscolhida] = useState<Visao>("vendas");
   const [todas, setTodas] = useState(false);
+  /** Junta o Full e as agências do mesmo produto (mesmo grupo) numa linha só. */
+  const [porProduto, setPorProduto] = useState(false);
+  const curvaDeVendas = useMemo<VendaBrutaDoAnuncio[]>(() => {
+    if (!porProduto) return curvaBruta ?? [];
+    // Cada grupo vira "um anúncio" pra curva: mesma classificação, só que por produto.
+    return vendasPorCanal(curvaBruta ?? [], produtos, () => undefined).linhas.map((l) => ({
+      item_id: l.chave, title: l.nome, bruto: l.total.valor, perdido: l.perdido, qty: l.total.unidades, pedidos: l.total.pedidos,
+    }));
+  }, [porProduto, curvaBruta, produtos]);
+  const temGrupo = produtos.some((p) => String(p.grupo ?? "").trim() !== "");
 
   if (!temVendas && !temLucro) return null;
   // Visão que não existe (member sem financeiro; payload velho sem a curva) cai na outra.
@@ -56,12 +69,18 @@ export default function CurvaABC({ curvaBruta, vendasBrutasDoPeriodo, anuncios =
           </div>
         )}
       </div>
+      {visao === "vendas" && temGrupo && (
+        <div className="seg" role="group" aria-label="Agrupamento da curva" style={{ marginBottom: 10 }}>
+          <button type="button" className={`seg-btn ${!porProduto ? "active" : ""}`} aria-pressed={!porProduto} onClick={() => { setPorProduto(false); setTodas(false); }}>Por anúncio</button>
+          <button type="button" className={`seg-btn ${porProduto ? "active" : ""}`} aria-pressed={porProduto} onClick={() => { setPorProduto(true); setTodas(false); }} title="Soma o Full e as agências do mesmo produto">Por produto (Full + agências)</button>
+        </div>
+      )}
       <div style={{ fontSize: ".75rem", color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
         A = topo (até {CORTE_A}% {visao === "vendas" ? "das vendas" : "do lucro"}) · B = {CORTE_A}–{CORTE_B}% · C = restante{visao === "lucro" ? " / prejuízo" : ""}.
         {visao === "vendas" && " Vendas brutas como no Seller Center: sem cancelados e devolvidos, antes de taxas, frete, custo e imposto."}
       </div>
       {visao === "vendas"
-        ? <TabelaDeVendas curva={curvaBruta ?? []} totalDoPeriodo={vendasBrutasDoPeriodo} todas={todas} onTodas={setTodas} />
+        ? <TabelaDeVendas curva={curvaDeVendas} porProduto={porProduto} totalDoPeriodo={vendasBrutasDoPeriodo} todas={todas} onTodas={setTodas} />
         : <TabelaDeLucro anuncios={lucroVendidos} todas={todas} onTodas={setTodas} />}
     </div>
   );
@@ -104,7 +123,7 @@ function VerMais({ total, todas, onTodas }: { total: number; todas: boolean; onT
   );
 }
 
-function TabelaDeVendas({ curva, totalDoPeriodo, todas, onTodas }: { curva: VendaBrutaDoAnuncio[]; totalDoPeriodo?: number; todas: boolean; onTodas: (v: boolean) => void }) {
+function TabelaDeVendas({ curva, porProduto, totalDoPeriodo, todas, onTodas }: { curva: VendaBrutaDoAnuncio[]; porProduto: boolean; totalDoPeriodo?: number; todas: boolean; onTodas: (v: boolean) => void }) {
   const { linhas, total, resumo } = useMemo(() => classificarABC(curva, (a) => a.bruto), [curva]);
   const visiveis = todas ? linhas : linhas.slice(0, LINHAS_INICIAIS);
   // A soma por anúncio deve fechar com o "Vendas brutas" do período; se não fechar, diz.
@@ -112,10 +131,10 @@ function TabelaDeVendas({ curva, totalDoPeriodo, todas, onTodas }: { curva: Vend
 
   return (
     <>
-      <Resumo resumo={resumo} itensRotulo="anúncio(s)" />
+      <Resumo resumo={resumo} itensRotulo={porProduto ? "produto(s)" : "anúncio(s)"} />
       <div className="table-wrapper" style={{ border: "none" }}>
         <table className="tbl-modern tbl-cards tbl-cards-plain">
-          <thead><tr><th>Classe</th><th style={{ textAlign: "left" }}>Anúncio</th><th>Vendas brutas</th><th>% do total</th><th>Acumulado</th><th>Unid.</th></tr></thead>
+          <thead><tr><th>Classe</th><th style={{ textAlign: "left" }}>{porProduto ? "Produto" : "Anúncio"}</th><th>Vendas brutas</th><th>% do total</th><th>Acumulado</th><th>Unid.</th></tr></thead>
           <tbody>
             {visiveis.map(({ item: a, share, acumulado, classe }) => (
               <tr key={a.item_id}>

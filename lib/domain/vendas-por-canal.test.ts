@@ -89,3 +89,17 @@ describe("a soma sempre fecha", () => {
     expect(r.linhas.map((l) => l.nome)).toEqual(["Limão Caipira", "Menta"]);
   });
 });
+
+describe("o perdido acompanha o grupo", () => {
+  it("soma o cancelado/devolvido dos dois anúncios, fora do bruto", () => {
+    const r = vendasPorCanal(
+      [{ ...v("MLB111", 1000, 100, 40), perdido: 50 }, { ...v("MLB222", 600, 60, 25), perdido: 30 }],
+      [limaoFull, limaoAg], () => undefined,
+    );
+    expect(r.linhas[0].perdido).toBe(80);
+    expect(r.total.valor).toBe(1600);
+  });
+  it("sem o campo, perdido é zero", () => {
+    expect(vendasPorCanal([v("MLB111", 10, 1)], [limaoFull], () => undefined).linhas[0].perdido).toBe(0);
+  });
+});

@@ -30,6 +30,8 @@ export type VendaDoAnuncio = {
   title: string;
   /** Valor vendido (preço × unidades) nos pedidos válidos. */
   bruto: number;
+  /** Cancelado/devolvido do anúncio — fora do `bruto`, só pra mostrar o quanto se perde. */
+  perdido?: number;
   qty: number;
   pedidos: number;
 };
@@ -48,6 +50,8 @@ export type LinhaPorCanal = {
   total: TotalDeVenda;
   /** % do valor das agências sobre o que tem canal conhecido. `null` quando não há base. */
   pctAgencias: number | null;
+  /** Cancelado/devolvido do grupo inteiro. */
+  perdido: number;
   /** O grupo reúne mais de um cadastro (é um produto em dois anúncios). */
   agrupado: boolean;
   anuncios: number;
@@ -104,7 +108,7 @@ export function vendasPorCanal(
         chave,
         nome: produto ? (String(produto.grupo ?? "").trim() || produto.name || produto.id) : (v.title || "Sem identificação"),
         full: zero(), agencias: zero(), semCanal: zero(), total: zero(),
-        pctAgencias: null, agrupado: false, anuncios: 0, _produtos: new Set<string>(),
+        pctAgencias: null, perdido: 0, agrupado: false, anuncios: 0, _produtos: new Set<string>(),
       };
       mapa.set(chave, linha);
     }
@@ -114,6 +118,7 @@ export function vendasPorCanal(
     somar(geral[lado], v);
     somar(geral.total, v);
     linha.anuncios += 1;
+    linha.perdido += v.perdido ?? 0;
     if (produto) linha._produtos.add(produto.id);
   }
 

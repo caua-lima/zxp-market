@@ -2361,6 +2361,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
             curvaBruta={mlMetrics?.curvaBruta}
             vendasBrutasDoPeriodo={mlMetrics ? (mlMetrics.conciliacao?.vendasBrutas ?? fatLiquido) : undefined}
             anuncios={mlMetrics?.anuncios ?? []}
+            produtos={data.products}
           />
 
           {/* Devoluções detalhadas */}
