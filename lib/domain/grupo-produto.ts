@@ -150,3 +150,19 @@ export function sugerirVersao(
   const semAcento = rotulo.normalize("NFD").replace(/[̀-ͯ]/g, "");
   return { nome: `${base} ${rotulo}`, sku: `${skuBase}${semAcento}`, grupo };
 }
+
+/**
+ * O que os cadastros IRMÃOS têm em casa (pelo livro): serve pra dizer, quando
+ * um falta, "o outro anúncio do mesmo produto tem sobra — transfira". Só os que
+ * têm algo em casa, do maior pro menor.
+ */
+export function sobraNosIrmaos<P extends ProdutoComGrupo & { qtdLocal?: number }>(
+  produto: ProdutoComGrupo,
+  produtos: readonly P[],
+): { produto: P; emCasa: number }[] {
+  return irmaosDe(produto, produtos)
+    .filter((p) => p.ativo !== false)
+    .map((p) => ({ produto: p, emCasa: Math.max(Number(p.qtdLocal) || 0, 0) }))
+    .filter((x) => x.emCasa > 0)
+    .sort((a, b) => b.emCasa - a.emCasa || String(a.produto.name ?? "").localeCompare(String(b.produto.name ?? ""), "pt-BR"));
+}

@@ -10,6 +10,7 @@ import {
   irmaosDe,
   normalizarGrupo,
   sugerirCanal,
+  sobraNosIrmaos,
   sugerirGrupo,
   sugerirVersao,
   type ProdutoComGrupo,
@@ -105,5 +106,24 @@ describe("sugestões a partir do nome", () => {
   });
   it("sem SKU no original, o SKU sai do nome sem espaços", () => {
     expect(sugerirVersao(p("a", { name: "Erva Mate" }), "full").sku).toBe("ErvaMateFull");
+  });
+});
+
+describe("sobraNosIrmaos", () => {
+  type P = ProdutoComGrupo & { qtdLocal?: number };
+  const lista: P[] = [
+    { id: "a", name: "A", grupo: "G", qtdLocal: 0 },
+    { id: "b", name: "B", grupo: "G", qtdLocal: 40 },
+    { id: "c", name: "C", grupo: "G", qtdLocal: 90 },
+    { id: "d", name: "D", grupo: "G", qtdLocal: 70, ativo: false },
+    { id: "e", name: "E", grupo: "Outro", qtdLocal: 500 },
+    { id: "f", name: "F", qtdLocal: -3 },
+  ];
+  it("só os irmãos com algo em casa, do maior pro menor; inativo e outro grupo ficam de fora", () => {
+    expect(sobraNosIrmaos(lista[0], lista).map((x) => [x.produto.id, x.emCasa])).toEqual([["c", 90], ["b", 40]]);
+  });
+  it("produto sem grupo não tem irmãos; saldo negativo não conta como sobra", () => {
+    expect(sobraNosIrmaos(lista[5], lista)).toEqual([]);
+    expect(sobraNosIrmaos({ id: "z", grupo: "G" }, [{ id: "n", grupo: "G", qtdLocal: -5 }])).toEqual([]);
   });
 });

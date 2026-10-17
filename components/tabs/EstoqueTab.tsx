@@ -31,7 +31,7 @@ import DestinacaoPanel from "@/components/tabs/estoque/Destinacao";
 import TransferirEstoqueModal from "@/components/tabs/estoque/TransferirEstoqueModal";
 import { AgendarEnvioModal, EnviosAgendadosPainel, ResumoDisponibilidade, novoIdDeEnvio, useReservasFull } from "@/components/tabs/estoque/EnviosAgendados";
 import { criarEnvioAgendado } from "@/lib/firebase/data";
-import { agruparProdutos, canalOposto, gruposExistentes, ROTULO_CANAL, sugerirCanal, sugerirGrupo, sugerirVersao, type Canal } from "@/lib/domain/grupo-produto";
+import { agruparProdutos, canalOposto, gruposExistentes, sobraNosIrmaos, ROTULO_CANAL, sugerirCanal, sugerirGrupo, sugerirVersao, type Canal } from "@/lib/domain/grupo-produto";
 import { disponivelParaAgencias, proximosDias, rotuloDoDia, validarEnvio, type ReservaDoProduto } from "@/lib/domain/envio-full-agendado";
 import ImpostoMassaModal from "@/components/tabs/estoque/ImpostoMassaModal";
 import VincularSkuModal from "@/components/tabs/estoque/VincularSkuModal";
@@ -2638,6 +2638,17 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio,
                           </span>
                         )}
                         {i.nome}
+                        {/* O mesmo produto em outro anúncio tem sobra em casa: transferir resolve sem comprar. */}
+                        {i.faltaComprar > 0 && (() => {
+                          const origem = produtos.find((x) => x.id === i.produtoId);
+                          const sobra = origem ? sobraNosIrmaos(origem, produtos) : [];
+                          if (sobra.length === 0) return null;
+                          return (
+                            <div style={{ fontSize: ".75rem", color: "var(--green)", marginTop: 2 }}>
+                              {sobra.map((x) => `“${x.produto.name}” tem ${x.emCasa} un em casa`).join(" · ")} — dá pra ⇄ Transferir em vez de comprar
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td style={{ textAlign: "right" }}>{i.mediaDiaria.toFixed(1)}</td>
                       <td style={{ textAlign: "right" }}>{i.noFull} un</td>
