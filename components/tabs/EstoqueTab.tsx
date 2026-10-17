@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { explicarFonte } from "@/lib/domain/estado-fonte";
-import { CUSTO_FAIXA_SENTINELA, custoNaData, impostoNaData, TIPO_MOVIMENTO_LABEL, type EstoqueMovimento, type MovimentoTipo, type Product } from "@/lib/domain/types";
+import { CUSTO_FAIXA_SENTINELA, custoNaData, impostoNaData, rotuloDoMovimento, TIPO_MOVIMENTO_LABEL, type EstoqueMovimento, type MovimentoTipo, type Product } from "@/lib/domain/types";
 import { mensagemDeErroDeSalvamento, salvarSemPerder } from "@/lib/domain/salvar-formulario";
 import { motivoDaListaVazia } from "@/lib/domain/estoque-vazio";
 import { linhaCsvSegura } from "@/lib/domain/csv-seguro";
 import { useFormularioSujo } from "@/components/useFormularioSujo";
-import { addMovimento, carregarMovimentosAnteriores, deleteMovimento, deleteProduct, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas, recalcularProduto } from "@/lib/firebase/data";
+import { addMovimento, carregarMovimentosAnteriores, deleteMovimento, deleteProduct, excluirTransferencia, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas, recalcularProduto } from "@/lib/firebase/data";
 import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas";
 import { fmtBRL, fmtPct } from "@/lib/domain/calc";
 import { getCoverageStatus, COVERAGE_STATUS_LABEL, ehFullLogistic, estoqueForaDoFull, type CoverageStatus } from "@/lib/domain/estoque";
@@ -28,6 +28,7 @@ import { useMaisAntigos } from "@/components/useMaisAntigos";
 import { paginar } from "@/lib/domain/paginacao";
 import EntradaMassaModal from "@/components/tabs/estoque/EntradaMassaModal";
 import DestinacaoPanel from "@/components/tabs/estoque/Destinacao";
+import TransferirEstoqueModal from "@/components/tabs/estoque/TransferirEstoqueModal";
 import { AgendarEnvioModal, EnviosAgendadosPainel, ResumoDisponibilidade, novoIdDeEnvio, useReservasFull } from "@/components/tabs/estoque/EnviosAgendados";
 import { criarEnvioAgendado } from "@/lib/firebase/data";
 import { canalOposto, gruposExistentes, ROTULO_CANAL, sugerirCanal, sugerirGrupo, sugerirVersao, type Canal } from "@/lib/domain/grupo-produto";
@@ -97,6 +98,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
   const [entradaMassa, setEntradaMassa] = useState(false);
   const [agenciasProduct, setAgenciasProduct] = useState<Product | null>(null);
   const [agendarProduct, setAgendarProduct] = useState<Product | null>(null);
+  const [transferirDe, setTransferirDe] = useState<Product | null>(null);
   /** Cadastro do MESMO produto em outro anúncio: o novo produto e de qual ele nasceu. */
   const [versao, setVersao] = useState<{ novo: Product; origem: Product } | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -752,6 +754,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
                     onMov={(tipo) => setMovModal({ product: p, tipo })}
                     onAgencias={() => setAgenciasProduct(p)}
                     onAgendar={() => setAgendarProduct(p)}
+                    onTransferir={() => setTransferirDe(p)}
                     onVersao={() => {
                       const f = fullDe(p, estoqueML);
                       const atual: Canal | null = p.canal ?? (f.ehFull ? "full" : f.proprio > 0 ? "agencias" : null);
@@ -861,6 +864,16 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
         />
       )}
 
+      {transferirDe && (
+        <TransferirEstoqueModal
+          origem={transferirDe}
+          produtos={data.products}
+          estoqueML={estoqueML}
+          onClose={() => setTransferirDe(null)}
+          onSaved={() => setTransferirDe(null)}
+        />
+      )}
+
       {agendarProduct && (
         <AgendarEnvioModal
           product={agendarProduct}
@@ -956,7 +969,7 @@ function MovimentacoesPanel({ movimentos, produtos, busca, pagina, onPagina, tru
 
     const lista = todos.filter((m) => {
       if (!termo) return true;
-      const alvo = chave(`${nomePorId.get(m.productId) ?? ""} ${m.obs ?? ""} ${TIPO_MOVIMENTO_LABEL[m.tipo] ?? m.tipo}`);
+      const alvo = chave(`${nomePorId.get(m.productId) ?? ""} ${m.obs ?? ""} ${rotuloDoMovimento(m)}`);
       return termo.split(/\s+/).every((w) => alvo.includes(w));
     });
 
@@ -1031,7 +1044,7 @@ function MovimentacoesPanel({ movimentos, produtos, busca, pagina, onPagina, tru
                       <td data-label="Produto" style={{ fontWeight: 600 }}>
                         {nomePorId.get(m.productId) ?? <span style={{ color: "var(--muted)" }}>produto removido</span>}
                       </td>
-                      <td data-label="Tipo">{TIPO_MOVIMENTO_LABEL[m.tipo] ?? m.tipo}</td>
+                      <td data-label="Tipo">{rotuloDoMovimento(m)}</td>
                       <td data-label="Qtd" style={{ textAlign: "right", color: cor, fontWeight: 700, whiteSpace: "nowrap" }}>
                         {sinal}{Math.abs(m.quantidade)}
                       </td>
@@ -1053,7 +1066,7 @@ function MovimentacoesPanel({ movimentos, produtos, busca, pagina, onPagina, tru
   );
 }
 function ProductRow({
-  product, estoqueML, expanded, onToggle, onEdit, onMov, onAgencias, onAgendar, onVersao, reserva, duplicadas = 0, situacao = null,
+  product, estoqueML, expanded, onToggle, onEdit, onMov, onAgencias, onAgendar, onTransferir, onVersao, reserva, duplicadas = 0, situacao = null,
 }: {
   product: Product;
   uid: string;
@@ -1068,6 +1081,8 @@ function ProductRow({
   onMov: (tipo: MovimentoTipo) => void;
   onAgencias: () => void;
   onAgendar: () => void;
+  /** Move estoque pro mesmo produto em outro anúncio (agências ↔ Full). */
+  onTransferir: () => void;
   /** Abre o cadastro do mesmo produto no outro canal (Full ↔ agências). */
   onVersao: () => void;
   /** Envios agendados pro Full que ainda seguram unidades deste produto. */
@@ -1233,6 +1248,7 @@ function ProductRow({
           <div className="row-actions" style={{ justifyContent: "center" }}>
             <button type="button" className="btn btn-success btn-xs" title="Entrada (compra)" onClick={() => onMov("entrada")}>＋ Entrada</button>
             <button type="button" className="btn btn-ghost btn-xs" title="Enviar de casa pro Full (baixa, não é venda)" onClick={() => onMov("saida_full")}>Enviar Full</button>
+            <button type="button" className="btn btn-ghost btn-xs" title="Enviar estoque pro MESMO produto em outro anúncio (agências ↔ Full): sai de um estoque e entra no outro, com o custo" onClick={onTransferir}>⇄ Transferir</button>
             <button type="button" className="btn btn-ghost btn-xs" title="Marcar unidades que já têm dia de envio pro Full: elas deixam de contar como livres pras agências" onClick={onAgendar}>Agendar Full</button>
             {ehFull && full > 0 && (
               <button
@@ -1356,19 +1372,28 @@ function MovimentosHistorico({ product, movs, onMov }: { product: Product; movs:
                 return (
                   <tr key={m.id}>
                     <td style={{ color: "var(--muted)" }}>{m.data}</td>
-                    <td data-label="Tipo" style={{ textAlign: "left" }}><span style={{ color: cor, fontWeight: 700 }}>{TIPO_MOVIMENTO_LABEL[m.tipo]}</span></td>
+                    <td data-label="Tipo" style={{ textAlign: "left" }}><span style={{ color: cor, fontWeight: 700 }}>{rotuloDoMovimento(m)}</span></td>
                     <td data-label="Qtd" style={{ color: cor, fontWeight: 700 }}>{sign}{Math.abs(m.quantidade)}</td>
                     <td data-label="Custo un.">{(m.tipo === "entrada" || m.tipo === "saldo_inicial") && m.custoUnit != null ? fmtBRL(m.custoUnit) : "—"}</td>
                     <td data-label="Obs" style={{ textAlign: "left", color: "var(--muted)", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.obs || "—"}</td>
                     <td data-cell="acoes" style={{ whiteSpace: "nowrap" }}>
-                      <button
-                        type="button" className="btn btn-ghost btn-xs" style={{ marginRight: 6 }}
-                        title="Corrigir esta movimentação (mantém quem lançou e quando)"
-                        onClick={() => setEditando(m)}
-                      >
-                        Editar
-                      </button>
-                      <button type="button" className="btn btn-danger btn-xs" title="Excluir movimentação" onClick={() => {
+                      {/* Perna de transferência não se edita sozinha: desbalancearia os dois estoques. */}
+                      {!m.transferenciaId && (
+                        <button
+                          type="button" className="btn btn-ghost btn-xs" style={{ marginRight: 6 }}
+                          title="Corrigir esta movimentação (mantém quem lançou e quando)"
+                          onClick={() => setEditando(m)}
+                        >
+                          Editar
+                        </button>
+                      )}
+                      <button type="button" className="btn btn-danger btn-xs" title={m.transferenciaId ? "Excluir a transferência inteira (as duas pontas)" : "Excluir movimentação"} onClick={() => {
+                        if (m.transferenciaId) {
+                          if (!confirm("Esta movimentação é uma ponta de uma TRANSFERÊNCIA entre dois produtos. Excluir remove as DUAS pontas e devolve o estoque de cada lado. Continuar?")) return;
+                          excluirTransferencia(m.transferenciaId, { [product.id]: product.name || "" })
+                            .catch((e) => alert("Não consegui excluir: " + (e instanceof Error ? e.message : String(e))));
+                          return;
+                        }
                         if (!confirm("Excluir esta movimentação? O custo médio será recalculado.")) return;
                         // O registro de auditoria vai no MESMO lote da exclusão (S20).
                         deleteMovimento(m.id, product.id, {

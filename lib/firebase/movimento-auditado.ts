@@ -126,3 +126,24 @@ export async function criarTransferenciaAuditada(
   });
   await lote.commit();
 }
+
+/**
+ * Exclui as DUAS pernas de uma transferência, com a auditoria, num lote só.
+ * Excluir uma perna sozinha deixaria um estoque com unidade a mais e o outro
+ * com unidade a menos — por isso a tela nunca oferece excluir só uma.
+ */
+export async function excluirTransferenciaAuditada(
+  db: Firestore,
+  ids: [string, string],
+  email: string,
+  textos: [TextoDaAuditoria, TextoDaAuditoria],
+  agora = Date.now(),
+): Promise<void> {
+  const lote = writeBatch(db);
+  ids.forEach((movId, i) => {
+    const r = registro("excluir", movId, "_excluido", email, textos[i], agora);
+    lote.delete(doc(db, traduzirCaminho("estoque_movimentos"), movId));
+    lote.set(doc(db, traduzirCaminho("auditLog"), r.id), r.dados);
+  });
+  await lote.commit();
+}

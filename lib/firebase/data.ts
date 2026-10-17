@@ -37,6 +37,7 @@ import { recomputeProdutoComVersao } from "./estoque-recompute";
 import { paginaApos } from "./paginas";
 import {
   criarTransferenciaAuditada,
+  excluirTransferenciaAuditada,
   criarMovimentoAuditado,
   editarMovimentoAuditado,
   excluirMovimentoAuditado,
@@ -645,6 +646,39 @@ export async function transferirEstoque(plano: Extract<PlanoDaTransferencia, { o
       falha = err;
       await updateDoc(sDoc("estoque", id), { custoDesatualizado: true }).catch(() => {});
     }
+  }
+  invalidar(CHAVE_MOV);
+  invalidar("estoque_movimentos:recentes");
+  invalidar(CHAVE_PRODUTOS);
+  if (falha) throw falha;
+}
+
+/**
+ * Exclui uma transferência inteira (as duas pernas) e refaz custo e saldo dos
+ * dois produtos. Recebe qualquer uma das pernas.
+ */
+export async function excluirTransferencia(transferenciaId: string, nomes: Record<string, string>): Promise<void> {
+  const { db } = getFirebase();
+  const snap = await getDocs(query(sCol(MOV_COL), where("transferenciaId", "==", transferenciaId)));
+  const pernas = snap.docs.map((x) => x.data() as EstoqueMovimento);
+  if (pernas.length !== 2) {
+    throw new Error(pernas.length === 0 ? "Transferência não encontrada — pode já ter sido excluída." : "Transferência incompleta: só uma das pernas existe. Exclua-a pelo histórico do produto.");
+  }
+  const [a, b] = pernas;
+  // O nome do outro lado não está na tela de quem pediu: busca, pra o rastro dizer o produto e não o id.
+  for (const id of [a.productId, b.productId]) {
+    if (nomes[id]) continue;
+    const s = await getDoc(sDoc("estoque", id)).catch(() => null);
+    nomes = { ...nomes, [id]: String(s?.data()?.name ?? id) };
+  }
+  await excluirTransferenciaAuditada(db, [a.id, b.id], getCurrentUserEmail(), [
+    { entidadeLabel: `${nomes[a.productId] ?? a.productId} · Transferência`, detalhe: `${Math.abs(a.quantidade)} un em ${a.data}` },
+    { entidadeLabel: `${nomes[b.productId] ?? b.productId} · Transferência`, detalhe: `${Math.abs(b.quantidade)} un em ${b.data}` },
+  ]);
+  let falha: unknown = null;
+  for (const id of [a.productId, b.productId]) {
+    try { await recomputeProduto(id); }
+    catch (err) { falha = err; await updateDoc(sDoc("estoque", id), { custoDesatualizado: true }).catch(() => {}); }
   }
   invalidar(CHAVE_MOV);
   invalidar("estoque_movimentos:recentes");

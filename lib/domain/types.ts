@@ -264,6 +264,16 @@ export const TIPO_MOVIMENTO_LABEL: Record<MovimentoTipo, string> = {
   ajuste: "Ajuste",
 };
 
+/**
+ * O rótulo de uma movimentação na tela. As duas pernas de uma transferência
+ * entre produtos são um ajuste (−) e uma entrada (+) no livro — o que a pessoa
+ * lançou foi uma TRANSFERÊNCIA, e é assim que tem que aparecer.
+ */
+export function rotuloDoMovimento(m: { tipo: MovimentoTipo; transferenciaId?: string; quantidade: number }): string {
+  if (m.transferenciaId) return m.tipo === "entrada" ? "Transferência (entrada)" : "Transferência (saída)";
+  return TIPO_MOVIMENTO_LABEL[m.tipo] ?? m.tipo;
+}
+
 export type EstoqueMovimento = {
   id: string;
   productId: string;
