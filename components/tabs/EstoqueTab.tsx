@@ -28,6 +28,7 @@ import { useMaisAntigos } from "@/components/useMaisAntigos";
 import { paginar } from "@/lib/domain/paginacao";
 import EntradaMassaModal from "@/components/tabs/estoque/EntradaMassaModal";
 import DestinacaoPanel from "@/components/tabs/estoque/Destinacao";
+import { calcularCompra, custoComDesconto, descontoValido } from "@/lib/domain/preco-com-desconto";
 import TransferirEstoqueModal from "@/components/tabs/estoque/TransferirEstoqueModal";
 import { AgendarEnvioModal, EnviosAgendadosPainel, ResumoDisponibilidade, novoIdDeEnvio, useReservasFull } from "@/components/tabs/estoque/EnviosAgendados";
 import { criarEnvioAgendado } from "@/lib/firebase/data";
@@ -1478,7 +1479,17 @@ function MovimentoModal({ product, tipo, estoqueML, reservado, onClose, onSaved 
   const titulo = isEntrada ? "＋ Entrada (compra)" : isSaldo ? "Custo do que está no Full" : tipo === "saida_full" ? "Envio pro Full" : "Ajuste de estoque";
 
   const qNum = parseNum(qtd);
-  const cNum = parseNum(custo);
+  /**
+   * ENTRADA: o custo sai do preço original e do desconto (R$ 14,50 com 12% =
+   * R$ 12,76). Saldo inicial segue com o custo digitado direto — ali não há
+   * compra, só o custo de unidades que já existiam.
+   */
+  const [preco, setPreco] = useState("");
+  const [desconto, setDesconto] = useState("");
+  const precoNum = parseNum(preco);
+  const descNum = desconto.trim() === "" ? 0 : parseNum(desconto);
+  const compra = isEntrada ? calcularCompra({ precoOriginal: precoNum, descontoPct: descNum, unidades: qNum }) : null;
+  const cNum = isEntrada ? custoComDesconto(precoNum, descNum) : parseNum(custo);
 
   // ENTRADA: blenda a compra nova contra tudo que você tem (Full + fora do
   // Full — ver estoqueForaDoFull pra como "fora do Full" é contado sem
@@ -1514,7 +1525,7 @@ function MovimentoModal({ product, tipo, estoqueML, reservado, onClose, onSaved 
   const idDoLancamento = useRef(newMovId());
   /** A mensagem fica no formulário até a próxima tentativa (o `alert` sumia e deixava só a dúvida). */
   const [erro, setErro] = useState<string | null>(null);
-  const sujo = useFormularioSujo({ qtd, custo, obs, data, destinoFull, diaFull });
+  const sujo = useFormularioSujo({ qtd, custo, preco, desconto, obs, data, destinoFull, diaFull });
   const destinoNum = Number(destinoFull);
 
   async function handleSave() {
@@ -1525,7 +1536,11 @@ function MovimentoModal({ product, tipo, estoqueML, reservado, onClose, onSaved 
       const invalido = validarEnvio({ productId: product.id, quantidade: destinoNum, data: diaFull }, hojeBR());
       if (invalido) { setErro(`Envio pro Full: ${invalido}`); return; }
     }
-    if (precisaCusto && cNum <= 0) { setErro("Informe o custo unitário."); return; }
+    if (isEntrada) {
+      if (!(precoNum > 0)) { setErro("Informe o preço original (por unidade)."); return; }
+      if (!descontoValido(descNum)) { setErro("O desconto precisa estar entre 0% e 99,99%."); return; }
+    }
+    if (precisaCusto && !(cNum > 0)) { setErro("Informe o custo unitário."); return; }
     if (!obs.trim()) { setErro("Informe o motivo desta movimentação — fica registrado no histórico do produto."); return; }
     // Ajuste negativo tira estoque sem ser nem venda nem envio — a confirmação
     // extra existe pra não zerar produto por engano digitando o sinal errado.
@@ -1557,6 +1572,8 @@ function MovimentoModal({ product, tipo, estoqueML, reservado, onClose, onSaved 
         tipo,
         quantidade: isAjuste ? qNum : Math.abs(qNum),
         custoUnit: precisaCusto ? cNum : undefined,
+        // O preço de tabela e o desconto ficam no lançamento, pra conferir a conta depois.
+        ...(isEntrada && descNum > 0 ? { precoOriginal: precoNum, descontoPct: descNum } : {}),
         data,
         obs: obs.trim() || undefined,
         /**
@@ -1573,7 +1590,7 @@ function MovimentoModal({ product, tipo, estoqueML, reservado, onClose, onSaved 
         // o registro leva o custo informado e o novo médio. Vai no MESMO lote (S20).
         entidadeLabel: `${product.name || "(sem nome)"} · ${titulo}`,
         detalhe: precisaCusto
-          ? `${qNum} un a ${fmtBRL(cNum)} · custo médio ${fmtBRL(avgAtual)} → ${fmtBRL(novoAvg)}`
+          ? `${qNum} un a ${fmtBRL(cNum)}${isEntrada && descNum > 0 ? ` (preço ${fmtBRL(precoNum)} − ${descNum}%)` : ""} · custo médio ${fmtBRL(avgAtual)} → ${fmtBRL(novoAvg)}`
           : `${qNum} un em ${data}`,
       });
       // A entrada JÁ está no livro. Se só o agendamento falhar, tentar de novo
@@ -1600,13 +1617,49 @@ function MovimentoModal({ product, tipo, estoqueML, reservado, onClose, onSaved 
         <input id="mov-qtd" type="number" step="1" placeholder={isAjuste ? "Ex: -3" : "Ex: 40"} value={qtd} onChange={(e) => setQtd(e.target.value)} />
       </div>
 
-      {precisaCusto && (
+      {/*
+        COMPRA: preço de tabela + desconto, e o app calcula o custo. O fornecedor
+        passa "14,50 com 12% de desconto"; fazer a conta de cabeça é onde nasce o erro.
+      */}
+      {isEntrada && (
+        <>
+          <div className="config-field">
+            <label htmlFor="mov-preco">Preço original (R$ por unidade)</label>
+            <input id="mov-preco" type="number" min="0" step="0.01" placeholder="Ex: 14,50" value={preco} onChange={(e) => setPreco(e.target.value)} />
+          </div>
+          <div className="config-field">
+            <label htmlFor="mov-desc">Desconto (%) — opcional</label>
+            <input id="mov-desc" type="number" min="0" max="99.99" step="0.01" placeholder="Ex: 12" value={desconto} onChange={(e) => setDesconto(e.target.value)} />
+          </div>
+          {compra && compra.ok && (
+            <div style={{ margin: "2px 0 10px", padding: "10px 12px", borderRadius: 8, background: "var(--surface2)", border: "1px solid var(--border)", fontSize: ".85rem", lineHeight: 1.65 }} aria-live="polite">
+              <div>Custo unitário: <b style={{ color: "var(--green)", fontSize: "1rem" }}>{fmtBRL(compra.custoUnitario)}</b>
+                {compra.economiaPorUnidade > 0 && <span style={{ color: "var(--muted)" }}> (economiza {fmtBRL(compra.economiaPorUnidade)} por unidade)</span>}
+              </div>
+              <div>Total da compra: <b>{fmtBRL(compra.total)}</b>
+                {compra.totalSemDesconto !== compra.total && <span style={{ color: "var(--muted)" }}> · sem desconto seria {fmtBRL(compra.totalSemDesconto)}</span>}
+              </div>
+              {qNum > 0 && (
+                <div style={{ color: "var(--muted)" }}>
+                  Custo médio após esta entrada: <b style={{ color: "var(--green)" }}>{fmtBRL(novoAvg)}</b>
+                  {avgAtual > 0 && Math.abs(novoAvg - avgAtual) > 0.001 && <> (era {fmtBRL(avgAtual)})</>}
+                </div>
+              )}
+            </div>
+          )}
+          {compra && !compra.ok && (precoNum > 0 || desconto.trim() !== "") && qNum > 0 && (
+            <div className="hint" role="alert" style={{ color: "var(--red-text)", marginBottom: 10 }}>{compra.motivo}</div>
+          )}
+        </>
+      )}
+
+      {isSaldo && (
         <div className="config-field">
-          <label htmlFor="mov-custo">Custo unitário {isSaldo ? "das unidades no Full" : "desta compra"} (R$)</label>
+          <label htmlFor="mov-custo">Custo unitário das unidades no Full (R$)</label>
           <input id="mov-custo" type="number" min="0" step="0.01" placeholder="Ex: 11.50" value={custo} onChange={(e) => setCusto(e.target.value)} />
           {qNum > 0 && cNum > 0 && (
             <div className="hint">
-              Custo médio {isSaldo ? "depois de custear o Full" : "após esta entrada"}: <b style={{ color: "var(--green)" }}>{fmtBRL(novoAvg)}</b>
+              Custo médio depois de custear o Full: <b style={{ color: "var(--green)" }}>{fmtBRL(novoAvg)}</b>
               {avgAtual > 0 && Math.abs(novoAvg - avgAtual) > 0.001 && <> (era {fmtBRL(avgAtual)})</>}
             </div>
           )}

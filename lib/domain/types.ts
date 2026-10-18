@@ -312,6 +312,9 @@ export type EstoqueMovimento = {
   estoqueAntes?: number;
   /** A média que valia no instante do lançamento. Só pra auditoria: o recálculo usa a média que o replay acumulou, não esta. */
   custoMedioAntes?: number;
+  /** Compra com desconto: o preço de tabela por unidade e o desconto (%) que levaram ao `custoUnit`. Só registro — o custo que vale é o `custoUnit`. */
+  precoOriginal?: number;
+  descontoPct?: number;
   /** Par de uma transferência entre dois cadastros do mesmo produto (ver transferencia-estoque.ts): as duas pernas levam o mesmo id. */
   transferenciaId?: string;
   /** O outro produto da transferência. */
