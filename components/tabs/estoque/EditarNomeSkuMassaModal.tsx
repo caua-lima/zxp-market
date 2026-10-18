@@ -5,6 +5,7 @@ import Modal from "@/components/Modal";
 import { atualizarNomeESku, logAudit } from "@/lib/firebase/data";
 import { NOME_MAX, SKU_MAX, transformar, transformacaoVazia, validarEdicao, type LinhaDeEdicao, type Transformacao } from "@/lib/domain/edicao-em-massa";
 import type { Product } from "@/lib/domain/types";
+import type { TrocaDeSku } from "@/components/tabs/estoque/SincronizarSkuMlModal";
 
 /**
  * Nome e SKU de vários produtos de uma vez. A conta (o que cada linha vira, o
@@ -23,7 +24,12 @@ const CAMPO: React.CSSProperties = {
   padding: "7px 10px", color: "var(--text)", fontSize: ".85rem", outline: "none", width: "100%", minWidth: 0,
 };
 
-export default function EditarNomeSkuMassaModal({ produtos, onClose }: { produtos: readonly Product[]; onClose: () => void }) {
+export default function EditarNomeSkuMassaModal({ produtos, onClose, onSkusAlterados }: {
+  produtos: readonly Product[];
+  onClose: () => void;
+  /** Os SKUs que mudaram e foram salvos — pra oferecer levar a troca pro Mercado Livre. */
+  onSkusAlterados?: (trocas: TrocaDeSku[]) => void;
+}) {
   const [edicoes, setEdicoes] = useState<Record<string, Valores>>({});
   const [busca, setBusca] = useState("");
   const [alvo, setAlvo] = useState<Alvo>("nome");
@@ -80,6 +86,7 @@ export default function EditarNomeSkuMassaModal({ produtos, onClose }: { produto
     setFalhas([]);
     setProgresso(0);
     const erros: string[] = [];
+    const salvos = new Set<string>();
     let n = 0;
     // Um por vez e independentes: se um falhar, os outros seguem e a tela diz quais falharam.
     for (const l of resultado.mudancas) {
@@ -93,6 +100,7 @@ export default function EditarNomeSkuMassaModal({ produtos, onClose }: { produto
           l.novoSku.trim() !== l.sku.trim() ? `SKU “${l.sku || "—"}” → “${l.novoSku.trim() || "—"}”` : "",
         ].filter(Boolean);
         // O rastro é secundário: a mudança já foi salva e não deve virar erro se ele falhar.
+        salvos.add(l.id);
         logAudit({ acao: "editar", entidade: "produto", entidadeId: l.id, entidadeLabel: l.novoNome.trim() || l.nome, detalhe: `em massa · ${partes.join(" · ")}`.slice(0, 500) }).catch(() => {});
       } catch (e) {
         erros.push(`${l.nome || l.id}: ${e instanceof Error ? e.message : String(e)}`);
@@ -101,7 +109,11 @@ export default function EditarNomeSkuMassaModal({ produtos, onClose }: { produto
     }
     setSalvando(false);
     if (erros.length) { setFalhas(erros); return; }
+    const trocas = resultado.skusAlterados
+      .filter((l) => salvos.has(l.id) && l.novoSku.trim() !== "")
+      .map((l) => ({ productId: l.id, nome: l.novoNome.trim() || l.nome, skuAntigo: l.sku.trim(), skuNovo: l.novoSku.trim() }));
     onClose();
+    if (trocas.length) onSkusAlterados?.(trocas);
   }
 
   const campoRegra = (chave: keyof Transformacao, rotulo: string, placeholder: string) => (

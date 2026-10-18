@@ -31,6 +31,7 @@ import DestinacaoPanel from "@/components/tabs/estoque/Destinacao";
 import { calcularCompra, custoComDesconto, descontoValido } from "@/lib/domain/preco-com-desconto";
 import TransferirEstoqueModal from "@/components/tabs/estoque/TransferirEstoqueModal";
 import EditarNomeSkuMassaModal from "@/components/tabs/estoque/EditarNomeSkuMassaModal";
+import SincronizarSkuMlModal, { type TrocaDeSku } from "@/components/tabs/estoque/SincronizarSkuMlModal";
 import { AgendarEnvioModal, EnviosAgendadosPainel, ResumoDisponibilidade, novoIdDeEnvio, useReservasFull } from "@/components/tabs/estoque/EnviosAgendados";
 import { criarEnvioAgendado } from "@/lib/firebase/data";
 import { agruparProdutos, canalOposto, gruposExistentes, sobraNosIrmaos, ROTULO_CANAL, sugerirCanal, sugerirGrupo, sugerirVersao, type Canal } from "@/lib/domain/grupo-produto";
@@ -112,6 +113,8 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
   }, [expanded]);
   const [impostoMassa, setImpostoMassa] = useState(false);
   const [nomeSkuMassa, setNomeSkuMassa] = useState(false);
+  /** SKUs que acabaram de mudar no app — a tela oferece levar a troca pros anúncios do ML. */
+  const [trocasSku, setTrocasSku] = useState<TrocaDeSku[] | null>(null);
 
   /** A vista: o recorte da lista. O padrão é a pergunta que se faz ao abrir. */
   const [vista, setVista] = useState<"acao" | "todos" | "movimentos" | "destinacao">("acao");
@@ -815,7 +818,11 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
       )}
 
       {nomeSkuMassa && (
-        <EditarNomeSkuMassaModal produtos={data.products} onClose={() => setNomeSkuMassa(false)} />
+        <EditarNomeSkuMassaModal produtos={data.products} onClose={() => setNomeSkuMassa(false)} onSkusAlterados={setTrocasSku} />
+      )}
+
+      {trocasSku && (
+        <SincronizarSkuMlModal trocas={trocasSku} onClose={() => setTrocasSku(null)} />
       )}
 
       {vincularSku && (
@@ -855,6 +862,13 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
             // formulário, com o que foi digitado intacto. O modal só fecha aqui,
             // depois de a gravação principal ter dado certo.
             await upsertProduct(uid, prod);
+            // SKU trocado num produto que já existia: oferece levar a troca pros anúncios do ML.
+            const antes = data.products.find((x) => x.id === prod.id);
+            const skuAntes = String(antes?.sku ?? "").trim();
+            const skuDepois = String(prod.sku ?? "").trim();
+            if (antes && skuDepois && skuAntes !== skuDepois) {
+              setTrocasSku([{ productId: prod.id, nome: prod.name || prod.id, skuAntigo: skuAntes, skuNovo: skuDepois }]);
+            }
             // Trilha de auditoria: mexer no custo médio de um produto muda a
             // margem de vendas passadas (ver custoNaData) — precisa de rastro.
             // É secundária: se ela falhar, o produto JÁ foi salvo e a pessoa não
