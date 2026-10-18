@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { registrarSkus } from "@/lib/domain/indice-sku";
 import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
@@ -45,12 +46,14 @@ export async function GET(req: Request) {
     const prodSnap = await db.collection("estoque").get();
     const porMlb = new Map<string, string>();
     const porSku = new Map<string, string>();
+    const skusAtuais = new Set<string>();
     for (const doc of prodSnap.docs) {
       const d = doc.data();
       const id = String(d.id ?? doc.id);
       const mlbs: string[] = Array.isArray(d.mlbs) && d.mlbs.length ? d.mlbs : d.mlb ? [String(d.mlb)] : [];
       for (const m of mlbs) { const n = normalizeItemId(String(m)); if (n) porMlb.set(n, id); }
-      if (d.sku) porSku.set(normalizeSku(String(d.sku)), id);
+      // SKU atual e os anteriores — ver lib/domain/indice-sku.ts.
+      registrarSkus(porSku, d, id, normalizeSku, skusAtuais);
     }
 
     // Janela em horário de Brasília
