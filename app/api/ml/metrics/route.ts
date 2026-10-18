@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { registrarSkus } from "@/lib/domain/indice-sku";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
 import { redigirFinanceiro } from "@/lib/domain/redacao-financeira";
@@ -553,6 +554,7 @@ export async function GET(req: Request) {
     const prodSnap = await db.collection("estoque").get();
     const porMlb = new Map<string, ProdutoData>();
     const porSku = new Map<string, ProdutoData>();
+    const skusAtuais = new Set<string>();
     for (const doc of prodSnap.docs) {
       const d = doc.data();
       const entry: ProdutoData = {
@@ -570,7 +572,8 @@ export async function GET(req: Request) {
         const n = normalizeItemId(String(m));
         if (n) porMlb.set(n, entry);
       }
-      if (entry.sku) porSku.set(normalizeSku(entry.sku), entry);
+      // SKU atual e os anteriores: o pedido antigo guarda o SKU da hora da venda — ver lib/domain/indice-sku.ts.
+      registrarSkus(porSku, d, entry, normalizeSku, skusAtuais);
     }
 
     // ── 2. Dia do breakdown "Vendas do Dia" ───────────────────
