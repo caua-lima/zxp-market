@@ -54,6 +54,8 @@
 .ordenar:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:3px}
 .ordenar[data-ativa]{color:var(--text)}
 
+.celula{display:block;min-width:0}
+
 .legenda{margin-top:10px;font-size:.75rem;color:var(--muted);line-height:1.55}
 
 /* Computador: colunas de largura fixa — texto comprido corta com "…" em vez de invadir a coluna vizinha. */
@@ -76,4 +78,9 @@
   .produto{white-space:normal}
   .barra{margin-left:0}
   .acao{width:auto}
+  /* No celular a linha inteira abre o detalhe: o botão sozinho numa faixa embaixo só ocupava espaço. */
+  td.acao{display:none!important}
+  .celula{text-align:right}
+  .decisao .celula{text-align:right}
+  .porque{-webkit-line-clamp:3}
 }

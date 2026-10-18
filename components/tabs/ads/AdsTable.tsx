@@ -169,6 +169,7 @@ export default function AdsTable({
                   {/* Orçamento e meta de ROAS: os dois números que se ajustam no ML, lidos juntos. O ⚠ marca meta
                       abaixo do ROAS que fecha a margem alvo — bater essa meta não basta. */}
                   <td data-label="Verba · meta">
+                    <div className={s.celula}>
                     <span className={s.valor} style={{ color: l.i.dailyBudget > 0 ? undefined : "var(--muted)" }}>
                       {l.i.dailyBudget > 0 ? `${fmtBRL(l.i.dailyBudget)}/dia` : "—"}
                     </span>
@@ -178,47 +179,60 @@ export default function AdsTable({
                     >
                       {l.i.roasTarget > 0 ? `meta ${num(l.i.roasTarget, 2)}x${metaAbaixoDoIdeal ? " ⚠" : ""}` : "sem meta"}
                     </span>
+                    </div>
                   </td>
 
                   <td data-label="Investido" className={s.ajuda} title={explicacaoInvestido(l)}>
+                    <div className={s.celula}>
                     <span className={s.valor}>{fmtBRL(l.i.cost)}</span>
+                    </div>
                   </td>
 
                   <td data-label="Receita" className={s.ajuda} title={explicacaoReceita(l, pub)}>
+                    <div className={s.celula}>
                     <span className={s.valor}>{fmtBRL(l.i.adSales)}</span>
+                    </div>
                   </td>
 
                   {/* A cor sai do EQUILÍBRIO deste anúncio, não de um corte fixo: com margem fina, 3,2x já queima dinheiro. */}
                   <td data-label="ROAS" className={s.ajuda} title={explicacaoRoas(l, pub)}>
+                    <div className={s.celula}>
                     <span className={s.valor} style={{ color: corDoRoas(l.roasMlAds, l.breakEven, l.roasIdeal).cor }}>
                       {l.roasMlAds != null ? `${num(l.roasMlAds, 2)}x` : "—"}
                       {l.abaixoDoBreakEven && <span title="Abaixo do ROAS de equilíbrio — este anúncio perde dinheiro."> ⚠</span>}
                     </span>
                     {l.breakEven != null && <span className={s.sub}>equilíbrio {num(l.breakEven, 2)}x</span>}
+                    </div>
                   </td>
 
                   <td data-label="Lucro · margem" className={s.ajuda} title={explicacaoLucro(l)}>
+                    <div className={s.celula}>
                     <span className={`${s.valor} ${l.lucroAtual == null ? "" : l.lucroAtual >= 0 ? s.positivo : s.negativo}`} style={l.lucroAtual == null ? { color: "var(--muted)" } : undefined}>
                       {l.lucroAtual != null ? fmtBRL(l.lucroAtual) : "—"}
                     </span>
                     <span className={s.sub} style={l.margemAtual != null && l.margemAtual < 0 ? { color: "var(--red-text)" } : l.margemAtual != null ? { color: corMargem(l.margemAtual) } : undefined}>
                       {l.margemAtual != null ? `margem ${num(l.margemAtual, 1)}%` : "sem margem"}
                     </span>
+                    </div>
                   </td>
 
                   {/* Quanto da venda depende de verba: a barra mostra o tamanho, a cor o risco. */}
                   <td data-label="Via Ads" className={s.ajuda} title={explicacaoViaAds(l)}>
+                    <div className={s.celula}>
                     {l.i.totalSales > 0 ? (
                       <>
                         <span className={s.valor}>{num(l.pctAds, 0)}%</span>
                         <span className={s.barra} aria-hidden><i style={{ width: `${larguraDaBarra(l.pctAds)}%`, background: corParticipacao(l.pctAds) }} /></span>
                       </>
                     ) : <span className={s.valor} style={{ color: "var(--muted)" }}>—</span>}
+                    </div>
                   </td>
 
                   <td data-label="Decisão" className={s.decisao}>
+                    <div className={s.celula}>
                     <span className={s.selo} data-tom={selo.tom}>{selo.rotulo}</span>
                     <span className={s.porque} title={porque}>{porque}</span>
+                    </div>
                   </td>
 
                   <td data-cell="acoes" className={s.acao}>
