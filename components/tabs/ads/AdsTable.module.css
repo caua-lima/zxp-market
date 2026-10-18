@@ -1,0 +1,79 @@
+/* Tabela de campanhas da aba Ads. Módulo CSS: o estilo viaja com o componente. */
+
+.dica{font-size:.75rem;color:var(--muted);margin:0 0 8px;line-height:1.5}
+
+.tabela{width:100%;border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums}
+.tabela th{font-size:.7rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;background:var(--surface)}
+.tabela th:first-child{text-align:left;padding-left:16px}
+.tabela td{padding:12px;border-bottom:1px solid var(--border);vertical-align:middle;text-align:right;min-width:0}
+.tabela tbody tr{cursor:pointer;transition:background .12s}
+.tabela tbody tr:hover{background:var(--surface2)}
+.tabela tbody tr:focus-within{background:var(--surface2)}
+
+/* A borda esquerda da linha é a decisão: dá pra varrer a tabela de cima a baixo e achar o que pede ação. */
+.linha{box-shadow:inset 4px 0 0 transparent}
+.linha[data-tom="ruim"]{box-shadow:inset 4px 0 0 var(--red)}
+.linha[data-tom="atencao"]{box-shadow:inset 4px 0 0 var(--warning)}
+.linha[data-tom="bom"]{box-shadow:inset 4px 0 0 var(--green)}
+
+/* ── campanha ── */
+.campanha{text-align:left!important;padding-left:16px!important}
+.topo{display:flex;align-items:center;gap:8px;min-width:0}
+.nome{font-weight:700;font-size:.9rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.status{flex-shrink:0;font-size:.68rem;font-weight:700;padding:1px 7px;border-radius:999px;white-space:nowrap;cursor:help}
+.produto{display:block;margin-top:3px;font-size:.75rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mlb{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.68rem;color:var(--muted);opacity:.85;margin-top:1px}
+
+/* ── números ── */
+.valor{font-weight:700;font-size:.9rem;white-space:nowrap;color:var(--text)}
+.sub{display:block;font-size:.72rem;font-weight:400;color:var(--muted);white-space:nowrap;margin-top:2px}
+.ajuda{cursor:help}
+.positivo{color:var(--green)}
+.negativo{color:var(--red-text)}
+.alerta{color:var(--warning)}
+
+.barra{display:block;height:4px;border-radius:999px;background:var(--surface2);margin:5px 0 0 auto;width:64px;overflow:hidden}
+.barra > i{display:block;height:100%;border-radius:999px}
+
+/* ── decisão ── */
+.decisao{text-align:left!important}
+.selo{display:inline-block;font-size:.72rem;font-weight:800;padding:2px 9px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.selo[data-tom="bom"]{color:var(--green);background:var(--green-bg)}
+.selo[data-tom="ruim"]{color:var(--red-text);background:var(--red-bg)}
+.selo[data-tom="atencao"]{color:var(--warning);background:var(--warning-soft)}
+.selo[data-tom="neutro"]{color:var(--text);background:transparent;border-color:var(--border)}
+.selo[data-tom="vazio"]{color:var(--muted);background:transparent;border-color:var(--border)}
+.porque{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:.72rem;color:var(--muted);line-height:1.4;margin-top:4px}
+
+.acao{width:44px;text-align:right}
+.abrir{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer}
+.abrir:hover,.abrir:focus-visible{color:var(--text);border-color:var(--muted)}
+.abrir:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+.ordenar{background:none;border:none;padding:0;font:inherit;color:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:3px;letter-spacing:inherit;text-transform:inherit}
+.ordenar:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:3px}
+.ordenar[data-ativa]{color:var(--text)}
+
+.legenda{margin-top:10px;font-size:.75rem;color:var(--muted);line-height:1.55}
+
+/* Computador: colunas de largura fixa — texto comprido corta com "…" em vez de invadir a coluna vizinha. */
+@media(min-width:721px){
+  .tabela{table-layout:fixed}
+  .cCampanha{width:27%}
+  .cVerba{width:10%}
+  .cInvestido{width:9%}
+  .cReceita{width:10%}
+  .cRoas{width:8%}
+  .cLucro{width:10%}
+  .cVia{width:8%}
+  .cDecisao{width:15%}
+  .cAcao{width:52px}
+}
+
+/* Celular: a tabela vira cartões (regras .tbl-cards do app); aqui só o que é desta tela. */
+@media(max-width:720px){
+  .campanha{padding-left:0!important}
+  .produto{white-space:normal}
+  .barra{margin-left:0}
+  .acao{width:auto}
+}
