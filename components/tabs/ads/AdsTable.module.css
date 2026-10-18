@@ -84,3 +84,14 @@
   .decisao .celula{text-align:right}
   .porque{-webkit-line-clamp:3}
 }
+
+/* Lista por campanha (AdsCampaignList): a mesma linguagem, com menos colunas. */
+@media(min-width:721px){
+  .lCampanha{width:30%}
+  .lVerba{width:13%}
+  .lInvestido{width:12%}
+  .lReceita{width:13%}
+  .lRoas{width:11%}
+  .lLucro{width:16%}
+}
+.motivo{display:block;white-space:normal;font-size:.72rem;font-weight:400;color:var(--muted);line-height:1.4}
