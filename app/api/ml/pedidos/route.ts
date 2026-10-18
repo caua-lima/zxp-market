@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { registrarSkus } from "@/lib/domain/indice-sku";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
 import { custoNaData, impostoNaData, type CustoFaixa, type ImpostoFaixa } from "@/lib/domain/types";
@@ -121,6 +122,7 @@ export async function GET(req: Request) {
     const prodSnap = await db.collection("estoque").get();
     const porMlb = new Map<string, ProdutoData>();
     const porSku = new Map<string, ProdutoData>();
+    const skusAtuais = new Set<string>();
     for (const doc of prodSnap.docs) {
       const d = doc.data();
       const entry: ProdutoData = {
@@ -139,8 +141,8 @@ export async function GET(req: Request) {
         const n = normalizeItemId(String(m));
         if (n) porMlb.set(n, entry);
       }
-      const sku = String(d.sku ?? "").trim();
-      if (sku) porSku.set(normalizeSku(sku), entry);
+      // SKU atual e os anteriores — ver lib/domain/indice-sku.ts.
+      registrarSkus(porSku, d, entry, normalizeSku, skusAtuais);
     }
 
     const pedidos = orders.map((o) => {
