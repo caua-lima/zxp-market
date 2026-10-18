@@ -103,3 +103,16 @@ describe("o perdido acompanha o grupo", () => {
     expect(vendasPorCanal([v("MLB111", 10, 1)], [limaoFull], () => undefined).linhas[0].perdido).toBe(0);
   });
 });
+
+describe("SKU trocado", () => {
+  it("venda antiga com o SKU anterior continua no produto certo", () => {
+    const p = { ...limaoFull, mlbs: [], sku: "LimaoCaipiraFull", skusAnteriores: ["LimaoCaipira"] };
+    const r = vendasPorCanal([v("limaocaipira", 30, 3)], [p], () => undefined);
+    expect(r.linhas[0].nome).toBe("Limão Caipira");
+  });
+  it("o SKU ATUAL de outro produto vence o anterior", () => {
+    const a = { ...limaoFull, id: "a", mlbs: [], sku: "Novo", skusAnteriores: ["Menta"] };
+    const r = vendasPorCanal([v("menta", 10, 1)], [a, menta], () => undefined);
+    expect(r.linhas[0].nome).toBe("Menta");
+  });
+});

@@ -36,7 +36,7 @@ export type VendaDoAnuncio = {
   pedidos: number;
 };
 
-export type ProdutoParaCanal = ProdutoComGrupo & { mlbs?: string[]; mlb?: string };
+export type ProdutoParaCanal = ProdutoComGrupo & { mlbs?: string[]; mlb?: string; skusAnteriores?: string[] };
 
 export type TotalDeVenda = { valor: number; unidades: number; pedidos: number };
 
@@ -91,6 +91,13 @@ export function vendasPorCanal(
     for (const id of new Set(ids)) porAnuncio.set(id, porAnuncio.has(id) ? null : p);
     const sku = String(p.sku ?? "").trim().toLowerCase();
     if (sku) porSku.set(sku, porSku.has(sku) ? null : p);
+  }
+  // SKUs anteriores (venda antiga guarda o SKU da hora): só onde nenhum produto tem esse SKU hoje.
+  for (const p of produtos) {
+    for (const s of p.skusAnteriores ?? []) {
+      const k = String(s ?? "").trim().toLowerCase();
+      if (k && !porSku.has(k)) porSku.set(k, p);
+    }
   }
 
   type Acc = LinhaPorCanal & { _produtos: Set<string> };
