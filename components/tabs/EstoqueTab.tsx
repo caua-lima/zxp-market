@@ -29,6 +29,7 @@ import { paginar } from "@/lib/domain/paginacao";
 import EntradaMassaModal from "@/components/tabs/estoque/EntradaMassaModal";
 import DestinacaoPanel from "@/components/tabs/estoque/Destinacao";
 import { calcularCompra, custoComDesconto, descontoValido } from "@/lib/domain/preco-com-desconto";
+import { comSkuAnterior } from "@/lib/domain/indice-sku";
 import TransferirEstoqueModal from "@/components/tabs/estoque/TransferirEstoqueModal";
 import EditarNomeSkuMassaModal from "@/components/tabs/estoque/EditarNomeSkuMassaModal";
 import SincronizarSkuMlModal, { type TrocaDeSku } from "@/components/tabs/estoque/SincronizarSkuMlModal";
@@ -861,11 +862,13 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
             // LANÇA se falhar: quem chama (ProductModal) mostra o erro dentro do
             // formulário, com o que foi digitado intacto. O modal só fecha aqui,
             // depois de a gravação principal ter dado certo.
-            await upsertProduct(uid, prod);
-            // SKU trocado num produto que já existia: oferece levar a troca pros anúncios do ML.
             const antes = data.products.find((x) => x.id === prod.id);
             const skuAntes = String(antes?.sku ?? "").trim();
             const skuDepois = String(prod.sku ?? "").trim();
+            // O SKU que sai fica lembrado: os pedidos já sincronizados continuam com ele (ver indice-sku.ts).
+            const anteriores = comSkuAnterior(antes?.skusAnteriores, skuAntes, skuDepois);
+            await upsertProduct(uid, anteriores.length ? { ...prod, skusAnteriores: anteriores } : prod);
+            // SKU trocado num produto que já existia: oferece levar a troca pros anúncios do ML.
             if (antes && skuDepois && skuAntes !== skuDepois) {
               setTrocasSku([{ productId: prod.id, nome: prod.name || prod.id, skuAntigo: skuAntes, skuNovo: skuDepois }]);
             }
