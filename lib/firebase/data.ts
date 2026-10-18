@@ -46,6 +46,7 @@ import {
 import { patchCusto, patchData, patchIgnorar, patchReabrir, type ContextoDaRemessa } from "@/lib/domain/remessa-full";
 import { lerFonteDaColeta } from "./coleta-full";
 import type { PlanoDaTransferencia } from "@/lib/domain/transferencia-estoque";
+import { comSkuAnterior } from "@/lib/domain/indice-sku";
 import { validarEnvio, type EnvioFullAgendado, type NovoEnvio, type StatusEnvioAgendado } from "@/lib/domain/envio-full-agendado";
 import { definirNomeDaEmpresa } from "@/lib/marca";
 
@@ -286,9 +287,14 @@ export async function upsertProduct(_uid: string, product: Product) {
  * regravá-lo por cima desfaria o recálculo.
  */
 export async function atualizarNomeESku(id: string, campos: { name?: string; sku?: string }): Promise<void> {
-  const patch: { name?: string; sku?: string } = {};
+  const patch: { name?: string; sku?: string; skusAnteriores?: string[] } = {};
   if (campos.name !== undefined) patch.name = campos.name.trim();
-  if (campos.sku !== undefined) patch.sku = campos.sku.trim();
+  if (campos.sku !== undefined) {
+    patch.sku = campos.sku.trim();
+    // O SKU que sai vai pra lista de anteriores: os pedidos já sincronizados continuam com ele.
+    const atual = (await getDoc(sDoc("estoque", id))).data() ?? {};
+    patch.skusAnteriores = comSkuAnterior(atual.skusAnteriores, String(atual.sku ?? ""), patch.sku);
+  }
   if (Object.keys(patch).length === 0) return;
   await updateDoc(sDoc("estoque", id), patch);
   invalidar(CHAVE_PRODUTOS);

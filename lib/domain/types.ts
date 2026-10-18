@@ -205,6 +205,12 @@ export type Product = {
    * que deixa as análises somarem Full + agências. Ver lib/domain/grupo-produto.ts.
    */
   grupo?: string;
+  /**
+   * SKUs que este produto já teve. O pedido guarda o SKU da hora da venda: sem
+   * esta lista, trocar o SKU deixaria as vendas antigas sem produto (custo zero).
+   * Ver lib/domain/indice-sku.ts.
+   */
+  skusAnteriores?: string[];
   /** De que lado do estoque este cadastro está. O fato (logística do anúncio no ML) vale mais, quando existe. */
   canal?: "full" | "agencias";
   ativo: boolean;
