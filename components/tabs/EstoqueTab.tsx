@@ -30,6 +30,7 @@ import EntradaMassaModal from "@/components/tabs/estoque/EntradaMassaModal";
 import DestinacaoPanel from "@/components/tabs/estoque/Destinacao";
 import { calcularCompra, custoComDesconto, descontoValido } from "@/lib/domain/preco-com-desconto";
 import TransferirEstoqueModal from "@/components/tabs/estoque/TransferirEstoqueModal";
+import EditarNomeSkuMassaModal from "@/components/tabs/estoque/EditarNomeSkuMassaModal";
 import { AgendarEnvioModal, EnviosAgendadosPainel, ResumoDisponibilidade, novoIdDeEnvio, useReservasFull } from "@/components/tabs/estoque/EnviosAgendados";
 import { criarEnvioAgendado } from "@/lib/firebase/data";
 import { agruparProdutos, canalOposto, gruposExistentes, sobraNosIrmaos, ROTULO_CANAL, sugerirCanal, sugerirGrupo, sugerirVersao, type Canal } from "@/lib/domain/grupo-produto";
@@ -110,6 +111,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
     return () => document.removeEventListener("keydown", onKey);
   }, [expanded]);
   const [impostoMassa, setImpostoMassa] = useState(false);
+  const [nomeSkuMassa, setNomeSkuMassa] = useState(false);
 
   /** A vista: o recorte da lista. O padrão é a pergunta que se faz ao abrir. */
   const [vista, setVista] = useState<"acao" | "todos" | "movimentos" | "destinacao">("acao");
@@ -436,6 +438,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
         secundarias={canEdit ? [
           { rotulo: "Vincular por SKU", onClick: () => setVincularSku(true) },
           { rotulo: "Imposto em massa", onClick: () => setImpostoMassa(true) },
+          { rotulo: "Editar nome e SKU em massa", onClick: () => setNomeSkuMassa(true) },
           { rotulo: "＋ Entrada em massa", onClick: () => setEntradaMassa(true) },
         ] : []}
       />
@@ -809,6 +812,10 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
           escopoBusca={search.trim()}
           onClose={() => setImpostoMassa(false)}
         />
+      )}
+
+      {nomeSkuMassa && (
+        <EditarNomeSkuMassaModal produtos={data.products} onClose={() => setNomeSkuMassa(false)} />
       )}
 
       {vincularSku && (
