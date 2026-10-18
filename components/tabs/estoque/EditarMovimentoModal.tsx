@@ -58,6 +58,7 @@ export default function EditarMovimentoModal({
   const custoValido = !temCusto || cNum == null || (Number.isFinite(cNum) && cNum >= 0);
   const dataValida = /^\d{4}-\d{2}-\d{2}$/.test(data);
   const podeSalvar = qtdValida && custoValido && dataValida && !salvando;
+  const custoMudou = temCusto && cNum !== (mov.custoUnit ?? null);
 
   // O que de fato mudou — pra não gravar à toa e pra registrar na auditoria.
   const mudancas: string[] = [];
@@ -78,6 +79,8 @@ export default function EditarMovimentoModal({
         quantidade: qNum,
         obs: obs.trim() || undefined,
         ...(temCusto && cNum != null ? { custoUnit: cNum } : {}),
+        // Mudar o custo na mão desfaz a conta preço × desconto: o registro antigo passaria a contar uma história que não bate mais.
+        ...(custoMudou && mov.precoOriginal != null ? { precoOriginal: undefined, descontoPct: undefined } : {}),
       }, {
         // O registro de auditoria vai no MESMO lote da correção (S20).
         entidadeLabel: `${product.name || "(sem nome)"} · ${TIPO_MOVIMENTO_LABEL[mov.tipo]}`,
@@ -156,6 +159,12 @@ export default function EditarMovimentoModal({
                   value={custo} onChange={(e) => setCusto(e.target.value)}
                 />
               </div>
+              {mov.precoOriginal != null && mov.descontoPct != null && (
+                <span style={{ fontSize: ".75rem", color: "var(--muted)", display: "block" }}>
+                  Lançado como preço {fmtBRL(mov.precoOriginal)} com {mov.descontoPct}% de desconto.
+                  {custoMudou && " Mudar o custo aqui desfaz esse registro."}
+                </span>
+              )}
               {temCusto && cNum != null && Number.isFinite(cNum) && qtdValida && (
                 <span style={{ fontSize: ".75rem", color: "var(--muted)" }}>
                   total desta entrada: {fmtBRL(cNum * Math.abs(qNum))}

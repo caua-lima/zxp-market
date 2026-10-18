@@ -711,7 +711,7 @@ export async function updateMovimento(
    * as movimentações do produto de novo, então corrigir uma entrada antiga
    * conserta a média sozinho.
    */
-  patch: { data?: string; quantidade?: number; obs?: string; custoUnit?: number },
+  patch: { data?: string; quantidade?: number; obs?: string; custoUnit?: number; precoOriginal?: number; descontoPct?: number },
   /** O texto do registro de auditoria — gravado no MESMO lote (S20). */
   auditoria: TextoDaAuditoria = { entidadeLabel: productId },
 ): Promise<{ faixasAlteradas: { desde: string; de: number; para: number }[] }> {

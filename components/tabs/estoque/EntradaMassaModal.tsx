@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Modal from "@/components/Modal";
 import { fmtBRL } from "@/lib/domain/calc";
 import { calcularEntradaMassa, type LinhaEntrada, type ProdutoParaEntrada } from "@/lib/domain/entrada-massa";
+import { custoComDesconto, descontoValido } from "@/lib/domain/preco-com-desconto";
 import { addMovimento } from "@/lib/firebase/data";
 import type { Product } from "@/lib/domain/types";
 import {
@@ -27,7 +28,14 @@ export default function EntradaMassaModal({ produtos, estoqueML, onClose, onSave
   const [data, setData] = useState(todayISO());
   const [obs, setObs] = useState("");
   const [busca, setBusca] = useState("");
-  const [linhas, setLinhas] = useState<Record<string, { qtd: string; custo: string }>>({});
+  /**
+   * Cada linha leva o preço ORIGINAL e, se quiser, o desconto dela; o custo
+   * unitário é calculado (preço × (1 − desconto)). O "desconto da nota" vale pras
+   * linhas que não têm desconto próprio — numa nota do mesmo fornecedor o desconto
+   * costuma ser um só.
+   */
+  const [linhas, setLinhas] = useState<Record<string, { qtd: string; preco: string; desc: string }>>({});
+  const [descNota, setDescNota] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [progresso, setProgresso] = useState(0);
   const [falhas, setFalhas] = useState<string[]>([]);
@@ -46,35 +54,55 @@ export default function EntradaMassaModal({ produtos, estoqueML, onClose, onSave
     };
   }), [produtos, estoqueML]);
 
-  const linhasEntrada: LinhaEntrada[] = useMemo(() => Object.entries(linhas).map(([produtoId, v]) => ({
-    produtoId,
-    quantidade: v.qtd.trim() === "" ? null : parseNum(v.qtd),
-    custoUnitario: v.custo.trim() === "" ? null : parseNum(v.custo),
-  })), [linhas]);
+  /** O desconto que vale pra uma linha: o dela, ou o da nota. `null` = digitado e inválido. */
+  const descontoDa = (v: { desc: string }): number | null => {
+    const bruto = v.desc.trim() !== "" ? v.desc : descNota;
+    const d = bruto.trim() === "" ? 0 : parseNum(bruto);
+    return descontoValido(d) ? d : null;
+  };
+
+  const linhasEntrada: LinhaEntrada[] = useMemo(() => Object.entries(linhas).map(([produtoId, v]) => {
+    const d = descontoDa(v);
+    return {
+      produtoId,
+      quantidade: v.qtd.trim() === "" ? null : parseNum(v.qtd),
+      // Preço vazio = linha ignorada. Desconto inválido = sem custo (a linha acusa o erro).
+      custoUnitario: v.preco.trim() === "" || d == null ? null : custoComDesconto(parseNum(v.preco), d),
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [linhas, descNota]);
 
   const resultado = useMemo(
     () => calcularEntradaMassa(paraDominio, linhasEntrada),
     [paraDominio, linhasEntrada],
   );
 
+  /** Linhas com preço mas com desconto fora de 0–99,99%: dizem qual, em vez de sumir. */
+  const errosDeDesconto = useMemo(() => Object.entries(linhas)
+    .filter(([, v]) => v.preco.trim() !== "" && descontoDa(v) == null)
+    .map(([id]) => `${produtos.find((p) => p.id === id)?.name || id}: o desconto precisa estar entre 0% e 99,99%.`),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [linhas, descNota, produtos]);
+
   const termo = busca.trim().toLowerCase();
   const visiveis = termo
     ? produtos.filter((p) => (p.name || "").toLowerCase().includes(termo) || (p.sku || "").toLowerCase().includes(termo))
     : produtos;
 
-  const set = (id: string, campo: "qtd" | "custo", valor: string) =>
-    setLinhas((s) => ({ ...s, [id]: { qtd: s[id]?.qtd ?? "", custo: s[id]?.custo ?? "", [campo]: valor } }));
+  const set = (id: string, campo: "qtd" | "preco" | "desc", valor: string) =>
+    setLinhas((s) => ({ ...s, [id]: { qtd: s[id]?.qtd ?? "", preco: s[id]?.preco ?? "", desc: s[id]?.desc ?? "", [campo]: valor } }));
 
   /**
-   * Último custo digitado, pra repetir no próximo campo. Numa nota do mesmo
-   * fornecedor o custo costuma se repetir, e redigitar é onde nasce o erro.
+   * Último preço digitado, pra repetir no próximo campo. Numa nota do mesmo
+   * fornecedor o preço costuma se repetir, e redigitar é onde nasce o erro.
    */
-  const ultimoCusto = useMemo(() => {
-    const preenchidos = Object.values(linhas).map((v) => v.custo).filter((c) => c.trim() !== "");
+  const ultimoPreco = useMemo(() => {
+    const preenchidos = Object.values(linhas).map((v) => v.preco).filter((c) => c.trim() !== "");
     return preenchidos[preenchidos.length - 1] ?? "";
   }, [linhas]);
 
   async function salvar() {
+    if (errosDeDesconto.length) { alert(errosDeDesconto.join("\n")); return; }
     if (resultado.erros.length) { alert(resultado.erros.join("\n")); return; }
     if (!resultado.linhas.length) { alert("Preencha ao menos um produto."); return; }
     if (!obs.trim()) { alert("Informe o motivo/nota desta compra — fica no histórico de cada produto."); return; }
@@ -105,6 +133,12 @@ export default function EntradaMassaModal({ produtos, estoqueML, onClose, onSave
           tipo: "entrada",
           quantidade: l.quantidade,
           custoUnit: l.custoUnitario,
+          // Preço de tabela e desconto ficam no lançamento, pra conferir a conta depois.
+          ...(() => {
+            const v = linhas[l.produtoId];
+            const d = v ? descontoDa(v) : null;
+            return v && d != null && d > 0 ? { precoOriginal: parseNum(v.preco), descontoPct: d } : {};
+          })(),
           data,
           obs: obs.trim(),
           // Mesma razão do lançamento avulso: é o denominador que o livro não sabe.
@@ -144,6 +178,11 @@ export default function EntradaMassaModal({ produtos, estoqueML, onClose, onSave
           />
           <div className="hint">Fica no histórico de cada produto lançado.</div>
         </div>
+        <div className="config-field" style={{ margin: 0 }}>
+          <label htmlFor="entmassa-3">Desconto da nota (%)</label>
+          <input id="entmassa-3" inputMode="decimal" value={descNota} onChange={(e) => setDescNota(e.target.value)} placeholder="Ex.: 12" disabled={salvando} />
+          <div className="hint">Vale pras linhas sem desconto próprio. O custo de cada linha = preço × (1 − desconto).</div>
+        </div>
       </div>
 
       <input
@@ -160,14 +199,17 @@ export default function EntradaMassaModal({ produtos, estoqueML, onClose, onSave
             <tr>
               <th style={{ textAlign: "left" }}>Produto</th>
               <th style={{ width: 78 }}>Qtd</th>
-              <th style={{ width: 104 }}>Custo un.</th>
+              <th style={{ width: 96 }}>Preço orig.</th>
+              <th style={{ width: 74 }}>Desc. %</th>
+              <th style={{ width: 92, textAlign: "right" }}>Custo un.</th>
               <th style={{ width: 92, textAlign: "right" }}>Total</th>
               <th style={{ width: 132, textAlign: "right" }}>Custo médio</th>
             </tr>
           </thead>
           <tbody>
             {visiveis.map((p) => {
-              const l = linhas[p.id] ?? { qtd: "", custo: "" };
+              const l = linhas[p.id] ?? { qtd: "", preco: "", desc: "" };
+              const dLinha = descontoDa(l);
               const calc = resultado.linhas.find((c) => c.produtoId === p.id);
               return (
                 <tr key={p.id}>
@@ -184,12 +226,22 @@ export default function EntradaMassaModal({ produtos, estoqueML, onClose, onSave
                   </td>
                   <td>
                     <input
-                      inputMode="decimal" value={l.custo} disabled={salvando}
-                      onChange={(e) => set(p.id, "custo", e.target.value)}
-                      onFocus={() => { if (!l.custo && ultimoCusto) set(p.id, "custo", ultimoCusto); }}
-                      style={{ width: "100%" }} placeholder="—"
+                      inputMode="decimal" value={l.preco} disabled={salvando}
+                      onChange={(e) => set(p.id, "preco", e.target.value)}
+                      onFocus={() => { if (!l.preco && ultimoPreco) set(p.id, "preco", ultimoPreco); }}
+                      style={{ width: "100%" }} placeholder="—" aria-label={`Preço original de ${p.name || p.id}`}
                     />
                   </td>
+                  <td>
+                    <input
+                      inputMode="decimal" value={l.desc} disabled={salvando}
+                      onChange={(e) => set(p.id, "desc", e.target.value)}
+                      aria-invalid={l.preco.trim() !== "" && dLinha == null ? true : undefined}
+                      aria-label={`Desconto de ${p.name || p.id}`}
+                      style={{ width: "100%" }} placeholder={descNota.trim() !== "" ? descNota : "—"}
+                    />
+                  </td>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{calc ? fmtBRL(calc.custoUnitario) : "—"}</td>
                   <td style={{ textAlign: "right" }}>{calc ? fmtBRL(calc.total) : "—"}</td>
                   <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                     {calc ? (
@@ -208,9 +260,9 @@ export default function EntradaMassaModal({ produtos, estoqueML, onClose, onSave
         </table>
       </div>
 
-      {resultado.erros.length > 0 && (
+      {(resultado.erros.length > 0 || errosDeDesconto.length > 0) && (
         <div className="hint" style={{ color: "var(--red-text)", marginTop: 8 }}>
-          {resultado.erros.map((e) => <div key={e}>• {e}</div>)}
+          {[...errosDeDesconto, ...resultado.erros].map((e) => <div key={e}>• {e}</div>)}
         </div>
       )}
       {falhas.length > 0 && (
@@ -228,7 +280,7 @@ export default function EntradaMassaModal({ produtos, estoqueML, onClose, onSave
         <button
           type="button" className="btn btn-primary"
           onClick={salvar}
-          disabled={salvando || resultado.erros.length > 0 || resultado.linhas.length === 0}
+          disabled={salvando || resultado.erros.length > 0 || errosDeDesconto.length > 0 || resultado.linhas.length === 0}
         >
           {salvando ? `Lançando ${progresso}/${resultado.linhas.length}...` : "Lançar entradas"}
         </button>

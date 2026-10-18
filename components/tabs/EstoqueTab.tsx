@@ -1412,7 +1412,12 @@ function MovimentosHistorico({ product, movs, onMov }: { product: Product; movs:
                     <td style={{ color: "var(--muted)" }}>{m.data}</td>
                     <td data-label="Tipo" style={{ textAlign: "left" }}><span style={{ color: cor, fontWeight: 700 }}>{rotuloDoMovimento(m)}</span></td>
                     <td data-label="Qtd" style={{ color: cor, fontWeight: 700 }}>{sign}{Math.abs(m.quantidade)}</td>
-                    <td data-label="Custo un.">{(m.tipo === "entrada" || m.tipo === "saldo_inicial") && m.custoUnit != null ? fmtBRL(m.custoUnit) : "—"}</td>
+                    <td data-label="Custo un.">
+                      {(m.tipo === "entrada" || m.tipo === "saldo_inicial") && m.custoUnit != null ? fmtBRL(m.custoUnit) : "—"}
+                      {m.precoOriginal != null && m.descontoPct != null && (
+                        <span style={{ display: "block", fontSize: ".72rem", color: "var(--muted)" }} title="Preço de tabela e desconto da compra">de {fmtBRL(m.precoOriginal)} (−{m.descontoPct}%)</span>
+                      )}
+                    </td>
                     <td data-label="Obs" style={{ textAlign: "left", color: "var(--muted)", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.obs || "—"}</td>
                     <td data-cell="acoes" style={{ whiteSpace: "nowrap" }}>
                       {/* Perna de transferência não se edita sozinha: desbalancearia os dois estoques. */}
