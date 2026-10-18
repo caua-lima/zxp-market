@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { registrarSkus } from "@/lib/domain/indice-sku";
 import { devolucaoConcluida, ehDevolucao } from "@/lib/domain/devolucao-estado";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
@@ -241,6 +242,7 @@ export async function GET(req: Request) {
     const prodSnap = await db.collection("estoque").get();
     const porMlb = new Map<string, ProdutoData>();
     const porSku = new Map<string, ProdutoData>();
+    const skusAtuais = new Set<string>();
     for (const doc of prodSnap.docs) {
       const d = doc.data();
       const entry: ProdutoData = {
@@ -254,8 +256,8 @@ export async function GET(req: Request) {
       };
       const mlbs: string[] = Array.isArray(d.mlbs) && d.mlbs.length ? d.mlbs : d.mlb ? [String(d.mlb)] : [];
       for (const m of mlbs) { const n = normId(String(m)); if (n) porMlb.set(n, entry); }
-      const sku = String(d.sku ?? "").trim();
-      if (sku) porSku.set(normSku(sku), entry);
+      // SKU atual e os anteriores (pedido antigo guarda o SKU da hora da venda) — ver lib/domain/indice-sku.ts.
+      registrarSkus(porSku, d, entry, normSku, skusAtuais);
     }
 
     // ── Pedidos AO VIVO (mesma fonte do dashboard) com fallback ao Firestore ──
