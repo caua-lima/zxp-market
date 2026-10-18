@@ -6,6 +6,7 @@ import { fmtBRL } from "@/lib/domain/calc";
 import { agregarPorCampanha, rotuloCampanha, type CampanhaAgregada, type ItemParaCampanha, type MetricasReais } from "@/lib/domain/ads-campaigns";
 import { corMargem, corRoas, num, type Modo } from "./ads-types";
 import AdsFunnel from "./AdsFunnel";
+import t from "./AdsTable.module.css";
 
 /**
  * Performance POR CAMPANHA. O funil do topo soma tudo, o que esconde o caso
@@ -51,111 +52,72 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
       </div>
 
       <div className="table-wrapper" style={{ border: "none" }}>
-        <table className="tbl-modern tbl-cards">
+        <table className={`tbl-modern tbl-cards ${t.tabela}`}>
           <thead>
             <tr>
-              <th style={{ textAlign: "left" }}>Campanha</th>
-              {/* Orçamento e ROAS objetivo são o que se ajusta no painel do ML —
-                  tê-los aqui é o que permite decidir e agir sem trocar de tela. */}
-              <th title="Orçamento diário configurado na campanha.">Orçamento</th>
-              <th title="ROAS objetivo que você configurou na campanha, no painel do Mercado Ads.">ROAS obj.</th>
-              <th>Investido</th>
-              <th>Receita</th>
-              <th>ROAS</th>
-              <th>Lucro após Ads</th>
-              <th title="Lucro após Ads ÷ receita da campanha. Comparar campanhas pelo valor absoluto escala a errada: R$ 373 sobre R$ 2.369 é 15,8%, e R$ 125 sobre R$ 992 é 12,7%.">Margem</th>
-              <th></th>
+              <th className={t.lCampanha}>Campanha</th>
+              {/* Orçamento e meta são o que se ajusta no painel do ML — tê-los aqui permite decidir e agir sem trocar de tela. */}
+              <th className={t.lVerba} title="Orçamento diário e ROAS objetivo configurados na campanha.">Verba · meta</th>
+              <th className={t.lInvestido}>Investido</th>
+              <th className={t.lReceita}>Receita</th>
+              <th className={t.lRoas} title="ROAS no modo escolhido. Embaixo, o do painel do Mercado Ads quando difere.">ROAS</th>
+              <th className={t.lLucro} title="Lucro após Ads e margem sobre a receita da campanha. Comparar pelo valor absoluto escala a errada: R$ 373 sobre R$ 2.369 é 15,8%; R$ 125 sobre R$ 992 é 12,7%.">Lucro · margem</th>
+              <th className={t.cAcao}><span className="sr-only">Performance</span></th>
             </tr>
           </thead>
           <tbody>
             {campanhas.map((c) => (
-              <tr key={c.campaignId}>
-                <td style={{ textAlign: "left", fontWeight: 600 }}>
-                  {rotuloCampanha(c.campaignName)}
-                  <span style={{ display: "block", fontSize: ".75rem", color: "var(--muted)", fontWeight: 400 }}>
+              <tr key={c.campaignId} className={t.linha} data-tom={c.lucroAposAds != null && c.lucroAposAds < 0 ? "ruim" : undefined} onClick={() => setAberta(c)}>
+                <td className={t.campanha}>
+                  <span className={t.topo}><span className={t.nome} title={c.campaignName || c.campaignId}>{rotuloCampanha(c.campaignName)}</span></span>
+                  <span className={t.produto}>
                     {c.anuncios} anúncio(s) · {num(c.clicks)} cliques
-                    {/* Um anúncio desta campanha roda em outra também. A marca
-                        fica no nome, junto do "≈" das colunas de lucro e margem —
-                        é o mesmo fato, dito uma vez em cada lugar que ele afeta. */}
-                    {c.atribuicaoIncerta && (
-                      <span
-                        title={c.avisoLucro ?? undefined}
-                        style={{ marginLeft: 6, cursor: "help", color: "var(--warning)" }}
-                      >
-                        ⚠ rateado
-                      </span>
-                    )}
+                    {/* Um anúncio desta campanha roda em outra também: o "≈" do lucro e esta marca dizem o mesmo fato. */}
+                    {c.atribuicaoIncerta && <span title={c.avisoLucro ?? undefined} style={{ marginLeft: 6, cursor: "help", color: "var(--warning)" }}>⚠ rateado</span>}
                   </span>
                 </td>
-                <td data-label="Orçamento" style={{ whiteSpace: "nowrap", color: c.dailyBudget > 0 ? "var(--text)" : "var(--muted)" }}>
-                  {c.dailyBudget > 0 ? `${fmtBRL(c.dailyBudget)}/dia` : "—"}
+                <td data-label="Verba · meta">
+                  <div className={t.celula}>
+                    <span className={t.valor} style={{ color: c.dailyBudget > 0 ? undefined : "var(--muted)" }}>{c.dailyBudget > 0 ? `${fmtBRL(c.dailyBudget)}/dia` : "—"}</span>
+                    <span className={t.sub}>{c.roasTarget > 0 ? `meta ${num(c.roasTarget, 2)}x` : "sem meta"}</span>
+                  </div>
                 </td>
-                <td data-label="ROAS obj." style={{ whiteSpace: "nowrap", fontWeight: 600, color: c.roasTarget > 0 ? "var(--text)" : "var(--muted)" }}>
-                  {c.roasTarget > 0 ? `${num(c.roasTarget, 2)}x` : "—"}
+                <td data-label="Investido"><div className={t.celula}><span className={t.valor}>{fmtBRL(c.cost)}</span></div></td>
+                <td data-label="Receita"><div className={t.celula}><span className={t.valor}>{fmtBRL(c.receita)}</span></div></td>
+                {/* Dois ROAS de propósito: o do modo e o do painel do Mercado Ads (receita atribuída total). Sem o segundo,
+                    o daqui parece quebrado ao lado do ML (4,71x aqui × 10,77x lá, mesma campanha). */}
+                <td data-label="ROAS">
+                  <div className={t.celula}>
+                    <span className={t.valor} style={{ color: c.roas != null ? corRoas(c.roas) : "var(--muted)" }}>{c.roas != null ? `${num(c.roas, 2)}x` : "—"}</span>
+                    {c.roasMlAds != null && c.roas != null && Math.abs(c.roasMlAds - c.roas) > 0.01 && (
+                      <span
+                        className={`${t.sub} ${t.ajuda}`}
+                        title={`No Mercado Ads esta campanha aparece com ROAS ${num(c.roasMlAds, 2)}x, porque lá a conta usa a receita atribuída TOTAL (${fmtBRL(c.receitaAtribuida)}: clique direto + venda assistida). Aqui a base é ${fmtBRL(c.receita)}. Os dois estão certos e respondem perguntas diferentes.`}
+                      >
+                        no ML {num(c.roasMlAds, 2)}x
+                      </span>
+                    )}
+                  </div>
                 </td>
-                <td data-label="Investido" style={{ color: "var(--red-text)", fontWeight: 600, whiteSpace: "nowrap" }}>{fmtBRL(c.cost)}</td>
-                <td data-label="Receita" style={{ color: "var(--green)", whiteSpace: "nowrap" }}>{fmtBRL(c.receita)}</td>
-                {/* Dois ROAS de propósito: o do modo escolhido e o do painel do
-                    Mercado Ads (receita atribuída total). Sem o segundo, o
-                    número daqui parece quebrado ao lado do ML — foi o que gerou
-                    "o ROAS está errado" (4,71x aqui × 10,77x lá, mesma campanha). */}
-                <td data-label="ROAS" style={{ fontWeight: 700, whiteSpace: "nowrap", color: c.roas != null ? corRoas(c.roas) : "var(--muted)" }}>
-                  {c.roas != null ? `${num(c.roas, 2)}x` : "—"}
-                  {c.roasMlAds != null && c.roas != null && Math.abs(c.roasMlAds - c.roas) > 0.01 && (
-                    <span
-                      style={{ display: "block", fontSize: ".75rem", fontWeight: 400, color: "var(--muted)" }}
-                      title={`No Mercado Ads esta campanha aparece com ROAS ${num(c.roasMlAds, 2)}x, porque lá a conta usa a receita atribuída TOTAL (${fmtBRL(c.receitaAtribuida)}: clique direto + venda assistida). Aqui a base é ${fmtBRL(c.receita)}. Os dois estão certos e respondem perguntas diferentes.`}
-                    >
-                      ML: {num(c.roasMlAds, 2)}x
-                    </span>
-                  )}
+                {/* Sem número, entra o MOTIVO (traço mudo não diz se falta custo ou venda). Rateado, entra o "≈". */}
+                <td data-label="Lucro · margem" title={c.avisoLucro ?? c.motivoSemLucro ?? undefined}>
+                  <div className={t.celula}>
+                    {c.lucroAposAds != null ? (
+                      <span className={`${t.valor} ${c.lucroAposAds >= 0 ? t.positivo : t.negativo}`} style={{ cursor: c.lucroAproximado ? "help" : undefined }}>
+                        {c.lucroAproximado && <span style={{ fontWeight: 400 }}>≈ </span>}{fmtBRL(c.lucroAposAds)}
+                      </span>
+                    ) : <span className={t.motivo}>{c.motivoSemLucro ?? "—"}</span>}
+                    {c.margem != null
+                      ? <span className={t.sub} style={{ color: c.margem < 0 ? "var(--red-text)" : corMargem(c.margem) }}>margem {c.lucroAproximado ? "≈ " : ""}{num(c.margem, 1)}%</span>
+                      : c.lucroAposAds != null && <span className={t.motivo} title={c.motivoSemMargem ?? undefined}>{c.motivoSemMargem ?? "sem margem"}</span>}
+                  </div>
                 </td>
-                <td
-                  data-label="Lucro após Ads"
-                  /* Sem numero, entra o MOTIVO: traco mudo nao diz se falta
-                     cadastrar custo ou esperar venda. Com numero rateado,
-                     entra o til e o aviso no tooltip — ver avisoLucro. */
-                  title={c.avisoLucro ?? c.motivoSemLucro ?? undefined}
-                  style={{
-                    fontWeight: 700, whiteSpace: "nowrap",
-                    color: c.lucroAposAds == null ? "var(--muted)" : c.lucroAposAds >= 0 ? "var(--green)" : "var(--red)",
-                  }}
-                >
-                  {c.lucroAposAds != null ? (
-                    <span style={{ cursor: c.lucroAproximado ? "help" : undefined }}>
-                      {c.lucroAproximado && <span style={{ fontWeight: 400 }}>≈ </span>}
-                      {fmtBRL(c.lucroAposAds)}
-                    </span>
-                  ) : (
-                    <span style={{ fontWeight: 400, fontSize: ".75rem", whiteSpace: "normal", display: "inline-block", maxWidth: 190 }}>
-                      {c.motivoSemLucro ?? "—"}
-                    </span>
-                  )}
-                </td>
-                <td
-                  data-label="Margem"
-                  title={c.avisoLucro ?? undefined}
-                  style={{
-                    fontWeight: 700, whiteSpace: "nowrap",
-                    color: c.margem == null ? "var(--muted)" : corMargem(c.margem),
-                    cursor: c.lucroAproximado ? "help" : undefined,
-                  }}
-                >
-                  {c.margem != null ? `${c.lucroAproximado ? "≈ " : ""}${num(c.margem, 1)}%` : (
-                    /* Mesmo criterio da coluna ao lado: ou o numero, ou o
-                       motivo. Margem some num caso a mais que o lucro —
-                       gastou e nao vendeu —, por isso motivo proprio. */
-                    <span
-                      title={c.motivoSemMargem ?? undefined}
-                      style={{ fontWeight: 400, fontSize: ".75rem", whiteSpace: "normal", display: "inline-block", maxWidth: 190 }}
-                    >
-                      {c.motivoSemMargem ?? "—"}
-                    </span>
-                  )}
-                </td>
-                <td data-cell="acoes" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => setAberta(c)}>
-                    Ver performance
+                <td data-cell="acoes" className={t.acao}>
+                  <button
+                    type="button" className={t.abrir} title="Ver performance" aria-label={`Ver performance de ${rotuloCampanha(c.campaignName)}`}
+                    onClick={(e) => { e.stopPropagation(); setAberta(c); }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 6l6 6-6 6" /></svg>
                   </button>
                 </td>
               </tr>
