@@ -1,5 +1,6 @@
 import { log } from "@/lib/log";
 import "server-only";
+import { registrarSkus } from "@/lib/domain/indice-sku";
 import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { estimateOrderFinance, type ProdutoCusto } from "@/lib/ml/order-finance";
@@ -70,6 +71,7 @@ export async function carregarProdutos(db: FirebaseFirestore.Firestore) {
   const snap = await db.collection("estoque").get();
   const porMlb = new Map<string, ProdutoCusto>();
   const porSku = new Map<string, ProdutoCusto>();
+  const skusAtuais = new Set<string>();
   for (const doc of snap.docs) {
     const d = doc.data();
     const entry: ProdutoCusto = {
@@ -82,8 +84,8 @@ export async function carregarProdutos(db: FirebaseFirestore.Firestore) {
     };
     const mlbs: string[] = Array.isArray(d.mlbs) && d.mlbs.length ? d.mlbs : d.mlb ? [String(d.mlb)] : [];
     for (const m of mlbs) { const n = normId(String(m)); if (n) porMlb.set(n, entry); }
-    const sku = String(d.sku ?? "").trim();
-    if (sku) porSku.set(norm(sku), entry);
+    // SKU atual e os anteriores — ver lib/domain/indice-sku.ts.
+    registrarSkus(porSku, d, entry, norm, skusAtuais);
   }
   return { porMlb, porSku };
 }
