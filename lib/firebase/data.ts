@@ -279,6 +279,21 @@ export async function upsertProduct(_uid: string, product: Product) {
   invalidar(CHAVE_PRODUTOS);
 }
 
+/**
+ * Muda só o nome e/ou o SKU de um produto. `updateDoc` com os dois campos, e não
+ * `upsertProduct` com o objeto inteiro: o objeto da tela pode estar atrás do
+ * banco (o saldo e o custo médio são recalculados a cada movimentação), e
+ * regravá-lo por cima desfaria o recálculo.
+ */
+export async function atualizarNomeESku(id: string, campos: { name?: string; sku?: string }): Promise<void> {
+  const patch: { name?: string; sku?: string } = {};
+  if (campos.name !== undefined) patch.name = campos.name.trim();
+  if (campos.sku !== undefined) patch.sku = campos.sku.trim();
+  if (Object.keys(patch).length === 0) return;
+  await updateDoc(sDoc("estoque", id), patch);
+  invalidar(CHAVE_PRODUTOS);
+}
+
 export async function deleteProduct(_uid: string, id: string) {
   await deleteDoc(sDoc("estoque", id));
   invalidar(CHAVE_PRODUTOS);
