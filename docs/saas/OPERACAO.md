@@ -79,6 +79,11 @@ foi escrito pra funcionar com elas.
 4. Abra o app, **recarregue a página** (Ctrl+F5) e faça um teste simples:
    lance e depois exclua uma movimentação de estoque de teste. Tem que funcionar.
 
+> **Trocar SKU e mandar pro Mercado Livre** (Estoque → editar SKU → “Atualizar SKU no Mercado Livre”)
+> grava nos anúncios. Se o ML responder “sem permissão de escrita”, a aplicação do Mercado Livre
+> (developers.mercadolivre.com.br → suas aplicações) precisa ter a permissão de **escrita** em
+> publicações; depois de mudar, reconecte a conta no app. Simular funciona mesmo sem essa permissão.
+
 > **Envios agendados pro Full** (aba Estoque › “Full × Agências”) usam uma coleção
 > nova, `full_envios_agendados`. **Sem publicar as regras, agendar dá “sem
 > permissão”** — o resto do app não é afetado. Quem edita estoque agenda; o member
