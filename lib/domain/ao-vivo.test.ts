@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { haQuantoTempo, prepararPedidosAoVivo, redigirOperacao, relogioBR, resumirAoVivo, ritmoVsOntem, type PedidoAoVivo } from "./ao-vivo";
+import { haQuantoTempo, metaDoDia, prepararPedidosAoVivo, redigirOperacao, relogioBR, resumirAoVivo, ritmoVsOntem, type PedidoAoVivo } from "./ao-vivo";
 
 // 12/10/2026 14:30 em Brasília = 17:30 UTC.
 const AGORA = Date.parse("2026-10-12T14:30:00.000-03:00");
@@ -207,5 +207,42 @@ describe("ao vivo — o que o member não vê", () => {
     expect(r.topProdutos).toEqual([{ itemId: "A", estoque: null }, { itemId: "B", estoque: null }]);
     expect(r.receita).toBe(1260);
     expect(corpo.visitas).toBe(167); // não mutou o original (o cache guarda a versão completa)
+  });
+});
+
+describe("ao vivo — meta de hoje (mesmas regras do Dashboard)", () => {
+  it("o alvo de hoje é o que falta até ontem dividido pelos dias que restam (hoje incluso)", () => {
+    // Meta 300 mil, mês de 30 dias, dia 21: faltam 10 dias. Até ontem vendeu 200 mil → 100 mil / 10 = 10 mil.
+    const m = metaDoDia({ metas: { meta1: 300000 }, vendasAteOntem: 200000, vendasHoje: 4000, diaAtual: 21, diasNoMes: 30 })!;
+    expect(m.alvo).toBe(10000);
+    expect(m.pct).toBe(40);
+    expect(m.falta).toBe(6000);
+    expect(m.batida).toBe(false);
+    expect(m.metaIndex).toBe(1);
+  });
+
+  it("o alvo não encolhe a cada venda do dia (sai do acumulado até ONTEM)", () => {
+    const base = { metas: { meta1: 300000 }, vendasAteOntem: 200000, diaAtual: 21, diasNoMes: 30 };
+    expect(metaDoDia({ ...base, vendasHoje: 0 })!.alvo).toBe(metaDoDia({ ...base, vendasHoje: 9000 })!.alvo);
+  });
+
+  it("bater a Meta 1 libera a Meta 2", () => {
+    const m = metaDoDia({ metas: { meta1: 100000, meta2: 150000 }, vendasAteOntem: 110000, vendasHoje: 0, diaAtual: 21, diasNoMes: 30 })!;
+    expect(m.metaIndex).toBe(2);
+    expect(m.alvo).toBe(4000); // (150 − 110) mil / 10 dias
+  });
+
+  it("mês já batido: alvo zero, conta como batida", () => {
+    const m = metaDoDia({ metas: { meta1: 100000 }, vendasAteOntem: 120000, vendasHoje: 0, diaAtual: 25, diasNoMes: 30 })!;
+    expect(m).toMatchObject({ alvo: 0, mesBatido: true, batida: true });
+  });
+
+  it("último dia do mês: o alvo é tudo que falta", () => {
+    expect(metaDoDia({ metas: { meta1: 100000 }, vendasAteOntem: 95000, vendasHoje: 0, diaAtual: 31, diasNoMes: 31 })!.alvo).toBe(5000);
+  });
+
+  it("sem meta: null", () => {
+    expect(metaDoDia({ metas: null, vendasAteOntem: 0, vendasHoje: 0, diaAtual: 1, diasNoMes: 30 })).toBeNull();
+    expect(metaDoDia({ metas: { meta1: 0 }, vendasAteOntem: 0, vendasHoje: 0, diaAtual: 1, diasNoMes: 30 })).toBeNull();
   });
 });

@@ -23,6 +23,8 @@
  */
 
 import { diaBRDe } from "./periodo-br";
+import { selectActiveGoal } from "./gauge";
+import { calcularMetaDiaria } from "./meta-diaria";
 import { classificarVenda, detectarPedidosSubstituidos } from "./venda-status";
 
 const BR_OFFSET_MS = 3 * 3600 * 1000;
@@ -255,4 +257,52 @@ export function redigirOperacao<T extends { visitas: number | null; topProdutos:
 ): T {
   if (veOperacao) return corpo;
   return { ...corpo, visitas: null, topProdutos: corpo.topProdutos.map((p) => ({ ...p, estoque: null })) };
+}
+
+export type MetaDoDia = {
+  /** O alvo de hoje (meta do mês que falta ÷ dias que faltam, hoje incluso). 0 = mês já batido. */
+  alvo: number;
+  /** Qual meta está valendo (1, 2 ou 3) e o valor dela. */
+  metaIndex: number;
+  metaDoMes: number;
+  /** Vendido hoje ÷ alvo de hoje, em %. Pode passar de 100. */
+  pct: number;
+  /** Quanto falta hoje (0 se já bateu). */
+  falta: number;
+  batida: boolean;
+  /** A meta do mês inteira já foi batida antes de hoje. */
+  mesBatido: boolean;
+};
+
+/**
+ * A meta de HOJE, com as MESMAS regras do Dashboard (selectActiveGoal +
+ * calcularMetaDiaria): persegue a meta vigente (bater a Meta 1 libera a 2), e o
+ * alvo do dia sai do que falta até ontem dividido pelos dias que restam — fica
+ * parado o dia todo, não encolhe a cada venda.
+ *
+ * `null` sem meta configurada pro mês.
+ */
+export function metaDoDia(e: {
+  metas: { meta1: number; meta2?: number | null; meta3?: number | null } | null;
+  vendasAteOntem: number;
+  vendasHoje: number;
+  diaAtual: number;
+  diasNoMes: number;
+}): MetaDoDia | null {
+  if (!e.metas || !(e.metas.meta1 > 0) || !(e.diasNoMes > 0)) return null;
+  const mes = Math.max(e.vendasAteOntem, 0) + Math.max(e.vendasHoje, 0);
+  const { activeMeta, metaIndex } = selectActiveGoal(mes, e.metas.meta1, e.metas.meta2 ?? null, e.metas.meta3 ?? null);
+  const diasRestantes = Math.max(e.diasNoMes - Math.min(Math.max(e.diaAtual, 1), e.diasNoMes) + 1, 1);
+  const { diaria } = calcularMetaDiaria({
+    metaAtiva: activeMeta, faturamentoMes: mes, faturamentoHoje: Math.max(e.vendasHoje, 0), diasRestantes, diasNoMes: e.diasNoMes,
+  });
+  const alvo = diaria ?? 0;
+  const hoje = Math.max(e.vendasHoje, 0);
+  return {
+    alvo, metaIndex, metaDoMes: activeMeta,
+    pct: alvo > 0 ? (hoje / alvo) * 100 : 100,
+    falta: Math.max(alvo - hoje, 0),
+    batida: hoje >= alvo,
+    mesBatido: alvo === 0,
+  };
 }
