@@ -5,7 +5,7 @@
 .painel{position:fixed;inset:0;z-index:1100;overflow-y:auto;overscroll-behavior:contain;background:var(--bg);color:var(--text);outline:none;-webkit-overflow-scrolling:touch}
 
 /* ── faixa de cima ── */
-.hero{position:relative;padding:max(22px,env(safe-area-inset-top)) 20px 64px;text-align:center;color:#1B1A14;background:linear-gradient(135deg,#F7C95C 0%,var(--color-gold,#F4B942) 55%,#E9A92D 100%)}
+.hero{position:relative;display:flow-root;padding:max(22px,env(safe-area-inset-top)) 20px 0;text-align:center;color:#1B1A14;background:linear-gradient(135deg,#F7C95C 0%,var(--color-gold,#F4B942) 55%,#E9A92D 100%)}
 .acoesTopo{position:absolute;top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));display:flex;gap:8px}
 .iconeBtn{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.85);color:#1B1A14;cursor:pointer}
 .iconeBtn:hover{background:#fff}
@@ -14,14 +14,14 @@
 .relogio{display:inline-flex;align-items:center;gap:8px;padding:5px 14px;border-radius:999px;background:rgba(255,255,255,.75);font-size:.85rem;font-weight:600;font-variant-numeric:tabular-nums}
 .ponto{width:9px;height:9px;border-radius:50%;background:#D93025;animation:pisca 1.8s ease-in-out infinite}
 .ponto[data-parado]{background:#6B6A5E;animation:none}
-.valorCaixa{position:absolute;left:50%;bottom:-38px;transform:translateX(-50%);width:min(560px,calc(100% - 32px));padding:14px 18px 16px;border-radius:14px;background:#FBF8EE;color:#1B1A14;box-shadow:0 6px 24px rgba(0,0,0,.28)}
+/* No fluxo, não absoluto: com a meta de hoje dentro, o cartão cresce e empurra o resto, em vez de subir por cima do relógio. */
+.valorCaixa{position:relative;margin:16px auto -38px;width:min(560px,100%);padding:14px 18px 16px;border-radius:14px;background:#FBF8EE;color:#1B1A14;box-shadow:0 6px 24px rgba(0,0,0,.28)}
 .valor{font-size:clamp(1.9rem,7vw,2.8rem);font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
 .ritmo{margin-top:2px;font-size:.85rem;font-weight:700;color:#5C5B4F}
 .ritmo[data-tom="bom"]{color:#0B7A4B}
 .ritmo[data-tom="ruim"]{color:#B3261E}
 
 /* Meta de hoje, dentro do cartão do valor. */
-.hero[data-com-meta]{padding-bottom:112px}
 .meta{margin-top:12px;padding-top:12px;border-top:1px solid rgba(27,26,20,.12);text-align:left}
 .metaLinha{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:.85rem;color:#3A392F;font-variant-numeric:tabular-nums}
 .metaLinha b{color:#1B1A14}
@@ -92,8 +92,7 @@
   .cartaoGrafico{grid-column:1 / -1;order:3}
 }
 @media(max-width:720px){
-  .hero{padding-bottom:58px}
-  .hero[data-com-meta]{padding-bottom:104px}
+  .hero{padding-inline:12px}
   /* Os botões ficam numa fileira acima do título: lado a lado, cobriam o texto em 360px. */
   .titulo{margin:44px 8px 10px}
   .grade3{grid-template-columns:minmax(0,1fr);padding-inline:12px}
