@@ -41,6 +41,9 @@
   .caixa{padding:12px}
   /* No celular os valores descem pra baixo do rótulo; o % continua à direita, alinhado. */
   .topo{grid-template-columns:minmax(0,1fr) 52px;row-gap:2px}
+  /* O rótulo quebra em vez de cortar: no celular o “(onde deveria estar hoje)” e o ✓ sumiam no “…”. */
+  .rotulo{white-space:normal;overflow:visible}
+  .rotulo small{display:block}
   .valores{grid-column:1 / 2;grid-row:2;text-align:left}
   .pct{grid-column:2;grid-row:1 / span 2;align-self:center}
 }
