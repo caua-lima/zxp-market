@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDialogo } from "@/components/useDialogo";
 import { fmtBRL } from "@/lib/domain/calc";
-import { haQuantoTempo, relogioBR, ritmoVsOntem, type ProdutoAoVivo, type ResumoAoVivo } from "@/lib/domain/ao-vivo";
+import { haQuantoTempo, relogioBR, ritmoVsOntem, type MetaDoDia, type ProdutoAoVivo, type ResumoAoVivo } from "@/lib/domain/ao-vivo";
 import { caminhoSuave, escalaRedonda } from "@/lib/domain/grafico-linha";
 import s from "./PainelAoVivo.module.css";
 
@@ -22,6 +22,8 @@ export type DadosAoVivo = Omit<ResumoAoVivo, "topProdutos"> & {
   topProdutos: ProdutoDoDia[];
   /** Visitas de hoje (API do ML). `null` = não consegui perguntar — nunca zero. */
   visitas: number | null;
+  /** A meta de hoje. Ausente (rota antiga) ou null = sem meta configurada. */
+  metaDoDia?: MetaDoDia | null;
   fonte: "ml" | "banco";
   atualizadoEm: number;
 };
@@ -113,6 +115,32 @@ function GraficoHoras({ hoje, ontem, horaAtual }: { hoje: number[]; ontem: numbe
   );
 }
 
+/**
+ * A meta de HOJE dentro do cartão do valor: quanto falta pra ela e a barra. Mesma
+ * conta do Dashboard (o que falta do mês até ontem ÷ dias que restam).
+ */
+function MetaDeHoje({ m, vendido }: { m: MetaDoDia; vendido: number }) {
+  if (m.mesBatido) {
+    return <div className={s.meta}><div className={s.metaLinha}><span>Meta {m.metaIndex} do mês já batida ✓</span></div></div>;
+  }
+  const largura = Math.min(Math.max(m.pct, 0), 100);
+  return (
+    <div className={s.meta}>
+      <div className={s.metaLinha}>
+        <span>Meta de hoje <b>{fmtBRL(m.alvo)}</b></span>
+        <span className={s.metaPct} data-batida={m.batida ? "true" : undefined}>{Math.round(m.pct)}%</span>
+      </div>
+      <div
+        className={s.metaTrilho} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(largura)}
+        aria-valuetext={`${fmtBRL(vendido)} de ${fmtBRL(m.alvo)} da meta de hoje`}
+      >
+        <i style={{ width: `${largura}%` }} data-batida={m.batida ? "true" : undefined} />
+      </div>
+      <div className={s.metaRodape}>{m.batida ? `✓ Batida — ${fmtBRL(vendido - m.alvo)} acima` : `Faltam ${fmtBRL(m.falta)} pra meta de hoje`}</div>
+    </div>
+  );
+}
+
 function Tile({ rotulo, valor, dica }: { rotulo: string; valor: string; dica?: string }) {
   return (
     <div className={s.tile} title={dica}>
@@ -152,7 +180,7 @@ export default function PainelAoVivo({ dados, onFechar }: { dados: DadosAoVivo; 
 
   return createPortal(
     <div className={s.painel} ref={painel} role="dialog" aria-modal="true" aria-label="Vendas de hoje ao vivo" tabIndex={-1}>
-      <div className={s.hero}>
+      <div className={s.hero} data-com-meta={dados.metaDoDia ? "true" : undefined}>
         <div className={s.acoesTopo}>
           {podeTelaCheia && (
             <button type="button" className={s.iconeBtn} onClick={alternarTela} aria-label={tela ? "Sair da tela cheia" : "Tela cheia"} title={tela ? "Sair da tela cheia" : "Tela cheia"}>
@@ -175,6 +203,7 @@ export default function PainelAoVivo({ dados, onFechar }: { dados: DadosAoVivo; 
         <div className={s.valorCaixa}>
           <div className={s.valor}>{fmtBRL(hoje.vendas)}</div>
           {ritmo && <div className={s.ritmo} data-tom={ritmo.tom}>{ritmo.texto}</div>}
+          {dados.metaDoDia && <MetaDeHoje m={dados.metaDoDia} vendido={hoje.vendas} />}
         </div>
       </div>
 

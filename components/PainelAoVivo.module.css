@@ -20,6 +20,18 @@
 .ritmo[data-tom="bom"]{color:#0B7A4B}
 .ritmo[data-tom="ruim"]{color:#B3261E}
 
+/* Meta de hoje, dentro do cartão do valor. */
+.hero[data-com-meta]{padding-bottom:112px}
+.meta{margin-top:12px;padding-top:12px;border-top:1px solid rgba(27,26,20,.12);text-align:left}
+.metaLinha{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:.85rem;color:#3A392F;font-variant-numeric:tabular-nums}
+.metaLinha b{color:#1B1A14}
+.metaPct{font-weight:800;font-size:.95rem;color:#8A5A00}
+.metaPct[data-batida]{color:#0B7A4B}
+.metaTrilho{height:8px;border-radius:999px;background:rgba(27,26,20,.1);margin-top:6px;overflow:hidden}
+.metaTrilho > i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#C98218,#E9A92D)}
+.metaTrilho > i[data-batida]{background:linear-gradient(90deg,#0B7A4B,#1FA866)}
+.metaRodape{margin-top:5px;font-size:.75rem;color:#5C5B4F}
+
 .aviso{margin:56px 16px 0;padding:10px 14px;border-radius:10px;background:var(--warning-soft);border:1px solid rgba(255,138,31,.35);color:var(--warning);font-size:.85rem}
 
 /* ── corpo: três colunas no desktop, uma no celular ── */
@@ -81,6 +93,7 @@
 }
 @media(max-width:720px){
   .hero{padding-bottom:58px}
+  .hero[data-com-meta]{padding-bottom:104px}
   /* Os botões ficam numa fileira acima do título: lado a lado, cobriam o texto em 360px. */
   .titulo{margin:44px 8px 10px}
   .grade3{grid-template-columns:minmax(0,1fr);padding-inline:12px}
