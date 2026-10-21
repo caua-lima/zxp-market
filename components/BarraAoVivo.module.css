@@ -15,6 +15,8 @@
 .ritmo[data-tom="bom"]{color:var(--green)}
 .ritmo[data-tom="ruim"]{color:var(--red-text)}
 .ritmo[data-tom="neutro"]{color:var(--muted)}
+.meta{flex-shrink:0;font-weight:700;font-size:.75rem;padding:1px 8px;border-radius:999px;border:1px solid var(--border);color:var(--accent);white-space:nowrap;font-variant-numeric:tabular-nums}
+.meta[data-batida]{color:var(--green);border-color:rgba(54,179,126,.4)}
 .contagem{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .abrir{margin-left:auto;padding-right:6px;color:var(--accent);font-weight:700;white-space:nowrap}
 

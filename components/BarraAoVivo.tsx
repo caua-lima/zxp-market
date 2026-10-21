@@ -120,6 +120,12 @@ export default function BarraAoVivo() {
           </span>
           {/* A `key` troca a cada venda nova e reinicia a animação do valor. */}
           <span className={s.valor} key={venda.n} data-pulso={venda.n > 0 ? "true" : undefined}>{fmtBRL(hoje.vendas)}</span>
+          {/* Meta de hoje em %: a pergunta "já bati o dia?" sem abrir o painel. */}
+          {dados.metaDoDia && !dados.metaDoDia.mesBatido && (
+            <span className={s.meta} data-batida={dados.metaDoDia.batida ? "true" : undefined} title={`Meta de hoje: ${fmtBRL(dados.metaDoDia.alvo)}`}>
+              {Math.round(dados.metaDoDia.pct)}% da meta do dia
+            </span>
+          )}
           {!recolhida && ritmo && <span className={s.ritmo} data-tom={ritmo.tom}>{ritmo.texto}</span>}
           {!recolhida && (
             <span className={s.contagem}>
