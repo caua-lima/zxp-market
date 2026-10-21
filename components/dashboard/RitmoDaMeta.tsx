@@ -78,8 +78,7 @@ export default function RitmoDaMeta({
       <div className={s.linha}>
         <div className={s.topo}>
           <span className={s.rotulo}>
-            Meta diária acumulada <small>(onde deveria estar hoje)</small>
-            {r.noRitmo && <span className={s.check} aria-label="no ritmo">✓</span>}
+            Meta diária acumulada{r.noRitmo && <span className={s.check} aria-label="no ritmo">✓</span>} <small>(onde deveria estar hoje)</small>
           </span>
           <span className={s.valores}><b>{reais(faturamento)}</b> / {reais(r.idealHoje)}</span>
           <span className={s.pct} style={{ color: tom === "bom" ? "var(--green)" : tom === "atencao" ? "var(--warning)" : "var(--red-text)" }}>{pct(r.pctIdeal)}</span>
@@ -93,9 +92,9 @@ export default function RitmoDaMeta({
         </div>
         <div className={s.status} data-tom={tom} role="status">
           {r.noRitmo ? (
-            <>▲ {reais(r.diferenca)} à frente do ritmo{!metaBatida && <span>· pra fechar a meta: {reais(r.porDiaParaBater)}/dia</span>}</>
+            <>▲ {reais(r.diferenca)} à frente do ritmo{!metaBatida && <span>pra fechar a meta: {reais(r.porDiaParaBater)}/dia</span>}</>
           ) : (
-            <>▼ {reais(-r.diferenca)} atrás do ritmo <span>· pra fechar a meta: {reais(r.porDiaParaBater)}/dia até o fim do mês</span></>
+            <>▼ {reais(-r.diferenca)} atrás do ritmo <span>pra fechar a meta: {reais(r.porDiaParaBater)}/dia até o fim do mês</span></>
           )}
         </div>
       </div>

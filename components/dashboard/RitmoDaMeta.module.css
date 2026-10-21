@@ -35,7 +35,9 @@
 .status[data-tom="bom"]{color:var(--green)}
 .status[data-tom="atencao"]{color:var(--warning)}
 .status[data-tom="ruim"]{color:var(--red-text)}
+.status{flex-wrap:wrap;column-gap:6px}
 .status span{color:var(--muted)}
+.status span::before{content:"· "}
 
 @media(max-width:520px){
   .caixa{padding:12px}
@@ -46,5 +48,8 @@
   .rotulo small{display:block}
   .valores{grid-column:1 / 2;grid-row:2;text-align:left}
   .pct{grid-column:2;grid-row:1 / span 2;align-self:center}
+  /* O complemento do status desce pra linha de baixo, inteiro, sem o separador. */
+  .status span{flex-basis:100%}
+  .status span::before{content:none}
 }
 @media(prefers-reduced-motion:reduce){.cheio{transition:none}}
