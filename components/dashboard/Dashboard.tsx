@@ -4,6 +4,7 @@ import ChecklistDeAtivacao from "@/components/dashboard/ChecklistDeAtivacao";
 import ColetaFullDoPeriodo from "@/components/dashboard/ColetaFullDoPeriodo";
 import CurvaABC from "@/components/dashboard/CurvaABC";
 import VendasPorCanal from "@/components/dashboard/VendasPorCanal";
+import RitmoDaMeta from "@/components/dashboard/RitmoDaMeta";
 import type { VendaBrutaDoAnuncio } from "@/lib/domain/vendas-brutas";
 import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { BUSCA_INICIAL, corpoEhSucesso, criarSequenciador, registrarFalha, registrarSucesso } from "@/lib/domain/resposta-tardia";
@@ -1246,6 +1247,10 @@ function MetasOverviewCard({
           })}
         </div>
       )}
+
+      {/* O ritmo em barras: a meta do mês com a marquinha de "onde deveria estar hoje", e a meta
+          diária acumulada (124% = à frente). Mesma meta vigente e mesmo dia dos velocímetros abaixo. */}
+      <RitmoDaMeta faturamento={fatBruto} meta={activeMeta} metaIndex={metaIndex} diaAtual={diaAtual} diasNoMes={totalDias} />
 
       <div className="pg-row">
         <PerformanceGauge
