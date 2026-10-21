@@ -3,7 +3,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
 import { devolucaoConcluida } from "@/lib/domain/devolucao-estado";
 import { diaBRDe, recortarPorDiaBR } from "@/lib/domain/periodo-br";
-import { prepararPedidosAoVivo, redigirOperacao, resumirAoVivo, type ProdutoAoVivo, type ResumoAoVivo } from "@/lib/domain/ao-vivo";
+import { metaDoDia, prepararPedidosAoVivo, redigirOperacao, resumirAoVivo, type MetaDoDia, type ProdutoAoVivo, type ResumoAoVivo } from "@/lib/domain/ao-vivo";
 import { fetchOrdersLive, loadOrders } from "@/lib/ml/orders";
 import { getMlAccessToken } from "../token";
 import { sellerIdAtual } from "@/lib/ml/vendedor";
@@ -33,6 +33,8 @@ type Corpo = Omit<ResumoAoVivo, "topProdutos"> & {
   topProdutos: ProdutoDoDia[];
   /** Visitas de hoje (API do ML, não deduplicadas por visitante). `null` = não consegui perguntar. */
   visitas: number | null;
+  /** A meta de hoje (mesmas regras do Dashboard). `null` = sem meta do mês configurada. */
+  metaDoDia: MetaDoDia | null;
   fonte: "ml" | "banco";
   atualizadoEm: number;
 };
@@ -84,6 +86,50 @@ async function detalhesDosAnuncios(token: string, ids: string[]): Promise<Map<st
     }
   } catch { /* sem foto, o ranking continua */ }
   return mapa;
+}
+
+/**
+ * Vendas válidas do mês ATÉ ONTEM — a base da meta de hoje. Não muda ao longo do
+ * dia (só se um pedido antigo for cancelado), então é lida do banco e guardada
+ * por 30 min por empresa: ler o mês inteiro a cada 45 s queimaria cota à toa.
+ */
+const cacheDoMes = new Map<string, { at: number; valor: number }>();
+const TTL_MES = 30 * 60 * 1000;
+
+async function vendasDoMesAteOntem(db: FirebaseFirestore.Firestore, chave: string, primeiroDia: string, ontem: string): Promise<number> {
+  if (ontem < primeiroDia) return 0; // dia 1: o mês ainda não tem "até ontem"
+  const g = cacheDoMes.get(chave);
+  if (g && Date.now() - g.at < TTL_MES) return g.valor;
+  const ini = `${primeiroDia}T00:00:00.000Z`, fim = `${ontem}T23:59:59.999Z`;
+  const iniBR = `${primeiroDia}T00:00:00.000-03:00`, fimBR = `${ontem}T23:59:59.999-03:00`;
+  const pedidos = recortarPorDiaBR(await loadOrders(db, ini, fim, iniBR, fimBR), primeiroDia, ontem).dentro;
+  const [a, b] = await Promise.all([
+    db.collection("ml_returns").where("date_created", ">=", ini).where("date_created", "<=", fim).get(),
+    db.collection("ml_returns").where("date_created", ">=", iniBR).where("date_created", "<=", fimBR).get(),
+  ]);
+  const cancel = new Set<string>(), devol = new Set<string>();
+  for (const snap of [a, b]) for (const d of snap.docs) {
+    const r = d.data();
+    if (String(r.tipo ?? "") === "devolucao") { if (devolucaoConcluida(r)) devol.add(d.id); } else cancel.add(d.id);
+  }
+  // Mesma classificação da venda válida — o mês inteiro de uma vez, como o Dashboard faz pro período.
+  const valor = prepararPedidosAoVivo(pedidos, cancel, devol).filter((x) => x.classe === "valida").reduce((s2, x) => s2 + x.totalAmount, 0);
+  cacheDoMes.set(chave, { at: Date.now(), valor });
+  // Só o dia de hoje desta empresa interessa: o de ontem dela sai (as outras empresas ficam).
+  const empresa = chave.split("|")[0] + "|";
+  for (const k of cacheDoMes.keys()) if (k !== chave && k.startsWith(empresa)) cacheDoMes.delete(k);
+  return valor;
+}
+
+/** A meta do mês: a do mês corrente, ou a mais recente — a mesma escolha do Dashboard. */
+async function metasDoMes(db: FirebaseFirestore.Firestore, mes: string): Promise<{ meta1: number; meta2: number | null; meta3: number | null } | null> {
+  const snap = await db.collection("metasHistorico").orderBy("createdAt", "desc").limit(60).get().catch(() => null);
+  if (!snap || snap.empty) return null;
+  const docs = snap.docs.map((d) => d.data());
+  const e = docs.find((d) => d.mes === mes) ?? docs[0];
+  const meta1 = Number(e?.meta1 ?? 0);
+  if (!(meta1 > 0)) return null;
+  return { meta1, meta2: Number(e.meta2) > 0 ? Number(e.meta2) : null, meta3: Number(e.meta3) > 0 ? Number(e.meta3) : null };
 }
 
 function diaBR(ms: number): string {
@@ -158,8 +204,21 @@ export async function GET(req: Request) {
         ])
       : [null, new Map<string, { imagem: string | null; estoque: number | null }>()];
 
+    // Meta de hoje: o que falta do mês até ontem ÷ dias que restam (hoje incluso), da meta vigente.
+    const mes = hoje.slice(0, 7);
+    const [ateOntem, metas] = await Promise.all([
+      vendasDoMesAteOntem(db, `${gate.tenantId ?? "raiz"}|${hoje}`, `${mes}-01`, ontem).catch(() => null),
+      metasDoMes(db, mes),
+    ]);
+    const [ano, mesNum] = mes.split("-").map(Number);
+    const diasNoMes = new Date(Date.UTC(ano, mesNum, 0)).getUTCDate();
+    const meta = ateOntem == null ? null : metaDoDia({
+      metas, vendasAteOntem: ateOntem, vendasHoje: resumo.hoje.vendas, diaAtual: Number(hoje.slice(8, 10)), diasNoMes,
+    });
+
     const body: Corpo = {
       ...resumo,
+      metaDoDia: meta,
       topProdutos: resumo.topProdutos.map((p) => ({ ...p, imagem: detalhes.get(p.itemId)?.imagem ?? null, estoque: detalhes.get(p.itemId)?.estoque ?? null })),
       visitas,
       fonte,
