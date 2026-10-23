@@ -65,6 +65,12 @@ export type ResumoAoVivo = {
   compradores: number;
   /** Os produtos que mais faturaram hoje (no máximo 5), por receita. */
   topProdutos: ProdutoAoVivo[];
+  /**
+   * Os pedidos VÁLIDOS de hoje já contados. É por aqui que a barra sabe se a
+   * venda que acabou de chegar pelo sinal em tempo real já está no número
+   * (ver lib/domain/ao-vivo-tempo-real.ts) — sem isto ela contaria duas vezes.
+   */
+  idsHoje: string[];
 };
 
 /** Quantos produtos o ranking do dia mostra. */
@@ -91,6 +97,7 @@ export function resumirAoVivo(pedidos: readonly PedidoAoVivo[], agoraMs: number)
   let ultimaVenda: ResumoAoVivo["ultimaVenda"] = null;
   const compradores = new Set<string>();
   const porProduto = new Map<string, ProdutoAoVivo>();
+  const idsHoje: string[] = [];
 
   const somar = (t: TotalAoVivo, p: PedidoAoVivo) => {
     t.vendas += p.totalAmount;
@@ -114,6 +121,7 @@ export function resumirAoVivo(pedidos: readonly PedidoAoVivo[], agoraMs: number)
     const hora = Math.min(23, Math.floor(quando.doDia / HORA_MS));
     if (ehHoje) {
       somar(hoje, p);
+      idsHoje.push(p.orderId);
       porHora.hoje[hora] += p.totalAmount;
       if (!ultimaVenda || ms > ultimaVenda.em) ultimaVenda = { em: ms, valor: p.totalAmount, titulo: p.titulo ?? "" };
       if (p.compradorId) compradores.add(p.compradorId);
@@ -138,6 +146,7 @@ export function resumirAoVivo(pedidos: readonly PedidoAoVivo[], agoraMs: number)
     horaAtual: Math.floor(agora.doDia / HORA_MS),
     hoje, ontemAteAgora, ontemInteiro, porHora, ultimaVenda,
     compradores: compradores.size,
+    idsHoje,
     // Receita igual desempata pelo id: o ranking não pode dançar entre duas leituras.
     topProdutos: [...porProduto.values()]
       .sort((a, b) => b.receita - a.receita || a.itemId.localeCompare(b.itemId))
