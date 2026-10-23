@@ -39,6 +39,11 @@ const TAMANHO_TOKEN = { min: 20, max: 4096 };
 
 export type EntradaValida = { token: string; deviceId: string };
 
+/** O id desta instalação, no formato que o app gera (ver getDeviceId em lib/firebase/push.ts). */
+export function deviceIdValido(v: unknown): v is string {
+  return typeof v === "string" && DEVICE_ID.test(v);
+}
+
 /** Valida o corpo de um pedido de vínculo. O token do FCM é opaco: só se confere o formato. */
 export function validarEntradaDeVinculo(cru: unknown): ({ ok: true } & EntradaValida) | { ok: false; motivo: string } {
   if (typeof cru !== "object" || cru === null) return { ok: false, motivo: "corpo inválido" };
