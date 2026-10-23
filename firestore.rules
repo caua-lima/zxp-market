@@ -315,6 +315,15 @@ service cloud.firestore {
       allow read, write: if veOperacao();
     }
 
+    // Vendas ao vivo em TEMPO REAL: o sinal que o webhook publica a cada venda
+    // (ver lib/domain/ao-vivo-tempo-real.ts) e que a barra escuta pra somar na
+    // hora. Só o servidor escreve (Admin SDK). É faturamento e contagem — o que
+    // o member já vê na barra —, então qualquer acesso lê.
+    match /ao_vivo/{docId} {
+      allow read: if isAuthorized();
+      allow write: if false;
+    }
+
     // Registro de push: um doc por (pessoa, instalação), id = "email__deviceId".
     //
     // O navegador só LÊ o próprio registro (o diagnóstico precisa saber se ele
@@ -756,6 +765,10 @@ service cloud.firestore {
       }
       match /tarefas/{docId} {
         allow read: if veOperacaoT(); allow write: if escritaLiberadaT() && (veOperacaoT());
+      }
+      match /ao_vivo/{docId} {
+        allow read: if isAuthorizedT();
+        allow write: if escritaLiberadaT() && (false);
       }
       match /alertasDispensados/{docId} {
         allow read: if isAuthorizedT() && resource.data.email == request.auth.token.email;

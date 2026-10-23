@@ -156,6 +156,12 @@ export const INVENTARIO: readonly ItemDeBackup[] = [
     perda: "Cada pessoa reconfigura a tela dela.",
   },
   {
+    colecao: "ao_vivo",
+    classe: "efemero",
+    conteudo: "O sinal da última venda, que a barra ao vivo escuta pra somar na hora.",
+    perda: "Nada — a próxima venda escreve outro, e a barra continua relendo o ML.",
+  },
+  {
     colecao: "notification_events",
     classe: "efemero",
     conteudo: "Fila e histórico de eventos de notificação já entregues.",

@@ -63,6 +63,7 @@ export const DESTINOS: Readonly<Record<string, DecisaoDeColecao>> = {
   ml_webhook_inbox: { destino: "tenant", motivo: "notificações do ML pendentes de processar" },
   webhook_log: { destino: "tenant", motivo: "trilha das notificações do ML" },
   webhook_topicos: { destino: "tenant", motivo: "contagem diária de tópicos do ML" },
+  ao_vivo: { destino: "tenant", motivo: "sinal das vendas ao vivo (a barra escuta pra somar na hora)" },
   cron_estado: { destino: "tenant", motivo: "carimbo do cron e do worker" },
   acessos_diagnostico: { destino: "tenant", motivo: "auditoria de quem abriu rota de diagnóstico (S27)" },
   // ── notificações da empresa ──
