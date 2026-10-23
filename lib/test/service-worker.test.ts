@@ -43,6 +43,7 @@ function montar() {
     },
     registration: {
       showNotification: async (titulo: string, opcoes: Record<string, unknown>) => { exibidas.push({ titulo, opcoes }); },
+      getNotifications: async (f?: { tag?: string }) => exibidas.filter((x) => !f?.tag || x.opcoes.tag === f.tag),
     },
   };
   const caches = {
@@ -186,5 +187,53 @@ describe("clique", () => {
     sw.definirJanelas([j]);
     await clicar("/?tab=pedidos&order=1", "e");
     expect(sw.postadas).toHaveLength(1);
+  });
+});
+
+describe("mini painel fixo (push ao_vivo)", () => {
+  const placar = {
+    dia: "2026-10-23", vendas: 4320.5, pedidos: 18, unidades: 25,
+    meta: { alvo: 6750, pct: 64, falta: 2429.5, batida: false, mesBatido: false },
+    ultima: { valor: 189.9, titulo: "Limão", em: Date.parse("2026-10-23T14:32:00.000-03:00") },
+    porHora: Array(24).fill(0), ontemAteAgora: 0, atualizadoEm: Date.parse("2026-10-23T14:40:00.000-03:00"),
+  };
+
+  it("reescreve a notificação fixa em silêncio, com o placar, e não entra no registro de avisos", async () => {
+    await receberPush({ type: "ao_vivo", placar: JSON.stringify(placar) });
+    expect(sw.exibidas).toHaveLength(1);
+    const { titulo, opcoes } = sw.exibidas[0];
+    expect(titulo.replace(/\u00a0/g, " ")).toMatch(/^R\$ 4\.320,50 (hoje|em 23\/10) · 18 vendas$/);
+    expect(String(opcoes.body)).toContain("64% da meta");
+    expect(opcoes).toMatchObject({ tag: "zxp-ao-vivo", silent: true, renotify: false, requireInteraction: true });
+    expect(opcoes.data).toEqual({ deepLink: "/?tipo=ao_vivo", eventId: "", tipo: "ao_vivo" });
+    // Sem OffscreenCanvas (aqui não há): vai só o texto, sem quebrar.
+    expect(opcoes.image).toBeUndefined();
+    expect(sw.cache.has("/__push-log")).toBe(false);
+  });
+
+  it("placar ilegível: mostra um aviso neutro só se o painel não estiver na barra", async () => {
+    await receberPush({ type: "ao_vivo", placar: "{lixo" });
+    expect(sw.exibidas).toHaveLength(1);
+    expect(sw.exibidas[0].titulo).toBe("Vendas ao vivo");
+    await receberPush({ type: "ao_vivo", placar: "{lixo" });
+    expect(sw.exibidas).toHaveLength(1);
+  });
+
+  it("tocar no painel abre o ao vivo e NÃO o tira da barra", async () => {
+    let fechou = false;
+    let pendente: Promise<unknown> = Promise.resolve();
+    sw.definirJanelas([sw.janela("a", { focused: true, visible: true })]);
+    sw.ouvintes.notificationclick[0]({ notification: { close: () => { fechou = true; }, data: { deepLink: "/?tipo=ao_vivo", eventId: "", tipo: "ao_vivo" } }, waitUntil: (p: Promise<unknown>) => { pendente = p; } });
+    await pendente;
+    expect(fechou).toBe(false);
+    expect(sw.postadas[0].m).toMatchObject({ tipo: "abrir", deepLink: "/?tipo=ao_vivo" });
+  });
+
+  it("aviso comum continua fechando ao tocar", async () => {
+    let fechou = false;
+    let pendente: Promise<unknown> = Promise.resolve();
+    sw.ouvintes.notificationclick[0]({ notification: { close: () => { fechou = true; }, data: { deepLink: "/", eventId: "e" } }, waitUntil: (p: Promise<unknown>) => { pendente = p; } });
+    await pendente;
+    expect(fechou).toBe(true);
   });
 });
