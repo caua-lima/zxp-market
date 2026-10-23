@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import { onForegroundPush } from "@/lib/firebase/push";
+import { watchSinalAoVivo } from "@/lib/firebase/data";
 import { fmtBRL } from "@/lib/domain/calc";
 import { relogioBR, ritmoVsOntem } from "@/lib/domain/ao-vivo";
+import { comVendasNovas, vendasAindaPendentes, type VendaNova } from "@/lib/domain/ao-vivo-tempo-real";
+import { placarDe } from "@/lib/domain/painel-fixo";
+import { mostrarPainelFixo } from "@/lib/painel-fixo";
 import { gravarChaveApp, lerChaveApp } from "@/lib/storage";
 import PainelAoVivo, { type DadosAoVivo } from "@/components/PainelAoVivo";
 import s from "./BarraAoVivo.module.css";
@@ -14,52 +18,78 @@ import s from "./BarraAoVivo.module.css";
  * de hoje de relance. Tocar nela abre o painel completo (PainelAoVivo), o do
  * Mercado Livre: valor do dia, métricas, tendência por hora e produtos.
  *
- * Atualiza sozinha (a cada minuto com a aba visível — a cada 30 s com o painel
- * aberto — e na hora quando chega o aviso de uma venda). Some enquanto não há
- * dado: uma faixa com "R$ 0,00" por falha de rede seria pior que faixa nenhuma.
+ * ─── TEMPO REAL ─────────────────────────────────────────────────────────
+ *
+ * A venda aparece NA HORA: o webhook do ML grava o pedido e publica um sinal
+ * (`ao_vivo/sinal`) que esta barra escuta. A venda entra no número no mesmo
+ * instante (somada ao que a rota já tinha — ver comVendasNovas) e a rota é
+ * relida logo em seguida já com aquele pedido, trocando o número "otimista"
+ * pelo oficial. O aviso de venda (push com o app aberto) faz o mesmo, pra quem
+ * ainda não tem o sinal. Sem nenhum dos dois, a barra continua relendo sozinha
+ * (a cada minuto, a cada 30 s com o painel aberto).
+ *
+ * Some enquanto não há dado: uma faixa com "R$ 0,00" por falha de rede seria
+ * pior que faixa nenhuma.
  */
 
 const CICLO_MS = 30_000;
 const INTERVALO_BARRA_MS = 55_000;
-/** Depois do aviso de venda: o ML leva alguns segundos pra listar o pedido na busca. */
-const ESPERA_APOS_AVISO_MS = 4_000;
 const CHAVE_RECOLHIDA = "ao-vivo-recolhida";
+/** O app abre direto no painel quando vem do toque no painel fixo (?tipo=ao_vivo). */
+export const EVENTO_ABRIR_AO_VIVO = "zxp:abrir-ao-vivo";
+
+type PedidoQueMudou = { orderId: string; valida: boolean };
 
 export default function BarraAoVivo() {
-  const [dados, setDados] = useState<DadosAoVivo | null>(null);
+  const [dadosServidor, setDadosServidor] = useState<DadosAoVivo | null>(null);
+  /** Vendas que chegaram pelo sinal/push e que a rota ainda não confirmou. */
+  const [pendentes, setPendentes] = useState<VendaNova[]>([]);
   const [aberto, setAberto] = useState(false);
   const abertoRef = useRef(false);
   const [recolhida, setRecolhida] = useState(() => lerChaveApp(CHAVE_RECOLHIDA) === "1");
   /** Sobe a cada venda nova: reinicia a animação e alimenta o aviso do leitor de tela. */
   const [venda, setVenda] = useState<{ n: number; texto: string }>({ n: 0, texto: "" });
   const pedidosAntes = useRef<{ dia: string; pedidos: number } | null>(null);
+  const abrirQuandoChegar = useRef(false);
 
   useEffect(() => { abertoRef.current = aberto; }, [aberto]);
+
+  // O número na tela: o oficial + o que chegou depois dele.
+  const dados = useMemo(
+    () => (dadosServidor ? comVendasNovas(dadosServidor, pendentes) : null),
+    [dadosServidor, pendentes],
+  );
 
   useEffect(() => {
     let vivo = true;
     let ultima = 0;
     let buscando = false;
+    /** Um pedido que mudou enquanto outra leitura estava em curso: relê de novo ao terminar. */
+    let deNovo: PedidoQueMudou | null = null;
 
-    const buscar = (urgente = false) => {
-      if (buscando) return;
+    const buscar = (urgente = false, pedido: PedidoQueMudou | null = null) => {
+      if (buscando) { if (pedido) deNovo = pedido; return; }
       buscando = true;
-      authedFetch(`/api/ml/ao-vivo${urgente ? "?fresh=1" : ""}`, { cache: "no-store" })
+      const q = new URLSearchParams();
+      if (urgente) q.set("fresh", "1");
+      if (pedido) { q.set("pedido", pedido.orderId); q.set("valida", pedido.valida ? "1" : "0"); }
+      authedFetch(`/api/ml/ao-vivo${q.size ? `?${q}` : ""}`, { cache: "no-store" })
         .then((r) => (r.ok ? (r.json() as Promise<DadosAoVivo>) : null))
         .then((j) => {
           if (!vivo || !j || !j.hoje) return;
           ultima = Date.now();
-          const antes = pedidosAntes.current;
-          // Só anuncia venda NOVA: não na primeira leitura nem na virada do dia.
-          if (antes && antes.dia === j.dia && j.hoje.pedidos > antes.pedidos && j.ultimaVenda) {
-            const texto = `Nova venda de ${fmtBRL(j.ultimaVenda.valor)}. Vendas hoje: ${fmtBRL(j.hoje.vendas)}.`;
-            setVenda((v) => ({ n: v.n + 1, texto }));
-          }
-          pedidosAntes.current = { dia: j.dia, pedidos: j.hoje.pedidos };
-          setDados(j);
+          setDadosServidor(j);
+          setPendentes((p) => vendasAindaPendentes(p, j, Date.now()));
         })
         .catch(() => { /* sem rede: fica o último número */ })
-        .finally(() => { buscando = false; });
+        .finally(() => {
+          buscando = false;
+          if (deNovo && vivo) { const p = deNovo; deNovo = null; buscar(true, p); }
+        });
+    };
+
+    const chegouVenda = (v: VendaNova) => {
+      setPendentes((p) => (p.some((x) => x.orderId === v.orderId) ? p : [...p, v]));
     };
 
     buscar();
@@ -73,21 +103,80 @@ export default function BarraAoVivo() {
     };
     document.addEventListener("visibilitychange", aoVoltar);
 
-    let aposAviso: ReturnType<typeof setTimeout> | undefined;
+    // O sinal em tempo real. A primeira leitura é só a referência (é o sinal da
+    // ÚLTIMA venda, que a rota já conta); daí em diante, cada `seq` novo é uma mudança.
+    let seqVisto: number | null = null;
+    const pararSinal = watchSinalAoVivo((sinal) => {
+      if (!sinal) { seqVisto = seqVisto ?? 0; return; }
+      if (seqVisto === null) { seqVisto = sinal.seq; return; }
+      if (sinal.seq === seqVisto) return;
+      seqVisto = sinal.seq;
+      if (sinal.valida) {
+        chegouVenda({
+          orderId: sinal.orderId, valor: sinal.valor, unidades: sinal.unidades, titulo: sinal.titulo,
+          dateCreated: sinal.dateCreated, recebidaEm: Date.now(),
+        });
+      }
+      buscar(true, { orderId: sinal.orderId, valida: sinal.valida });
+    }, () => { /* sem o sinal (regras ainda não publicadas, sem rede): a barra segue relendo sozinha */ });
+
+    // O aviso de venda com o app aberto: mesma soma na hora, pra quem não tem o sinal.
     const cancelarAviso = onForegroundPush((evt) => {
-      if (!evt.type.startsWith("sale_") && !evt.type.startsWith("return_")) return;
-      clearTimeout(aposAviso);
-      aposAviso = setTimeout(() => buscar(true), ESPERA_APOS_AVISO_MS);
+      if (evt.type.startsWith("return_") || evt.type === "sale_cancelled") { buscar(true, evt.orderId ? { orderId: evt.orderId, valida: false } : null); return; }
+      if (!evt.type.startsWith("sale_")) return;
+      const valor = Number(evt.grossAmount);
+      if (evt.orderId && Number.isFinite(valor) && valor > 0) {
+        let unidades = 1;
+        try {
+          const itens = JSON.parse(evt.itensJson ?? "[]") as { quantity?: number }[];
+          if (Array.isArray(itens) && itens.length) unidades = itens.reduce((t, it) => t + (Number(it.quantity) || 0), 0) || 1;
+        } catch { /* fica 1 */ }
+        chegouVenda({ orderId: evt.orderId, valor, unidades, titulo: evt.productName ?? "", dateCreated: evt.timestamp, recebidaEm: Date.now() });
+      }
+      buscar(true, evt.orderId ? { orderId: evt.orderId, valida: true } : null);
     });
 
     return () => {
       vivo = false;
       clearInterval(ciclo);
-      clearTimeout(aposAviso);
       document.removeEventListener("visibilitychange", aoVoltar);
+      pararSinal();
       cancelarAviso();
     };
   }, []);
+
+  // Venda NOVA (pelo sinal, pelo aviso ou pela releitura): pulso no valor e aviso pro leitor de tela.
+  // Não na primeira leitura nem na virada do dia.
+  useEffect(() => {
+    if (!dados) return;
+    const antes = pedidosAntes.current;
+    if (antes && antes.dia === dados.dia && dados.hoje.pedidos > antes.pedidos && dados.ultimaVenda) {
+      const texto = `Nova venda de ${fmtBRL(dados.ultimaVenda.valor)}. Vendas hoje: ${fmtBRL(dados.hoje.vendas)}.`;
+      setVenda((v) => ({ n: v.n + 1, texto }));
+    }
+    pedidosAntes.current = { dia: dados.dia, pedidos: dados.hoje.pedidos };
+  }, [dados]);
+
+  // O mini painel fixo (se esta pessoa fixou) acompanha o que a barra mostra.
+  useEffect(() => {
+    if (dados) void mostrarPainelFixo(placarDe(dados));
+  }, [dados]);
+
+  // Toque no painel fixo: abre o ao vivo — com o app já aberto (evento) ou recém-aberto (?tipo=ao_vivo).
+  useEffect(() => {
+    const abrir = () => setAberto(true);
+    window.addEventListener(EVENTO_ABRIR_AO_VIVO, abrir);
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("tipo") === "ao_vivo" && !p.get("item")) {
+      abrirQuandoChegar.current = true;
+      p.delete("tipo");
+      window.history.replaceState(null, "", window.location.pathname + (p.size ? `?${p}` : "") + window.location.hash);
+    }
+    return () => window.removeEventListener(EVENTO_ABRIR_AO_VIVO, abrir);
+  }, []);
+  useEffect(() => {
+    if (dados && abrirQuandoChegar.current) { abrirQuandoChegar.current = false; setAberto(true); }
+  }, [dados]);
 
   if (!dados) return null;
 

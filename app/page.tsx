@@ -58,7 +58,7 @@ import { AvatarUpload } from "@/components/AvatarUpload";
 import MyProfileModal from "@/components/MyProfileModal";
 import CommandPalette from "@/components/CommandPalette";
 import AvisoDeAssinatura from "@/components/AvisoDeAssinatura";
-import BarraAoVivo from "@/components/BarraAoVivo";
+import BarraAoVivo, { EVENTO_ABRIR_AO_VIVO } from "@/components/BarraAoVivo";
 import { SaleNotificationProvider } from "@/components/SaleNotificationProvider";
 import { marcarAberturaDeGrupo } from "@/lib/domain/nav-grupos";
 import {
@@ -313,6 +313,8 @@ function AppShell() {
     const url = new URL(deepLink, typeof window !== "undefined" ? window.location.origin : "http://localhost");
     // Mesmo leitor da URL de entrada, então o formato antigo (?order=) e o
     // novo (?item=&tipo=) funcionam aqui sem uma segunda regra pra manter.
+    // Toque no mini painel fixo das vendas ao vivo: abre o painel, sem trocar de aba.
+    if (url.searchParams.get("tipo") === "ao_vivo" && !url.searchParams.get("item")) { window.dispatchEvent(new Event(EVENTO_ABRIR_AO_VIVO)); return; }
     const c = lerContexto(url.searchParams, VALID_TABS);
     if (c.tipoDoItem === "pedido" && c.item) { navigateToOrder(c.item); return; }
     if (c.tipoDoItem === "tarefa" && c.item) { navigateToTask(c.item); return; }
