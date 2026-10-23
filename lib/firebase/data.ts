@@ -173,6 +173,21 @@ export function watchDraft(
   }, (e) => onError?.(e));
 }
 
+// ── Vendas ao vivo em tempo real ──────────────────────────────
+/**
+ * O sinal que o webhook publica a cada venda (ver lib/domain/ao-vivo-tempo-real.ts).
+ * A barra ao vivo escuta pra somar a venda NA HORA, sem esperar a próxima
+ * leitura do ML. Um documento só: cada venda custa uma leitura por aba aberta.
+ */
+export function watchSinalAoVivo(
+  cb: (s: import("@/lib/domain/ao-vivo-tempo-real").SinalAoVivo | null) => void,
+  onError?: (e: unknown) => void,
+): () => void {
+  return onSnapshot(sDoc("ao_vivo", "sinal"), (snap) => {
+    cb(snap.exists() ? (snap.data() as import("@/lib/domain/ao-vivo-tempo-real").SinalAoVivo) : null);
+  }, (e) => onError?.(e));
+}
+
 // ── Goals (legacy single-doc) ─────────────────────────────────
 export async function saveGoals(_uid: string, g: Goals) {
   await setDoc(sDoc("metas", "config"), g);
