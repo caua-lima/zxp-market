@@ -6,6 +6,9 @@ import { useDialogo } from "@/components/useDialogo";
 import { fmtBRL } from "@/lib/domain/calc";
 import { haQuantoTempo, relogioBR, ritmoVsOntem, type MetaDoDia, type ProdutoAoVivo, type ResumoAoVivo } from "@/lib/domain/ao-vivo";
 import { caminhoSuave, escalaRedonda } from "@/lib/domain/grafico-linha";
+import { useAuth } from "@/lib/firebase/auth-context";
+import { placarDe } from "@/lib/domain/painel-fixo";
+import { aoMudarPainelFixo, desligarPainelFixo, ligarPainelFixo, mostrarPainelFixo, painelFixoLigado, painelFixoSuportado } from "@/lib/painel-fixo";
 import s from "./PainelAoVivo.module.css";
 
 /**
@@ -150,6 +153,59 @@ function Tile({ rotulo, valor, dica }: { rotulo: string; valor: string; dica?: s
   );
 }
 
+/**
+ * "Fixar no celular": o mini painel na barra de notificações, que se reescreve a
+ * cada venda mesmo com o app fechado (ver lib/painel-fixo.ts). Fixar ativa as
+ * notificações deste aparelho se ainda não estiverem — o placar chega por push.
+ */
+function FixarNoCelular({ dados }: { dados: DadosAoVivo }) {
+  const { user } = useAuth();
+  const [ligado, setLigado] = useState(() => painelFixoLigado());
+  const [ocupado, setOcupado] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => aoMudarPainelFixo(() => setLigado(painelFixoLigado())), []);
+  useEffect(() => {
+    if (!msg) return;
+    const t = setTimeout(() => setMsg(null), 7000);
+    return () => clearTimeout(t);
+  }, [msg]);
+  if (!painelFixoSuportado() || !user?.email) return null;
+
+  const alternar = async () => {
+    setOcupado(true);
+    setMsg(null);
+    if (ligado) {
+      await desligarPainelFixo();
+      setMsg("Painel tirado da barra de notificações.");
+    } else {
+      const r = await ligarPainelFixo(user.email!.toLowerCase());
+      if (r.ok) {
+        await mostrarPainelFixo(placarDe(dados));
+        setMsg("Pronto: o painel fica na barra de notificações e se atualiza sozinho a cada venda, mesmo com o app fechado.");
+      } else {
+        setMsg(r.erro);
+      }
+    }
+    setLigado(painelFixoLigado());
+    setOcupado(false);
+  };
+
+  return (
+    <>
+      <button
+        type="button" className={s.fixarBtn} onClick={alternar} disabled={ocupado} aria-pressed={ligado}
+        title={ligado ? "Tirar o painel da barra de notificações" : "Deixar um mini painel fixo na barra de notificações do celular"}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M9 4h6l-1 6 4 3v2H6v-2l4-3-1-6zM12 15v6" />
+        </svg>
+        {ocupado ? "Aguarde…" : ligado ? "Fixado" : "Fixar no celular"}
+      </button>
+      {msg && <div className={s.fixarMsg} role="status">{msg}</div>}
+    </>
+  );
+}
+
 export default function PainelAoVivo({ dados, onFechar }: { dados: DadosAoVivo; onFechar: () => void }) {
   const painel = useRef<HTMLDivElement | null>(null);
   useDialogo(true, painel, onFechar);
@@ -182,6 +238,7 @@ export default function PainelAoVivo({ dados, onFechar }: { dados: DadosAoVivo; 
     <div className={s.painel} ref={painel} role="dialog" aria-modal="true" aria-label="Vendas de hoje ao vivo" tabIndex={-1}>
       <div className={s.hero} data-com-meta={dados.metaDoDia ? "true" : undefined}>
         <div className={s.acoesTopo}>
+          <FixarNoCelular dados={dados} />
           {podeTelaCheia && (
             <button type="button" className={s.iconeBtn} onClick={alternarTela} aria-label={tela ? "Sair da tela cheia" : "Tela cheia"} title={tela ? "Sair da tela cheia" : "Tela cheia"}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

@@ -10,6 +10,13 @@
 .iconeBtn{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.85);color:#1B1A14;cursor:pointer}
 .iconeBtn:hover{background:#fff}
 .iconeBtn:focus-visible{outline:3px solid #1B1A14;outline-offset:2px}
+/* "Fixar no celular": pílula ao lado dos ícones; fixado fica escuro (o estado tem que ser óbvio). */
+.fixarBtn{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 14px;border-radius:999px;border:0;background:rgba(255,255,255,.85);color:#1B1A14;font:inherit;font-size:.85rem;font-weight:700;white-space:nowrap;cursor:pointer}
+.fixarBtn:hover{background:#fff}
+.fixarBtn[aria-pressed="true"]{background:#1B1A14;color:#F7C95C}
+.fixarBtn:disabled{opacity:.7;cursor:progress}
+.fixarBtn:focus-visible{outline:3px solid #1B1A14;outline-offset:2px}
+.fixarMsg{position:absolute;top:48px;right:0;width:max-content;max-width:min(320px,calc(100vw - 24px));padding:9px 12px;border-radius:10px;background:#1B1A14;color:#FBF8EE;font-size:.8rem;line-height:1.35;text-align:left;box-shadow:0 8px 22px rgba(0,0,0,.28);z-index:2}
 .titulo{margin:6px 48px 10px;font-size:clamp(1.35rem,4.2vw,2rem);font-weight:800;letter-spacing:-.01em}
 .relogio{display:inline-flex;align-items:center;gap:8px;padding:5px 14px;border-radius:999px;background:rgba(255,255,255,.75);font-size:.85rem;font-weight:600;font-variant-numeric:tabular-nums}
 .ponto{width:9px;height:9px;border-radius:50%;background:#D93025;animation:pisca 1.8s ease-in-out infinite}
