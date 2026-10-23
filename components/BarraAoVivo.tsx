@@ -73,7 +73,7 @@ export default function BarraAoVivo() {
       const q = new URLSearchParams();
       if (urgente) q.set("fresh", "1");
       if (pedido) { q.set("pedido", pedido.orderId); q.set("valida", pedido.valida ? "1" : "0"); }
-      authedFetch(`/api/ml/ao-vivo${q.size ? `?${q}` : ""}`, { cache: "no-store" })
+      authedFetch(`/api/ml/ao-vivo${q.toString() ? `?${q}` : ""}`, { cache: "no-store" })
         .then((r) => (r.ok ? (r.json() as Promise<DadosAoVivo>) : null))
         .then((j) => {
           if (!vivo || !j || !j.hoje) return;
@@ -170,7 +170,7 @@ export default function BarraAoVivo() {
     if (p.get("tipo") === "ao_vivo" && !p.get("item")) {
       abrirQuandoChegar.current = true;
       p.delete("tipo");
-      window.history.replaceState(null, "", window.location.pathname + (p.size ? `?${p}` : "") + window.location.hash);
+      window.history.replaceState(null, "", window.location.pathname + (p.toString() ? `?${p}` : "") + window.location.hash);
     }
     return () => window.removeEventListener(EVENTO_ABRIR_AO_VIVO, abrir);
   }, []);
