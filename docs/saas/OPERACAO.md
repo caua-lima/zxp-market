@@ -89,6 +89,18 @@ foi escrito pra funcionar com elas.
 > permissão”** — o resto do app não é afetado. Quem edita estoque agenda; o member
 > não vê.
 
+> **Vendas ao vivo em tempo real** usam outra coleção nova, `ao_vivo` (o sinal que
+> o webhook publica a cada venda e a barra escuta). **Sem publicar as regras, a
+> barra continua funcionando como antes** (relendo o ML a cada minuto e no aviso
+> de venda) — só não soma no instante. Qualquer acesso lê; só o servidor escreve.
+>
+> **Mini painel fixo no celular** (painel ao vivo › “Fixar no celular”): depende
+> das notificações ativas no aparelho — o placar chega por push a cada venda,
+> mesmo com o app fechado e mesmo no horário silencioso (ele não toca nem vibra).
+> No iPhone, só com o app adicionado à Tela de Início. É uma notificação: dá pra
+> arrastar pra fora; ela volta na próxima venda. Pra tirar de vez, “Fixado” no
+> painel. A imagem do painel aparece no Android ao expandir a notificação.
+
 **Se algo que funcionava passar a dar "sem permissão":** no console do Firebase
 (<https://console.firebase.google.com> → vazxpress-a2350 → Firestore →
 **Regras**) há o histórico de versões: escolha a anterior e clique em
