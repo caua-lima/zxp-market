@@ -103,6 +103,13 @@ foi escrito pra funcionar com elas.
 > barra continua funcionando como antes** (relendo o ML a cada minuto e no aviso
 > de venda) — só não soma no instante. Qualquer acesso lê; só o servidor escreve.
 >
+> **Widget no iPhone (grátis, app Scriptable):** painel ao vivo › “Widget no iPhone”. Gera um
+> código secreto (só o hash fica no banco, coleção ) e o script pronto pra colar.
+> A rota pública  devolve só faturamento, meta e vendas por hora (nunca
+> custo, lucro, visitas nem estoque) e para de responder se a pessoa sair da equipe. Gerar outro
+> código ou “Desligar widget” revoga o anterior. O iPhone atualiza o widget a cada poucos
+> minutos — não é instantâneo (isso só com app nativo e conta Apple paga).
+>
 > **Mini painel fixo no celular** (painel ao vivo › “Fixar no celular”): depende
 > das notificações ativas no aparelho — o placar chega por push a cada venda,
 > mesmo com o app fechado e mesmo no horário silencioso (ele não toca nem vibra).
