@@ -1,0 +1,123 @@
+/* PDV — vendas presenciais. Módulo CSS: o estilo viaja com o componente (o globals.css
+   às vezes deixa de recompilar no dev). Cores e espaços vêm dos tokens do app. */
+
+.tela{display:flex;flex-direction:column;gap:16px;min-width:0}
+
+.periodos{display:inline-flex;align-self:flex-start;border:1px solid var(--border);border-radius:999px;overflow:hidden;background:var(--surface)}
+.periodo{border:0;background:transparent;color:var(--muted);padding:8px 16px;font:inherit;font-size:.85rem;font-weight:600;cursor:pointer;white-space:nowrap}
+.periodo + .periodo{border-left:1px solid var(--border)}
+.periodo[aria-pressed="true"]{background:var(--accent);color:var(--bg);font-weight:800}
+.periodo:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card,12px);padding:14px 16px;min-width:0}
+.kpiRotulo{font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.kpiValor{margin-top:4px;font-family:var(--font-display);font-size:1.45rem;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpiValor[data-tom="bom"]{color:var(--green)}
+.kpiValor[data-tom="ruim"]{color:var(--red-text)}
+.kpiSub{margin-top:2px;font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
+
+.aviso{padding:10px 14px;border-radius:10px;background:var(--warning-soft);border:1px solid rgba(255,138,31,.35);color:var(--warning);font-size:.85rem}
+
+.grade{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+.cartao{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-card,12px);padding:16px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.cartaoCabeca{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.cartaoTitulo{margin:0;font-family:var(--font-display);font-size:1.05rem;font-weight:800}
+.subtitulo{margin:4px 0 6px;font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700}
+.semPermissao{color:var(--muted);font-size:.9rem;line-height:1.45}
+.vazio{margin:0;color:var(--muted);font-size:.9rem}
+.dica{margin:0;color:var(--muted);font-size:.8rem;line-height:1.4}
+
+.campo{width:100%;min-width:0;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font:inherit;font-size:.95rem;outline:none}
+.campo:focus{border-color:var(--focus)}
+
+/* busca */
+.busca{position:relative;display:flex;flex-direction:column;gap:6px}
+.resultados{list-style:none;margin:0;padding:4px;border:1px solid var(--border);border-radius:10px;background:var(--surface2);display:flex;flex-direction:column;gap:2px;max-height:320px;overflow:auto}
+.resultado{width:100%;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;border:0;border-radius:8px;background:transparent;color:var(--text);padding:9px 10px;font:inherit;cursor:pointer}
+.resultado:hover,.resultado:focus-visible{background:var(--surface-hover,#2A2B21);outline:none}
+.resultadoNome{font-weight:700;font-size:.92rem}
+.resultadoInfo{font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
+
+/* carrinho */
+.carrinho{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.item{border:1px solid var(--border);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;background:var(--surface-raised,#24251D)}
+.itemTopo{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.itemNome{font-weight:700;font-size:.92rem;overflow-wrap:anywhere}
+.tirar{flex:0 0 auto;width:28px;height:28px;border-radius:50%;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:1.1rem;line-height:1;cursor:pointer}
+.tirar:hover{color:var(--red-text);border-color:var(--red)}
+.itemControles{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.qtd{display:inline-flex;align-items:stretch;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.qtd button{width:38px;border:0;background:var(--surface2);color:var(--text);font-size:1.1rem;font-weight:700;cursor:pointer}
+.qtd button:hover{background:var(--border)}
+.qtd input{width:52px;border:0;border-left:1px solid var(--border);border-right:1px solid var(--border);background:var(--bg);color:var(--text);text-align:center;font:inherit;font-weight:700;font-variant-numeric:tabular-nums;padding:8px 0;appearance:textfield;-moz-appearance:textfield}
+.qtd input::-webkit-outer-spin-button,.qtd input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.preco{flex:1 1 140px;display:flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);padding:0 10px;min-width:0}
+.preco span{color:var(--muted);font-size:.85rem}
+.preco input{flex:1;min-width:0;border:0;background:transparent;color:var(--text);font:inherit;font-weight:700;padding:9px 0;outline:none;font-variant-numeric:tabular-nums}
+.preco:focus-within{border-color:var(--focus)}
+.itemConta{display:flex;gap:12px;flex-wrap:wrap;align-items:baseline;font-size:.85rem;font-variant-numeric:tabular-nums}
+.custoUn{color:var(--muted);font-size:.78rem}
+.bom{color:var(--green)}
+.ruim{color:var(--red-text)}
+
+/* pagamento e campos */
+.pagamento{display:flex;flex-wrap:wrap;gap:6px}
+.forma{border:1px solid var(--border);background:var(--surface2);color:var(--text);border-radius:999px;padding:8px 14px;font:inherit;font-size:.85rem;font-weight:600;cursor:pointer}
+.forma[aria-checked="true"]{background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:800}
+.forma:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.linhaCampos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.rotulado{display:flex;flex-direction:column;gap:4px;min-width:0}
+.rotulado > span{font-size:.75rem;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+.largo{grid-column:1 / -1}
+.mais{align-self:flex-start;border:0;background:none;color:var(--accent);font:inherit;font-size:.82rem;font-weight:600;cursor:pointer;padding:0;text-align:left}
+.mais:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+.alertas{margin:0;padding:8px 12px 8px 28px;border-radius:8px;background:var(--warning-soft);color:var(--warning);font-size:.82rem;line-height:1.45}
+
+.total{border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:4px;font-variant-numeric:tabular-nums}
+.totalLinha{display:flex;justify-content:space-between;gap:10px;font-size:.88rem;color:var(--muted)}
+.totalLucro{color:var(--text);font-weight:800;font-size:1rem}
+.totalLucro small{font-weight:500;color:var(--muted)}
+.fechar{width:100%;justify-content:center;font-size:1rem;padding:14px 20px}
+.fechar:disabled{opacity:.55;cursor:not-allowed;transform:none}
+
+.ok{padding:10px 12px;border-radius:8px;background:var(--green-bg);border:1px solid rgba(54,179,126,.4);color:var(--green);font-size:.85rem;line-height:1.4}
+.erro{padding:10px 12px;border-radius:8px;background:var(--red-bg);border:1px solid rgba(214,90,74,.4);color:var(--red-text);font-size:.85rem;line-height:1.4}
+
+/* lista de vendas */
+.pagamentos{display:flex;gap:6px;flex-wrap:wrap}
+.lista{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.venda{border-top:1px solid var(--border)}
+.venda:first-child{border-top:0}
+.venda[data-cancelada] .vendaItens,.venda[data-cancelada] .vendaValores b{text-decoration:line-through;color:var(--muted)}
+.vendaResumo{width:100%;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:baseline;border:0;background:none;color:var(--text);font:inherit;text-align:left;padding:10px 2px;cursor:pointer}
+.vendaResumo:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.vendaQuando{color:var(--muted);font-size:.8rem;font-variant-numeric:tabular-nums;white-space:nowrap}
+.vendaItens{font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vendaItens em{color:var(--muted);font-style:normal}
+.vendaValores{display:flex;flex-direction:column;align-items:flex-end;gap:2px;font-size:.8rem;font-variant-numeric:tabular-nums;white-space:nowrap}
+.vendaValores b{font-size:.95rem}
+.vendaDetalhe{padding:0 2px 12px;display:flex;flex-direction:column;gap:8px}
+.cancelar{display:flex;flex-direction:column;gap:8px}
+.cancelarAcoes{display:flex;gap:8px;flex-wrap:wrap}
+
+.tabela{width:100%;border-collapse:collapse;font-size:.83rem;font-variant-numeric:tabular-nums}
+.tabela th{text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700;padding:4px 6px;border-bottom:1px solid var(--border)}
+.tabela td{padding:6px;border-bottom:1px solid var(--border);overflow-wrap:anywhere}
+.tabela tr:last-child td{border-bottom:0}
+.num{text-align:right !important;white-space:nowrap}
+.porProduto{border-top:1px solid var(--border);padding-top:8px}
+
+@media(max-width:1000px){
+  .grade{grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:640px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .kpi{padding:12px}
+  .kpiValor{font-size:1.2rem}
+  .cartao{padding:12px}
+  .periodos{align-self:stretch}
+  .periodo{flex:1;padding:8px 6px}
+  .linhaCampos{grid-template-columns:minmax(0,1fr)}
+}
