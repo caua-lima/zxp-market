@@ -9,6 +9,7 @@ import { caminhoSuave, escalaRedonda } from "@/lib/domain/grafico-linha";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { placarDe } from "@/lib/domain/painel-fixo";
 import { aoMudarPainelFixo, desligarPainelFixo, ligarPainelFixo, mostrarPainelFixo, painelFixoLigado, painelFixoSuportado } from "@/lib/painel-fixo";
+import WidgetIphone from "@/components/WidgetIphone";
 import s from "./PainelAoVivo.module.css";
 
 /**
@@ -332,6 +333,8 @@ export default function PainelAoVivo({ dados, onFechar }: { dados: DadosAoVivo; 
           )}
         </section>
       </div>
+
+      <WidgetIphone />
 
       <footer className={s.rodape}>
         Atualizado às {fmtHora(dados.atualizadoEm)}
