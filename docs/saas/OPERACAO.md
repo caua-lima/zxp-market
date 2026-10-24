@@ -89,6 +89,15 @@ foi escrito pra funcionar com elas.
 > permissão”** — o resto do app não é afetado. Quem edita estoque agenda; o member
 > não vê.
 
+> **PDV (vendas presenciais)** usa a coleção nova `vendas_presenciais`. **Sem
+> publicar as regras, registrar venda dá "sem permissão"** — o resto do app segue
+> igual. Quem edita estoque vende (a venda baixa o estoque "em casa" no mesmo
+> lote); o member não vê o PDV. Lucro do presencial = preço − custo médio do dia,
+> sem imposto, taxa nem frete. Ele entra no faturamento, no lucro, nas metas, no
+> DRE e na barra ao vivo; a conferência com o Seller Center continua só ML.
+> Produto anunciado nas agências: o PDV avisa pra conferir o estoque do anúncio no
+> ML (o app não mexe no anúncio sozinho).
+>
 > **Vendas ao vivo em tempo real** usam outra coleção nova, `ao_vivo` (o sinal que
 > o webhook publica a cada venda e a barra escuta). **Sem publicar as regras, a
 > barra continua funcionando como antes** (relendo o ML a cada minuto e no aviso

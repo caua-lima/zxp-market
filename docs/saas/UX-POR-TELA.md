@@ -47,6 +47,7 @@ só se afirma o que foi conferido no código atual.
 | | Fechamento com versão | ✗ | Não existe "fechar mês" com versão congelada — decisão de produto |
 | | Exportação preserva período, empresa e fórmula | ✓ novo | Apresentação com o nome da empresa e o período (S24); CSV seguro (S30) |
 | Pedidos | Paginação real | ✓ | Cursor por (campo, id) (S22) |
+| PDV | Vendas presenciais | ✓ novo | Aba em Comercial. Busca por nome/SKU (sem acento), carrinho com quantidade e preço (sugere o último preço cobrado), desconto, Pix/dinheiro/débito/crédito, cliente opcional, data e hora. Lucro ao vivo = preço − custo médio do dia (congelado na venda), sem imposto. Fechar baixa o "em casa" no livro (ajuste marcado com a venda, num lote com a auditoria); cancelar devolve e a venda fica no histórico com o motivo. Hoje / este mês / mês passado, por pagamento e por produto. Somado no Dashboard, metas, DRE e barra ao vivo (`lib/domain/venda-presencial.ts`, `metricas-com-presencial.ts`, `ao-vivo-presencial.ts`) |
 | | Status traduzido, fonte e horário | ◐ | Marcos do pedido em português; fonte/horário por pedido não exibidos em todos os casos |
 | Full | Enviado, recebido, divergência, custo de coleta | ✓ | `components/tabs/full/*`, `CustosColetaFull` |
 | | Baixas idempotentes, transferência/retenção separadas | ✓ | Movimento auditado (S20), retenção no plano de reposição |
