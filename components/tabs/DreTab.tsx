@@ -42,6 +42,8 @@ type Metrics = {
   ordersCount: number;
   /** Conferência contra o líquido do Mercado Pago — repasse estimado × recebido. */
   reconc?: { count: number; nosso: number; real: number };
+  /** Vendas presenciais (PDV), já somadas na receita e no CMV pela rota — sem taxa, frete nem imposto. */
+  presencial?: { faturamento: number; vendas: number };
 };
 
 function monthRange() {
@@ -672,7 +674,12 @@ export default function DreTab() {
         </div>
 
         <GrupoDre>Receita</GrupoDre>
-        <Linha rotulo="Receita bruta de vendas" valor={receitaBruta} nota="tudo que entrou, inclusive o que caiu depois" />
+        <Linha
+          rotulo="Receita bruta de vendas" valor={receitaBruta}
+          nota={(metrics.presencial?.faturamento ?? 0) > 0
+            ? `tudo que entrou, inclusive o que caiu depois · inclui ${fmtBRL(metrics.presencial!.faturamento)} do presencial (PDV, sem taxa nem imposto)`
+            : "tudo que entrou, inclusive o que caiu depois"}
+        />
         <Linha rotulo="Cancelamentos e devoluções" valor={canceladas} tipo="deducao" base={base} />
         <Linha
           rotulo="Receita líquida"
