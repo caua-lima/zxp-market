@@ -108,3 +108,14 @@
   .grafico{padding-inline:0}
 }
 @media(prefers-reduced-motion:reduce){.ponto{animation:none}}
+
+/* Widget do iPhone (Scriptable) */
+.widgetCartao{margin:0 auto 16px;max-width:1500px;width:calc(100% - 32px);background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.widgetTopo{width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;background:none;border:0;color:var(--text);font:inherit;font-weight:700;padding:14px 16px;cursor:pointer;text-align:left}
+.widgetTopo:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.widgetCorpo{padding:0 16px 16px;display:flex;flex-direction:column;gap:10px}
+.widgetPassos{margin:0;padding-left:20px;font-size:.88rem;line-height:1.55;color:var(--text)}
+.widgetNota{margin:0;font-size:.78rem;color:var(--muted);line-height:1.4}
+.widgetAcoes{display:flex;gap:8px;flex-wrap:wrap}
+.widgetTexto{width:100%;box-sizing:border-box;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--muted);font:.72rem/1.4 ui-monospace,monospace;padding:10px;resize:vertical}
+.widgetMsg{font-size:.82rem;color:var(--green)}
