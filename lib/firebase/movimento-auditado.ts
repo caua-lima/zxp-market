@@ -147,3 +147,62 @@ export async function excluirTransferenciaAuditada(
   });
   await lote.commit();
 }
+
+/**
+ * Venda PRESENCIAL (PDV): a venda e as baixas no livro (uma por produto, cada
+ * uma com a sua auditoria) num lote só. Ou entra a venda inteira, com o estoque
+ * baixado, ou não entra nada — venda registrada sem baixa deixaria o "em casa"
+ * mentindo, e baixa sem venda seria estoque sumido sem explicação.
+ *
+ * Repetir (duplo toque em "Fechar venda", retry depois de timeout) não duplica:
+ * a venda já existir com o mesmo id é prova de que o lote inteiro entrou.
+ */
+export async function criarVendaPresencialAuditada(
+  db: Firestore,
+  venda: { id: string } & Record<string, unknown>,
+  baixas: Omit<EstoqueMovimento, "createdBy" | "createdAt" | "revisao">[],
+  email: string,
+  textos: TextoDaAuditoria[],
+  agora = Date.now(),
+): Promise<"criada" | "ja_existia"> {
+  const ref = doc(db, traduzirCaminho("vendas_presenciais"), venda.id);
+  if ((await getDoc(ref)).exists()) return "ja_existia";
+  const lote = writeBatch(db);
+  lote.set(ref, semIndefinidos(venda));
+  baixas.forEach((mov, i) => {
+    const r = registro("criar", mov.id, "_r1", email, textos[i] ?? { entidadeLabel: mov.productId }, agora);
+    lote.set(doc(db, traduzirCaminho("estoque_movimentos"), mov.id), semIndefinidos({ ...mov, revisao: 1, createdBy: email, createdAt: agora }));
+    lote.set(doc(db, traduzirCaminho("auditLog"), r.id), r.dados);
+  });
+  await lote.commit();
+  return "criada";
+}
+
+/**
+ * Cancela uma venda presencial: a venda vira "cancelada" (fica no histórico,
+ * com quem cancelou e por quê) e as baixas saem do livro — o estoque volta.
+ * Só apaga as baixas que ainda existem: uma que alguém já tirou à mão não
+ * pode travar o cancelamento.
+ */
+export async function cancelarVendaPresencialAuditada(
+  db: Firestore,
+  vendaId: string,
+  baixas: { id: string; texto: TextoDaAuditoria }[],
+  email: string,
+  motivo: string,
+  agora = Date.now(),
+): Promise<void> {
+  const existentes = await Promise.all(baixas.map(async (b) => ((await getDoc(doc(db, traduzirCaminho("estoque_movimentos"), b.id))).exists() ? b : null)));
+  const lote = writeBatch(db);
+  lote.update(doc(db, traduzirCaminho("vendas_presenciais"), vendaId), semIndefinidos({
+    status: "cancelada", canceladaEm: agora, canceladaPor: email,
+    motivoCancelamento: motivo.trim() ? motivo.trim().slice(0, 300) : undefined,
+  }));
+  for (const b of existentes) {
+    if (!b) continue;
+    const r = registro("excluir", b.id, "_excluido", email, b.texto, agora);
+    lote.delete(doc(db, traduzirCaminho("estoque_movimentos"), b.id));
+    lote.set(doc(db, traduzirCaminho("auditLog"), r.id), r.dados);
+  }
+  await lote.commit();
+}

@@ -123,3 +123,12 @@ describe("resumoPresencial", () => {
     expect(ultimoPrecoPresencial("erva", vs)).toBeNull();
   });
 });
+
+describe("baixasDaVenda", () => {
+  it("os mesmos ids e quantidades que a venda gravou", async () => {
+    const { baixasDaVenda } = await import("./venda-presencial");
+    const r = montarVendaPresencial({ ...base, linhas: [{ productId: "erva", quantidade: 1, precoUnit: 25 }, { productId: "limao", quantidade: 1, precoUnit: 15 }, { productId: "limao", quantidade: 2, precoUnit: 12 }] });
+    if (!r.ok) throw new Error(r.erro);
+    expect(baixasDaVenda(r.venda)).toEqual(r.baixas.map((b) => ({ id: b.id, productId: b.productId, quantidade: -b.quantidade })));
+  });
+});

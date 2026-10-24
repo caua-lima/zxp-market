@@ -270,3 +270,14 @@ export function resumoPresencial(vendas: readonly VendaPresencial[], de: string,
     .sort((a, b) => a.data.localeCompare(b.data));
   return r;
 }
+
+/**
+ * As baixas que uma venda gravou no livro, com os MESMOS ids de
+ * montarVendaPresencial (um por produto, na ordem em que aparecem) — é o que o
+ * cancelamento apaga.
+ */
+export function baixasDaVenda(venda: Pick<VendaPresencial, "id" | "itens">): { id: string; productId: string; quantidade: number }[] {
+  const porProduto = new Map<string, number>();
+  for (const i of venda.itens) porProduto.set(i.productId, (porProduto.get(i.productId) ?? 0) + i.quantidade);
+  return [...porProduto.entries()].map(([productId, qtd], k) => ({ id: `pdv_${venda.id}_${k + 1}`, productId, quantidade: qtd }));
+}
