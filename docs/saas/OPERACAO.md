@@ -104,8 +104,8 @@ foi escrito pra funcionar com elas.
 > de venda) — só não soma no instante. Qualquer acesso lê; só o servidor escreve.
 >
 > **Widget no iPhone (grátis, app Scriptable):** painel ao vivo › “Widget no iPhone”. Gera um
-> código secreto (só o hash fica no banco, coleção ) e o script pronto pra colar.
-> A rota pública  devolve só faturamento, meta e vendas por hora (nunca
+> código secreto (só o hash fica no banco, coleção `widget_tokens`) e o script pronto pra colar.
+> A rota pública `/api/widget/ao-vivo?t=…` devolve só faturamento, meta e vendas por hora (nunca
 > custo, lucro, visitas nem estoque) e para de responder se a pessoa sair da equipe. Gerar outro
 > código ou “Desligar widget” revoga o anterior. O iPhone atualiza o widget a cada poucos
 > minutos — não é instantâneo (isso só com app nativo e conta Apple paga).
