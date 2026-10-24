@@ -482,6 +482,8 @@ export function abaEhEditavel(
   if (aba === "tarefas") return true; // leitura+escrita pra todo autorizado, por design.
   if (ctx.isOwner) return true;
   if (aba === "dre") return ctx.canEditTab("custos");
+  // PDV: vender baixa o estoque — quem edita estoque vende (as regras exigem o mesmo).
+  if (aba === "pdv") return ctx.canEditTab("estoque");
   if ((["custos", "metas", "estoque", "ads"] as const).includes(aba as PermissionTab)) {
     return ctx.canEditTab(aba as PermissionTab);
   }

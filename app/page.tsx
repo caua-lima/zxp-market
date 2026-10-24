@@ -48,6 +48,7 @@ const DesempenhoTab = dynamic(() => import("@/components/tabs/DesempenhoTab"), {
 const AccessControlTab = dynamic(() => import("@/components/tabs/AccessControlTab"), { loading: aoCarregar });
 const DreTab = dynamic(() => import("@/components/tabs/DreTab"), { loading: aoCarregar });
 const PrecoTab = dynamic(() => import("@/components/tabs/PrecoTab"), { loading: aoCarregar });
+const PdvTab = dynamic(() => import("@/components/tabs/PdvTab"), { loading: aoCarregar });
 const TarefasTab = dynamic(() => import("@/components/tabs/TarefasTab"), { loading: aoCarregar });
 
 import LoginCard from "@/components/LoginCard";
@@ -67,7 +68,7 @@ import {
 } from "@/lib/domain/contexto-url";
 import { nomeDaLoja } from "@/lib/marca";
 
-type Tab = "dashboard" | "pedidos" | "ads" | "preco" | "metas" | "custos" | "estoque" | "full" | "desempenho" | "dre" | "tarefas" | "acesso";
+type Tab = "dashboard" | "pedidos" | "pdv" | "ads" | "preco" | "metas" | "custos" | "estoque" | "full" | "desempenho" | "dre" | "tarefas" | "acesso";
 
 // Owner e colaborador veem tudo, exceto Acesso — essa é só do owner (a aba
 // nem aparece na navegação pra colaborador). Tarefas é a única aba em que o
@@ -111,6 +112,7 @@ const NAV_ITEMS: { id: Tab; label: string; grupo: GrupoNav }[] = [
   { id: "metas", label: "Metas", grupo: "visao" },
 
   { id: "pedidos", label: "Pedidos", grupo: "comercial" },
+  { id: "pdv", label: "PDV", grupo: "comercial" },
   { id: "ads", label: "Ads", grupo: "comercial" },
   { id: "preco", label: "Preço", grupo: "comercial" },
 
@@ -130,6 +132,7 @@ const NAV_ITEMS: { id: Tab; label: string; grupo: GrupoNav }[] = [
 const ICON_PATHS: Record<Tab, React.ReactNode> = {
   dashboard: (<><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>),
   pedidos: (<><path d="M6 8h12l-1 12H7L6 8z" /><path d="M9 8V6.5a3 3 0 0 1 6 0V8" /></>),
+  pdv: (<><path d="M4 9.5L5.6 4h12.8L20 9.5" /><path d="M4 9.5a2.67 2.67 0 0 0 5.33 0 2.67 2.67 0 0 0 5.34 0 2.67 2.67 0 0 0 5.33 0" /><path d="M5.5 12v8h13v-8" /><path d="M10 20v-4.5h4V20" /></>),
   ads: (<><path d="M4 10v4a1 1 0 0 0 1 1h2l5 3.5V6.5L7 10H5a1 1 0 0 0-1 1z" /><path d="M16 9a4.5 4.5 0 0 1 0 6" /></>),
   preco: (<><path d="M3.5 12.5l8-8H20v8.5l-8 8-8.5-8.5z" /><circle cx="16" cy="8" r="1.4" /></>),
   metas: (<><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r="1" /></>),
@@ -185,7 +188,7 @@ export default function Page() {
   );
 }
 
-const VALID_TABS: readonly Tab[] = ["dashboard", "pedidos", "ads", "preco", "metas", "custos", "estoque", "full", "desempenho", "dre", "tarefas", "acesso"];
+const VALID_TABS: readonly Tab[] = ["dashboard", "pedidos", "pdv", "ads", "preco", "metas", "custos", "estoque", "full", "desempenho", "dre", "tarefas", "acesso"];
 
 function AppShell() {
   const { user, signOut, signInWithAccountSelection } = useAuth();
@@ -741,6 +744,7 @@ function AppShell() {
                 {activeTab === "pedidos" && <PedidosTab metaMargem={data.goals?.metaMargem ?? undefined} openOrderId={openOrderId} chaveDeNavegacao={navKey} />}
                 {activeTab === "ads" && <AdsTab metaMargem={data.goals?.metaMargem ?? undefined} products={data.products} />}
                 {activeTab === "preco" && <PrecoTab products={data.products} />}
+                {activeTab === "pdv" && <PdvTab products={data.products} />}
                 {activeTab === "metas" && <MetasTab uid={user.uid} data={data} />}
                 {activeTab === "custos" && <CustosTab uid={user.uid} data={data} />}
                 {activeTab === "estoque" && <EstoqueTab uid={user.uid} data={data} />}
