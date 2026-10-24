@@ -86,7 +86,10 @@ describe("placarDe — da resposta da barra ao vivo", () => {
     expect(p.vendas).toBe(10.01);
     expect(p.porHora).toHaveLength(24);
     expect(p.porHora[0]).toBe(1.24);
-    expect(p.meta).toEqual({ alvo: 100.46, pct: 12.3, falta: 90.4, batida: false, mesBatido: false });
+    expect(p.meta).toEqual({ alvo: 100.46, pct: 12.345, falta: 90.4, batida: false, mesBatido: false });
+    // 89,46% é 89% na barra e no painel (arredondar duas vezes dava 90%)
+    const q = placarDe({ dia: "2026-10-23", atualizadoEm: 1, hoje: { vendas: 1, pedidos: 1, unidades: 1 }, ontemAteAgora: { vendas: 0 }, porHora: { hoje: [] }, ultimaVenda: null, metaDoDia: { alvo: 100, pct: 89.46, falta: 10, batida: false, mesBatido: false } });
+    expect(conteudo(q, AGORA).body).toContain(" 89% da meta");
     expect(placarDe({ dia: "2026-10-23", atualizadoEm: 1, hoje: { vendas: 0, pedidos: 0, unidades: 0 }, ontemAteAgora: { vendas: 0 }, porHora: { hoje: [] }, ultimaVenda: null }).meta).toBeNull();
   });
 });

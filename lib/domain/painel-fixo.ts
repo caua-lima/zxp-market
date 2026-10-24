@@ -57,7 +57,8 @@ export function placarDe(d: DadosDoPlacar): PlacarFixo {
     vendas: dinheiro(d.hoje.vendas),
     pedidos: d.hoje.pedidos,
     unidades: d.hoje.unidades,
-    meta: m ? { alvo: dinheiro(m.alvo), pct: Math.round(m.pct * 10) / 10, falta: dinheiro(m.falta), batida: m.batida, mesBatido: m.mesBatido } : null,
+    // `pct` sem arredondar: a barra arredonda uma vez só, e o painel tem que dar o MESMO %.
+    meta: m ? { alvo: dinheiro(m.alvo), pct: m.pct, falta: dinheiro(m.falta), batida: m.batida, mesBatido: m.mesBatido } : null,
     ultima: d.ultimaVenda ? { valor: dinheiro(d.ultimaVenda.valor), titulo: String(d.ultimaVenda.titulo ?? "").slice(0, 60), em: d.ultimaVenda.em } : null,
     porHora: Array.from({ length: 24 }, (_, i) => dinheiro(d.porHora.hoje[i] ?? 0)),
     ontemAteAgora: dinheiro(d.ontemAteAgora.vendas),
