@@ -25,7 +25,7 @@ describe("conteudoPainelFixo — o que aparece na barra do celular", () => {
     const c = conteudo(base(), AGORA);
     expect(norm(c.title)).toBe("R$ 4.320,50 hoje · 18 vendas");
     const [meta, ultima, extra] = norm(c.body).split("\n");
-    expect(meta).toBe("▰▰▰▰▰▰▱▱▱▱ 64% da meta · faltam R$ 2.429,50");
+    expect(meta).toBe("64% da meta de hoje · faltam R$ 2.429,50");
     expect(ultima).toBe("Última: R$ 189,90 · Kit Limão Caipira 500 g com Casca… às 14:32");
     expect(extra).toBe("25 un · ▲ 12% vs ontem até agora");
     expect(c.tag).toBe("zxp-ao-vivo");
@@ -89,7 +89,7 @@ describe("placarDe — da resposta da barra ao vivo", () => {
     expect(p.meta).toEqual({ alvo: 100.46, pct: 12.345, falta: 90.4, batida: false, mesBatido: false });
     // 89,46% é 89% na barra e no painel (arredondar duas vezes dava 90%)
     const q = placarDe({ dia: "2026-10-23", atualizadoEm: 1, hoje: { vendas: 1, pedidos: 1, unidades: 1 }, ontemAteAgora: { vendas: 0 }, porHora: { hoje: [] }, ultimaVenda: null, metaDoDia: { alvo: 100, pct: 89.46, falta: 10, batida: false, mesBatido: false } });
-    expect(conteudo(q, AGORA).body).toContain(" 89% da meta");
+    expect(conteudo(q, AGORA).body).toContain("89% da meta");
     expect(placarDe({ dia: "2026-10-23", atualizadoEm: 1, hoje: { vendas: 0, pedidos: 0, unidades: 0 }, ontemAteAgora: { vendas: 0 }, porHora: { hoje: [] }, ultimaVenda: null }).meta).toBeNull();
   });
 });
@@ -110,13 +110,13 @@ describe("desenharPainelFixo — a imagem do painel", () => {
     const { ctx, textos, retangulos } = pincel();
     desenhar(ctx, base(), AGORA, 720, 360);
     expect(textos).toContain("R$ 4.320,50");
-    expect(textos).toContain("18 vendas · 25 un");
-    expect(textos).toContain("▲ 12% vs ontem");
+    expect(textos).toContain("↑ 12% vs ontem · 18 vendas");
     expect(textos).toContain("Meta de hoje R$ 6.750,00");
     expect(textos).toContain("64%");
-    expect(textos).toContain("atualizado 14:40");
-    // fundo + selo + trilho + preenchimento da meta + 24 barras
-    expect(retangulos()).toBe(1 + 1 + 2 + 24);
+    expect(textos).toContain("14:40");
+    expect(textos).toContain("Vendas de hoje ao vivo");
+    // fundo + faixa + selo + cartão + trilho + preenchimento da meta + 24 barras
+    expect(retangulos()).toBe(1 + 1 + 1 + 1 + 2 + 24);
   });
 
   it("sem meta nem venda não quebra", () => {

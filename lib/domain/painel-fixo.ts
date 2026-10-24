@@ -132,11 +132,10 @@ export function conteudoPainelFixo(p: PlacarFixo, agoraMs: number): { title: str
     linhas.push("✓ Meta do mês já batida");
   } else if (p.meta && p.meta.alvo > 0) {
     const pct = Math.round(p.meta.pct);
-    const cheios = Math.max(0, Math.min(10, Math.floor(p.meta.pct / 10)));
     if (p.meta.batida) {
       linhas.push("✓ Meta do dia batida · " + pct + "% de " + brl(p.meta.alvo));
     } else {
-      linhas.push("▰".repeat(cheios) + "▱".repeat(10 - cheios) + " " + pct + "% da meta · faltam " + brl(p.meta.falta));
+      linhas.push(pct + "% da meta de hoje · faltam " + brl(p.meta.falta));
     }
   } else {
     linhas.push(p.unidades + (p.unidades === 1 ? " unidade" : " unidades"));
@@ -174,11 +173,14 @@ export type PincelDoPainel = {
   arcTo(x1: number, y1: number, x2: number, y2: number, r: number): void;
   closePath(): void;
   fill(): void;
+  /** Opcional: sem ele (pincel simples de teste) o fundo dourado vira cor chapada. */
+  createLinearGradient?(x0: number, y0: number, x1: number, y1: number): { addColorStop(o: number, c: string): void };
 };
 
 /**
- * A imagem do painel (Android mostra ao expandir a notificação): o valor grande,
- * a barra da meta e as vendas por hora. Desenha em `w`×`h` (720×360 no uso).
+ * A imagem do painel — o MESMO visual do painel "Vendas de hoje ao vivo" do app:
+ * faixa dourada com o cartão marfim (valor, ritmo e meta de hoje) e, embaixo, as
+ * vendas por hora. Desenha em `w`×`h` (720×360 no uso).
  * Sem `roundRect` (só nos navegadores novos): o retângulo arredondado é feito à mão.
  */
 export function desenharPainelFixo(ctx: PincelDoPainel, p: PlacarFixo, agoraMs: number, w: number, h: number): void {
@@ -199,75 +201,83 @@ export function desenharPainelFixo(ctx: PincelDoPainel, p: PlacarFixo, agoraMs: 
   };
   const s = w / 720;
   const px = (v: number) => Math.round(v * s);
-  const margem = px(32);
+  const m = px(28);
 
-  ctx.fillStyle = "#15171c";
+  // fundo escuro e a faixa dourada (como o hero do painel)
+  ctx.fillStyle = "#15150f";
   ctx.fillRect(0, 0, w, h);
+  const heroH = px(196);
+  if (ctx.createLinearGradient) {
+    const g = ctx.createLinearGradient(0, 0, w, heroH);
+    g.addColorStop(0, "#F7C95C");
+    g.addColorStop(0.55, "#F4B942");
+    g.addColorStop(1, "#E9A92D");
+    ctx.fillStyle = g as unknown as string;
+  } else {
+    ctx.fillStyle = "#F4B942";
+  }
+  ctx.fillRect(0, 0, w, heroH);
 
-  // Selo "AO VIVO" e a hora da leitura
+  // título e relógio
   ctx.textBaseline = "alphabetic";
   ctx.textAlign = "left";
-  caixa(margem, px(30), px(12), px(12), px(6), "#36b37e");
-  ctx.fillStyle = "#36b37e";
-  ctx.font = "700 " + px(20) + "px sans-serif";
-  ctx.fillText("AO VIVO · HOJE", margem + px(22), px(42));
+  caixa(m, px(26), px(11), px(11), px(6), "#D93025");
+  ctx.fillStyle = "#1B1A14";
+  ctx.font = "800 " + px(21) + "px sans-serif";
+  ctx.fillText("Vendas de hoje ao vivo", m + px(20), px(37));
   ctx.textAlign = "right";
-  ctx.fillStyle = "#8b8f98";
-  ctx.font = "500 " + px(20) + "px sans-serif";
-  ctx.fillText("atualizado " + hora(p.atualizadoEm || agoraMs), w - margem, px(42));
+  ctx.font = "600 " + px(19) + "px sans-serif";
+  ctx.fillText(hora(p.atualizadoEm || agoraMs), w - m, px(37));
 
-  // O valor e a contagem
-  ctx.textAlign = "left";
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "800 " + px(66) + "px sans-serif";
-  ctx.fillText(brl(p.vendas), margem, px(112), w - 2 * margem);
-  ctx.fillStyle = "#b9bdc6";
-  ctx.font = "500 " + px(24) + "px sans-serif";
-  const n = p.pedidos;
-  ctx.fillText(n + (n === 1 ? " venda · " : " vendas · ") + p.unidades + " un", margem, px(150));
+  // cartão marfim com o valor, o ritmo e a meta
+  const cy = px(56), ch = px(150), cx = m, cw = w - 2 * m;
+  caixa(cx, cy, cw, ch, px(16), "#FBF8EE");
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#1B1A14";
+  ctx.font = "800 " + px(58) + "px sans-serif";
+  ctx.fillText(brl(p.vendas), w / 2, cy + px(64), cw - px(24));
   if (p.ontemAteAgora > 0) {
     const r = Math.round(((p.vendas - p.ontemAteAgora) / p.ontemAteAgora) * 100);
-    ctx.textAlign = "right";
-    ctx.fillStyle = r >= 0 ? "#36b37e" : "#ff6b5e";
-    ctx.font = "700 " + px(24) + "px sans-serif";
-    ctx.fillText((r >= 0 ? "▲ " + r : "▼ " + Math.abs(r)) + "% vs ontem", w - margem, px(150));
+    ctx.fillStyle = r >= 0 ? "#0B7A4B" : "#B3261E";
+    ctx.font = "700 " + px(21) + "px sans-serif";
+    ctx.fillText((r >= 0 ? "↑ " + r : "↓ " + Math.abs(r)) + "% vs ontem · " + p.pedidos + (p.pedidos === 1 ? " venda" : " vendas"), w / 2, cy + px(94));
+  } else {
+    ctx.fillStyle = "#5C5B4F";
+    ctx.font = "700 " + px(21) + "px sans-serif";
+    ctx.fillText(p.pedidos + (p.pedidos === 1 ? " venda" : " vendas") + " · " + p.unidades + " un", w / 2, cy + px(94));
   }
-
-  // Meta do dia
-  let topoBarras = px(196);
   if (p.meta && p.meta.alvo > 0 && !p.meta.mesBatido) {
-    const yb = px(186);
+    const ix = cx + px(20), iw = cw - px(40), yb = cy + px(118);
     ctx.textAlign = "left";
-    ctx.fillStyle = "#b9bdc6";
-    ctx.font = "500 " + px(20) + "px sans-serif";
-    ctx.fillText("Meta de hoje " + brl(p.meta.alvo), margem, yb);
+    ctx.fillStyle = "#3A392F";
+    ctx.font = "500 " + px(18) + "px sans-serif";
+    ctx.fillText("Meta de hoje " + brl(p.meta.alvo), ix, cy + px(122));
     ctx.textAlign = "right";
-    ctx.fillStyle = p.meta.batida ? "#36b37e" : "#f2b33d";
-    ctx.font = "800 " + px(22) + "px sans-serif";
-    ctx.fillText(Math.round(p.meta.pct) + "%", w - margem, yb);
-    const largura = w - 2 * margem;
-    caixa(margem, yb + px(10), largura, px(14), px(7), "#2a2d35");
+    ctx.fillStyle = p.meta.batida ? "#0B7A4B" : "#8A5A00";
+    ctx.font = "800 " + px(20) + "px sans-serif";
+    ctx.fillText(Math.round(p.meta.pct) + "%", ix + iw, cy + px(122));
+    caixa(ix, yb + px(12), iw, px(9), px(5), "#E4E1D4");
     const cheio = Math.max(0, Math.min(1, p.meta.pct / 100));
-    if (cheio > 0) caixa(margem, yb + px(10), Math.max(px(14), largura * cheio), px(14), px(7), p.meta.batida ? "#36b37e" : "#f2b33d");
-    topoBarras = px(232);
+    if (cheio > 0) caixa(ix, yb + px(12), Math.max(px(9), iw * cheio), px(9), px(5), p.meta.batida ? "#1FA866" : "#E9A92D");
   }
 
-  // Vendas por hora (hoje)
-  const base = h - px(30);
-  const alturaMax = Math.max(px(20), base - topoBarras - px(8));
+  // vendas por hora, embaixo
+  const base = h - px(26);
+  const topo = cy + ch + px(18);
+  const alturaMax = Math.max(px(20), base - topo);
   const maior = Math.max(1, ...p.porHora.map((v) => Number(v) || 0));
-  const largura = (w - 2 * margem) / 24;
-  for (let i = 0; i < 24; i++) {
-    const v = Number(p.porHora[i]) || 0;
+  const largura = (w - 2 * m) / 24;
+  for (let k = 0; k < 24; k++) {
+    const v = Number(p.porHora[k]) || 0;
     const alt = v > 0 ? Math.max(px(4), (v / maior) * alturaMax) : px(3);
-    caixa(margem + i * largura + px(2), base - alt, Math.max(px(4), largura - px(4)), alt, px(3), v > 0 ? "#f2b33d" : "#2a2d35");
+    caixa(m + k * largura + px(2), base - alt, Math.max(px(4), largura - px(4)), alt, px(3), v > 0 ? "#F4B942" : "#2D2C22");
   }
+  ctx.fillStyle = "#8f8c7d";
+  ctx.font = "500 " + px(15) + "px sans-serif";
   ctx.textAlign = "left";
-  ctx.fillStyle = "#6f737c";
-  ctx.font = "500 " + px(16) + "px sans-serif";
-  ctx.fillText("0h", margem, h - px(8));
+  ctx.fillText("0h", m, h - px(7));
   ctx.textAlign = "center";
-  ctx.fillText("12h", margem + 12 * largura, h - px(8));
+  ctx.fillText("12h", m + 12 * largura, h - px(7));
   ctx.textAlign = "right";
-  ctx.fillText("23h", w - margem, h - px(8));
+  ctx.fillText("23h", w - m, h - px(7));
 }
