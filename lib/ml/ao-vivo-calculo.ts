@@ -6,6 +6,8 @@ import { metaDoDia, prepararPedidosAoVivo, resumirAoVivo, type MetaDoDia, type P
 import { fetchOrdersLive, loadOrders } from "@/lib/ml/orders";
 import { getMlAccessToken } from "@/app/api/ml/token";
 import { sellerIdAtual } from "@/lib/ml/vendedor";
+import { aoVivoComPresencial, type ContextoDaMeta } from "@/lib/domain/ao-vivo-presencial";
+import type { VendaPresencial } from "@/lib/domain/venda-presencial";
 
 /**
  * O cálculo da barra "Ao vivo" — o dia de hoje em andamento.
@@ -34,10 +36,12 @@ export type CorpoAoVivo = Omit<ResumoAoVivo, "topProdutos"> & {
   metaDoDia: MetaDoDia | null;
   fonte: "ml" | "banco";
   atualizadoEm: number;
+  /** O que veio do balcão (PDV) hoje, já somado acima. `null` sem venda presencial no dia. */
+  presencial?: { faturamento: number; vendas: number } | null;
 };
 
 /** Por empresa: o cache é do processo, e duas empresas dividem o mesmo processo. */
-const cache = new Map<string, { at: number; body: CorpoAoVivo }>();
+const cache = new Map<string, { at: number; body: CorpoAoVivo; meta: ContextoDaMeta | null }>();
 const TTL_ML = 45 * 1000;
 /** Sem o ML, cada leitura é paga no Firestore e o dado nem é ao vivo: segura mais. */
 const TTL_BANCO = 5 * 60 * 1000;
@@ -129,6 +133,25 @@ async function metasDoMes(db: FirebaseFirestore.Firestore, mes: string): Promise
   return { meta1, meta2: Number(e.meta2) > 0 ? Number(e.meta2) : null, meta3: Number(e.meta3) > 0 ? Number(e.meta3) : null };
 }
 
+/**
+ * O balcão (PDV) por cima do número do ML, a cada resposta — fora do cache, pra
+ * uma venda presencial aparecer na próxima leitura. Lê do 1º dia do mês (ou de
+ * ontem, no dia 1) até hoje: é o que o dia, o ritmo e a meta precisam.
+ */
+async function comBalcao(body: CorpoAoVivo, meta: ContextoDaMeta | null): Promise<CorpoAoVivo> {
+  try {
+    const agora = Date.now();
+    const hoje = diaBR(agora);
+    const ontem = diaBR(agora - 24 * 3600 * 1000);
+    const ini = ontem < `${hoje.slice(0, 7)}-01` ? ontem : `${hoje.slice(0, 7)}-01`;
+    const snap = await getAdminDb().collection("vendas_presenciais").where("data", ">=", ini).where("data", "<=", hoje).get();
+    if (snap.empty) return { ...body, presencial: null };
+    return aoVivoComPresencial(body, snap.docs.map((d) => d.data() as VendaPresencial), agora, meta);
+  } catch {
+    return { ...body, presencial: null };
+  }
+}
+
 function diaBR(ms: number): string {
   const d = new Date(ms - 3 * 3600 * 1000);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
@@ -170,7 +193,7 @@ export async function calcularAoVivo(opcoes: OpcoesAoVivo): Promise<{ body: Corp
   const guardado = cache.get(chave);
   const validade = opcoes.urgente || opcoes.pedido ? TTL_URGENTE : guardado?.body.fonte === "ml" ? TTL_ML : TTL_BANCO;
   if (guardado && agora - guardado.at < validade && cacheRefletePedido(guardado.body, opcoes.pedido)) {
-    return { body: guardado.body, doCache: true };
+    return { body: await comBalcao(guardado.body, guardado.meta), doCache: true };
   }
 
   const db = getAdminDb();
@@ -249,8 +272,10 @@ export async function calcularAoVivo(opcoes: OpcoesAoVivo): Promise<{ body: Corp
     fonte,
     atualizadoEm: agora,
   };
-  cache.set(chave, { at: agora, body });
+  // O contexto da meta vai junto no cache: o balcão entra depois, e a meta é refeita com ele.
+  const ctxMeta: ContextoDaMeta | null = ateOntem == null ? null : { ateOntemML: ateOntem, metas, diaAtual: Number(hoje.slice(8, 10)), diasNoMes };
+  cache.set(chave, { at: agora, body, meta: ctxMeta });
   // O dia virou: o que ficou do dia anterior não serve mais pra ninguém.
   for (const k of cache.keys()) if (!k.endsWith(`|${hoje}`)) cache.delete(k);
-  return { body, doCache: false };
+  return { body: await comBalcao(body, ctxMeta), doCache: false };
 }
