@@ -77,6 +77,7 @@ export const DESTINOS: Readonly<Record<string, DecisaoDeColecao>> = {
   // ── da pessoa ou do sistema ──
   usuarios: { destino: "global", motivo: "preferências da PESSOA, não da empresa" },
   pushTokens: { destino: "global", motivo: "aparelhos da pessoa" },
+  widget_tokens: { destino: "global", motivo: "códigos do widget do iPhone (só o hash); a rota pública acha a empresa por aqui" },
   controleAcesso: { destino: "global", motivo: "legado; os membros já foram migrados pela primeira fatia" },
   controleAcessoMeta: { destino: "global", motivo: "trava do bootstrap legado" },
   tenants: { destino: "global", motivo: "é o próprio destino" },

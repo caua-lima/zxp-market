@@ -354,6 +354,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Códigos do widget do iPhone (só o hash). Nada de navegador: a rota pública do
+    // servidor (Admin SDK) é quem confere. Ver lib/domain/widget-token.ts.
+    match /widget_tokens/{hash} {
+      allow read, write: if false;
+    }
+
     // Registro de push: um doc por (pessoa, instalação), id = "email__deviceId".
     //
     // O navegador só LÊ o próprio registro (o diagnóstico precisa saber se ele

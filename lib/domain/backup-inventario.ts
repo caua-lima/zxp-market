@@ -212,6 +212,12 @@ export const INVENTARIO: readonly ItemDeBackup[] = [
     perda: "Nada operacional — só o rastro de quem recebeu o quê; é apagado sozinho depois de 14 dias.",
   },
   {
+    colecao: "widget_tokens",
+    classe: "efemero",
+    conteudo: "Hash dos códigos do widget do iPhone (Scriptable), com a pessoa e a empresa de cada um.",
+    perda: "A pessoa gera outro código no painel ao vivo e cola o script de novo no Scriptable.",
+  },
+  {
     colecao: "pushTokens",
     classe: "efemero",
     conteudo: "Tokens de push por dispositivo.",
