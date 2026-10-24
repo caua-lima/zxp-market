@@ -761,13 +761,16 @@ async function recalcularDepoisDoPdv(ids: string[]): Promise<void> {
 export async function registrarVendaPresencial(
   pronta: { venda: import("@/lib/domain/venda-presencial").VendaPresencial; baixas: Omit<EstoqueMovimento, "createdBy" | "createdAt" | "revisao">[] },
 ): Promise<"criada" | "ja_existia"> {
-  const { venda, baixas } = pronta;
+  const email = getCurrentUserEmail();
+  // Quem vende é quem está logado — o mesmo e-mail que as regras conferem.
+  const venda = { ...pronta.venda, criadoPor: email };
+  const { baixas } = pronta;
   const nomes = new Map(venda.itens.map((i) => [i.productId, i.nome]));
   const textos = baixas.map((b) => ({
     entidadeLabel: `${nomes.get(b.productId) ?? b.productId} · Venda presencial`,
     detalhe: `${-b.quantidade} un · venda ${venda.id}${venda.cliente ? ` · ${venda.cliente}` : ""}`,
   }));
-  const r = await criarVendaPresencialAuditada(getFirebase().db, venda, baixas, getCurrentUserEmail(), textos);
+  const r = await criarVendaPresencialAuditada(getFirebase().db, venda, baixas, email, textos);
   await recalcularDepoisDoPdv(baixas.map((b) => b.productId));
   return r;
 }
