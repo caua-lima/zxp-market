@@ -144,6 +144,15 @@ type MlMetrics = {
   pedidosSemVinculo:  number;
   hoje:               HojeBreakdown;
   serieDiaria:        { data: string; faturamento: number }[];
+  /**
+   * Vendas presenciais (PDV) já SOMADAS nos campos acima pela rota — este bloco
+   * só diz quanto do total veio do balcão. Custo e lucro somem pra quem não vê
+   * o financeiro. Ver lib/domain/metricas-com-presencial.ts.
+   */
+  presencial?: {
+    faturamento: number; custo?: number; lucro?: number; vendas: number; unidades: number;
+    hoje?: { faturamento: number; custo?: number; lucro?: number; vendas: number; unidades: number };
+  };
   reconc?:            { count: number; nosso: number; real: number };
   devolucoesEmAndamento?: number;
   devolucoesDetalhe?: Devolucao[];
@@ -1937,6 +1946,8 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
     : data.goals;
 
   const fatBruto = mlMetrics?.faturamentoBruto ?? 0;
+  // Quanto do faturamento veio do balcão (PDV). Já está somado no total; aqui é só pra mostrar.
+  const fatPresencial = mlMetrics?.presencial?.faturamento ?? 0;
   // Líquido = bruto − canceladas − devoluções. É a base real das metas.
   const fatLiquido = mlMetrics?.faturamentoLiquido ?? 0;
   const retorno = mlMetrics?.totalRetorno ?? 0;
@@ -2089,7 +2100,9 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
                   value: fatLiquido,
                   format: "currency",
                   tone: "acc",
-                  tooltip: "Faturamento bruto do período menos vendas canceladas e devoluções concluídas.",
+                  tooltip: fatPresencial > 0
+                    ? `Faturamento bruto do período menos vendas canceladas e devoluções concluídas. Inclui ${fmtBRL(fatPresencial)} de vendas presenciais (PDV).`
+                    : "Faturamento bruto do período menos vendas canceladas e devoluções concluídas.",
                   delta: { current: fatLiquido, previous: prevMetrics?.faturamentoLiquido, mode: "pct", label: prevLabel },
                 },
                 {
@@ -2186,7 +2199,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
             </div>
             <div className="kpi-grid">
               <Kpi label="Faturamento bruto" value={fatBruto} tone="acc" sub="tudo, inclui cancelados/devolvidos" />
-              <Kpi label="Faturamento líquido" value={fatLiquido} tone="acc" sub="− canceladas − devoluções"
+              <Kpi label="Faturamento líquido" value={fatLiquido} tone="acc" sub={fatPresencial > 0 ? `− canceladas − devoluções · inclui ${fmtBRL(fatPresencial)} presencial` : "− canceladas − devoluções"}
                 delta={<Delta current={fatLiquido} previous={prevMetrics?.faturamentoLiquido} mode="pct" />} />
               {/* O número do painel do Mercado Livre, pra conferir sem abrir a
                   Conferência. É o líquido MAIS os pedidos que o ML cancelou só
@@ -2198,13 +2211,22 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
               {mlMetrics?.conciliacao && (
                 <Kpi
                   label="Faturamento do ML"
-                  value={fatLiquido + (mlMetrics.conciliacao.substituidasValor ?? 0)}
+                  value={fatLiquido - fatPresencial + (mlMetrics.conciliacao.substituidasValor ?? 0)}
                   tone="acc"
                   sub={
                     (mlMetrics.conciliacao.substituidasQuantidade ?? 0) > 0
                       ? `líquido + ${mlMetrics.conciliacao.substituidasQuantidade} separação(ões) de envio`
                       : "igual ao líquido — nenhuma separação no período"
                   }
+                />
+              )}
+              {/* O balcão (PDV) já está dentro do faturamento e do lucro acima; aqui aparece sozinho. */}
+              {mlMetrics?.presencial && mlMetrics.presencial.vendas > 0 && (
+                <Kpi
+                  label="Vendas presenciais"
+                  value={fatPresencial}
+                  tone="acc"
+                  sub={`${mlMetrics.presencial.vendas} venda(s) no balcão${mlMetrics.presencial.lucro != null ? ` · lucro ${fmtBRL(mlMetrics.presencial.lucro)}` : ""} · sem imposto`}
                 />
               )}
               <Kpi label="Retorno sobre vendas" value={retorno} tone="acc"
