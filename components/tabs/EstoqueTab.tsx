@@ -1444,6 +1444,10 @@ function MovimentosHistorico({ product, movs, onMov }: { product: Product; movs:
                     </td>
                     <td data-label="Obs" style={{ textAlign: "left", color: "var(--muted)", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.obs || "—"}</td>
                     <td data-cell="acoes" style={{ whiteSpace: "nowrap" }}>
+                      {/* Baixa de venda presencial se desfaz cancelando a venda: sozinha, a venda e o estoque desencontrariam. */}
+                      {m.vendaPresencialId ? (
+                        <span style={{ fontSize: ".75rem", color: "var(--muted)" }} title="Pra desfazer esta baixa, cancele a venda na aba PDV — o estoque volta e a venda fica no histórico.">pelo PDV</span>
+                      ) : (<>
                       {/* Perna de transferência não se edita sozinha: desbalancearia os dois estoques. */}
                       {!m.transferenciaId && (
                         <button
@@ -1468,6 +1472,7 @@ function MovimentosHistorico({ product, movs, onMov }: { product: Product; movs:
                           detalhe: `${m.quantidade} un em ${m.data}`,
                         }).catch((e) => alert("Não consegui excluir: " + (e instanceof Error ? e.message : String(e))));
                       }}>Excluir</button>
+                      </>)}
                     </td>
                   </tr>
                 );
