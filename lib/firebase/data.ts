@@ -41,6 +41,8 @@ import {
   criarMovimentoAuditado,
   editarMovimentoAuditado,
   excluirMovimentoAuditado,
+  criarVendaPresencialAuditada,
+  cancelarVendaPresencialAuditada,
   type TextoDaAuditoria,
 } from "./movimento-auditado";
 import { patchCusto, patchData, patchIgnorar, patchReabrir, type ContextoDaRemessa } from "@/lib/domain/remessa-full";
@@ -721,6 +723,68 @@ export async function excluirTransferencia(transferenciaId: string, nomes: Recor
   invalidar("estoque_movimentos:recentes");
   invalidar(CHAVE_PRODUTOS);
   if (falha) throw falha;
+}
+
+// ── PDV: vendas presenciais ───────────────────────────────────
+const PDV_COL = "vendas_presenciais";
+
+/** As vendas presenciais do período (de/até, AAAA-MM-DD, inclusive), canceladas inclusive — a tela separa. */
+export function watchVendasPresenciais(
+  de: string,
+  ate: string,
+  cb: (vendas: import("@/lib/domain/venda-presencial").VendaPresencial[]) => void,
+  onError?: (e: unknown) => void,
+): () => void {
+  const q = query(sCol(PDV_COL), where("data", ">=", de), where("data", "<=", ate));
+  return onSnapshot(q, (snap) => {
+    cb(snap.docs.map((d) => d.data() as import("@/lib/domain/venda-presencial").VendaPresencial));
+  }, (e) => onError?.(e));
+}
+
+/** Recalcula os produtos que uma venda mexeu; marca o que falhar (a inconsistência não fica invisível). */
+async function recalcularDepoisDoPdv(ids: string[]): Promise<void> {
+  let falha: unknown = null;
+  for (const id of [...new Set(ids)]) {
+    try { await recomputeProduto(id); }
+    catch (err) { falha = err; await updateDoc(sDoc("estoque", id), { custoDesatualizado: true }).catch(() => {}); }
+  }
+  invalidar(CHAVE_MOV);
+  invalidar("estoque_movimentos:recentes");
+  invalidar(CHAVE_PRODUTOS);
+  if (falha) throw falha;
+}
+
+/**
+ * Grava a venda presencial e as baixas no livro (um lote — ver
+ * criarVendaPresencialAuditada) e refaz o "em casa" de cada produto vendido.
+ */
+export async function registrarVendaPresencial(
+  pronta: { venda: import("@/lib/domain/venda-presencial").VendaPresencial; baixas: Omit<EstoqueMovimento, "createdBy" | "createdAt" | "revisao">[] },
+): Promise<"criada" | "ja_existia"> {
+  const { venda, baixas } = pronta;
+  const nomes = new Map(venda.itens.map((i) => [i.productId, i.nome]));
+  const textos = baixas.map((b) => ({
+    entidadeLabel: `${nomes.get(b.productId) ?? b.productId} · Venda presencial`,
+    detalhe: `${-b.quantidade} un · venda ${venda.id}${venda.cliente ? ` · ${venda.cliente}` : ""}`,
+  }));
+  const r = await criarVendaPresencialAuditada(getFirebase().db, venda, baixas, getCurrentUserEmail(), textos);
+  await recalcularDepoisDoPdv(baixas.map((b) => b.productId));
+  return r;
+}
+
+/** Cancela: a venda fica no histórico como cancelada e as baixas saem do livro (o estoque volta). */
+export async function cancelarVendaPresencial(
+  venda: import("@/lib/domain/venda-presencial").VendaPresencial,
+  motivo: string,
+): Promise<void> {
+  const { baixasDaVenda } = await import("@/lib/domain/venda-presencial");
+  const nomes = new Map(venda.itens.map((i) => [i.productId, i.nome]));
+  const baixas = baixasDaVenda(venda).map((b) => ({
+    id: b.id,
+    texto: { entidadeLabel: `${nomes.get(b.productId) ?? b.productId} · Venda presencial cancelada`, detalhe: `${b.quantidade} un devolvidas · venda ${venda.id}` },
+  }));
+  await cancelarVendaPresencialAuditada(getFirebase().db, venda.id, baixas, getCurrentUserEmail(), motivo);
+  await recalcularDepoisDoPdv(baixasDaVenda(venda).map((b) => b.productId));
 }
 
 /**
