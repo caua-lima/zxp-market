@@ -306,11 +306,11 @@ function NovaVenda({ products, vendas }: { products: Product[]; vendas: VendaPre
           <div className={s.linhaCampos}>
             <label className={s.rotulado}>
               <span>Desconto (R$)</span>
-              <input type="text" inputMode="decimal" className={s.campo} placeholder="0,00" value={desconto} onChange={(e) => setDesconto(e.target.value)} />
+              <input type="text" inputMode="decimal" className={s.campo} placeholder="0,00" aria-label="Desconto em reais" value={desconto} onChange={(e) => setDesconto(e.target.value)} />
             </label>
             <label className={s.rotulado}>
               <span>Cliente (opcional)</span>
-              <input type="text" className={s.campo} maxLength={120} value={cliente} onChange={(e) => setCliente(e.target.value)} />
+              <input type="text" className={s.campo} maxLength={120} aria-label="Cliente (opcional)" value={cliente} onChange={(e) => setCliente(e.target.value)} />
             </label>
           </div>
 
@@ -319,9 +319,9 @@ function NovaVenda({ products, vendas }: { products: Product[]; vendas: VendaPre
           </button>
           {mais && (
             <div className={s.linhaCampos}>
-              <label className={s.rotulado}><span>Data</span><input type="date" className={s.campo} value={data} max={todayStr()} onChange={(e) => setData(e.target.value)} /></label>
-              <label className={s.rotulado}><span>Hora</span><input type="time" className={s.campo} value={hora} onChange={(e) => setHora(e.target.value)} /></label>
-              <label className={`${s.rotulado} ${s.largo}`}><span>Observação</span><input type="text" className={s.campo} maxLength={500} value={obs} onChange={(e) => setObs(e.target.value)} /></label>
+              <label className={s.rotulado}><span>Data</span><input type="date" className={s.campo} aria-label="Data da venda" value={data} max={todayStr()} onChange={(e) => setData(e.target.value)} /></label>
+              <label className={s.rotulado}><span>Hora</span><input type="time" className={s.campo} aria-label="Hora da venda" value={hora} onChange={(e) => setHora(e.target.value)} /></label>
+              <label className={`${s.rotulado} ${s.largo}`}><span>Observação</span><input type="text" className={s.campo} maxLength={500} aria-label="Observação" value={obs} onChange={(e) => setObs(e.target.value)} /></label>
             </div>
           )}
 
