@@ -275,7 +275,8 @@ export const TIPO_MOVIMENTO_LABEL: Record<MovimentoTipo, string> = {
  * entre produtos são um ajuste (−) e uma entrada (+) no livro — o que a pessoa
  * lançou foi uma TRANSFERÊNCIA, e é assim que tem que aparecer.
  */
-export function rotuloDoMovimento(m: { tipo: MovimentoTipo; transferenciaId?: string; quantidade: number }): string {
+export function rotuloDoMovimento(m: { tipo: MovimentoTipo; transferenciaId?: string; vendaPresencialId?: string; quantidade: number }): string {
+  if (m.vendaPresencialId) return "Venda presencial";
   if (m.transferenciaId) return m.tipo === "entrada" ? "Transferência (entrada)" : "Transferência (saída)";
   return TIPO_MOVIMENTO_LABEL[m.tipo] ?? m.tipo;
 }
@@ -325,6 +326,11 @@ export type EstoqueMovimento = {
   transferenciaId?: string;
   /** O outro produto da transferência. */
   transferenciaCom?: string;
+  /**
+   * Baixa de uma venda PRESENCIAL (PDV — ver lib/domain/venda-presencial.ts). É um ajuste
+   * negativo: o produto saiu do galpão. Cancelar a venda apaga a baixa.
+   */
+  vendaPresencialId?: string;
 };
 
 // Tipo do que foi alterado — estruturado (Fase 6 da reforma de Ads) pra dar
