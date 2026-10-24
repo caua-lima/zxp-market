@@ -78,6 +78,14 @@ export const INVENTARIO: readonly ItemDeBackup[] = [
       "unidades que já têm destino no Full, até alguém refazer a lista de cabeça.",
   },
   {
+    colecao: "vendas_presenciais",
+    classe: "irrecuperavel",
+    conteudo: "Vendas do PDV (presencial): itens, preço cobrado, custo do dia, pagamento e cancelamentos.",
+    perda:
+      "Não existem em lugar nenhum fora daqui — não passam pelo ML nem têm nota. Perdidas, " +
+      "o faturamento e o lucro do presencial somem dos números e as baixas do estoque ficam sem explicação.",
+  },
+  {
     colecao: "metas",
     classe: "irrecuperavel",
     conteudo: "Metas de faturamento e margem em vigor.",
@@ -286,6 +294,7 @@ export const ORDEM_DE_RESTAURACAO: readonly string[] = [
   "custos",
   "full_remessas",
   "full_envios_agendados",
+  "vendas_presenciais",
   "metas",
   "metasHistorico",
   "dias",

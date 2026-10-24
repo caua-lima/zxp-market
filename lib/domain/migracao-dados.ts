@@ -47,6 +47,7 @@ export const DESTINOS: Readonly<Record<string, DecisaoDeColecao>> = {
   custos: { destino: "tenant", motivo: "despesas da DRE" },
   full_remessas: { destino: "tenant", motivo: "custo de coleta do Full (a API do ML não expõe)" },
   full_envios_agendados: { destino: "tenant", motivo: "envios agendados pro Full (a API do ML não expõe o agendamento)" },
+  vendas_presenciais: { destino: "tenant", motivo: "vendas do PDV (presencial, fora do ML)" },
   metas: { destino: "tenant", motivo: "metas em vigor" },
   metasHistorico: { destino: "tenant", motivo: "metas de períodos passados" },
   tarefas: { destino: "tenant", motivo: "tarefas da operação" },

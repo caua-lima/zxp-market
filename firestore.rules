@@ -300,6 +300,36 @@ service cloud.firestore {
       allow write: if isOwner();
     }
 
+    // Vendas PRESENCIAIS (PDV): fora do ML, sem nota — lucro é preço menos custo
+    // (ver lib/domain/venda-presencial.ts). Quem edita estoque vende: a venda
+    // baixa o livro no MESMO lote (e as baixas exigem a auditoria delas). Nada
+    // se apaga: cancelar é virar o status, uma vez só, e a venda fica no histórico.
+    function vendaPresencialValida(d) {
+      return d.keys().hasOnly(['id', 'data', 'hora', 'itens', 'bruto', 'desconto', 'total', 'custo', 'lucro',
+          'pagamento', 'cliente', 'obs', 'status', 'criadoEm', 'criadoPor', 'canceladaEm', 'canceladaPor', 'motivoCancelamento'])
+        && d.itens is list && d.itens.size() >= 1 && d.itens.size() <= 50
+        && numeroNaoNegativo(d.bruto) && numeroNaoNegativo(d.desconto) && numeroNaoNegativo(d.total) && numeroNaoNegativo(d.custo)
+        && d.lucro is number
+        && dataAceitavel(d.data)
+        && d.hora is string && d.hora.matches('^[0-2][0-9]:[0-5][0-9]$')
+        && d.pagamento in ['pix', 'dinheiro', 'debito', 'credito', 'outro']
+        && d.status in ['ativa', 'cancelada']
+        && (!('cliente' in d) || (d.cliente is string && d.cliente.size() <= 120))
+        && (!('obs' in d) || (d.obs is string && d.obs.size() <= 500));
+    }
+    match /vendas_presenciais/{docId} {
+      allow read: if veOperacao();
+      allow create: if podeEditar('estoque') && vendaPresencialValida(request.resource.data)
+        && request.resource.data.id == docId
+        && request.resource.data.status == 'ativa'
+        && request.resource.data.criadoPor == request.auth.token.email;
+      allow update: if podeEditar('estoque') && vendaPresencialValida(request.resource.data)
+        && resource.data.status == 'ativa' && request.resource.data.status == 'cancelada'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'canceladaEm', 'canceladaPor', 'motivoCancelamento'])
+        && request.resource.data.canceladaPor == request.auth.token.email;
+      allow delete: if false;
+    }
+
     // Envios AGENDADOS pro Full: unidades com destino marcado, que as agências
     // não podem mais anunciar. É plano, não estoque — não mexe no livro. Quem
     // edita estoque agenda (o dono não é o único que dá entrada na mercadoria).
@@ -762,6 +792,18 @@ service cloud.firestore {
       match /full_envios_agendados/{docId} {
         allow read: if veOperacaoT();
         allow write: if escritaLiberadaT() && (podeEditarT('estoque'));
+      }
+      match /vendas_presenciais/{docId} {
+        allow read: if veOperacaoT();
+        allow create: if escritaLiberadaT() && (podeEditarT('estoque') && vendaPresencialValida(request.resource.data)
+          && request.resource.data.id == docId
+          && request.resource.data.status == 'ativa'
+          && request.resource.data.criadoPor == request.auth.token.email);
+        allow update: if escritaLiberadaT() && (podeEditarT('estoque') && vendaPresencialValida(request.resource.data)
+          && resource.data.status == 'ativa' && request.resource.data.status == 'cancelada'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'canceladaEm', 'canceladaPor', 'motivoCancelamento'])
+          && request.resource.data.canceladaPor == request.auth.token.email);
+        allow delete: if escritaLiberadaT() && (false);
       }
       match /tarefas/{docId} {
         allow read: if veOperacaoT(); allow write: if escritaLiberadaT() && (veOperacaoT());
