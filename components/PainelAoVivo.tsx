@@ -28,6 +28,8 @@ export type DadosAoVivo = Omit<ResumoAoVivo, "topProdutos"> & {
   /** A meta de hoje. Ausente (rota antiga) ou null = sem meta configurada. */
   metaDoDia?: MetaDoDia | null;
   fonte: "ml" | "banco";
+  /** Vendas presenciais (PDV) de hoje, já somadas no dia. Ausente/null = nenhuma. */
+  presencial?: { faturamento: number; vendas: number } | null;
   atualizadoEm: number;
 };
 
@@ -334,6 +336,7 @@ export default function PainelAoVivo({ dados, onFechar }: { dados: DadosAoVivo; 
       <footer className={s.rodape}>
         Atualizado às {fmtHora(dados.atualizadoEm)}
         {ultimaVenda && <> · última venda {fmtBRL(ultimaVenda.valor)} {haQuantoTempo(ultimaVenda.em, agora)}</>}
+        {dados.presencial && <> · inclui {fmtBRL(dados.presencial.faturamento)} do balcão ({dados.presencial.vendas} {dados.presencial.vendas === 1 ? "venda presencial" : "vendas presenciais"})</>}
         {" "}· só vendas válidas, a mesma base do Dashboard
       </footer>
     </div>,

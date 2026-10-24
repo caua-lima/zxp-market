@@ -37,6 +37,8 @@ const INTERVALO_BARRA_MS = 55_000;
 const CHAVE_RECOLHIDA = "ao-vivo-recolhida";
 /** O app abre direto no painel quando vem do toque no painel fixo (?tipo=ao_vivo). */
 export const EVENTO_ABRIR_AO_VIVO = "zxp:abrir-ao-vivo";
+/** O PDV avisa que registrou ou cancelou uma venda presencial: a barra relê na hora. */
+export const EVENTO_PDV_MUDOU = "zxp:pdv-mudou";
 
 type PedidoQueMudou = { orderId: string; valida: boolean };
 
@@ -102,6 +104,9 @@ export default function BarraAoVivo() {
       if (document.visibilityState === "visible" && Date.now() - ultima > INTERVALO_BARRA_MS / 2) buscar();
     };
     document.addEventListener("visibilitychange", aoVoltar);
+    // Venda no balcão (PDV): o número dela entra na próxima leitura (fora do cache do ML).
+    const aoVenderNoBalcao = () => buscar(true);
+    window.addEventListener(EVENTO_PDV_MUDOU, aoVenderNoBalcao);
 
     // O sinal em tempo real. A primeira leitura é só a referência (é o sinal da
     // ÚLTIMA venda, que a rota já conta); daí em diante, cada `seq` novo é uma mudança.
@@ -140,6 +145,7 @@ export default function BarraAoVivo() {
       vivo = false;
       clearInterval(ciclo);
       document.removeEventListener("visibilitychange", aoVoltar);
+      window.removeEventListener(EVENTO_PDV_MUDOU, aoVenderNoBalcao);
       pararSinal();
       cancelarAviso();
     };

@@ -18,6 +18,7 @@ import {
   type VendaPresencial,
 } from "@/lib/domain/venda-presencial";
 import { cancelarVendaPresencial, registrarVendaPresencial, watchVendasPresenciais } from "@/lib/firebase/data";
+import { EVENTO_PDV_MUDOU } from "@/components/BarraAoVivo";
 import s from "./PdvTab.module.css";
 
 /**
@@ -209,6 +210,7 @@ function NovaVenda({ products, vendas }: { products: Product[]; vendas: VendaPre
     try {
       // Quem vendeu é carimbado na gravação, com o e-mail da sessão.
       await registrarVendaPresencial(r);
+      window.dispatchEvent(new Event(EVENTO_PDV_MUDOU));
       const agencias = nasAgencias.length ? ` Confira o estoque do anúncio nas agências no ML: ${[...new Set(nasAgencias.map((p) => p.name))].join(", ")}.` : "";
       setMsg({ tipo: "ok", texto: `Venda de ${fmtBRL(r.venda.total)} registrada — lucro ${fmtBRL(r.venda.lucro)}. Estoque baixado.${agencias}` });
       setLinhas([]); setDesconto(""); setCliente(""); setObs(""); setMais(false);
@@ -367,6 +369,7 @@ function LinhaDaVenda({ v, mostrarDia, podeCancelar }: { v: VendaPresencial; mos
     setErro(null);
     try {
       await cancelarVendaPresencial(v, motivo);
+      window.dispatchEvent(new Event(EVENTO_PDV_MUDOU));
       setCancelando(false);
     } catch (e) {
       setErro(`Não consegui cancelar: ${e instanceof Error ? e.message : String(e)}`);
