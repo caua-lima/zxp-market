@@ -88,6 +88,12 @@ export function redigirFinanceiro(payload: Record<string, unknown>): Record<stri
   if (limpo.conciliacao && typeof limpo.conciliacao === "object") {
     limpo.conciliacao = semCampos(limpo.conciliacao, CAMPOS_FINANCEIROS_DA_CONCILIACAO);
   }
+  // Vendas presenciais (PDV): o faturamento é resultado; custo e lucro, não.
+  if (limpo.presencial && typeof limpo.presencial === "object") {
+    const p = semCampos(limpo.presencial, ["custo", "lucro"]) as Record<string, unknown>;
+    if (p.hoje && typeof p.hoje === "object") p.hoje = semCampos(p.hoje, ["custo", "lucro"]);
+    limpo.presencial = p;
+  }
 
   /**
    * A marca é o que permite a tela dizer "você não vê isto" em vez de

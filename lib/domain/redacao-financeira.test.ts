@@ -148,3 +148,16 @@ describe("a marca de que houve redação", () => {
     expect(redigirFinanceiro({})).toEqual({ financeiroOculto: true });
   });
 });
+
+describe("redigirFinanceiro — vendas presenciais (PDV)", () => {
+  it("o faturamento do balcão fica; custo e lucro saem (no período e no dia)", () => {
+    const r = redigirFinanceiro({
+      faturamentoLiquido: 130,
+      presencial: { faturamento: 130, custo: 50, lucro: 80, vendas: 2, unidades: 3, desconto: 0, hoje: { faturamento: 30, custo: 10, lucro: 20, vendas: 1, unidades: 1 }, serieDiaria: [] },
+    });
+    const p = r.presencial as Record<string, unknown>;
+    expect(p).toMatchObject({ faturamento: 130, vendas: 2, unidades: 3 });
+    expect("custo" in p || "lucro" in p).toBe(false);
+    expect(p.hoje).toEqual({ faturamento: 30, vendas: 1, unidades: 1 });
+  });
+});

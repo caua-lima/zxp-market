@@ -15,12 +15,31 @@ import { custoNaData, impostoNaData, type CustoFaixa, type ImpostoFaixa } from "
 import { diaBRDe, recortarPorDiaBR } from "@/lib/domain/periodo-br";
 import { classificarVenda, detectarPedidosSubstituidos } from "@/lib/domain/venda-status";
 import { ratearFretePorPedido } from "@/lib/domain/frete-pacote";
+import { blocoPresencial, comPresencial, type BlocoPresencial } from "@/lib/domain/metricas-com-presencial";
+import type { VendaPresencial } from "@/lib/domain/venda-presencial";
 import { vendasBrutasPorAnuncio, type PedidoParaVendasBrutas, type VendaBrutaDoAnuncio } from "@/lib/domain/vendas-brutas";
 
 export const maxDuration = 30;
 
 // Cache curto por lambda quente (evita bater no ML a cada abertura / 15 min)
 const metricsCache = new Map<string, { at: number; body: Record<string, unknown> }>();
+
+/**
+ * As vendas presenciais (PDV) do período e do dia em foco — lidas a cada
+ * resposta, FORA do cache do ML: uma venda registrada no balcão aparece no
+ * próximo carregamento, sem esperar o cache vencer. Sem a coleção (ou sem
+ * permissão), o número do ML segue sozinho.
+ */
+async function presencialDoPeriodo(de: string, ate: string, dia: string): Promise<BlocoPresencial | null> {
+  try {
+    const ini = dia < de ? dia : de;
+    const fim = dia > ate ? dia : ate;
+    const snap = await getAdminDb().collection("vendas_presenciais").where("data", ">=", ini).where("data", "<=", fim).get();
+    return blocoPresencial(snap.docs.map((d) => d.data() as VendaPresencial), de, ate, dia);
+  } catch {
+    return null;
+  }
+}
 const CACHE_TTL = 60 * 1000;
 
 type ProdutoData = {
@@ -531,6 +550,8 @@ export async function GET(req: Request) {
      * minutos.
      */
     const diaFoco = url.searchParams.get("dia") ?? "";
+    /** O dia do bloco "Vendas do Dia" — o mesmo critério do `hj` abaixo. */
+    const diaDoBloco = /^\d{4}-\d{2}-\d{2}$/.test(diaFoco) ? diaFoco : hojeBR;
     const geracaoConexao = await geracaoDaConexao();
     // A EMPRESA entra na chave: o cache é do processo, e duas empresas no mesmo
     // processo quente (com a mesma geração de conexão) dividiam a entrada — uma
@@ -540,7 +561,8 @@ export async function GET(req: Request) {
     if (!bust) {
       const cached = metricsCache.get(cacheKey);
       if (cached && Date.now() - cached.at < CACHE_TTL) {
-        const doCache = { ...cached.body, cached: true };
+        const presencial = await presencialDoPeriodo(fromStr, toStr, diaDoBloco);
+        const doCache = { ...(presencial ? comPresencial(cached.body, presencial) : cached.body), cached: true };
         // O cache guarda a versao COMPLETA: redige aqui tambem, senao um
         // member que acertasse o cache quente receberia custo e margem.
         if (!gate.pode("ver_financeiro")) return NextResponse.json(redigirFinanceiro(doCache));
@@ -1014,13 +1036,16 @@ export async function GET(req: Request) {
       to: toStr,
     };
     metricsCache.set(cacheKey, { at: Date.now(), body: responseBody });
+    // O cache guarda só o ML; o presencial entra na saída (ver presencialDoPeriodo).
+    const presencial = await presencialDoPeriodo(fromStr, toStr, diaDoBloco);
+    const comBalcao = presencial ? comPresencial(responseBody, presencial) : responseBody;
     /**
      * A redacao acontece na SAIDA, por requisitante — o cache guarda a
      * versao completa. Guardar o redigido envenenaria a resposta do
      * proximo owner que caisse no mesmo cache.
      */
-    if (!gate.pode("ver_financeiro")) return NextResponse.json(redigirFinanceiro(responseBody));
-    return NextResponse.json(responseBody);
+    if (!gate.pode("ver_financeiro")) return NextResponse.json(redigirFinanceiro(comBalcao));
+    return NextResponse.json(comBalcao);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: "metrics_failed", details: msg }, { status: 500 });
