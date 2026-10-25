@@ -6,7 +6,7 @@ import { fetchML } from "@/lib/ml/fetch-ml";
 import { getValidMlAccessToken } from "@/lib/ml/getToken";
 import { gravarPedidos } from "@/lib/ml/gravar-pedido";
 import { buildPayload, notificarVendaConfirmada } from "@/lib/ml/notificar-venda";
-import { enviarPainelFixo, publicarSinalAoVivo } from "@/lib/ml/ao-vivo-tempo-real";
+import { publicarSinalAoVivo } from "@/lib/ml/ao-vivo-tempo-real";
 import { criarEventoEPublicar, especDoPush } from "@/lib/notification-dispatch";
 import { instanteDaConfirmacao } from "@/lib/domain/confirmacao-de-venda";
 import { estadoDoPedido, mapOrderItems } from "@/lib/domain/estado-do-pedido";
@@ -194,8 +194,8 @@ export async function processarNotificacaoDePedido(orderId: string, sellerId: st
   /**
    * ── Tempo real ──
    * O sinal sai ANTES do aviso da venda (que lê estoque, custo e frete): a
-   * barra de quem está com o app aberto soma na hora. O placar do mini painel
-   * fixo vai em paralelo. Só quando o retrato gravado é o novo — um retrato
+   * barra de quem está com o app aberto soma na hora. Só quando o retrato
+   * gravado é o novo — um retrato
    * velho não muda o que a barra mostra. Melhor-esforço: nada aqui derruba o
    * processamento (ver lib/ml/ao-vivo-tempo-real.ts).
    */
@@ -205,7 +205,6 @@ export async function processarNotificacaoDePedido(orderId: string, sellerId: st
         return null;
       })
     : null;
-  const painelFixo = sinal ? enviarPainelFixo({ orderId, valida: sinal.valida }, estado).catch(() => null) : null;
   /**
    * "Já era paga ANTES de nós existirmos como registro" — só serve pro
    * cancelamento, que precisa saber se a venda chegou a valer. Para a venda
@@ -265,10 +264,9 @@ export async function processarNotificacaoDePedido(orderId: string, sellerId: st
     }, especDoPush(dedupeKey, "sale_cancelled", payload, false, { origem: "webhook:cancelamento" }));
   }
 
-  const painel = await painelFixo;
   await registrarChamada({
     orderId, topic: "orders_v2", status,
-    ...(sinal ? { aoVivo: sinal.valida ? "venda" : "cancelada", painelFixo: painel?.enviados ?? null } : {}),
+    ...(sinal ? { aoVivo: sinal.valida ? "venda" : "cancelada" } : {}),
     resultado: resultadoVenda.estado,
     enviados: "enviados" in resultadoVenda ? resultadoVenda.enviados : null,
     estadoGravado: gravacao.gravouEstado,
