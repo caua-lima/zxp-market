@@ -109,13 +109,6 @@ foi escrito pra funcionar com elas.
 > custo, lucro, visitas nem estoque) e para de responder se a pessoa sair da equipe. Gerar outro
 > código ou “Desligar widget” revoga o anterior. O iPhone atualiza o widget a cada poucos
 > minutos — não é instantâneo (isso só com app nativo e conta Apple paga).
->
-> **Mini painel fixo no celular** (painel ao vivo › “Fixar no celular”): depende
-> das notificações ativas no aparelho — o placar chega por push a cada venda,
-> mesmo com o app fechado e mesmo no horário silencioso (ele não toca nem vibra).
-> No iPhone, só com o app adicionado à Tela de Início. É uma notificação: dá pra
-> arrastar pra fora; ela volta na próxima venda. Pra tirar de vez, “Fixado” no
-> painel. A imagem do painel aparece no Android ao expandir a notificação.
 
 **Se algo que funcionava passar a dar "sem permissão":** no console do Firebase
 (<https://console.firebase.google.com> → vazxpress-a2350 → Firestore →
