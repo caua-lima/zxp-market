@@ -208,6 +208,8 @@ function desenharAnel(d) {
 async function montar() {
   const w = new ListWidget();
   w.refreshAfterDate = new Date(Date.now() + 5 * 60 * 1000);
+  // Tocar no widget abre o painel ao vivo do app.
+  w.url = URL_API.split("/api/")[0] + "/?tipo=ao_vivo";
   const r = await carregar();
   if (!r) {
     w.backgroundColor = cor("#15150f");

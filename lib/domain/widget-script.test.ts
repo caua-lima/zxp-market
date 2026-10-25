@@ -35,3 +35,9 @@ describe("widget-token", () => {
     for (const ruim of ["", "zw_", "zw_curto", "xx_" + "a".repeat(43), "zw_" + "a".repeat(44), "zw_" + "a".repeat(42) + "/"]) expect(ruim).not.toMatch(FORMATO_TOKEN);
   });
 });
+
+describe("toque no widget", () => {
+  it("abre o painel ao vivo do app", () => {
+    expect(scriptDoWidget("https://app.exemplo.com/api/widget/ao-vivo?t=zw_abc")).toContain('w.url = URL_API.split("/api/")[0] + "/?tipo=ao_vivo";');
+  });
+});
