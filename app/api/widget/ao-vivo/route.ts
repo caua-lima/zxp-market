@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { comTenant } from "@/lib/firebase/contexto-tenant";
 import { acessoExpirado } from "@/lib/domain/acesso-temporario";
-import { placarDe } from "@/lib/domain/painel-fixo";
+import { placarDe } from "@/lib/domain/placar-ao-vivo";
 import { FORMATO_TOKEN, hashDoToken } from "@/lib/domain/widget-token";
 import { calcularAoVivo } from "@/lib/ml/ao-vivo-calculo";
 
