@@ -7,8 +7,6 @@ import { watchSinalAoVivo } from "@/lib/firebase/data";
 import { fmtBRL } from "@/lib/domain/calc";
 import { relogioBR, ritmoVsOntem } from "@/lib/domain/ao-vivo";
 import { comVendasNovas, vendasAindaPendentes, type VendaNova } from "@/lib/domain/ao-vivo-tempo-real";
-import { placarDe } from "@/lib/domain/painel-fixo";
-import { mostrarPainelFixo } from "@/lib/painel-fixo";
 import { gravarChaveApp, lerChaveApp } from "@/lib/storage";
 import PainelAoVivo, { type DadosAoVivo } from "@/components/PainelAoVivo";
 import s from "./BarraAoVivo.module.css";
@@ -35,7 +33,7 @@ import s from "./BarraAoVivo.module.css";
 const CICLO_MS = 30_000;
 const INTERVALO_BARRA_MS = 55_000;
 const CHAVE_RECOLHIDA = "ao-vivo-recolhida";
-/** O app abre direto no painel quando vem do toque no painel fixo (?tipo=ao_vivo). */
+/** O app abre direto no painel ao vivo com ?tipo=ao_vivo (é pra onde o toque no widget do iPhone leva). */
 export const EVENTO_ABRIR_AO_VIVO = "zxp:abrir-ao-vivo";
 /** O PDV avisa que registrou ou cancelou uma venda presencial: a barra relê na hora. */
 export const EVENTO_PDV_MUDOU = "zxp:pdv-mudou";
@@ -163,12 +161,7 @@ export default function BarraAoVivo() {
     pedidosAntes.current = { dia: dados.dia, pedidos: dados.hoje.pedidos };
   }, [dados]);
 
-  // O mini painel fixo (se esta pessoa fixou) acompanha o que a barra mostra.
-  useEffect(() => {
-    if (dados) void mostrarPainelFixo(placarDe(dados));
-  }, [dados]);
-
-  // Toque no painel fixo: abre o ao vivo — com o app já aberto (evento) ou recém-aberto (?tipo=ao_vivo).
+  // Abrir direto no ao vivo — com o app já aberto (evento) ou recém-aberto (?tipo=ao_vivo, o toque no widget).
   useEffect(() => {
     const abrir = () => setAberto(true);
     window.addEventListener(EVENTO_ABRIR_AO_VIVO, abrir);
