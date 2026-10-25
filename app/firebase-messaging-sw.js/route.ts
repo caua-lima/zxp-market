@@ -41,6 +41,30 @@ self.addEventListener("install", () => {
 });
 
 /**
+ * ─── TODO PUSH PRECISA MOSTRAR ALGO ─────────────────────────────────────
+ *
+ * No iPhone (e no Safari em geral) um push que o Service Worker recebe e NÃO
+ * exibe é "push silencioso", proibido: depois de alguns, o Safari CANCELA a
+ * inscrição de notificações do site inteiro — e os avisos de venda param de
+ * chegar, sem erro nenhum. Foi o que aconteceu quando o painel fixo saiu e
+ * pushes dele ainda chegaram ao aparelho.
+ *
+ * Quando o push não tem nada pra mostrar (painel antigo, corpo vazio), este
+ * auxiliar exibe uma notificação mínima e a fecha em seguida: o navegador
+ * conta como exibida, e a pessoa quase não vê.
+ */
+async function exibirEFechar() {
+  try {
+    await self.registration.showNotification("ZXP Market", {
+      body: "Atualizando…", tag: "zxp-vazio", silent: true,
+      icon: "/manifest-icon-192", badge: "/manifest-icon-192", data: { deepLink: "/", eventId: "", tipo: "vazio" },
+    });
+    const abertas = await self.registration.getNotifications({ tag: "zxp-vazio" });
+    abertas.forEach((n) => n.close());
+  } catch (e) { /* sem permissão de exibir: não há o que cumprir */ }
+}
+
+/**
  * O mini painel fixo na barra de notificações saiu (o widget do iPhone o
  * substituiu). Quem tinha ligado ficaria com a última notificação dele parada
  * na barra pra sempre: ao assumir, este Service Worker a fecha.
@@ -115,7 +139,8 @@ async function registrarRecebimento(registro) {
  * ser a parte MAIS confiável da cadeia em vez da mais frágil.
  */
 self.addEventListener("push", (event) => {
-  if (!event.data) return;
+  // Sem corpo também precisa mostrar algo (ver exibirEFechar): calar aqui custava a inscrição no iPhone.
+  if (!event.data) { event.waitUntil(exibirEFechar()); return; }
 
   let d = {};
   try {
@@ -129,7 +154,7 @@ self.addEventListener("push", (event) => {
 
   // Placar do antigo painel fixo, ainda na fila de algum provedor: não vira aviso — só fecha o que sobrou.
   if (d.type === "ao_vivo") {
-    event.waitUntil(fecharPainelFixoAntigo());
+    event.waitUntil(Promise.all([fecharPainelFixoAntigo(), exibirEFechar()]));
     return;
   }
 

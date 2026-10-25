@@ -205,11 +205,25 @@ describe("o painel fixo saiu (o widget do iPhone substituiu)", () => {
 
   it("um placar velho que ainda chegue não vira aviso — só fecha o que sobrou", async () => {
     fechadas.length = 0;
-    sw.self.registration.getNotifications = async () => [painelNaBarra()] as never;
+    sw.self.registration.getNotifications = async (f?: { tag?: string }) => (f?.tag === "zxp-ao-vivo" ? [painelNaBarra()] : []) as never;
     await receberPush({ type: "ao_vivo", placar: "{}" });
-    expect(sw.exibidas).toHaveLength(0);
     expect(fechadas).toEqual(["zxp-ao-vivo"]);
     expect(sw.cache.has("/__push-log")).toBe(false);
+  });
+
+  it("MAS nunca fica calado: o iPhone cancela a inscrição de quem recebe push sem exibir nada", async () => {
+    sw.self.registration.getNotifications = async () => [] as never;
+    await receberPush({ type: "ao_vivo", placar: "{}" });
+    expect(sw.exibidas).toHaveLength(1);
+    expect(sw.exibidas[0].opcoes.tag).toBe("zxp-vazio");
+  });
+
+  it("push sem corpo também exibe (e fecha) algo", async () => {
+    sw.self.registration.getNotifications = async () => [] as never;
+    let pendente: Promise<unknown> = Promise.resolve();
+    sw.ouvintes.push[0]({ data: null, waitUntil: (p: Promise<unknown>) => { pendente = p; } });
+    await pendente;
+    expect(sw.exibidas).toHaveLength(1);
   });
 
   it("tocar em qualquer aviso fecha ele", async () => {
