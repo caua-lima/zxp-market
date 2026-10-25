@@ -111,6 +111,100 @@ function desenhar(d, antigo) {
   return ctx.getImage();
 }
 
+// Tela de bloqueio: o iPhone pinta o widget de uma cor só, então o desenho é branco com
+// transparências (o app pega a cor que o seu papel de parede pede).
+function branco(a) { return new Color("#ffffff", a); }
+
+function barraB(ctx, x, y, w, h, a) {
+  ctx.setFillColor(branco(a));
+  const p = new Path();
+  p.addRoundedRect(new Rect(x, y, w, h), h / 2, h / 2);
+  ctx.addPath(p);
+  ctx.fillPath();
+}
+
+function textoB(ctx, t, x, y, w, h, tam, peso, a, alinhar) {
+  ctx.setFont(peso === "h" ? Font.heavySystemFont(tam) : peso === "b" ? Font.semiboldSystemFont(tam) : Font.mediumSystemFont(tam));
+  ctx.setTextColor(branco(a));
+  if (alinhar === "c") ctx.setTextAlignedCenter();
+  else if (alinhar === "r") ctx.setTextAlignedRight();
+  else ctx.setTextAlignedLeft();
+  ctx.drawTextInRect(t, new Rect(x, y, w, h));
+}
+
+// Retângulo da tela de bloqueio (proporção 172×76): valor grande, meta e vendas por hora.
+function desenharRetangulo(d) {
+  const W = 344, H = 152;
+  const ctx = new DrawContext();
+  ctx.size = new Size(W, H);
+  ctx.opaque = false;
+  ctx.respectScreenScale = true;
+
+  const n = d.pedidos;
+  textoB(ctx, "● AO VIVO", 2, 0, 160, 24, 18, "b", 0.7, "l");
+  const rit = ritmo(d);
+  textoB(ctx, (rit ? rit.replace(" vs ontem", "") + " · " : "") + n + (n === 1 ? " venda" : " vendas"), 150, 0, W - 152, 24, 18, "b", 0.7, "r");
+  const vTxt = brl(d.vendas);
+  textoB(ctx, vTxt, 0, 20, W, 58, vTxt.length > 12 ? 38 : vTxt.length > 10 ? 43 : 46, "h", 1, "l");
+
+  const tem = d.meta && d.meta.alvo > 0 && !d.meta.mesBatido;
+  const pct = tem ? Math.round(d.meta.pct) : 0;
+  if (tem) {
+    const bw = W - 92;
+    barraB(ctx, 2, 86, bw, 12, 0.3);
+    barraB(ctx, 2, 86, Math.max(12, bw * Math.max(0, Math.min(1, d.meta.pct / 100))), 12, 1);
+    textoB(ctx, (d.meta.batida ? "✓ " : "") + pct + "%", bw + 8, 78, 82, 28, 24, "h", 1, "r");
+  } else {
+    textoB(ctx, d.meta && d.meta.mesBatido ? "✓ meta do mês batida" : "sem meta no mês", 2, 80, W, 26, 20, "b", 0.8, "l");
+  }
+
+  const horas = d.porHora || [];
+  const maior = Math.max(1, ...horas.map((v) => Number(v) || 0));
+  const larg = (W - 4) / 24, base = H - 2, topo = 112;
+  for (let k = 0; k < 24; k++) {
+    const v = Number(horas[k]) || 0;
+    const alt = v > 0 ? Math.max(4, (v / maior) * (base - topo)) : 3;
+    barraB(ctx, 2 + k * larg + 1, base - alt, Math.max(4, larg - 3), alt, v > 0 ? 0.95 : 0.25);
+  }
+  return ctx.getImage();
+}
+
+// Círculo da tela de bloqueio: anel de progresso da meta de hoje.
+function desenharAnel(d) {
+  const T = 150, c = T / 2, r = 58;
+  const ctx = new DrawContext();
+  ctx.size = new Size(T, T);
+  ctx.opaque = false;
+  ctx.respectScreenScale = true;
+  const tem = d.meta && d.meta.alvo > 0 && !d.meta.mesBatido;
+  const frac = tem ? Math.max(0, Math.min(1, d.meta.pct / 100)) : d.meta && d.meta.mesBatido ? 1 : 0;
+  ctx.setLineWidth(13);
+  ctx.setStrokeColor(branco(0.3));
+  const trilho = new Path();
+  for (let i = 0; i <= 72; i++) {
+    const a = (i / 72) * 2 * Math.PI - Math.PI / 2;
+    const pt = new Point(c + r * Math.cos(a), c + r * Math.sin(a));
+    if (i === 0) trilho.move(pt); else trilho.addLine(pt);
+  }
+  ctx.addPath(trilho);
+  ctx.strokePath();
+  if (frac > 0) {
+    ctx.setStrokeColor(branco(1));
+    const arco = new Path();
+    const passos = Math.max(2, Math.round(72 * frac));
+    for (let i = 0; i <= passos; i++) {
+      const a = (i / passos) * frac * 2 * Math.PI - Math.PI / 2;
+      const pt = new Point(c + r * Math.cos(a), c + r * Math.sin(a));
+      if (i === 0) arco.move(pt); else arco.addLine(pt);
+    }
+    ctx.addPath(arco);
+    ctx.strokePath();
+  }
+  textoB(ctx, tem ? Math.round(d.meta.pct) + "%" : String(d.pedidos), 0, c - 22, T, 40, 36, "h", 1, "c");
+  textoB(ctx, tem ? "da meta" : "vendas", 0, c + 14, T, 22, 17, "b", 0.75, "c");
+  return ctx.getImage();
+}
+
 async function montar() {
   const w = new ListWidget();
   w.refreshAfterDate = new Date(Date.now() + 5 * 60 * 1000);
@@ -125,22 +219,18 @@ async function montar() {
   const d = r.dados;
   const familia = config.widgetFamily || "medium";
   if (familia.indexOf("accessory") === 0) {
-    // Tela de bloqueio: texto enxuto (o iPhone pinta tudo em tons de cinza/branco).
+    // Tela de bloqueio.
+    w.setPadding(0, 0, 0, 0);
     if (familia === "accessoryInline") {
-      w.addText(brlCurto(d.vendas) + (d.meta && d.meta.alvo > 0 ? " · " + Math.round(d.meta.pct) + "%" : ""));
+      w.addText(brlCurto(d.vendas) + (d.meta && d.meta.alvo > 0 && !d.meta.mesBatido ? " · " + Math.round(d.meta.pct) + "%" : d.meta && d.meta.batida ? " · ✓ meta" : ""));
     } else if (familia === "accessoryCircular") {
-      const t = w.addText(d.meta && d.meta.alvo > 0 ? Math.round(d.meta.pct) + "%" : String(d.pedidos));
-      t.font = Font.boldSystemFont(18);
-      t.centerAlignText();
+      const im = w.addImage(desenharAnel(d));
+      im.resizable = true;
+      im.centerAlignImage();
     } else {
-      const a = w.addText(brl(d.vendas));
-      a.font = Font.boldSystemFont(17);
-      const b = w.addText(d.pedidos + (d.pedidos === 1 ? " venda" : " vendas") + (ritmo(d) ? " · " + ritmo(d) : ""));
-      b.font = Font.systemFont(11);
-      if (d.meta && d.meta.alvo > 0) {
-        const c = w.addText(d.meta.batida ? "✓ meta do dia batida" : Math.round(d.meta.pct) + "% da meta · faltam " + brlCurto(d.meta.falta));
-        c.font = Font.systemFont(11);
-      }
+      const im = w.addImage(desenharRetangulo(d));
+      im.resizable = true;
+      im.centerAlignImage();
     }
     return w;
   }
