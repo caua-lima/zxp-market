@@ -190,46 +190,29 @@ describe("clique", () => {
   });
 });
 
-describe("mini painel fixo (push ao_vivo)", () => {
-  const placar = {
-    dia: "2026-10-23", vendas: 4320.5, pedidos: 18, unidades: 25,
-    meta: { alvo: 6750, pct: 64, falta: 2429.5, batida: false, mesBatido: false },
-    ultima: { valor: 189.9, titulo: "Limão", em: Date.parse("2026-10-23T14:32:00.000-03:00") },
-    porHora: Array(24).fill(0), ontemAteAgora: 0, atualizadoEm: Date.parse("2026-10-23T14:40:00.000-03:00"),
-  };
+describe("o painel fixo saiu (o widget do iPhone substituiu)", () => {
+  const fechadas: string[] = [];
+  const painelNaBarra = () => ({ titulo: "R$ 1,00 hoje", opcoes: { tag: "zxp-ao-vivo" }, close: () => { fechadas.push("zxp-ao-vivo"); } });
 
-  it("reescreve a notificação fixa em silêncio, com o placar, e não entra no registro de avisos", async () => {
-    await receberPush({ type: "ao_vivo", placar: JSON.stringify(placar) });
-    expect(sw.exibidas).toHaveLength(1);
-    const { titulo, opcoes } = sw.exibidas[0];
-    expect(titulo.replace(/\u00a0/g, " ")).toMatch(/^R\$ 4\.320,50 (hoje|em 23\/10) · 18 vendas$/);
-    expect(String(opcoes.body)).toContain("64% da meta");
-    expect(opcoes).toMatchObject({ tag: "zxp-ao-vivo", silent: true, renotify: false, requireInteraction: true });
-    expect(opcoes.data).toEqual({ deepLink: "/?tipo=ao_vivo", eventId: "", tipo: "ao_vivo" });
-    // Sem OffscreenCanvas (aqui não há): vai só o texto, sem quebrar.
-    expect(opcoes.image).toBeUndefined();
+  it("ao assumir, fecha o painel que ficou parado na barra", async () => {
+    fechadas.length = 0;
+    sw.self.registration.getNotifications = async () => [painelNaBarra()] as never;
+    let pendente: Promise<unknown> = Promise.resolve();
+    sw.ouvintes.activate[0]({ waitUntil: (p: Promise<unknown>) => { pendente = p; } });
+    await pendente;
+    expect(fechadas).toEqual(["zxp-ao-vivo"]);
+  });
+
+  it("um placar velho que ainda chegue não vira aviso — só fecha o que sobrou", async () => {
+    fechadas.length = 0;
+    sw.self.registration.getNotifications = async () => [painelNaBarra()] as never;
+    await receberPush({ type: "ao_vivo", placar: "{}" });
+    expect(sw.exibidas).toHaveLength(0);
+    expect(fechadas).toEqual(["zxp-ao-vivo"]);
     expect(sw.cache.has("/__push-log")).toBe(false);
   });
 
-  it("placar ilegível: mostra um aviso neutro só se o painel não estiver na barra", async () => {
-    await receberPush({ type: "ao_vivo", placar: "{lixo" });
-    expect(sw.exibidas).toHaveLength(1);
-    expect(sw.exibidas[0].titulo).toBe("Vendas ao vivo");
-    await receberPush({ type: "ao_vivo", placar: "{lixo" });
-    expect(sw.exibidas).toHaveLength(1);
-  });
-
-  it("tocar no painel abre o ao vivo e NÃO o tira da barra", async () => {
-    let fechou = false;
-    let pendente: Promise<unknown> = Promise.resolve();
-    sw.definirJanelas([sw.janela("a", { focused: true, visible: true })]);
-    sw.ouvintes.notificationclick[0]({ notification: { close: () => { fechou = true; }, data: { deepLink: "/?tipo=ao_vivo", eventId: "", tipo: "ao_vivo" } }, waitUntil: (p: Promise<unknown>) => { pendente = p; } });
-    await pendente;
-    expect(fechou).toBe(false);
-    expect(sw.postadas[0].m).toMatchObject({ tipo: "abrir", deepLink: "/?tipo=ao_vivo" });
-  });
-
-  it("aviso comum continua fechando ao tocar", async () => {
+  it("tocar em qualquer aviso fecha ele", async () => {
     let fechou = false;
     let pendente: Promise<unknown> = Promise.resolve();
     sw.ouvintes.notificationclick[0]({ notification: { close: () => { fechou = true; }, data: { deepLink: "/", eventId: "e" } }, waitUntil: (p: Promise<unknown>) => { pendente = p; } });

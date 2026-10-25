@@ -5,7 +5,6 @@
 // (este app roda em mais de um deploy, cada um com seu próprio Firebase).
 import { CACHE_DO_LOG_DE_PUSH, CHAVE_DO_LOG_DE_PUSH, SW_VERSAO } from "@/lib/push-sw-versao";
 import { escolherJanela, juntarParametro, validarDeepLink } from "@/lib/domain/deep-link";
-import { conteudoPainelFixo, desenharPainelFixo, lerPlacarFixo } from "@/lib/domain/painel-fixo";
 
 export const dynamic = "force-static";
 
@@ -41,8 +40,20 @@ self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
+/**
+ * O mini painel fixo na barra de notificações saiu (o widget do iPhone o
+ * substituiu). Quem tinha ligado ficaria com a última notificação dele parada
+ * na barra pra sempre: ao assumir, este Service Worker a fecha.
+ */
+async function fecharPainelFixoAntigo() {
+  try {
+    const antigas = await self.registration.getNotifications({ tag: "zxp-ao-vivo" });
+    antigas.forEach((n) => n.close());
+  } catch (e) { /* sem acesso às notificações: nada a fechar */ }
+}
+
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(Promise.all([self.clients.claim(), fecharPainelFixoAntigo()]));
 });
 
 /**
@@ -65,63 +76,6 @@ self.addEventListener("message", (event) => {
 const validarDeepLink = ${validarDeepLink.toString()};
 const juntarParametro = ${juntarParametro.toString()};
 const escolherJanela = ${escolherJanela.toString()};
-
-/**
- * ─── O MINI PAINEL FIXO DAS VENDAS AO VIVO ──────────────────────────────
- *
- * Uma notificação que FICA na barra e é reescrita a cada venda (mesma tag, em
- * silêncio — sem som, sem pular na tela). Com o app fechado, quem a reescreve é
- * este Service Worker, quando chega o push "ao_vivo" com o placar já calculado
- * pelo servidor (lib/ml/ao-vivo-tempo-real.ts). Texto e desenho vêm de
- * lib/domain/painel-fixo.ts, pelo texto das funções, como o deep link.
- */
-const lerPlacarFixo = ${lerPlacarFixo.toString()};
-const conteudoPainelFixo = ${conteudoPainelFixo.toString()};
-const desenharPainelFixo = ${desenharPainelFixo.toString()};
-
-/** A imagem do painel (o Android mostra ao expandir). Sem OffscreenCanvas, vai só o texto. */
-async function imagemDoPainelFixo(placar, agora) {
-  try {
-    if (typeof OffscreenCanvas === "undefined") return null;
-    const canvas = new OffscreenCanvas(720, 360);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    desenharPainelFixo(ctx, placar, agora, 720, 360);
-    const blob = await canvas.convertToBlob({ type: "image/png" });
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    let bin = "";
-    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-    return "data:image/png;base64," + btoa(bin);
-  } catch (e) {
-    return null;
-  }
-}
-
-async function mostrarPainelFixo(placar) {
-  const agora = Date.now();
-  if (!placar) {
-    // Placar ilegível: o navegador exige que todo push mostre algo — se o painel já está na barra, ele basta.
-    const ja = await self.registration.getNotifications({ tag: "zxp-ao-vivo" });
-    if (ja.length > 0) return;
-    await self.registration.showNotification("Vendas ao vivo", { body: "Abra o app pra atualizar.", tag: "zxp-ao-vivo", silent: true, icon: "/manifest-icon-192", badge: "/manifest-icon-192", data: { deepLink: "/?tipo=ao_vivo", eventId: "", tipo: "ao_vivo" } });
-    return;
-  }
-  const c = conteudoPainelFixo(placar, agora);
-  const opcoes = {
-    body: c.body, tag: c.tag, timestamp: c.timestamp,
-    icon: "/manifest-icon-192", badge: "/manifest-icon-192",
-    // Reescrever o painel não toca nem pula na tela: quem avisa a venda é a notificação da venda.
-    silent: true, renotify: false, requireInteraction: true,
-    data: { deepLink: "/?tipo=ao_vivo", eventId: "", tipo: "ao_vivo" },
-  };
-  const imagem = await imagemDoPainelFixo(placar, agora);
-  try {
-    await self.registration.showNotification(c.title, imagem ? Object.assign({}, opcoes, { image: imagem }) : opcoes);
-  } catch (e) {
-    // Navegador que recusa a imagem: o texto já é o painel.
-    if (imagem) await self.registration.showNotification(c.title, opcoes);
-  }
-}
 
 /**
  * O registro do que este aparelho RECEBEU, no Cache API (a página e o Service
@@ -173,9 +127,9 @@ self.addEventListener("push", (event) => {
     try { d = { title: "Novo aviso", body: event.data.text() }; } catch { d = {}; }
   }
 
-  // O placar do mini painel fixo não é aviso: reescreve a notificação fixa e para aqui.
+  // Placar do antigo painel fixo, ainda na fila de algum provedor: não vira aviso — só fecha o que sobrou.
   if (d.type === "ao_vivo") {
-    event.waitUntil(mostrarPainelFixo(lerPlacarFixo(d.placar)));
+    event.waitUntil(fecharPainelFixoAntigo());
     return;
   }
 
@@ -245,8 +199,7 @@ self.addEventListener("push", (event) => {
  */
 self.addEventListener("notificationclick", (event) => {
   const dados = event.notification.data || {};
-  // O painel fixo FICA na barra depois do toque: é o ponto de ele ser fixo.
-  if (dados.tipo !== "ao_vivo") event.notification.close();
+  event.notification.close();
   const alvo = validarDeepLink(dados.deepLink, self.location.origin);
   const eventId = String(dados.eventId || "");
 
