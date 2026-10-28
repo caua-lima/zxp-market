@@ -1,9 +1,7 @@
 import { NextResponse, after } from "next/server";
-import { getAdminDb } from "@/lib/firebase/admin";
 import { comTenant } from "@/lib/firebase/contexto-tenant";
-import { acessoExpirado } from "@/lib/domain/acesso-temporario";
 import { placarDe } from "@/lib/domain/placar-ao-vivo";
-import { FORMATO_TOKEN, hashDoToken } from "@/lib/domain/widget-token";
+import { acessoDoWidget } from "@/lib/widget-acesso";
 import { calcularAoVivo } from "@/lib/ml/ao-vivo-calculo";
 import { vigiarAgendasFull } from "@/lib/ml/vigia-agenda-full";
 
@@ -31,20 +29,10 @@ function caronaDaVigia(tenantId: string | null) {
 }
 
 export async function GET(req: Request) {
-  const t = new URL(req.url).searchParams.get("t") ?? "";
-  if (!FORMATO_TOKEN.test(t)) return nao();
-
   try {
-    const db = getAdminDb();
-    const reg = await db.collection("widget_tokens").doc(hashDoToken(t)).get();
-    if (!reg.exists) return nao();
-    const email = String(reg.get("email") ?? "").toLowerCase();
-    const tenantId = (reg.get("tenantId") as string | null) ?? null;
-    if (!email) return nao();
-
-    // Quem saiu da equipe (ou teve o acesso vencido) não recebe mais o placar.
-    const acesso = await db.doc(tenantId ? `tenants/${tenantId}/members/${email}` : `controleAcesso/${email}`).get();
-    if (!acesso.exists || acessoExpirado(acesso.data(), Date.now())) return nao();
+    const dono = await acessoDoWidget(new URL(req.url).searchParams.get("t"));
+    if (!dono) return nao();
+    const tenantId = dono.tenantId;
 
     const rodar = () => calcularAoVivo({ empresa: tenantId ?? "raiz" });
     const { body } = tenantId ? await comTenant(tenantId, rodar) : await rodar();
