@@ -28,6 +28,7 @@ vi.mock("@/lib/firebase/admin", () => {
     }),
   };
 });
+vi.mock("@/lib/ml/vigia-agenda-full", () => ({ vigiarAgendasFull: vi.fn(async () => null) }));
 vi.mock("@/lib/firebase/contexto-tenant", () => ({ comTenant: (_t: string, fn: () => unknown) => fn() }));
 const calc = vi.hoisted(() => ({ chamadas: [] as unknown[] }));
 vi.mock("@/lib/ml/ao-vivo-calculo", () => ({

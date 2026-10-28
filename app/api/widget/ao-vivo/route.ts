@@ -1,10 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { comTenant } from "@/lib/firebase/contexto-tenant";
 import { acessoExpirado } from "@/lib/domain/acesso-temporario";
 import { placarDe } from "@/lib/domain/placar-ao-vivo";
 import { FORMATO_TOKEN, hashDoToken } from "@/lib/domain/widget-token";
 import { calcularAoVivo } from "@/lib/ml/ao-vivo-calculo";
+import { vigiarAgendasFull } from "@/lib/ml/vigia-agenda-full";
 
 export const maxDuration = 20;
 
@@ -16,6 +17,18 @@ export const maxDuration = 20;
  * torto, desconhecido ou de quem perdeu o acesso: a resposta não diz qual.
  */
 const nao = () => NextResponse.json({ error: "nao_autorizado" }, { status: 401, headers: { "Cache-Control": "no-store" } });
+
+
+/**
+ * Carona pra vigia da agenda do Full: esta rota é chamada sozinha a cada poucos
+ * minutos (barra ao vivo / widget). Depois da resposta, confere os envios
+ * vigiados — o intervalo mínimo da vigia evita perguntar ao ML demais.
+ */
+function caronaDaVigia(tenantId: string | null) {
+  try {
+    after(() => (tenantId ? comTenant(tenantId, () => vigiarAgendasFull()) : vigiarAgendasFull()).catch(() => {}));
+  } catch { /* fora de uma requisição (testes): sem carona */ }
+}
 
 export async function GET(req: Request) {
   const t = new URL(req.url).searchParams.get("t") ?? "";
@@ -35,6 +48,7 @@ export async function GET(req: Request) {
 
     const rodar = () => calcularAoVivo({ empresa: tenantId ?? "raiz" });
     const { body } = tenantId ? await comTenant(tenantId, rodar) : await rodar();
+    caronaDaVigia(tenantId);
     return NextResponse.json(placarDe(body), { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     console.error("[widget/ao-vivo]", e instanceof Error ? e.message : e);

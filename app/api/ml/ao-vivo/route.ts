@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
+import { comTenant } from "@/lib/firebase/contexto-tenant";
+import { vigiarAgendasFull } from "@/lib/ml/vigia-agenda-full";
 import { requireAccess } from "@/lib/api-auth";
 import { redigirOperacao } from "@/lib/domain/ao-vivo";
 import { calcularAoVivo, type PedidoQueMudou } from "@/lib/ml/ao-vivo-calculo";
@@ -19,6 +21,18 @@ export const maxDuration = 20;
  * também recebe (`ver_resumo`). Visitas e estoque por produto são da OPERAÇÃO
  * (`ver_operacao`): saem da resposta de quem não tem — ausência, nunca zero.
  */
+
+/**
+ * Carona pra vigia da agenda do Full: esta rota é chamada sozinha a cada poucos
+ * minutos (barra ao vivo / widget). Depois da resposta, confere os envios
+ * vigiados — o intervalo mínimo da vigia evita perguntar ao ML demais.
+ */
+function caronaDaVigia(tenantId: string | null) {
+  try {
+    after(() => (tenantId ? comTenant(tenantId, () => vigiarAgendasFull()) : vigiarAgendasFull()).catch(() => {}));
+  } catch { /* fora de uma requisição (testes): sem carona */ }
+}
+
 export async function GET(req: Request) {
   const gate = await requireAccess(req, { capacidade: "ver_resumo" });
   if (gate instanceof NextResponse) return gate;
@@ -29,6 +43,7 @@ export async function GET(req: Request) {
     // Id de pedido do ML é numérico; qualquer outra coisa é ignorada (nunca vira caminho no banco).
     const pedido: PedidoQueMudou | null = /^\d{1,24}$/.test(id) ? { orderId: id, valida: q.get("valida") !== "0" } : null;
     const { body, doCache } = await calcularAoVivo({ empresa: gate.tenantId ?? "raiz", urgente: q.get("fresh") === "1", pedido });
+    caronaDaVigia(gate.tenantId ?? null);
     return NextResponse.json({ ...redigirOperacao(body, gate.pode("ver_operacao")), ...(doCache ? { doCache: true } : {}) });
   } catch (e) {
     console.error("[ao-vivo]", e instanceof Error ? e.message : e);
