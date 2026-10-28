@@ -41,3 +41,18 @@ describe("toque no widget", () => {
     expect(scriptDoWidget("https://app.exemplo.com/api/widget/ao-vivo?t=zw_abc")).toContain('w.url = URL_API.split("/api/")[0] + "/?tipo=ao_vivo";');
   });
 });
+
+describe("scriptDaVigiaFull", () => {
+  it("JavaScript válido, com a rota da vigia e o código dentro", async () => {
+    const { scriptDaVigiaFull } = await import("./vigia-script");
+    const js = scriptDaVigiaFull("https://app.exemplo.com", "zw_abc");
+    expect(js).toContain('const API = "https://app.exemplo.com/api/widget/vigias?t=zw_abc";');
+    expect(js).not.toMatch(/\$\{|`/);
+    const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+    expect(() => new AsyncFunction(js)).not.toThrow();
+    // a leitura que roda DENTRO da página do ML também é JavaScript válido
+    const leitura = js.match(/const LEITURA = ([\s\S]*?);\n/)![1];
+    expect(() => new Function(`return ${leitura}`)()).not.toThrow();
+    expect(() => new Function(new Function(`return ${leitura}`)())).not.toThrow();
+  });
+});
