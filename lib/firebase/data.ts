@@ -1229,6 +1229,8 @@ export type VigiaAgendaFull = {
   detalhe: string;
   avisadoEm?: number;
   consultas?: number;
+  /** O que o iPhone (script Vigia Full, logado no ML) viu na última vez. */
+  iphone?: { estado: "datas" | "sem_datas" | "login" | "indefinido"; em: number; trecho?: string };
 };
 
 /** Os envios vigiados (só leitura: quem grava é o servidor — ver lib/ml/vigia-agenda-full.ts). */
