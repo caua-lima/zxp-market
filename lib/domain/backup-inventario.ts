@@ -164,6 +164,12 @@ export const INVENTARIO: readonly ItemDeBackup[] = [
     perda: "Cada pessoa reconfigura a tela dela.",
   },
   {
+    colecao: "full_agenda_vigias",
+    classe: "efemero",
+    conteudo: "Envios do Full vigiados até o ML abrir data pra agendar, e o que o ML respondeu na última consulta.",
+    perda: "Basta ligar a vigia de novo na aba Full com o número do envio.",
+  },
+  {
     colecao: "ao_vivo",
     classe: "efemero",
     conteudo: "O sinal da última venda, que a barra ao vivo escuta pra somar na hora.",

@@ -330,6 +330,15 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Vigia da AGENDA do Full: envios sem data no ML que o app confere a cada
+    // poucos minutos e avisa quando abrir vaga (lib/ml/vigia-agenda-full.ts).
+    // A tela só lê; ligar, desligar e o resultado de cada consulta são do
+    // servidor (rota /api/full/vigia-agenda e o worker).
+    match /full_agenda_vigias/{docId} {
+      allow read: if veOperacao();
+      allow write: if false;
+    }
+
     // Envios AGENDADOS pro Full: unidades com destino marcado, que as agências
     // não podem mais anunciar. É plano, não estoque — não mexe no livro. Quem
     // edita estoque agenda (o dono não é o único que dá entrada na mercadoria).
@@ -798,6 +807,10 @@ service cloud.firestore {
       match /full_envios_agendados/{docId} {
         allow read: if veOperacaoT();
         allow write: if escritaLiberadaT() && (podeEditarT('estoque'));
+      }
+      match /full_agenda_vigias/{docId} {
+        allow read: if veOperacaoT();
+        allow write: if escritaLiberadaT() && (false);
       }
       match /vendas_presenciais/{docId} {
         allow read: if veOperacaoT();
