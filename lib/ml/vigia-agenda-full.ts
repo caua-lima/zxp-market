@@ -21,6 +21,8 @@ export const COLECAO_VIGIAS = "full_agenda_vigias";
 const ML_API = "https://api.mercadolibre.com";
 /** O worker pode passar mais de uma vez em poucos minutos: não pergunta ao ML mais que isso. */
 export const INTERVALO_MINIMO_MS = 4 * 60_000;
+/** O ML já recusou este envio (403): insistir a cada 5 min só gasta chamada. Tenta de hora em hora, caso libere. */
+export const INTERVALO_SEM_ACESSO_MS = 60 * 60_000;
 
 export function caminhosDoInbound(id: string): string[] {
   return [`/inbounds/${id}`, `/inbounds/${id}/appointments`, `/inbounds/${id}/availability`, `/inbounds/${id}/schedules`, `/inbounds/${id}/slots`];
@@ -83,7 +85,8 @@ export async function vigiarAgendasFull(opcoes: { agora?: number; buscar?: Busca
 
   for (const d of snap.docs) {
     const v = d.data();
-    if (agora - Number(v.ultimaConsulta ?? 0) < INTERVALO_MINIMO_MS) continue;
+    const intervalo = v.estado === "sem_acesso" ? INTERVALO_SEM_ACESSO_MS : INTERVALO_MINIMO_MS;
+    if (agora - Number(v.ultimaConsulta ?? 0) < intervalo) continue;
     const id = String(v.inboundId ?? d.id);
     const leitura = await consultarAgenda(id, token, opcoes.buscar);
     resumo.consultadas++;

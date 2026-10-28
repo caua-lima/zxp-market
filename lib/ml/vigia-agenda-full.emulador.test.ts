@@ -106,6 +106,13 @@ describe("vigia da agenda do Full", () => {
     expect(ml.chamadas).toHaveLength(0);
   });
 
+  it("ML já recusou: só tenta de novo depois de 1 hora", async () => {
+    await vigiar("80517703", { estado: "sem_acesso", ultimaConsulta: AGORA - 10 * 60_000 });
+    const ml = mlFalso({});
+    expect((await vigiarAgendasFull({ agora: AGORA, buscar: ml.buscar })).consultadas).toBe(0);
+    expect((await vigiarAgendasFull({ agora: AGORA + 55 * 60_000, buscar: ml.buscar })).consultadas).toBe(1);
+  });
+
   it("sem conexão com o ML: não quebra e diz isso", async () => {
     await vigiar();
     const r = await vigiarAgendasFull({ agora: AGORA, token: null });
