@@ -15,6 +15,7 @@ vi.mock("@/lib/firebase/admin", () => {
     get: async () => ({ exists: docs.m.has(path), data: () => docs.m.get(path), get: (k: string) => docs.m.get(path)?.[k] }),
     set: async (v: Record<string, unknown>) => { docs.m.set(path, v); },
     delete: async () => { docs.m.delete(path); },
+    update: async (v: Record<string, unknown>) => { docs.m.set(path, { ...(docs.m.get(path) ?? {}), ...v }); },
   });
   return {
     getAdminDb: () => ({
@@ -22,13 +23,20 @@ vi.mock("@/lib/firebase/admin", () => {
       collection: (c: string) => ({
         doc: (id: string) => ref(`${c}/${id}`),
         where: (campo: string, _op: string, valor: unknown) => ({
+          limit: () => ({ get: async () => ({ docs: [...docs.m.entries()].filter(([k, v]) => k.startsWith(`${c}/`) && v[campo] === valor).map(([k, v]) => ({ id: k.split('/')[1], ref: ref(k), get: (f: string) => v[f] })) }) }),
           get: async () => ({ docs: [...docs.m.entries()].filter(([k, v]) => k.startsWith(`${c}/`) && v[campo] === valor).map(([k, v]) => ({ ref: ref(k), get: (f: string) => v[f] })) }),
         }),
       }),
     }),
   };
 });
-vi.mock("@/lib/ml/vigia-agenda-full", () => ({ vigiarAgendasFull: vi.fn(async () => null) }));
+vi.mock("server-only", () => ({}));
+const avisosVigia = vi.hoisted(() => ({ lista: [] as string[] }));
+vi.mock("@/lib/ml/vigia-agenda-full", () => ({
+  vigiarAgendasFull: vi.fn(async () => null),
+  COLECAO_VIGIAS: "full_agenda_vigias",
+  avisarAgendaLiberada: vi.fn(async (id: string) => { avisosVigia.lista.push(id); return 1; }),
+}));
 vi.mock("@/lib/firebase/contexto-tenant", () => ({ comTenant: (_t: string, fn: () => unknown) => fn() }));
 const calc = vi.hoisted(() => ({ chamadas: [] as unknown[] }));
 vi.mock("@/lib/ml/ao-vivo-calculo", () => ({
@@ -43,6 +51,7 @@ vi.mock("@/lib/ml/ao-vivo-calculo", () => ({
 
 const { POST, DELETE } = await import("./token/route");
 const { GET } = await import("./ao-vivo/route");
+const { GET: listar, POST: contar } = await import("./vigias/route");
 const { hashDoToken } = await import("@/lib/domain/widget-token");
 
 const req = (url: string, metodo = "GET") => new Request(url, { method: metodo });
@@ -102,5 +111,45 @@ describe("widget", () => {
   it("sem sessão não gera código", async () => {
     sessao.atual = null;
     expect((await POST(req("https://app.test/api/widget/token", "POST"))).status).toBe(401);
+  });
+});
+
+describe("vigia pelo iPhone (/api/widget/vigias)", () => {
+  const gerarVigia = async () => (await (await POST(req("https://app.test/api/widget/token?uso=vigia", "POST"))).json()) as { url: string; script: string };
+  const postar = (url: string, corpo: unknown) => contar(new Request(url, { method: "POST", body: JSON.stringify(corpo) }));
+
+  it("código da vigia não revoga o do painel, e o script vem pronto", async () => {
+    const painel = await gerar();
+    const vigia = await gerarVigia();
+    expect(vigia.url).toContain("/api/widget/vigias?t=zw_");
+    expect(vigia.script).toContain("Vigia Full");
+    expect((await GET(req(painel.url))).status).toBe(200);
+  });
+
+  it("lista só os envios vigiados ativos", async () => {
+    docs.m.set("full_agenda_vigias/80517703", { inboundId: "80517703", ativa: true });
+    docs.m.set("full_agenda_vigias/90000001", { inboundId: "90000001", ativa: false });
+    const { url } = await gerarVigia();
+    expect(await (await listar(req(url))).json()).toEqual({ ids: ["80517703"] });
+  });
+
+  it("iPhone viu data: avisa UMA vez; fechou e abriu de novo: avisa de novo", async () => {
+    avisosVigia.lista.length = 0;
+    docs.m.set("full_agenda_vigias/80517703", { inboundId: "80517703", ativa: true });
+    const { url } = await gerarVigia();
+    expect((await postar(url, { inboundId: "80517703", estado: "datas" })).status).toBe(200);
+    await postar(url, { inboundId: "80517703", estado: "datas" });
+    expect(avisosVigia.lista).toEqual(["80517703"]);
+    expect(docs.m.get("full_agenda_vigias/80517703")).toMatchObject({ estado: "datas_liberadas", avisadoDatas: "iphone" });
+    await postar(url, { inboundId: "80517703", estado: "sem_datas" });
+    await postar(url, { inboundId: "80517703", estado: "datas" });
+    expect(avisosVigia.lista).toHaveLength(2);
+  });
+
+  it("recusa código torto, envio não vigiado e estado inventado", async () => {
+    expect((await listar(req("https://app.test/api/widget/vigias?t=zw_curto"))).status).toBe(401);
+    const { url } = await gerarVigia();
+    expect((await postar(url, { inboundId: "123456", estado: "datas" })).status).toBe(404);
+    expect((await postar(url, { inboundId: "80517703", estado: "hackeado" })).status).toBe(400);
   });
 });

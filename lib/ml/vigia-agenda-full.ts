@@ -49,10 +49,13 @@ export async function consultarAgenda(id: string, token: string, buscar: Buscar 
   return { ...leitura, amostra: boa ? `${boa.caminho} ${JSON.stringify(boa.corpo)}`.slice(0, 1500) : "" };
 }
 
-async function avisar(id: string, datas: string[]): Promise<number> {
-  const dedupeKey = `full_agenda:${id}:${datas[0]}`;
+/** O push "Agenda do Full liberada". Sem datas (o iPhone só vê que abriu), o texto não as cita. */
+export async function avisarAgendaLiberada(id: string, datas: string[], marca = ""): Promise<number> {
+  const dedupeKey = `full_agenda:${id}:${datas[0] ?? marca}`;
   const titulo = `Agenda do Full liberada · envio #${id}`;
-  const corpo = `Data livre: ${datasPorExtenso(datas)}. Abra o Mercado Livre e agende o envio já — vaga some rápido.`;
+  const corpo = datas.length
+    ? `Data livre: ${datasPorExtenso(datas)}. Abra o Mercado Livre e agende o envio já — vaga some rápido.`
+    : "Abriu data pra agendar. Abra o Mercado Livre e agende o envio já — vaga some rápido.";
   const { enviados } = await criarEventoEPublicar({
     type: "full_agenda",
     severity: "success",
@@ -102,7 +105,7 @@ export async function vigiarAgendasFull(opcoes: { agora?: number; buscar?: Busca
     if (leitura.estado === "datas_liberadas") {
       const chave = leitura.datas.join(",");
       if (v.avisadoDatas !== chave) {
-        const enviados = await avisar(id, leitura.datas).catch(() => 0);
+        const enviados = await avisarAgendaLiberada(id, leitura.datas).catch(() => 0);
         resumo.avisos++;
         patch.avisadoEm = agora;
         patch.avisadoDatas = chave;
