@@ -5,6 +5,7 @@ import { registrarExecucaoDoCron } from "@/lib/cron-heartbeat";
 import { varrerInbox } from "@/lib/ml/webhook-inbox";
 import { varrerEntregasPendentes } from "@/lib/notification-dispatch";
 import { porEmpresa } from "@/lib/empresas";
+import { vigiarAgendasFull } from "@/lib/ml/vigia-agenda-full";
 
 export const maxDuration = 60;
 
@@ -52,9 +53,16 @@ async function tratar(req: Request) {
     return null;
   });
 
+  // Vigia da agenda do Full: o ML abre data a qualquer hora, e o aviso tem que sair na hora.
+  const agendaFull = await vigiarAgendasFull().catch((err) => {
+    log.error("worker", { mensagem: "vigia da agenda do Full falhou", erro: err });
+    return null;
+  });
+
   const resumo = {
     inbox,
     entregas,
+    agendaFull,
     duracaoMs: Date.now() - inicio,
   };
   await registrarExecucaoDoCron(resumo, "worker");
