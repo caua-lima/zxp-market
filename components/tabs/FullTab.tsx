@@ -9,6 +9,8 @@ import HistoricoMovimentos from "@/components/tabs/full/HistoricoMovimentos";
 import EstoqueRetidoFull, { type EstoqueFullRetido } from "@/components/tabs/full/EstoqueRetidoFull";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import TelaHeader from "@/components/TelaHeader";
+import VigiaAgendaFull from "@/components/tabs/full/VigiaAgendaFull";
+import { useAccess } from "@/components/tabs/AccessGuard";
 
 /**
  * Aba exclusiva do Full — baixa de estoque a partir do que o Mercado Livre
@@ -22,6 +24,8 @@ import TelaHeader from "@/components/TelaHeader";
  * EstoqueRetidoFull.
  */
 export default function FullTab({ products }: { products: Product[] }) {
+  const { canEditTab } = useAccess();
+  const podeEditarEstoque = canEditTab("estoque");
   const [movimentos, setMovimentos] = useState<EstoqueMovimento[]>([]);
   /** O livro bateu o teto de leitura (S22 da auditoria SaaS) — ver HistoricoMovimentos. */
   const [movimentosTruncados, setMovimentosTruncados] = useState(false);
@@ -74,6 +78,8 @@ export default function FullTab({ products }: { products: Product[] }) {
         titulo="Full"
         subtitulo="baixa de estoque a partir do que o ML já recebeu"
       />
+
+      <VigiaAgendaFull podeEditar={podeEditarEstoque} />
 
       {fonteRetido === "carregando" && <AvisoDaFonte estado="carregando" fonte="o estoque retido no Full" />}
       {fonteRetido === "erro" && (
