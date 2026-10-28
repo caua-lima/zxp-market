@@ -1216,3 +1216,24 @@ export async function recalcularProduto(productId: string): Promise<void> {
   await recomputeProduto(productId);
   invalidar(CHAVE_PRODUTOS);
 }
+
+// ── Vigia da agenda do Full ───────────────────────────────────
+export type VigiaAgendaFull = {
+  inboundId: string;
+  ativa: boolean;
+  criadoEm: number;
+  criadoPor: string;
+  ultimaConsulta: number;
+  estado: "aguardando" | "datas_liberadas" | "sem_datas" | "sem_acesso" | "indefinido";
+  datas: string[];
+  detalhe: string;
+  avisadoEm?: number;
+  consultas?: number;
+};
+
+/** Os envios vigiados (só leitura: quem grava é o servidor — ver lib/ml/vigia-agenda-full.ts). */
+export function watchVigiasAgendaFull(cb: (v: VigiaAgendaFull[]) => void, onError?: (e: unknown) => void): () => void {
+  return onSnapshot(sCol("full_agenda_vigias"), (snap) => {
+    cb(snap.docs.map((d) => d.data() as VigiaAgendaFull).sort((a, b) => b.criadoEm - a.criadoEm));
+  }, (e) => onError?.(e));
+}
