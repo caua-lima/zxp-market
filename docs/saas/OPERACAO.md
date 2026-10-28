@@ -103,6 +103,13 @@ foi escrito pra funcionar com elas.
 > barra continua funcionando como antes** (relendo o ML a cada minuto e no aviso
 > de venda) — só não soma no instante. Qualquer acesso lê; só o servidor escreve.
 >
+> **Vigia da agenda do Full** (aba Full › “Avise quando abrir data no Full”): coleção nova
+> `full_agenda_vigias` — sem publicar as regras, a lista não aparece. O servidor consulta o envio
+> no ML a cada ~5 min (worker do GitHub Actions, e de carona na barra ao vivo e no widget) e manda
+> push crítico (fura o horário silencioso) quando abrir data, uma vez por data nova. A API pública
+> do ML NÃO documenta esse agendamento: se o cartão disser “O ML não deixou o app consultar”, a
+> vigia pelo servidor não tem como ver a agenda.
+>
 > **Widget no iPhone (grátis, app Scriptable):** painel ao vivo › “Widget no iPhone”. Gera um
 > código secreto (só o hash fica no banco, coleção `widget_tokens`) e o script pronto pra colar.
 > A rota pública `/api/widget/ao-vivo?t=…` devolve só faturamento, meta e vendas por hora (nunca
