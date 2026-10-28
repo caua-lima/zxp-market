@@ -21,6 +21,8 @@ export type NotificationEventType =
   /** Lembrete de PRAZO de tarefa — antes saía como "task_assigned", e a Central não distinguia "te atribuíram" de "vence hoje". */
   | "task_due"
   | "stock_low"
+  /** O ML abriu data pra agendar um envio pro Full que estava sem agenda (vigia em lib/ml/vigia-agenda-full.ts). */
+  | "full_agenda"
   /** Conquista: meta de faturamento batida, subida de nível no ML. */
   | "milestone"
   /** Push de teste: conteúdo sintético, só do próprio aparelho, com selo TESTE. Nunca é um aviso operacional. */
@@ -334,6 +336,7 @@ export const NOTIFICATION_TYPE_META: Record<
   task_due: { label: "Prazo de tarefa", severity: "warning", group: "alertas" },
   test: { label: "Teste", severity: "info", group: "sistema" },
   stock_low: { label: "Full no mínimo (agendar coleta)", severity: "warning", group: "alertas" },
+  full_agenda: { label: "Agenda do Full liberada", severity: "success", group: "alertas" },
   /**
    * Conquista tem tipo próprio, e não "system", porque as duas coisas pedem
    * tratamento oposto: aviso de sistema é ruído técnico que o usuário

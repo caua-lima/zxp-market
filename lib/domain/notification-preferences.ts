@@ -90,6 +90,8 @@ export const CRITICAL_NOTIFICATION_TYPES: ReadonlySet<NotificationEventType> = n
   "sale_negative_margin",
   "sale_cancelled",
   "return_completed",
+  // A data some em minutos: o aviso de agenda liberada fura o horário silencioso.
+  "full_agenda",
 ]);
 
 const TYPE_TO_TOGGLE: Record<NotificationEventType, NotificationTogglesKey | null> = {
@@ -108,6 +110,8 @@ const TYPE_TO_TOGGLE: Record<NotificationEventType, NotificationTogglesKey | nul
   // O lembrete de prazo é o mesmo assunto ("minhas tarefas"): segue o toggle de tarefas.
   task_due: "task_assigned",
   stock_low: "stock_low",
+  // Pedido explícito de quem ligou a vigia (aba Full): não há toggle que o esconda.
+  full_agenda: null,
   milestone: "milestone",
   // Teste é pedido explícito de quem está diante do aparelho: nenhum toggle o esconde.
   test: null,

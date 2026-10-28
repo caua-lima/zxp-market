@@ -249,7 +249,7 @@ export function proximoPrazo<T>(e: EstadoDeToasts<T>, cfg: ConfigDeToasts = CONF
 /** Prioridade por tipo: prejuízo e cancelamento furam a fila; venda comum espera. */
 export function prioridadeDoTipo(type: string): number {
   switch (type) {
-    case "sale_negative_margin": case "sale_cancelled": case "return_completed": case "return_opened":
+    case "sale_negative_margin": case "sale_cancelled": case "return_completed": case "return_opened": case "full_agenda":
       return 3;
     case "sale_low_margin": case "sync_warning": case "stock_low": case "task_due":
       return 2;
