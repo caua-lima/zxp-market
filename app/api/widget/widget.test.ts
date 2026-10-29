@@ -114,15 +114,15 @@ describe("widget", () => {
   });
 });
 
-describe("vigia pelo iPhone (/api/widget/vigias)", () => {
-  const gerarVigia = async () => (await (await POST(req("https://app.test/api/widget/token?uso=vigia", "POST"))).json()) as { url: string; script: string };
+describe("vigia pela extensão do Chrome (/api/widget/vigias)", () => {
+  const gerarVigia = async () => (await (await POST(req("https://app.test/api/widget/token?uso=vigia", "POST"))).json()) as { url: string; script?: string };
   const postar = (url: string, corpo: unknown) => contar(new Request(url, { method: "POST", body: JSON.stringify(corpo) }));
 
-  it("código da vigia não revoga o do painel, e o script vem pronto", async () => {
+  it("código da vigia não revoga o do painel; a extensão só precisa do endereço", async () => {
     const painel = await gerar();
     const vigia = await gerarVigia();
     expect(vigia.url).toContain("/api/widget/vigias?t=zw_");
-    expect(vigia.script).toContain("Vigia Full");
+    expect(vigia.script).toBeUndefined();
     expect((await GET(req(painel.url))).status).toBe(200);
   });
 

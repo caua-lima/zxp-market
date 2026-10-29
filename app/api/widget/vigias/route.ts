@@ -6,13 +6,14 @@ import { acessoDoWidget } from "@/lib/widget-acesso";
 import { avisarAgendaLiberada, COLECAO_VIGIAS } from "@/lib/ml/vigia-agenda-full";
 
 /**
- * A rota do script "Vigia Full" do iPhone (lib/domain/vigia-script.ts). SEM
+ * A rota da extensão do Chrome da vigia (pasta extensao-vigia-full). SEM
  * sessão: autoriza o código secreto. O ML só mostra a agenda pra quem está
- * logado no navegador, então quem olha a página é o iPhone; aqui ele busca a
- * lista de envios e conta o que viu.
+ * logado no navegador, então quem olha a página é o Chrome do PC; aqui ele
+ * busca a lista de envios e conta o que viu. (O campo no banco se chama
+ * `iphone` por causa da primeira tentativa, com o Scriptable, que o ML bloqueou.)
  *
  *  - GET: os envios vigiados (só os números).
- *  - POST { inboundId, estado, trecho }: o que o iPhone viu. "datas" na
+ *  - POST { inboundId, estado, trecho }: o que a extensão viu. "datas" na
  *    primeira vez dispara o push pros outros aparelhos (crítico).
  */
 const nao = () => NextResponse.json({ error: "nao_autorizado" }, { status: 401, headers: { "Cache-Control": "no-store" } });
