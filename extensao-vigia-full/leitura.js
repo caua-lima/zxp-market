@@ -9,6 +9,13 @@
  * em si NÃO serve de sinal: ela está no dicionário de traduções da página, com
  * ou sem data.
  *
+ * CONFERIDO no código da própria página do ML (29/10/2026, bundle
+ * fbm-inb-xp-appointment-fe, chunk 7177): o aviso "No contamos con citas en
+ * este momento" (= "Não temos datas disponíveis") só aparece quando
+ * `availableShipmentTypes` está vazio ou com TODAS `enabled` falsas. Com pelo
+ * menos uma `enabled: true` a página libera a escolha da forma de envio e da
+ * data. É exatamente a regra abaixo.
+ *
  * Usado pela extensão (background.js) e pelos testes do app
  * (lib/domain/leitura-agenda-extensao.test.ts).
  *
