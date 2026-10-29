@@ -3,7 +3,7 @@ import { lerPaginaDeAgendamento } from "./leitura.js";
 /**
  * Vigia da agenda do Full — o trabalho em segundo plano da extensão.
  *
- * A cada 2 minutos (com o Chrome aberto): busca no app a lista de envios
+ * A cada 1 minuto (com o Chrome aberto): busca no app a lista de envios
  * vigiados (aba Full › "Avise quando abrir data"), abre a página de agendamento
  * de cada um COM O LOGIN DO ML DESTE CHROME (em segundo plano, sem abrir aba) e
  * lê se abriu data (leitura.js). Abriu: notificação aqui no PC e aviso ao app,
@@ -11,7 +11,9 @@ import { lerPaginaDeAgendamento } from "./leitura.js";
  */
 
 const ALARME = "vigia-agenda-full";
-const MINUTOS = 2;
+const MINUTOS = 1;
+/** O "ainda sem data" no celular: no máximo um a cada ~5 min (o app troca o anterior pelo novo). */
+const PULSO_MS = 4.5 * 60_000;
 const ML = "https://vendedores.mercadolivre.com.br/shipping/inbounds/";
 
 async function config() {
@@ -73,11 +75,69 @@ export async function conferir() {
   }
 
   const algumaData = linhas.some((l) => l.estado === "datas");
+
+  // Sinal de vida: tudo conferido e ainda sem data → "ainda sem data" no celular, a cada ~5 min.
+  const { pulso = true, ultimoPulso = 0 } = await chrome.storage.local.get(["pulso", "ultimoPulso"]);
+  const semData = linhas.filter((l) => l.estado === "sem_datas").map((l) => String(l.id));
+  if (pulso && !algumaData && semData.length > 0 && Date.now() - ultimoPulso >= PULSO_MS) {
+    try {
+      await fetch(endereco, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pulso: true, ids: semData }),
+      });
+      await chrome.storage.local.set({ ultimoPulso: Date.now() });
+    } catch { /* sem rede: tenta na próxima volta */ }
+  }
+
   chrome.action.setBadgeText({ text: algumaData ? "!" : "" });
   chrome.action.setBadgeBackgroundColor({ color: algumaData ? "#36B37E" : "#15150f" });
   await chrome.storage.local.set({ estados, ultimo: { em: Date.now(), linhas } });
   return { ok: true, linhas };
 }
+
+/**
+ * Abriu a página de agendamento de um envio neste Chrome e ele está sem data:
+ * passa a vigiar sozinho (não precisa digitar o número no app).
+ */
+const PAGINA_DO_ENVIO = /^https:\/\/vendedores\.mercadolivre\.com\.br\/shipping\/inbounds\/(\d{5,15})\/appointment/;
+const vistosAgora = new Set();
+
+async function vigiarSeEstiverSemData(id) {
+  if (vistosAgora.has(id)) return;
+  vistosAgora.add(id);
+  setTimeout(() => vistosAgora.delete(id), 60_000);
+  const { endereco, estados } = await config();
+  if (!endereco) return;
+  try {
+    const lista = await fetch(endereco, { cache: "no-store" });
+    if (!lista.ok) return;
+    if (((await lista.json()).ids || []).includes(id)) return; // já vigiado
+    const r = await fetch(`${ML}${id}/appointment-v2`, { credentials: "include", cache: "no-store" });
+    const leitura = lerPaginaDeAgendamento(await r.text(), id, r.url);
+    if (leitura.estado !== "sem_datas") return;
+    const resp = await fetch(endereco, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ inboundId: id, estado: "sem_datas", trecho: "", novo: true }),
+    });
+    if (resp.status === 409) {
+      notificar(id, "Vigia do Full: limite de 5 envios", `Pare um envio no app (aba Full) pra vigiar o #${id}.`);
+      return;
+    }
+    if (!resp.ok) return;
+    estados[id] = "sem_datas";
+    await chrome.storage.local.set({ estados });
+    notificar(id, `Vigiando o envio #${id}`, "Está sem data. Quando o ML abrir agenda, chega o aviso aqui e no celular.");
+    conferir();
+  } catch {
+    vistosAgora.delete(id);
+  }
+}
+
+chrome.tabs.onUpdated.addListener((_tabId, info, tab) => {
+  if (info.status !== "complete") return;
+  const m = PAGINA_DO_ENVIO.exec(tab.url || "");
+  if (m) vigiarSeEstiverSemData(m[1]);
+});
 
 function agendar() {
   chrome.alarms.create(ALARME, { periodInMinutes: MINUTOS, delayInMinutes: 0.1 });

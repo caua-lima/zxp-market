@@ -21,8 +21,9 @@ function mostrar(ultimo) {
 }
 
 async function iniciar() {
-  const { endereco = "", ultimo = null } = await chrome.storage.local.get(["endereco", "ultimo"]);
+  const { endereco = "", ultimo = null, pulso = true } = await chrome.storage.local.get(["endereco", "ultimo", "pulso"]);
   $("endereco").value = endereco;
+  $("pulso").checked = pulso;
   mostrar(ultimo);
 }
 
@@ -52,6 +53,10 @@ $("agora").addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ tipo: "conferir" });
   $("msg").textContent = "";
   mostrar((await chrome.storage.local.get("ultimo")).ultimo);
+});
+
+$("pulso").addEventListener("change", async (e) => {
+  await chrome.storage.local.set({ pulso: e.target.checked, ultimoPulso: 0 });
 });
 
 iniciar();

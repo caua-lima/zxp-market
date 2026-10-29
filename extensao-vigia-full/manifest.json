@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ZXP — Vigia da agenda do Full",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Confere a página de agendamento dos envios pro Full (com o seu login do Mercado Livre neste Chrome) e avisa quando abrir data.",
   "permissions": ["alarms", "storage", "notifications"],
   "host_permissions": ["https://vendedores.mercadolivre.com.br/*"],
