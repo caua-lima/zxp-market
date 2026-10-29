@@ -139,6 +139,18 @@ describe("vigia pela extensão do Chrome (/api/widget/vigias)", () => {
     expect((await GET(req(painel.url))).status).toBe(200);
   });
 
+  it("gerar de novo não derruba a extensão: os 3 últimos endereços da vigia valem", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const urls: string[] = [];
+      for (let i = 0; i < 4; i++) { vi.setSystemTime(1_000 + i); urls.push((await gerarVigia()).url); }
+      expect((await listar(req(urls[0]))).status).toBe(401);
+      for (const u of urls.slice(1)) expect((await listar(req(u))).status).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("lista só os envios vigiados ativos", async () => {
     docs.m.set("full_agenda_vigias/80517703", { inboundId: "80517703", ativa: true });
     docs.m.set("full_agenda_vigias/90000001", { inboundId: "90000001", ativa: false });

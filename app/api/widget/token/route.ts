@@ -16,12 +16,18 @@ const COLECAO = "widget_tokens";
 type Uso = "painel" | "vigia";
 const usoDe = (req: Request): Uso => (new URL(req.url).searchParams.get("uso") === "vigia" ? "vigia" : "painel");
 
-async function apagarDe(email: string, tenantId: string | null, uso: Uso) {
+/**
+ * Apaga os códigos da pessoa naquele uso, menos os `manter` mais novos.
+ * A vigia guarda os 2 anteriores: clicar em "Gerar" de novo no cartão (fácil de
+ * fazer sem querer) não pode derrubar a extensão que está vigiando de madrugada.
+ */
+async function apagarDe(email: string, tenantId: string | null, uso: Uso, manter = 0) {
   const db = getAdminDb();
   const snap = await db.collection(COLECAO).where("email", "==", email).get();
-  await Promise.all(snap.docs
+  const doUso = snap.docs
     .filter((d) => (d.get("tenantId") ?? null) === tenantId && (d.get("uso") ?? "painel") === uso)
-    .map((d) => d.ref.delete()));
+    .sort((a, b) => Number(b.get("criadoEm") ?? 0) - Number(a.get("criadoEm") ?? 0));
+  await Promise.all(doUso.slice(manter).map((d) => d.ref.delete()));
 }
 
 export async function POST(req: Request) {
@@ -31,7 +37,7 @@ export async function POST(req: Request) {
   const tenantId = gate.tenantId ?? null;
 
   const uso = usoDe(req);
-  await apagarDe(email, tenantId, uso);
+  await apagarDe(email, tenantId, uso, uso === "vigia" ? 2 : 0);
   const token = novoToken();
   await getAdminDb().collection(COLECAO).doc(hashDoToken(token)).set({ email, tenantId, uso, criadoEm: Date.now() });
 
