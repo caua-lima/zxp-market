@@ -136,7 +136,7 @@ export default function VigiaAgendaFull({ podeEditar }: { podeEditar: boolean })
     <section className="panel" aria-labelledby="vigia-agenda-titulo" style={{ marginBottom: 16 }}>
       <div className="panel-head">
         <span className="panel-title" id="vigia-agenda-titulo">Avise quando abrir data no Full</span>
-        <span className="panel-sub">a extensão no Chrome do PC confere de 2 em 2 min (minutos pares); sem data, um aviso discreto a cada ~6 min; abriu data, o celular toca a cada ~1 min até você parar</span>
+        <span className="panel-sub">a extensão no Chrome do PC confere de 2 em 2 min (minutos pares); sem data, um aviso discreto de hora em hora; abriu data, o celular toca a cada ~1 min até você parar</span>
       </div>
 
       <VigiaPeloChrome />

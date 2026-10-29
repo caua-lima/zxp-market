@@ -17,8 +17,13 @@ const ALARME = "vigia-agenda-full";
 const MINUTOS = 2;
 /** Com data aberta o alarme do celular toca a cada volta: aí confere de 1 em 1 minuto. */
 const MINUTOS_COM_DATA = 1;
-/** O "ainda sem data" no celular: um a cada 3 voltas (~6 min); o app troca o anterior pelo novo. */
-const PULSO_MS = 5 * 60_000;
+/**
+ * O "ainda sem data" no celular é só pra saber que a vigia está viva: UM por
+ * hora, na primeira conferência de cada hora cheia (13:00, 14:00…). Data aberta
+ * não espera nada disso: avisa na mesma conferência em que aparece.
+ */
+const HORA_MS = 60 * 60_000;
+const horaDe = (ms) => Math.floor(ms / HORA_MS);
 const ML = "https://vendedores.mercadolivre.com.br/shipping/inbounds/";
 
 async function config() {
@@ -73,6 +78,26 @@ async function silenciarTudo() {
     }
   }
   await chrome.storage.local.set({ alarmeParado });
+}
+
+/**
+ * TESTE COMPLETO: faz tudo o que acontece quando abre data — notificação e
+ * alarme aqui no PC e o push crítico no celular (pelo app, mesmo caminho) — sem
+ * mexer na vigia de verdade. Só a leitura da página do ML fica de fora.
+ */
+async function simularVaga() {
+  const { endereco } = await config();
+  if (!endereco) return { ok: false, texto: "Salve o endereço da vigia primeiro." };
+  notificar("teste", "TESTE · Abriu data no Full", "Simulação. Se o PC está bipando e o celular tocou, está tudo funcionando. Clique pra parar.");
+  await tocarAlarmePc();
+  try {
+    const r = await fetch(endereco, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ teste: true }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, texto: "O app não aceitou o teste (endereço vencido?). O alarme do PC funcionou." };
+    return { ok: true, texto: j.enviados ? `PC bipando. Push mandado pra ${j.enviados} aparelho(s): confira o celular.` : "PC bipando, mas nenhum celular com notificação ligada no app." };
+  } catch {
+    return { ok: false, texto: "Sem conexão com o app. O alarme do PC funcionou." };
+  }
 }
 
 async function contarAoApp(endereco, id, estado, tipos) {
@@ -135,10 +160,10 @@ export async function conferir() {
   const deveTocar = linhas.some((l) => l.estado === "datas" && !alarmeParado[l.id]);
   if (deveTocar) await tocarAlarmePc(); else await pararAlarmePc();
 
-  // Sinal de vida: tudo conferido e ainda sem data → "ainda sem data" no celular, a cada ~5 min.
+  // Sinal de vida: tudo conferido e ainda sem data → "ainda sem data" no celular, uma vez por hora.
   const { pulso = true, ultimoPulso = 0 } = await chrome.storage.local.get(["pulso", "ultimoPulso"]);
   const semData = linhas.filter((l) => l.estado === "sem_datas").map((l) => String(l.id));
-  if (pulso && !algumaData && semData.length > 0 && Date.now() - ultimoPulso >= PULSO_MS) {
+  if (pulso && !algumaData && semData.length > 0 && horaDe(Date.now()) !== horaDe(ultimoPulso)) {
     try {
       await fetch(endereco, {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -248,6 +273,7 @@ chrome.notifications.onClicked.addListener((nid) => {
 // A janelinha pede "conferir agora".
 chrome.runtime.onMessage.addListener((msg, _sender, responder) => {
   if (msg && msg.tipo === "conferir") { conferir().then(responder); return true; }
+  if (msg && msg.tipo === "simular") { simularVaga().then(responder); return true; }
   if (msg && msg.tipo === "vigiar") { vigiarVarios(msg.texto).then(responder); return true; }
   if (msg && msg.tipo === "parar_alarme") { silenciarTudo().then(() => responder({ ok: true })); return true; }
   if (msg && msg.tipo === "proxima") { chrome.alarms.get(ALARME).then((a) => responder({ em: a ? a.scheduledTime : 0 })); return true; }

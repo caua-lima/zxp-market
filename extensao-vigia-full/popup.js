@@ -94,5 +94,16 @@ $("vigiar").addEventListener("click", async () => {
   mostrar((await chrome.storage.local.get("ultimo")).ultimo);
 });
 
+$("simular").addEventListener("click", async () => {
+  $("simular").disabled = true;
+  $("msg").textContent = "Simulando…";
+  $("msg").className = "mudo";
+  const r = await chrome.runtime.sendMessage({ tipo: "simular" }).catch(() => null);
+  $("simular").disabled = false;
+  $("msg").textContent = r ? r.texto : "Não consegui simular agora.";
+  $("msg").className = r && r.ok ? "datas" : "erro";
+  mostrarAlarme();
+});
+
 iniciar();
 mostrarAlarme();
