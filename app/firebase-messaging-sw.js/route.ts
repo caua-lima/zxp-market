@@ -161,6 +161,8 @@ self.addEventListener("push", (event) => {
   // Sem título, "Novo aviso": o antigo "Nova venda!" chamava de venda uma tarefa, um marco e um teste.
   const title = d.title || "Novo aviso";
   const recebidoEm = Date.now();
+  // "Vigia do Full: ainda sem data": sinal de vida discreto — sem som, sem prender na tela, um substitui o outro (tag).
+  const discreto = d.type === "full_agenda_status";
   const options = {
     body: d.body || "",
     icon: d.icon || "/manifest-icon-192",
@@ -174,7 +176,8 @@ self.addEventListener("push", (event) => {
      * aviso que some sozinho enquanto o celular está no bolso é um aviso que
      * não aconteceu.
      */
-    requireInteraction: true,
+    requireInteraction: !discreto,
+    silent: discreto,
     // O clique não recebe o payload de novo, só este objeto: leva o destino e o
     // eventId (que liga o clique ao aviso, pro recibo de clique).
     data: { deepLink: d.deepLink || "/", eventId: d.eventId || "", tipo: d.type || "" },

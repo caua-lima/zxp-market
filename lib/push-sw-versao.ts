@@ -10,7 +10,7 @@
  * no primeiro esquecimento, e o diagnóstico passava a acusar "desatualizado" sobre
  * um SW correto — ou, pior, a aprovar um velho.
  */
-export const SW_VERSAO = "2026-10-25-push-nunca-silencioso";
+export const SW_VERSAO = "2026-10-28-vigia-full-discreta";
 
 /** Onde o SW registra o que recebeu (Cache API: página e SW enxergam o mesmo cache). */
 export const CACHE_DO_LOG_DE_PUSH = "zxp-push-log";
