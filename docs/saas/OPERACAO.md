@@ -110,10 +110,13 @@ foi escrito pra funcionar com elas.
 > do ML NÃO documenta esse agendamento: se o cartão disser “O ML não deixou o app consultar”, a
 > vigia pelo servidor não tem como ver a agenda.
 > **Medido em 28/10/2026: o ML recusa (403) o token do app em /inbounds/{id}.** Por isso a vigia
-> que vale é a do iPhone (cartão › “Vigiar pelo iPhone”): script “Vigia Full” no Scriptable, logado
-> no ML, lê a página de agendamento a cada vez que o widget roda, notifica no iPhone e avisa o
-> servidor (`/api/widget/vigias`), que manda o push pros outros aparelhos. O servidor tenta o ML
-> de hora em hora, caso um dia ele libere.
+> que vale é a **extensão do Chrome** (pasta `extensao-vigia-full`, cartão › “Ligar a vigia no
+> Chrome do PC”): carregada sem compactação em `chrome://extensions`, ela lê a página de
+> agendamento a cada 2 min com o login do ML daquele Chrome (`availableShipmentTypes` com algum
+> `enabled:true` = data aberta; `leitura.js`, testado em `lib/domain/leitura-agenda-extensao.test.ts`),
+> notifica no PC e avisa o servidor (`/api/widget/vigias`, código `uso=vigia`), que manda o push
+> crítico pro celular. Precisa do PC ligado com o Chrome aberto. O Scriptable no iPhone foi tentado
+> e o ML bloqueia o login dentro dele. O servidor tenta o ML de hora em hora, caso um dia ele libere.
 >
 > **Widget no iPhone (grátis, app Scriptable):** painel ao vivo › “Widget no iPhone”. Gera um
 > código secreto (só o hash fica no banco, coleção `widget_tokens`) e o script pronto pra colar.
