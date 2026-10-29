@@ -3,7 +3,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { comTenant } from "@/lib/firebase/contexto-tenant";
 import { inboundValido } from "@/lib/domain/agenda-full";
 import { acessoDoWidget } from "@/lib/widget-acesso";
-import { avisarAgendaLiberada, avisarAindaSemData, COLECAO_VIGIAS, INTERVALO_DO_TOQUE_MS, MAX_TOQUES, repetirAlarmeDaAgenda } from "@/lib/ml/vigia-agenda-full";
+import { avisarAgendaLiberada, avisarAindaSemData, testarAvisoDaAgenda, COLECAO_VIGIAS, INTERVALO_DO_TOQUE_MS, MAX_TOQUES, repetirAlarmeDaAgenda } from "@/lib/ml/vigia-agenda-full";
 
 /**
  * A rota da extensão do Chrome da vigia (pasta extensao-vigia-full). SEM
@@ -41,7 +41,14 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const dono = await acessoDoWidget(new URL(req.url).searchParams.get("t"));
   if (!dono) return nao();
-  const corpo = (await req.json().catch(() => null)) as { inboundId?: unknown; estado?: unknown; trecho?: unknown; novo?: unknown; pulso?: unknown; ids?: unknown; silenciar?: unknown } | null;
+  const corpo = (await req.json().catch(() => null)) as { inboundId?: unknown; estado?: unknown; trecho?: unknown; novo?: unknown; pulso?: unknown; ids?: unknown; silenciar?: unknown; teste?: unknown } | null;
+
+  // "Testar tudo" na extensão: o MESMO aviso crítico de data aberta, marcado como teste (um por minuto, no máximo).
+  if (corpo?.teste === true) {
+    const minuto = Math.floor(Date.now() / 60_000) * 60_000;
+    const enviados = await naEmpresa(dono.tenantId, () => testarAvisoDaAgenda(minuto).catch(() => -1));
+    return NextResponse.json({ ok: enviados >= 0, enviados: Math.max(0, enviados) }, { status: enviados >= 0 ? 200 : 502 });
+  }
 
   // "Parar alarme" na extensão: o celular para de tocar também.
   if (corpo?.silenciar === true) {

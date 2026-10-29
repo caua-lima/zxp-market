@@ -45,6 +45,7 @@ vi.mock("@/lib/ml/vigia-agenda-full", () => ({
   vigiarAgendasFull: vi.fn(async () => null),
   COLECAO_VIGIAS: "full_agenda_vigias",
   avisarAgendaLiberada: vi.fn(async (id: string) => { avisosVigia.lista.push(id); return 1; }),
+  testarAvisoDaAgenda: vi.fn(async () => 2),
   avisarAindaSemData: vi.fn(async (ids: string[]) => { avisosVigia.pulsos.push(ids); return 1; }),
   repetirAlarmeDaAgenda: vi.fn(async (id: string, toque: number) => { avisosVigia.toques.push(`${id}#${toque}`); return 1; }),
   MAX_TOQUES: 3,
@@ -222,6 +223,12 @@ describe("vigia pela extensão do Chrome (/api/widget/vigias)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("testar tudo pela extensão: manda o push de teste e diz pra quantos aparelhos", async () => {
+    const { url } = await gerarVigia();
+    expect(await (await postar(url, { teste: true })).json()).toEqual({ ok: true, enviados: 2 });
+    expect((await contar(new Request("https://app.test/api/widget/vigias?t=zw_curto", { method: "POST", body: JSON.stringify({ teste: true }) }))).status).toBe(401);
   });
 
   it("ainda sem data: só dos envios vigiados de verdade", async () => {
