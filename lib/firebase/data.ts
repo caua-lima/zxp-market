@@ -1231,6 +1231,8 @@ export type VigiaAgendaFull = {
   consultas?: number;
   /** O que a extensão do Chrome (logada no ML) viu na última vez. O nome ficou da tentativa com o iPhone. */
   iphone?: { estado: "datas" | "sem_datas" | "login" | "indefinido"; em: number; trecho?: string };
+  /** Modo despertador: quantas vezes o celular já tocou por esta data e se alguém parou. */
+  alarme?: { toques?: number; ultimoToqueEm?: number; silenciadoEm?: number; desde?: number };
 };
 
 /** Os envios vigiados (só leitura: quem grava é o servidor — ver lib/ml/vigia-agenda-full.ts). */

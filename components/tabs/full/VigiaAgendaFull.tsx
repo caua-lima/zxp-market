@@ -90,6 +90,10 @@ function VigiaPeloChrome() {
   );
 }
 
+/** O modo despertador está tocando: data aberta, alguém tocou e ninguém parou. */
+const tocando = (v: VigiaAgendaFull) =>
+  v.estado === "datas_liberadas" && v.iphone?.estado === "datas" && (v.alarme?.toques ?? 0) > 0 && !v.alarme?.silenciadoEm;
+
 const hora = (ms: number) => (ms ? new Date(ms).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
 
 export default function VigiaAgendaFull({ podeEditar }: { podeEditar: boolean }) {
@@ -118,6 +122,11 @@ export default function VigiaAgendaFull({ podeEditar }: { podeEditar: boolean })
     }
   };
 
+  const silenciar = async (id: string) => {
+    setOcupado(true);
+    try { await authedFetch(`/api/full/vigia-agenda?silenciar=${encodeURIComponent(id)}`, { method: "POST" }); } finally { setOcupado(false); }
+  };
+
   const parar = async (id: string) => {
     setOcupado(true);
     try { await authedFetch(`/api/full/vigia-agenda?id=${encodeURIComponent(id)}`, { method: "DELETE" }); } finally { setOcupado(false); }
@@ -127,7 +136,7 @@ export default function VigiaAgendaFull({ podeEditar }: { podeEditar: boolean })
     <section className="panel" aria-labelledby="vigia-agenda-titulo" style={{ marginBottom: 16 }}>
       <div className="panel-head">
         <span className="panel-title" id="vigia-agenda-titulo">Avise quando abrir data no Full</span>
-        <span className="panel-sub">a extensão no Chrome do PC confere a cada 1 min; sem data, um aviso discreto a cada ~5 min; abriu data, push forte</span>
+        <span className="panel-sub">a extensão no Chrome do PC confere a cada 1 min; sem data, um aviso discreto a cada ~5 min; abriu data, o celular toca a cada ~1 min até você parar</span>
       </div>
 
       <VigiaPeloChrome />
@@ -141,7 +150,20 @@ export default function VigiaAgendaFull({ podeEditar }: { podeEditar: boolean })
       {msg && <div className="note" role="status" style={{ marginBottom: 10 }}>{msg}</div>}
       {erroLeitura && <div className="note" role="alert">Não consegui ler as vigias. Se é a primeira vez, as regras do Firestore precisam ser publicadas.</div>}
 
-      {vigias && vigias.length === 0 && !erroLeitura && <p style={{ margin: 0, color: "var(--muted)", fontSize: ".88rem" }}>Nenhum envio vigiado. Abra a página de agendamento do envio no ML, no Chrome com a extensão, e ele aparece aqui.</p>}
+      {podeEditar && (vigias ?? []).filter(tocando).map((v) => (
+        <div key={`alarme-${v.inboundId}`} role="alert" style={{ background: "var(--red-text)", color: "#fff", borderRadius: 12, padding: "14px 16px", marginBottom: 12, display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: "1.05rem" }}>⏰ Abriu data no Full — envio #{v.inboundId}</div>
+            <div style={{ fontSize: ".85rem", opacity: 0.9 }}>O celular toca de novo a cada ~1 min ({v.alarme?.toques ?? 1}/20) até você parar.</div>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <a className="btn btn-sm" style={{ background: "#fff", color: "#111", fontWeight: 800 }} href={`https://vendedores.mercadolivre.com.br/shipping/inbounds/${v.inboundId}/appointment-v2`} target="_blank" rel="noreferrer">Agendar no ML</a>
+            <button type="button" className="btn btn-sm" style={{ background: "#111", color: "#fff", fontWeight: 800 }} disabled={ocupado} onClick={() => silenciar(v.inboundId)}>Parar o alarme</button>
+          </div>
+        </div>
+      ))}
+
+      {vigias && vigias.length === 0 && !erroLeitura &&<p style={{ margin: 0, color: "var(--muted)", fontSize: ".88rem" }}>Nenhum envio vigiado. Abra a página de agendamento do envio no ML, no Chrome com a extensão, e ele aparece aqui.</p>}
       {vigias && vigias.length > 0 && (
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
           {vigias.map((v) => {
@@ -161,7 +183,7 @@ export default function VigiaAgendaFull({ podeEditar }: { podeEditar: boolean })
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>
                   <a className="btn btn-ghost btn-xs" href={`https://vendedores.mercadolivre.com.br/shipping/inbounds/${v.inboundId}/appointment-v2`} target="_blank" rel="noreferrer">Abrir no ML</a>
-                  {podeEditar && <button type="button" className="btn btn-danger btn-xs" disabled={ocupado} onClick={() => parar(v.inboundId)}>Parar</button>}
+                  {podeEditar && <button type="button" className="btn btn-danger btn-xs" disabled={ocupado} onClick={() => parar(v.inboundId)}>Parar de vigiar</button>}
                 </div>
               </li>
             );

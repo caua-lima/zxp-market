@@ -19,6 +19,14 @@ export async function POST(req: Request) {
     const enviados = await testarAvisoDaAgenda().catch(() => -1);
     return NextResponse.json({ ok: enviados >= 0, enviados: Math.max(0, enviados) }, { status: enviados >= 0 ? 200 : 502 });
   }
+  // ?silenciar=ID: "Parar o alarme" — o celular para de tocar a cada minuto (o envio segue vigiado).
+  const silenciar = new URL(req.url).searchParams.get("silenciar");
+  if (silenciar !== null) {
+    const alvo = inboundValido(silenciar);
+    if (!alvo) return NextResponse.json({ error: "envio_invalido" }, { status: 400 });
+    const ok = await getAdminDb().collection(COLECAO_VIGIAS).doc(alvo).update({ "alarme.silenciadoEm": Date.now() }).then(() => true, () => false);
+    return NextResponse.json({ ok }, { status: ok ? 200 : 404 });
+  }
   const corpo = (await req.json().catch(() => null)) as { inboundId?: unknown } | null;
   const id = inboundValido(corpo?.inboundId);
   if (!id) return NextResponse.json({ error: "envio_invalido", mensagem: "Use o número do envio como o ML mostra, ex.: 80517703." }, { status: 400 });
