@@ -163,6 +163,8 @@ self.addEventListener("push", (event) => {
   const recebidoEm = Date.now();
   // "Vigia do Full: ainda sem data": sinal de vida discreto — sem som, sem prender na tela, um substitui o outro (tag).
   const discreto = d.type === "full_agenda_status";
+  // "Abriu data no Full": vibração longa (onde o aparelho deixa) — é pra acordar.
+  const despertador = d.type === "full_agenda";
   const options = {
     body: d.body || "",
     icon: d.icon || "/manifest-icon-192",
@@ -178,6 +180,7 @@ self.addEventListener("push", (event) => {
      */
     requireInteraction: !discreto,
     silent: discreto,
+    vibrate: despertador ? [800, 200, 800, 200, 800, 200, 1500, 300, 1500] : undefined,
     // O clique não recebe o payload de novo, só este objeto: leva o destino e o
     // eventId (que liga o clique ao aviso, pro recibo de clique).
     data: { deepLink: d.deepLink || "/", eventId: d.eventId || "", tipo: d.type || "" },
