@@ -109,6 +109,11 @@ foi escrito pra funcionar com elas.
 > push crítico (fura o horário silencioso) quando abrir data, uma vez por data nova. A API pública
 > do ML NÃO documenta esse agendamento: se o cartão disser “O ML não deixou o app consultar”, a
 > vigia pelo servidor não tem como ver a agenda.
+> **Medido em 28/10/2026: o ML recusa (403) o token do app em /inbounds/{id}.** Por isso a vigia
+> que vale é a do iPhone (cartão › “Vigiar pelo iPhone”): script “Vigia Full” no Scriptable, logado
+> no ML, lê a página de agendamento a cada vez que o widget roda, notifica no iPhone e avisa o
+> servidor (`/api/widget/vigias`), que manda o push pros outros aparelhos. O servidor tenta o ML
+> de hora em hora, caso um dia ele libere.
 >
 > **Widget no iPhone (grátis, app Scriptable):** painel ao vivo › “Widget no iPhone”. Gera um
 > código secreto (só o hash fica no banco, coleção `widget_tokens`) e o script pronto pra colar.
