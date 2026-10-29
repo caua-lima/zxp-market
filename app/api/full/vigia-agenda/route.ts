@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAccess } from "@/lib/api-auth";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { inboundValido } from "@/lib/domain/agenda-full";
-import { COLECAO_VIGIAS, vigiarAgendasFull } from "@/lib/ml/vigia-agenda-full";
+import { COLECAO_VIGIAS, testarAvisoDaAgenda, vigiarAgendasFull } from "@/lib/ml/vigia-agenda-full";
 
 export const maxDuration = 30;
 
@@ -14,6 +14,11 @@ export const maxDuration = 30;
 export async function POST(req: Request) {
   const gate = await requireAccess(req, { capacidade: "editar_estoque" });
   if (gate instanceof NextResponse) return gate;
+  // ?teste=1: manda o mesmo aviso, marcado como teste, pra conferir que o celular recebe.
+  if (new URL(req.url).searchParams.get("teste") === "1") {
+    const enviados = await testarAvisoDaAgenda().catch(() => -1);
+    return NextResponse.json({ ok: enviados >= 0, enviados: Math.max(0, enviados) }, { status: enviados >= 0 ? 200 : 502 });
+  }
   const corpo = (await req.json().catch(() => null)) as { inboundId?: unknown } | null;
   const id = inboundValido(corpo?.inboundId);
   if (!id) return NextResponse.json({ error: "envio_invalido", mensagem: "Use o número do envio como o ML mostra, ex.: 80517703." }, { status: 400 });
