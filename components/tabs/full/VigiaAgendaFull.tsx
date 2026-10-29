@@ -74,7 +74,7 @@ function VigiaPeloChrome() {
             <li>Aqui, clique em <b>Gerar endereço da vigia</b> e em <b>Copiar</b>.</li>
             <li>Clique no ícone da extensão (quebra-cabeça › <b>ZXP — Vigia da agenda do Full</b>), cole o endereço, <b>Salvar</b> e aceite a permissão.</li>
             <li>Confira se está logado no Mercado Livre nesse Chrome. A extensão mostra o estado de cada envio.</li>
-            <li><b>Pra vigiar um envio:</b> abra a página de agendamento dele no ML nesse Chrome (a que diz “Não temos datas disponíveis”). A extensão pega o número sozinha e ele aparece aqui embaixo.</li>
+            <li><b>Pra vigiar envios (até 5):</b> na janelinha da extensão, digite os números separados por vírgula e clique em <b>Vigiar</b>. Ou abra a página de agendamento de cada um no ML nesse Chrome: a extensão pega sozinha. Eles aparecem aqui embaixo.</li>
           </ol>
           <p style={{ margin: 0, color: "var(--muted)", fontSize: ".8rem" }}>Gerar outro não desliga a extensão: os 3 últimos endereços continuam valendo.</p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
