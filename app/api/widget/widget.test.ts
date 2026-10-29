@@ -31,11 +31,12 @@ vi.mock("@/lib/firebase/admin", () => {
   };
 });
 vi.mock("server-only", () => ({}));
-const avisosVigia = vi.hoisted(() => ({ lista: [] as string[] }));
+const avisosVigia = vi.hoisted(() => ({ lista: [] as string[], pulsos: [] as string[][] }));
 vi.mock("@/lib/ml/vigia-agenda-full", () => ({
   vigiarAgendasFull: vi.fn(async () => null),
   COLECAO_VIGIAS: "full_agenda_vigias",
   avisarAgendaLiberada: vi.fn(async (id: string) => { avisosVigia.lista.push(id); return 1; }),
+  avisarAindaSemData: vi.fn(async (ids: string[]) => { avisosVigia.pulsos.push(ids); return 1; }),
 }));
 vi.mock("@/lib/firebase/contexto-tenant", () => ({ comTenant: (_t: string, fn: () => unknown) => fn() }));
 const calc = vi.hoisted(() => ({ chamadas: [] as unknown[] }));
@@ -144,6 +145,28 @@ describe("vigia pela extensão do Chrome (/api/widget/vigias)", () => {
     await postar(url, { inboundId: "80517703", estado: "sem_datas" });
     await postar(url, { inboundId: "80517703", estado: "datas" });
     expect(avisosVigia.lista).toHaveLength(2);
+  });
+
+  it("a extensão achou envio sem data aberto no Chrome: passa a vigiar (até 5)", async () => {
+    const { url } = await gerarVigia();
+    expect((await postar(url, { inboundId: "80517703", estado: "sem_datas", novo: true })).status).toBe(200);
+    expect(docs.m.get("full_agenda_vigias/80517703")).toMatchObject({ ativa: true, estado: "sem_datas", origem: "extensao", criadoPor: "dono@a.com" });
+    expect(await (await listar(req(url))).json()).toEqual({ ids: ["80517703"] });
+    // com data aberta não entra sozinho (a pessoa provavelmente está agendando)
+    expect((await postar(url, { inboundId: "80517704", estado: "datas", novo: true })).status).toBe(404);
+    for (const n of [1, 2, 3, 4]) docs.m.set(`full_agenda_vigias/9000000${n}`, { inboundId: `9000000${n}`, ativa: true });
+    expect((await postar(url, { inboundId: "80517705", estado: "sem_datas", novo: true })).status).toBe(409);
+  });
+
+  it("ainda sem data: só dos envios vigiados de verdade", async () => {
+    avisosVigia.pulsos.length = 0;
+    docs.m.set("full_agenda_vigias/80517703", { inboundId: "80517703", ativa: true });
+    const { url } = await gerarVigia();
+    const r = await postar(url, { pulso: true, ids: ["80517703", "12345678", "lixo"] });
+    expect(await r.json()).toEqual({ ok: true, enviados: 1 });
+    expect(avisosVigia.pulsos).toEqual([["80517703"]]);
+    expect(await (await postar(url, { pulso: true, ids: ["12345678"] })).json()).toEqual({ ok: true, enviados: 0 });
+    expect(avisosVigia.pulsos).toHaveLength(1);
   });
 
   it("recusa código torto, envio não vigiado e estado inventado", async () => {

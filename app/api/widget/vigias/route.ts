@@ -3,7 +3,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { comTenant } from "@/lib/firebase/contexto-tenant";
 import { inboundValido } from "@/lib/domain/agenda-full";
 import { acessoDoWidget } from "@/lib/widget-acesso";
-import { avisarAgendaLiberada, COLECAO_VIGIAS } from "@/lib/ml/vigia-agenda-full";
+import { avisarAgendaLiberada, avisarAindaSemData, COLECAO_VIGIAS } from "@/lib/ml/vigia-agenda-full";
 
 /**
  * A rota da extensão do Chrome da vigia (pasta extensao-vigia-full). SEM
@@ -13,7 +13,10 @@ import { avisarAgendaLiberada, COLECAO_VIGIAS } from "@/lib/ml/vigia-agenda-full
  * `iphone` por causa da primeira tentativa, com o Scriptable, que o ML bloqueou.)
  *
  *  - GET: os envios vigiados (só os números).
- *  - POST { inboundId, estado, trecho }: o que a extensão viu. "datas" na
+ *  - POST { pulso: true, ids }: o "ainda sem data" (lib/ml/vigia-agenda-full.ts › avisarAindaSemData).
+ *  - POST { inboundId, estado, trecho, novo }: o que a extensão viu. Com
+ *    `novo` e "sem_datas", um envio ainda não vigiado passa a ser (a pessoa
+ *    abriu a página de agendamento dele no Chrome; até 5). "datas" na
  *    primeira vez dispara o push pros outros aparelhos (crítico).
  */
 const nao = () => NextResponse.json({ error: "nao_autorizado" }, { status: 401, headers: { "Cache-Control": "no-store" } });
@@ -36,16 +39,40 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const dono = await acessoDoWidget(new URL(req.url).searchParams.get("t"));
   if (!dono) return nao();
-  const corpo = (await req.json().catch(() => null)) as { inboundId?: unknown; estado?: unknown; trecho?: unknown } | null;
+  const corpo = (await req.json().catch(() => null)) as { inboundId?: unknown; estado?: unknown; trecho?: unknown; novo?: unknown; pulso?: unknown; ids?: unknown } | null;
+
+  // "Ainda sem data": o sinal de vida que a extensão pede (~5 min). Só os envios que estão mesmo vigiados.
+  if (corpo?.pulso === true) {
+    const pedidos = Array.isArray(corpo.ids) ? corpo.ids.map(inboundValido).filter((x): x is string => !!x) : [];
+    const enviados = await naEmpresa(dono.tenantId, async () => {
+      const snap = await getAdminDb().collection(COLECAO_VIGIAS).where("ativa", "==", true).limit(5).get();
+      const ativos = new Set(snap.docs.map((d) => String(d.get("inboundId") ?? d.id)));
+      const ids = pedidos.filter((i) => ativos.has(i)).slice(0, 5);
+      return ids.length ? avisarAindaSemData(ids, dono.tenantId ?? dono.email).catch(() => 0) : 0;
+    });
+    return NextResponse.json({ ok: true, enviados }, { headers: { "Cache-Control": "no-store" } });
+  }
   const id = inboundValido(corpo?.inboundId);
   const estado = String(corpo?.estado ?? "");
   if (!id || !ESTADOS.has(estado)) return NextResponse.json({ error: "invalido" }, { status: 400 });
 
   const r = await naEmpresa(dono.tenantId, async () => {
-    const ref = getAdminDb().collection(COLECAO_VIGIAS).doc(id);
+    const db = getAdminDb();
+    const ref = db.collection(COLECAO_VIGIAS).doc(id);
     const snap = await ref.get();
-    if (!snap.exists || snap.get("ativa") !== true) return { ok: false as const };
     const agora = Date.now();
+    if (!snap.exists || snap.get("ativa") !== true) {
+      // A extensão achou um envio sem data aberto no Chrome: passa a vigiar sozinho.
+      if (corpo?.novo !== true || estado !== "sem_datas") return { ok: false as const };
+      const ativas = await db.collection(COLECAO_VIGIAS).where("ativa", "==", true).limit(5).get();
+      if (ativas.docs.length >= 5) return { ok: false as const, cheio: true };
+      await ref.set({
+        inboundId: id, ativa: true, criadoEm: agora, criadoPor: dono.email, origem: "extensao",
+        ultimaConsulta: 0, estado: "sem_datas", datas: [], detalhe: "", avisadoDatas: "",
+        iphone: { estado, em: agora, trecho: "" },
+      });
+      return { ok: true as const, avisou: false, novo: true };
+    }
     const patch: Record<string, unknown> = {
       iphone: { estado, em: agora, trecho: String(corpo?.trecho ?? "").slice(0, 300) },
     };
@@ -66,6 +93,6 @@ export async function POST(req: Request) {
     await ref.update(patch);
     return { ok: true as const, avisou };
   });
-  if (!r.ok) return NextResponse.json({ error: "nao_vigiado" }, { status: 404 });
+  if (!r.ok) return NextResponse.json({ error: "cheio" in r ? "limite_de_vigias" : "nao_vigiado" }, { status: "cheio" in r ? 409 : 404 });
   return NextResponse.json(r, { headers: { "Cache-Control": "no-store" } });
 }
