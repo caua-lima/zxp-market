@@ -28,7 +28,7 @@ export function lerPaginaDeAgendamento(html, id, urlFinal) {
   let tipos = null;
   const m = texto.match(/"availableShipmentTypes":(\[[^\]]*\])/);
   if (m) {
-    try { tipos = JSON.parse(m[1]); } catch (e) { tipos = null; }
+    try { tipos = JSON.parse(m[1]); } catch { tipos = null; }
   }
   const habilitados = Array.isArray(tipos) ? tipos.filter((t) => t && t.enabled === true).map((t) => String(t.type)) : [];
 

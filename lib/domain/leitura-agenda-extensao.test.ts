@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-// @ts-expect-error — arquivo JS puro da extensão do Chrome (sem tipos)
 import { lerPaginaDeAgendamento } from "../../extensao-vigia-full/leitura.js";
 
 /** Um trecho do HTML real (28/10/2026), com o dicionário de traduções que traz a frase "Não temos datas". */

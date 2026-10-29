@@ -31,7 +31,7 @@ async function contarAoApp(endereco, id, estado, tipos) {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ inboundId: String(id), estado, trecho: tipos.length ? `formas liberadas: ${tipos.join(", ")}` : "" }),
     });
-  } catch (e) { /* sem rede: na próxima volta tenta de novo */ }
+  } catch { /* sem rede: na próxima volta tenta de novo */ }
 }
 
 export async function conferir() {
@@ -46,7 +46,7 @@ export async function conferir() {
       return { ok: false, motivo: "codigo_invalido" };
     }
     ids = (await r.json()).ids || [];
-  } catch (e) {
+  } catch {
     await chrome.storage.local.set({ ultimo: { em: Date.now(), erro: "Sem conexão com o app." } });
     return { ok: false, motivo: "sem_rede" };
   }
@@ -57,7 +57,7 @@ export async function conferir() {
     try {
       const r = await fetch(`${ML}${id}/appointment-v2`, { credentials: "include", cache: "no-store" });
       leitura = lerPaginaDeAgendamento(await r.text(), id, r.url);
-    } catch (e) { /* rede: indefinido */ }
+    } catch { /* rede: indefinido */ }
 
     const antes = estados[id];
     if (leitura.estado === "datas" && antes !== "datas") {

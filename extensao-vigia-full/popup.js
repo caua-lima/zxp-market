@@ -29,7 +29,7 @@ async function iniciar() {
 $("salvar").addEventListener("click", async () => {
   const valor = $("endereco").value.trim();
   let url;
-  try { url = new URL(valor); } catch (e) { url = null; }
+  try { url = new URL(valor); } catch { url = null; }
   if (!url || url.protocol !== "https:" || !url.pathname.endsWith("/api/widget/vigias") || !url.searchParams.get("t")) {
     $("msg").textContent = "Cole o endereço da vigia que o app mostra (aba Full).";
     $("msg").className = "erro";
