@@ -15,7 +15,16 @@ vi.mock("@/lib/firebase/admin", () => {
     get: async () => ({ exists: docs.m.has(path), data: () => docs.m.get(path), get: (k: string) => docs.m.get(path)?.[k] }),
     set: async (v: Record<string, unknown>) => { docs.m.set(path, v); },
     delete: async () => { docs.m.delete(path); },
-    update: async (v: Record<string, unknown>) => { docs.m.set(path, { ...(docs.m.get(path) ?? {}), ...v }); },
+    update: async (v: Record<string, unknown>) => {
+      if (!docs.m.has(path)) throw Object.assign(new Error("not found"), { code: 5 });
+      const atual: Record<string, unknown> = { ...(docs.m.get(path) ?? {}) };
+      for (const [k, val] of Object.entries(v)) {
+        // "a.b" como no Firestore: campo dentro do mapa.
+        const [topo, sub] = k.split(".");
+        if (sub) atual[topo] = { ...((atual[topo] as object) ?? {}), [sub]: val }; else atual[k] = val;
+      }
+      docs.m.set(path, atual);
+    },
   });
   return {
     getAdminDb: () => ({
@@ -31,12 +40,15 @@ vi.mock("@/lib/firebase/admin", () => {
   };
 });
 vi.mock("server-only", () => ({}));
-const avisosVigia = vi.hoisted(() => ({ lista: [] as string[], pulsos: [] as string[][] }));
+const avisosVigia = vi.hoisted(() => ({ lista: [] as string[], pulsos: [] as string[][], toques: [] as string[] }));
 vi.mock("@/lib/ml/vigia-agenda-full", () => ({
   vigiarAgendasFull: vi.fn(async () => null),
   COLECAO_VIGIAS: "full_agenda_vigias",
   avisarAgendaLiberada: vi.fn(async (id: string) => { avisosVigia.lista.push(id); return 1; }),
   avisarAindaSemData: vi.fn(async (ids: string[]) => { avisosVigia.pulsos.push(ids); return 1; }),
+  repetirAlarmeDaAgenda: vi.fn(async (id: string, toque: number) => { avisosVigia.toques.push(`${id}#${toque}`); return 1; }),
+  MAX_TOQUES: 3,
+  INTERVALO_DO_TOQUE_MS: 50_000,
 }));
 vi.mock("@/lib/firebase/contexto-tenant", () => ({ comTenant: (_t: string, fn: () => unknown) => fn() }));
 const calc = vi.hoisted(() => ({ chamadas: [] as unknown[] }));
@@ -131,7 +143,14 @@ describe("vigia pela extensão do Chrome (/api/widget/vigias)", () => {
     docs.m.set("full_agenda_vigias/80517703", { inboundId: "80517703", ativa: true });
     docs.m.set("full_agenda_vigias/90000001", { inboundId: "90000001", ativa: false });
     const { url } = await gerarVigia();
-    expect(await (await listar(req(url))).json()).toEqual({ ids: ["80517703"] });
+    expect(await (await listar(req(url))).json()).toEqual({ ids: ["80517703"], silenciados: [] });
+  });
+
+  it("parar o alarme pela extensão: o GET passa a dizer que está silenciado", async () => {
+    docs.m.set("full_agenda_vigias/80517703", { inboundId: "80517703", ativa: true, alarme: { toques: 2 } });
+    const { url } = await gerarVigia();
+    expect((await postar(url, { silenciar: true, inboundId: "80517703" })).status).toBe(200);
+    expect(await (await listar(req(url))).json()).toEqual({ ids: ["80517703"], silenciados: ["80517703"] });
   });
 
   it("iPhone viu data: avisa UMA vez; fechou e abriu de novo: avisa de novo", async () => {
@@ -151,11 +170,46 @@ describe("vigia pela extensão do Chrome (/api/widget/vigias)", () => {
     const { url } = await gerarVigia();
     expect((await postar(url, { inboundId: "80517703", estado: "sem_datas", novo: true })).status).toBe(200);
     expect(docs.m.get("full_agenda_vigias/80517703")).toMatchObject({ ativa: true, estado: "sem_datas", origem: "extensao", criadoPor: "dono@a.com" });
-    expect(await (await listar(req(url))).json()).toEqual({ ids: ["80517703"] });
+    expect(await (await listar(req(url))).json()).toEqual({ ids: ["80517703"], silenciados: [] });
     // com data aberta não entra sozinho (a pessoa provavelmente está agendando)
     expect((await postar(url, { inboundId: "80517704", estado: "datas", novo: true })).status).toBe(404);
     for (const n of [1, 2, 3, 4]) docs.m.set(`full_agenda_vigias/9000000${n}`, { inboundId: `9000000${n}`, ativa: true });
     expect((await postar(url, { inboundId: "80517705", estado: "sem_datas", novo: true })).status).toBe(409);
+  });
+
+  it("modo despertador: toca de novo a cada ~1 min até parar, silenciar ou acabar os toques", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      avisosVigia.lista.length = 0;
+      avisosVigia.toques.length = 0;
+      vi.setSystemTime(1_000_000);
+      docs.m.set("full_agenda_vigias/80517703", { inboundId: "80517703", ativa: true });
+      const { url } = await gerarVigia();
+      await postar(url, { inboundId: "80517703", estado: "datas" }); // 1º: o aviso com evento
+      await postar(url, { inboundId: "80517703", estado: "datas" }); // cedo demais: não toca
+      expect(avisosVigia.toques).toEqual([]);
+      vi.setSystemTime(1_060_000);
+      await postar(url, { inboundId: "80517703", estado: "datas" });
+      vi.setSystemTime(1_120_000);
+      await postar(url, { inboundId: "80517703", estado: "datas" });
+      vi.setSystemTime(1_180_000);
+      await postar(url, { inboundId: "80517703", estado: "datas" }); // MAX_TOQUES (3) já foi
+      expect(avisosVigia.lista).toEqual(["80517703"]);
+      expect(avisosVigia.toques).toEqual(["80517703#2", "80517703#3"]);
+
+      // fechou e abriu de novo: recomeça; silenciado: para
+      await postar(url, { inboundId: "80517703", estado: "sem_datas" });
+      vi.setSystemTime(1_300_000);
+      await postar(url, { inboundId: "80517703", estado: "datas" });
+      const d = docs.m.get("full_agenda_vigias/80517703")!;
+      docs.m.set("full_agenda_vigias/80517703", { ...d, alarme: { ...(d.alarme as object), silenciadoEm: 1_300_001 } });
+      vi.setSystemTime(1_400_000);
+      await postar(url, { inboundId: "80517703", estado: "datas" });
+      expect(avisosVigia.lista).toHaveLength(2);
+      expect(avisosVigia.toques).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("ainda sem data: só dos envios vigiados de verdade", async () => {

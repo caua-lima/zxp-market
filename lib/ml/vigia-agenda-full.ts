@@ -73,6 +73,26 @@ export async function avisarAgendaLiberada(id: string, datas: string[], marca = 
   return enviados;
 }
 
+/**
+ * MODO DESPERTADOR. Abriu data: além do primeiro aviso, o celular "toca" de
+ * novo a cada ~1 min (cada toque é uma notificação NOVA, com som, furando o
+ * horário silencioso) até alguém tocar em "Parar o alarme" no app, a data
+ * sumir ou acabarem os toques. Sono pesado não acorda com um aviso só.
+ */
+export const MAX_TOQUES = 20;
+export const INTERVALO_DO_TOQUE_MS = 50_000;
+
+export async function repetirAlarmeDaAgenda(id: string, toque: number, desde: number): Promise<number> {
+  const pushId = `full_agenda:${id}:toque:${desde}:${toque}`;
+  const titulo = `⏰ ACORDA! Abriu data no Full (${toque}/${MAX_TOQUES})`;
+  const corpo = `Envio #${id}: agende antes que a vaga suma. Abra o app e toque em "Parar o alarme".`;
+  return enviarEPersistirEntrega(pushId, "full_agenda", {
+    // Tag nova a cada toque: o sistema trata como aviso novo e toca de novo.
+    ...buildPayload(pushId, "full_agenda", titulo, corpo, { orderId: "", tag: `full-agenda-${id}-toque-${toque}` }),
+    deepLink: "/?tab=full",
+  }, false, { validadeMs: 2 * 60_000, atualizaEvento: false, origem: "vigia-alarme" });
+}
+
 /** De quanto em quanto tempo sai o "ainda sem data" (o servidor ignora repetições dentro da mesma janela). */
 export const JANELA_DO_PULSO_MS = 5 * 60_000;
 

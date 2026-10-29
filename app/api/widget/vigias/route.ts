@@ -3,7 +3,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { comTenant } from "@/lib/firebase/contexto-tenant";
 import { inboundValido } from "@/lib/domain/agenda-full";
 import { acessoDoWidget } from "@/lib/widget-acesso";
-import { avisarAgendaLiberada, avisarAindaSemData, COLECAO_VIGIAS } from "@/lib/ml/vigia-agenda-full";
+import { avisarAgendaLiberada, avisarAindaSemData, COLECAO_VIGIAS, INTERVALO_DO_TOQUE_MS, MAX_TOQUES, repetirAlarmeDaAgenda } from "@/lib/ml/vigia-agenda-full";
 
 /**
  * A rota da extensão do Chrome da vigia (pasta extensao-vigia-full). SEM
@@ -12,7 +12,8 @@ import { avisarAgendaLiberada, avisarAindaSemData, COLECAO_VIGIAS } from "@/lib/
  * busca a lista de envios e conta o que viu. (O campo no banco se chama
  * `iphone` por causa da primeira tentativa, com o Scriptable, que o ML bloqueou.)
  *
- *  - GET: os envios vigiados (só os números).
+ *  - GET: os envios vigiados (só os números) e os de alarme parado no app.
+ *  - POST { silenciar: true, inboundId }: "Parar alarme" na extensão.
  *  - POST { pulso: true, ids }: o "ainda sem data" (lib/ml/vigia-agenda-full.ts › avisarAindaSemData).
  *  - POST { inboundId, estado, trecho, novo }: o que a extensão viu. Com
  *    `novo` e "sem_datas", um envio ainda não vigiado passa a ser (a pessoa
@@ -31,15 +32,25 @@ export async function GET(req: Request) {
   if (!dono) return nao();
   const ids = await naEmpresa(dono.tenantId, async () => {
     const snap = await getAdminDb().collection(COLECAO_VIGIAS).where("ativa", "==", true).limit(5).get();
-    return snap.docs.map((d) => String(d.get("inboundId") ?? d.id));
+    return snap.docs.map((d) => ({ id: String(d.get("inboundId") ?? d.id), silenciado: Boolean((d.get("alarme") as { silenciadoEm?: number } | undefined)?.silenciadoEm) }));
   });
-  return NextResponse.json({ ids }, { headers: { "Cache-Control": "no-store" } });
+  // silenciados: alguém tocou em "Parar o alarme" no app — o PC para de bipar também.
+  return NextResponse.json({ ids: ids.map((x) => x.id), silenciados: ids.filter((x) => x.silenciado).map((x) => x.id) }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: Request) {
   const dono = await acessoDoWidget(new URL(req.url).searchParams.get("t"));
   if (!dono) return nao();
-  const corpo = (await req.json().catch(() => null)) as { inboundId?: unknown; estado?: unknown; trecho?: unknown; novo?: unknown; pulso?: unknown; ids?: unknown } | null;
+  const corpo = (await req.json().catch(() => null)) as { inboundId?: unknown; estado?: unknown; trecho?: unknown; novo?: unknown; pulso?: unknown; ids?: unknown; silenciar?: unknown } | null;
+
+  // "Parar alarme" na extensão: o celular para de tocar também.
+  if (corpo?.silenciar === true) {
+    const alvo = inboundValido(corpo.inboundId);
+    if (!alvo) return NextResponse.json({ error: "invalido" }, { status: 400 });
+    const ok = await naEmpresa(dono.tenantId, () =>
+      getAdminDb().collection(COLECAO_VIGIAS).doc(alvo).update({ "alarme.silenciadoEm": Date.now() }).then(() => true, () => false));
+    return NextResponse.json({ ok }, { status: ok ? 200 : 404 });
+  }
 
   // "Ainda sem data": o sinal de vida que a extensão pede (~5 min). Só os envios que estão mesmo vigiados.
   if (corpo?.pulso === true) {
@@ -79,15 +90,24 @@ export async function POST(req: Request) {
     let avisou = false;
     if (estado === "datas") {
       patch.estado = "datas_liberadas";
+      const alarme = (snap.get("alarme") ?? {}) as { toques?: number; ultimoToqueEm?: number; silenciadoEm?: number; desde?: number };
       if (snap.get("avisadoDatas") !== "iphone") {
         await avisarAgendaLiberada(id, [], `iphone-${new Date(agora).toISOString().slice(0, 10)}`).catch(() => 0);
         patch.avisadoEm = agora;
         patch.avisadoDatas = "iphone";
+        patch.alarme = { toques: 1, ultimoToqueEm: agora, silenciadoEm: 0, desde: agora };
+        avisou = true;
+      } else if (!alarme.silenciadoEm && (alarme.toques ?? 1) < MAX_TOQUES && agora - (alarme.ultimoToqueEm ?? 0) >= INTERVALO_DO_TOQUE_MS) {
+        // Modo despertador: toca de novo até alguém parar no app.
+        const toque = (alarme.toques ?? 1) + 1;
+        await repetirAlarmeDaAgenda(id, toque, alarme.desde ?? agora).catch(() => 0);
+        patch.alarme = { ...alarme, toques: toque, ultimoToqueEm: agora };
         avisou = true;
       }
     } else if (snap.get("avisadoDatas") === "iphone") {
-      // Fechou de novo: a próxima abertura volta a avisar.
+      // Fechou de novo: a próxima abertura volta a avisar (e a tocar).
       patch.avisadoDatas = "";
+      patch.alarme = { toques: 0, ultimoToqueEm: 0, silenciadoEm: 0, desde: 0 };
       if (estado === "sem_datas") patch.estado = "sem_datas";
     }
     await ref.update(patch);
