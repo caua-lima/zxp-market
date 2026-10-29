@@ -76,9 +76,9 @@ function VigiaPeloChrome() {
             <li>Confira se está logado no Mercado Livre nesse Chrome. A extensão mostra o estado de cada envio.</li>
             <li><b>Pra vigiar um envio:</b> abra a página de agendamento dele no ML nesse Chrome (a que diz “Não temos datas disponíveis”). A extensão pega o número sozinha e ele aparece aqui embaixo.</li>
           </ol>
-          <p style={{ margin: 0, color: "var(--warning)", fontSize: ".8rem" }}>Já colou o endereço na extensão? Não gere outro: gerar de novo desliga o anterior e a extensão para.</p>
+          <p style={{ margin: 0, color: "var(--muted)", fontSize: ".8rem" }}>Gerar outro não desliga a extensão: os 3 últimos endereços continuam valendo.</p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" className="btn btn-primary btn-sm" onClick={gerar} disabled={ocupado}>{endereco ? "Gerar outro (revoga o anterior)" : "Gerar endereço da vigia"}</button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={gerar} disabled={ocupado}>{endereco ? "Gerar outro" : "Gerar endereço da vigia"}</button>
             {endereco && <button type="button" className="btn btn-ghost btn-sm" onClick={copiar}>Copiar</button>}
           </div>
           {endereco && <input readOnly value={endereco} aria-label="Endereço da vigia" onFocus={(e) => e.currentTarget.select()}

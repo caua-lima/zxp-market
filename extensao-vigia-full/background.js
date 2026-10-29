@@ -89,7 +89,7 @@ export async function conferir() {
   try {
     const r = await fetch(endereco, { cache: "no-store" });
     if (r.status === 401) {
-      await chrome.storage.local.set({ ultimo: { em: Date.now(), erro: "O endereço da vigia não vale mais. Gere outro no app (aba Full)." } });
+      await chrome.storage.local.set({ ultimo: { em: Date.now(), erro: "O endereço da vigia não vale mais. No app (aba Full), copie o endereço do cartão, cole aqui e Salvar." } });
       return { ok: false, motivo: "codigo_invalido" };
     }
     const j = await r.json();
