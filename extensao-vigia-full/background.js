@@ -3,7 +3,7 @@ import { lerPaginaDeAgendamento } from "./leitura.js";
 /**
  * Vigia da agenda do Full — o trabalho em segundo plano da extensão.
  *
- * A cada 1 minuto (com o Chrome aberto): busca no app a lista de envios
+ * A cada 3 minutos (com o Chrome aberto; com data aberta, a cada 1 — é o que faz o celular tocar de novo): busca no app a lista de envios
  * vigiados (aba Full › "Avise quando abrir data"), abre a página de agendamento
  * de cada um COM O LOGIN DO ML DESTE CHROME (em segundo plano, sem abrir aba) e
  * lê se abriu data (leitura.js). Abriu: notificação e ALARME aqui no PC e aviso
@@ -12,9 +12,11 @@ import { lerPaginaDeAgendamento } from "./leitura.js";
  */
 
 const ALARME = "vigia-agenda-full";
-const MINUTOS = 1;
-/** O "ainda sem data" no celular: no máximo um a cada ~5 min (o app troca o anterior pelo novo). */
-const PULSO_MS = 4.5 * 60_000;
+const MINUTOS = 3;
+/** Com data aberta o alarme do celular toca a cada volta: aí confere de 1 em 1 minuto. */
+const MINUTOS_COM_DATA = 1;
+/** O "ainda sem data" no celular: um a cada 2 voltas (~6 min); o app troca o anterior pelo novo. */
+const PULSO_MS = 5 * 60_000;
 const ML = "https://vendedores.mercadolivre.com.br/shipping/inbounds/";
 
 async function config() {
@@ -146,7 +148,9 @@ export async function conferir() {
 
   chrome.action.setBadgeText({ text: algumaData ? "!" : "" });
   chrome.action.setBadgeBackgroundColor({ color: algumaData ? "#36B37E" : "#15150f" });
-  await chrome.storage.local.set({ estados, ultimo: { em: Date.now(), linhas } });
+  const periodo = algumaData ? MINUTOS_COM_DATA : MINUTOS;
+  await agendar(periodo);
+  await chrome.storage.local.set({ estados, ultimo: { em: Date.now(), linhas, periodo } });
   return { ok: true, linhas };
 }
 
@@ -194,12 +198,15 @@ chrome.tabs.onUpdated.addListener((_tabId, info, tab) => {
   if (m) vigiarSeEstiverSemData(m[1]);
 });
 
-function agendar() {
-  chrome.alarms.create(ALARME, { periodInMinutes: MINUTOS, delayInMinutes: 0.1 });
+/** Liga (ou ajusta) o despertador da extensão. Só recria se o período mudou: recriar à toa empurra a próxima volta. */
+async function agendar(periodo = MINUTOS) {
+  const atual = await chrome.alarms.get(ALARME);
+  if (atual && atual.periodInMinutes === periodo) return;
+  await chrome.alarms.create(ALARME, { periodInMinutes: periodo, delayInMinutes: atual ? periodo : 0.1 });
 }
 
-chrome.runtime.onInstalled.addListener(agendar);
-chrome.runtime.onStartup.addListener(agendar);
+chrome.runtime.onInstalled.addListener(() => agendar());
+chrome.runtime.onStartup.addListener(() => agendar());
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === ALARME) conferir(); });
 chrome.notifications.onClicked.addListener((nid) => {
   silenciarTudo();
@@ -210,6 +217,7 @@ chrome.notifications.onClicked.addListener((nid) => {
 chrome.runtime.onMessage.addListener((msg, _sender, responder) => {
   if (msg && msg.tipo === "conferir") { conferir().then(responder); return true; }
   if (msg && msg.tipo === "parar_alarme") { silenciarTudo().then(() => responder({ ok: true })); return true; }
+  if (msg && msg.tipo === "proxima") { chrome.alarms.get(ALARME).then((a) => responder({ em: a ? a.scheduledTime : 0 })); return true; }
   if (msg && msg.tipo === "alarme_tocando") { alarmeTocando().then((t) => responder({ tocando: t })); return true; }
   return false;
 });

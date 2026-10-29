@@ -16,9 +16,22 @@ function mostrar(ultimo) {
     li.append(a, b);
     lista.append(li);
   }
-  if (ultimo.linhas && ultimo.linhas.length === 0) $("quando").textContent = "Nenhum envio vigiado no app (aba Full).";
-  else $("quando").textContent = `conferido ${new Date(ultimo.em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+  if (ultimo.linhas && ultimo.linhas.length === 0) { $("quando").textContent = "Nenhum envio vigiado no app (aba Full)."; return; }
+  $("quando").textContent = `conferido às ${relogio(ultimo.em)}`;
+  mostrarProxima();
 }
+
+const relogio = (ms) => new Date(ms).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+async function mostrarProxima() {
+  const r = await chrome.runtime.sendMessage({ tipo: "proxima" }).catch(() => null);
+  if (r && r.em) $("quando").textContent = `${$("quando").textContent.split(" · ")[0]} · próxima às ${relogio(r.em)}`;
+}
+
+// A janelinha aberta acompanha cada conferência (antes ficava com a hora de quando abriu).
+chrome.storage.onChanged.addListener((mudou, area) => {
+  if (area === "local" && mudou.ultimo) { $("msg").textContent = ""; mostrar(mudou.ultimo.newValue); }
+});
 
 async function iniciar() {
   const { endereco = "", ultimo = null, pulso = true } = await chrome.storage.local.get(["endereco", "ultimo", "pulso"]);
