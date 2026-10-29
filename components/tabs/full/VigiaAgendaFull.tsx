@@ -65,7 +65,7 @@ function VigiaPeloChrome() {
       {aberto && (
         <div style={{ padding: "0 12px 12px", display: "flex", flexDirection: "column", gap: 8, fontSize: ".88rem" }}>
           <p style={{ margin: 0, color: "var(--muted)" }}>
-            O ML só mostra a agenda pra quem está logado no navegador. Uma extensão no seu Chrome confere a cada 1 minuto, em segundo plano,
+            O ML só mostra a agenda pra quem está logado no navegador. Uma extensão no seu Chrome confere a cada 3 minutos, em segundo plano,
             e quando abrir data o app manda push pro celular. Basta o PC ligado com o Chrome aberto (pode minimizar e apagar a tela; não pode suspender).
           </p>
           <ol style={{ margin: 0, paddingLeft: 20, lineHeight: 1.55 }}>
@@ -94,7 +94,7 @@ function VigiaPeloChrome() {
 const tocando = (v: VigiaAgendaFull) =>
   v.estado === "datas_liberadas" && v.iphone?.estado === "datas" && (v.alarme?.toques ?? 0) > 0 && !v.alarme?.silenciadoEm;
 
-const hora = (ms: number) => (ms ? new Date(ms).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—");
+const hora = (ms: number) => (ms ? new Date(ms).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—");
 
 export default function VigiaAgendaFull({ podeEditar }: { podeEditar: boolean }) {
   const [vigias, setVigias] = useState<VigiaAgendaFull[] | null>(null);
@@ -136,7 +136,7 @@ export default function VigiaAgendaFull({ podeEditar }: { podeEditar: boolean })
     <section className="panel" aria-labelledby="vigia-agenda-titulo" style={{ marginBottom: 16 }}>
       <div className="panel-head">
         <span className="panel-title" id="vigia-agenda-titulo">Avise quando abrir data no Full</span>
-        <span className="panel-sub">a extensão no Chrome do PC confere a cada 1 min; sem data, um aviso discreto a cada ~5 min; abriu data, o celular toca a cada ~1 min até você parar</span>
+        <span className="panel-sub">a extensão no Chrome do PC confere a cada 3 min; sem data, um aviso discreto a cada ~6 min; abriu data, o celular toca a cada ~1 min até você parar</span>
       </div>
 
       <VigiaPeloChrome />
