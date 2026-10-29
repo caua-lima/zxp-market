@@ -163,35 +163,59 @@ export async function conferir() {
 const PAGINA_DO_ENVIO = /^https:\/\/vendedores\.mercadolivre\.com\.br\/shipping\/inbounds\/(\d{5,15})\/appointment/;
 const vistosAgora = new Set();
 
-async function vigiarSeEstiverSemData(id) {
-  if (vistosAgora.has(id)) return;
-  vistosAgora.add(id);
-  setTimeout(() => vistosAgora.delete(id), 60_000);
+/**
+ * Passa a vigiar um envio. Pela aba aberta (automático) ou pelo campo da
+ * janelinha (`manual`, que responde o que aconteceu com cada número).
+ */
+async function vigiarEnvio(id, { manual = false } = {}) {
+  if (!manual) {
+    if (vistosAgora.has(id)) return { ok: false };
+    vistosAgora.add(id);
+    setTimeout(() => vistosAgora.delete(id), 60_000);
+  }
   const { endereco, estados } = await config();
-  if (!endereco) return;
+  if (!endereco) return { ok: false, texto: "Salve o endereço da vigia primeiro." };
   try {
     const lista = await fetch(endereco, { cache: "no-store" });
-    if (!lista.ok) return;
-    if (((await lista.json()).ids || []).includes(id)) return; // já vigiado
+    if (!lista.ok) return { ok: false, texto: "O endereço da vigia não vale mais: copie o do app e Salvar." };
+    if (((await lista.json()).ids || []).includes(id)) return { ok: true, texto: `#${id}: já está sendo vigiado.` };
     const r = await fetch(`${ML}${id}/appointment-v2`, { credentials: "include", cache: "no-store" });
     const leitura = lerPaginaDeAgendamento(await r.text(), id, r.url);
-    if (leitura.estado !== "sem_datas") return;
+    if (leitura.estado === "datas") return { ok: false, texto: `#${id}: JÁ TEM DATA ABERTA — agende agora no ML.` };
+    if (leitura.estado === "login") return { ok: false, texto: `#${id}: entre no Mercado Livre neste Chrome e tente de novo.` };
+    if (leitura.estado !== "sem_datas") return { ok: false, texto: `#${id}: não achei esse envio no ML. Confira o número.` };
     const resp = await fetch(endereco, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ inboundId: id, estado: "sem_datas", trecho: "", novo: true }),
     });
     if (resp.status === 409) {
-      notificar(id, "Vigia do Full: limite de 5 envios", `Pare um envio no app (aba Full) pra vigiar o #${id}.`);
-      return;
+      if (!manual) notificar(id, "Vigia do Full: limite de 5 envios", `Pare um envio no app (aba Full) pra vigiar o #${id}.`);
+      return { ok: false, texto: `#${id}: já são 5 envios vigiados. Pare um no app (aba Full).` };
     }
-    if (!resp.ok) return;
+    if (!resp.ok) return { ok: false, texto: `#${id}: o app recusou. Tente de novo.` };
     estados[id] = "sem_datas";
     await chrome.storage.local.set({ estados });
-    notificar(id, `Vigiando o envio #${id}`, "Está sem data. Quando o ML abrir agenda, chega o aviso aqui e no celular.");
-    conferir();
+    if (!manual) notificar(id, `Vigiando o envio #${id}`, "Está sem data. Quando o ML abrir agenda, chega o aviso aqui e no celular.");
+    return { ok: true, texto: `#${id}: vigiando.` };
   } catch {
     vistosAgora.delete(id);
+    return { ok: false, texto: `#${id}: sem conexão. Tente de novo.` };
   }
+}
+
+async function vigiarSeEstiverSemData(id) {
+  const r = await vigiarEnvio(id);
+  if (r.ok && r.texto && r.texto.endsWith("vigiando.")) conferir();
+}
+
+/** O campo da janelinha: vários números de uma vez ("80517703, 80517704 80517705"). */
+async function vigiarVarios(texto) {
+  const ids = [...new Set(String(texto || "").match(/\d{5,15}/g) || [])].slice(0, 5);
+  if (ids.length === 0) return { linhas: ["Digite o número do envio (ex.: 80517703)."] };
+  const linhas = [];
+  for (const id of ids) linhas.push((await vigiarEnvio(id, { manual: true })).texto);
+  await conferir();
+  return { linhas };
 }
 
 chrome.tabs.onUpdated.addListener((_tabId, info, tab) => {
@@ -224,6 +248,7 @@ chrome.notifications.onClicked.addListener((nid) => {
 // A janelinha pede "conferir agora".
 chrome.runtime.onMessage.addListener((msg, _sender, responder) => {
   if (msg && msg.tipo === "conferir") { conferir().then(responder); return true; }
+  if (msg && msg.tipo === "vigiar") { vigiarVarios(msg.texto).then(responder); return true; }
   if (msg && msg.tipo === "parar_alarme") { silenciarTudo().then(() => responder({ ok: true })); return true; }
   if (msg && msg.tipo === "proxima") { chrome.alarms.get(ALARME).then((a) => responder({ em: a ? a.scheduledTime : 0 })); return true; }
   if (msg && msg.tipo === "alarme_tocando") { alarmeTocando().then((t) => responder({ tocando: t })); return true; }

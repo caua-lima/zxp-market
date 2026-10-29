@@ -30,7 +30,7 @@ async function mostrarProxima() {
 
 // A janelinha aberta acompanha cada conferência (antes ficava com a hora de quando abriu).
 chrome.storage.onChanged.addListener((mudou, area) => {
-  if (area === "local" && mudou.ultimo) { $("msg").textContent = ""; mostrar(mudou.ultimo.newValue); }
+  if (area === "local" && mudou.ultimo) mostrar(mudou.ultimo.newValue);
 });
 
 async function iniciar() {
@@ -81,6 +81,17 @@ $("pararAlarme").addEventListener("click", async () => {
   $("pararAlarme").hidden = true;
   $("msg").textContent = "Alarme parado (aqui e no celular).";
   $("msg").className = "mudo";
+});
+
+$("vigiar").addEventListener("click", async () => {
+  $("vigiar").disabled = true;
+  $("msg").textContent = "Conferindo no ML…";
+  $("msg").className = "mudo";
+  const r = await chrome.runtime.sendMessage({ tipo: "vigiar", texto: $("numeros").value }).catch(() => null);
+  $("vigiar").disabled = false;
+  $("msg").textContent = r && r.linhas ? r.linhas.join("  ·  ") : "Não consegui agora. Tente de novo.";
+  if (r && r.linhas && r.linhas.every((l) => /vigiando|já está/.test(l))) $("numeros").value = "";
+  mostrar((await chrome.storage.local.get("ultimo")).ultimo);
 });
 
 iniciar();
