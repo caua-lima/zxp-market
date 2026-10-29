@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { lerPaginaDeAgendamento } from "../../extensao-vigia-full/leitura.js";
+import { proximoHorario } from "../../extensao-vigia-full/horario.js";
 
 /** Um trecho do HTML real (28/10/2026), com o dicionário de traduções que traz a frase "Não temos datas". */
 const pagina = (tipos: string, extra = "") =>
@@ -34,5 +35,25 @@ describe("lerPaginaDeAgendamento (extensão do Chrome)", () => {
   it("página de outro envio ou formato desconhecido: indefinido (nunca alarme falso)", () => {
     expect(lerPaginaDeAgendamento(pagina(FECHADO), 99999999, URL_OK).estado).toBe("indefinido");
     expect(lerPaginaDeAgendamento(pagina("quebrado"), 80517703, URL_OK).estado).toBe("indefinido");
+  });
+});
+
+describe("proximoHorario (extensão do Chrome)", () => {
+  // 28/10/2026 no horário de Brasília (UTC-3)
+  const as = (h: number, m: number, s = 0) => Date.UTC(2026, 9, 28, h + 3, m, s);
+
+  it("de 2 em 2: ligou 12:01:08, próxima 12:02:00; depois 12:04, 12:06…", () => {
+    expect(proximoHorario(2, as(12, 1, 8))).toBe(as(12, 2));
+    expect(proximoHorario(2, as(12, 2, 0))).toBe(as(12, 4));
+    expect(proximoHorario(2, as(12, 3, 50))).toBe(as(12, 4));
+    expect(proximoHorario(2, as(12, 58, 30))).toBe(as(13, 0));
+  });
+
+  it("o Chrome acordou um tiquinho antes do horário: não confere duas vezes", () => {
+    expect(proximoHorario(2, as(12, 3, 59))).toBe(as(12, 6));
+  });
+
+  it("com data aberta, todo minuto cheio", () => {
+    expect(proximoHorario(1, as(21, 47, 12))).toBe(as(21, 48));
   });
 });
