@@ -59,4 +59,16 @@ $("pulso").addEventListener("change", async (e) => {
   await chrome.storage.local.set({ pulso: e.target.checked, ultimoPulso: 0 });
 });
 
+async function mostrarAlarme() {
+  const r = await chrome.runtime.sendMessage({ tipo: "alarme_tocando" }).catch(() => null);
+  $("pararAlarme").hidden = !(r && r.tocando);
+}
+$("pararAlarme").addEventListener("click", async () => {
+  await chrome.runtime.sendMessage({ tipo: "parar_alarme" });
+  $("pararAlarme").hidden = true;
+  $("msg").textContent = "Alarme parado (aqui e no celular).";
+  $("msg").className = "mudo";
+});
+
 iniciar();
+mostrarAlarme();

@@ -6,8 +6,9 @@ import { lerPaginaDeAgendamento } from "./leitura.js";
  * A cada 1 minuto (com o Chrome aberto): busca no app a lista de envios
  * vigiados (aba Full › "Avise quando abrir data"), abre a página de agendamento
  * de cada um COM O LOGIN DO ML DESTE CHROME (em segundo plano, sem abrir aba) e
- * lê se abriu data (leitura.js). Abriu: notificação aqui no PC e aviso ao app,
- * que manda o push pro celular. Nada da conta do ML sai deste navegador.
+ * lê se abriu data (leitura.js). Abriu: notificação e ALARME aqui no PC e aviso
+ * ao app, que faz o celular tocar a cada ~1 min até alguém parar. Nada da conta
+ * do ML sai deste navegador.
  */
 
 const ALARME = "vigia-agenda-full";
@@ -27,6 +28,49 @@ function notificar(id, titulo, corpo) {
   });
 }
 
+/**
+ * ALARME DO PC: com data aberta, o PC bipa alto sem parar (documento invisível
+ * offscreen.html) até alguém parar — aqui na janelinha, no clique da
+ * notificação ou no app ("Parar o alarme", que também cala o celular).
+ */
+const PAGINA_DO_ALARME = "offscreen.html";
+
+async function alarmeTocando() {
+  const docs = await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] }).catch(() => []);
+  return docs.length > 0;
+}
+
+async function tocarAlarmePc() {
+  if (await alarmeTocando()) return;
+  try {
+    await chrome.offscreen.createDocument({
+      url: PAGINA_DO_ALARME, reasons: ["AUDIO_PLAYBACK"], justification: "Alarme: abriu data na agenda do Full.",
+    });
+  } catch { /* já existe (duas voltas ao mesmo tempo) */ }
+}
+
+export async function pararAlarmePc() {
+  if (await alarmeTocando()) await chrome.offscreen.closeDocument().catch(() => {});
+}
+
+/** Parar daqui também cala o celular (o app marca o alarme como parado). */
+async function silenciarTudo() {
+  await pararAlarmePc();
+  const { endereco, estados } = await config();
+  const { alarmeParado = {} } = await chrome.storage.local.get("alarmeParado");
+  for (const [id, estado] of Object.entries(estados)) {
+    if (estado !== "datas") continue;
+    alarmeParado[id] = true;
+    if (endereco) {
+      await fetch(endereco, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ silenciar: true, inboundId: id }),
+      }).catch(() => {});
+    }
+  }
+  await chrome.storage.local.set({ alarmeParado });
+}
+
 async function contarAoApp(endereco, id, estado, tipos) {
   try {
     await fetch(endereco, {
@@ -41,13 +85,16 @@ export async function conferir() {
   if (!endereco) return { ok: false, motivo: "sem_endereco" };
 
   let ids = [];
+  let silenciados = [];
   try {
     const r = await fetch(endereco, { cache: "no-store" });
     if (r.status === 401) {
       await chrome.storage.local.set({ ultimo: { em: Date.now(), erro: "O endereço da vigia não vale mais. Gere outro no app (aba Full)." } });
       return { ok: false, motivo: "codigo_invalido" };
     }
-    ids = (await r.json()).ids || [];
+    const j = await r.json();
+    ids = j.ids || [];
+    silenciados = (j.silenciados || []).map(String);
   } catch {
     await chrome.storage.local.set({ ultimo: { em: Date.now(), erro: "Sem conexão com o app." } });
     return { ok: false, motivo: "sem_rede" };
@@ -68,13 +115,21 @@ export async function conferir() {
     if (leitura.estado === "login" && antes !== "login") {
       notificar(id, "Vigia do Full: entre no Mercado Livre", "Este Chrome saiu da conta do ML. Entre de novo pra vigia continuar.");
     }
-    // O app só precisa saber quando muda (e sempre que há data, pra não perder o aviso).
-    if (leitura.estado !== antes || leitura.estado === "datas") await contarAoApp(endereco, id, leitura.estado, leitura.tipos);
+    // Toda volta conta ao app: o cartão mostra a MESMA hora da extensão (e, com data, o celular toca de novo).
+    await contarAoApp(endereco, id, leitura.estado, leitura.tipos);
     estados[id] = leitura.estado;
     linhas.push({ id, estado: leitura.estado });
   }
 
   const algumaData = linhas.some((l) => l.estado === "datas");
+
+  // Alarme do PC: toca enquanto houver data que ninguém parou (aqui ou no app).
+  const { alarmeParado = {} } = await chrome.storage.local.get("alarmeParado");
+  for (const l of linhas) if (l.estado !== "datas") delete alarmeParado[l.id]; // fechou: a próxima abertura toca de novo
+  for (const id of silenciados) alarmeParado[id] = true;
+  await chrome.storage.local.set({ alarmeParado });
+  const deveTocar = linhas.some((l) => l.estado === "datas" && !alarmeParado[l.id]);
+  if (deveTocar) await tocarAlarmePc(); else await pararAlarmePc();
 
   // Sinal de vida: tudo conferido e ainda sem data → "ainda sem data" no celular, a cada ~5 min.
   const { pulso = true, ultimoPulso = 0 } = await chrome.storage.local.get(["pulso", "ultimoPulso"]);
@@ -147,11 +202,14 @@ chrome.runtime.onInstalled.addListener(agendar);
 chrome.runtime.onStartup.addListener(agendar);
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === ALARME) conferir(); });
 chrome.notifications.onClicked.addListener((nid) => {
+  silenciarTudo();
   const id = String(nid).split("-")[1];
   if (/^\d+$/.test(id)) chrome.tabs.create({ url: `${ML}${id}/appointment-v2` });
 });
 // A janelinha pede "conferir agora".
 chrome.runtime.onMessage.addListener((msg, _sender, responder) => {
   if (msg && msg.tipo === "conferir") { conferir().then(responder); return true; }
+  if (msg && msg.tipo === "parar_alarme") { silenciarTudo().then(() => responder({ ok: true })); return true; }
+  if (msg && msg.tipo === "alarme_tocando") { alarmeTocando().then((t) => responder({ tocando: t })); return true; }
   return false;
 });

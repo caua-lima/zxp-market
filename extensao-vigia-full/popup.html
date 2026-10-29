@@ -19,10 +19,12 @@
   .login, .erro { color: #EC7B69; }
   .mudo { color: #8f8c7d; font-size: 11px; }
   .op { display: flex; gap: 8px; align-items: center; text-transform: none; letter-spacing: 0; font-size: 12px; color: #f6f3e8; margin: 0 0 10px; cursor: pointer; }
+  .alarme { width: 100%; background: #EC7B69; color: #15150f; font-size: 15px; padding: 12px; margin-bottom: 12px; }
   .op input { width: auto; margin: 0; accent-color: #F4B942; }
 </style>
 </head>
 <body>
+  <button id="pararAlarme" class="alarme" hidden>⏰ PARAR O ALARME</button>
   <h1>Vigia da agenda do Full</h1>
   <p>Confere a cada 1 min, com o seu login do ML neste Chrome, e avisa quando abrir data. Funciona com o Chrome aberto.</p>
   <label for="endereco">Endereço da vigia (copie no app › aba Full)</label>
