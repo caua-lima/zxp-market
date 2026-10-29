@@ -7,9 +7,9 @@ import { datasPorExtenso } from "@/lib/domain/agenda-full";
 
 /**
  * "Avise quando abrir data": o envio pro Full foi criado no ML mas está sem
- * data pra agendar. O servidor confere a cada ~5 min e manda push quando abrir
- * (lib/ml/vigia-agenda-full.ts). Aqui aparece o que o ML respondeu na última
- * consulta — inclusive quando ele não deixa consultar.
+ * data pra agendar. Quem olha a página é a extensão do Chrome do PC (o ML
+ * recusa o servidor); o servidor ainda tenta de hora em hora
+ * (lib/ml/vigia-agenda-full.ts). Abriu data: push crítico no celular.
  */
 const ROTULO: Record<VigiaAgendaFull["estado"], { texto: string; cor: string }> = {
   aguardando: { texto: "Consultando…", cor: "var(--muted)" },
@@ -19,18 +19,24 @@ const ROTULO: Record<VigiaAgendaFull["estado"], { texto: string; cor: string }> 
   indefinido: { texto: "Resposta do ML sem agenda legível", cor: "var(--warning)" },
 };
 
-/** O que o iPhone viu (script Vigia Full). É a fonte que vale: o ML recusa o servidor. */
-const ROTULO_IPHONE: Record<string, { texto: string; cor: string }> = {
-  datas: { texto: "iPhone viu DATA LIBERADA — agende já", cor: "var(--green)" },
-  sem_datas: { texto: "iPhone: ainda sem data", cor: "var(--muted)" },
-  login: { texto: "iPhone: precisa entrar no ML no Scriptable", cor: "var(--red-text)" },
-  indefinido: { texto: "iPhone: não conseguiu ler a página", cor: "var(--warning)" },
+/**
+ * O que a extensão do Chrome viu (pasta extensao-vigia-full). É a fonte que
+ * vale: o ML recusa a consulta do servidor. O campo no banco ainda se chama
+ * `iphone` (veio da tentativa com o Scriptable, que o ML bloqueou).
+ */
+const ROTULO_CHROME: Record<string, { texto: string; cor: string }> = {
+  datas: { texto: "DATA LIBERADA — agende já", cor: "var(--green)" },
+  sem_datas: { texto: "Ainda sem data", cor: "var(--muted)" },
+  login: { texto: "Entre no Mercado Livre no Chrome do PC", cor: "var(--red-text)" },
+  indefinido: { texto: "A extensão não conseguiu ler a página", cor: "var(--warning)" },
 };
 
-/** O passo a passo e o script da vigia pelo iPhone. */
-function VigiaPeloIphone() {
+const PASTA_DA_EXTENSAO = "zxp-market\\extensao-vigia-full";
+
+/** O passo a passo da extensão do Chrome e o endereço que ela usa. */
+function VigiaPeloChrome() {
   const [aberto, setAberto] = useState(false);
-  const [script, setScript] = useState<string | null>(null);
+  const [endereco, setEndereco] = useState<string | null>(null);
   const [ocupado, setOcupado] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const gerar = async () => {
@@ -38,9 +44,9 @@ function VigiaPeloIphone() {
     setMsg(null);
     try {
       const r = await authedFetch("/api/widget/token?uso=vigia", { method: "POST" });
-      const j = (await r.json().catch(() => ({}))) as { script?: string };
-      if (!r.ok || !j.script) throw new Error();
-      setScript(j.script);
+      const j = (await r.json().catch(() => ({}))) as { url?: string };
+      if (!r.ok || !j.url) throw new Error();
+      setEndereco(j.url);
     } catch {
       setMsg("Não consegui gerar agora. Tente de novo.");
     } finally {
@@ -48,32 +54,35 @@ function VigiaPeloIphone() {
     }
   };
   const copiar = async () => {
-    if (!script) return;
-    try { await navigator.clipboard.writeText(script); setMsg("Script copiado. Agora cole no Scriptable."); }
-    catch { setMsg("Não consegui copiar sozinho: toque no texto, selecione tudo e copie."); }
+    if (!endereco) return;
+    try { await navigator.clipboard.writeText(endereco); setMsg("Endereço copiado. Agora cole na extensão."); }
+    catch { setMsg("Não consegui copiar sozinho: clique no texto, selecione tudo e copie."); }
   };
   return (
     <div style={{ border: "1px solid var(--border)", borderRadius: 10, marginBottom: 12 }}>
       <button type="button" aria-expanded={aberto} onClick={() => setAberto((a) => !a)}
         style={{ width: "100%", display: "flex", justifyContent: "space-between", background: "none", border: 0, color: "var(--text)", font: "inherit", fontWeight: 700, padding: "10px 12px", cursor: "pointer", textAlign: "left" }}>
-        <span>Vigiar pelo iPhone (grátis) — funciona com o computador desligado</span><span aria-hidden>{aberto ? "▾" : "▸"}</span>
+        <span>Ligar a vigia no Chrome do PC (grátis) — o push chega no celular</span><span aria-hidden>{aberto ? "▾" : "▸"}</span>
       </button>
       {aberto && (
         <div style={{ padding: "0 12px 12px", display: "flex", flexDirection: "column", gap: 8, fontSize: ".88rem" }}>
-          <p style={{ margin: 0, color: "var(--muted)" }}>O ML só mostra a agenda pra quem está logado no navegador, então quem olha é o seu iPhone, pelo app grátis Scriptable.</p>
+          <p style={{ margin: 0, color: "var(--muted)" }}>
+            O ML só mostra a agenda pra quem está logado no navegador. Uma extensão no seu Chrome confere a cada 2 minutos, em segundo plano,
+            e quando abrir data o app manda push pro celular. Basta o PC ligado com o Chrome aberto (pode minimizar e apagar a tela; não pode suspender).
+          </p>
           <ol style={{ margin: 0, paddingLeft: 20, lineHeight: 1.55 }}>
-            <li>Toque em <b>Gerar script da vigia</b> e depois em <b>Copiar script</b>.</li>
-            <li>No Scriptable, toque em <b>+</b>, cole, dê o nome <b>Vigia Full</b> e salve.</li>
-            <li>Rode o script uma vez (toque nele). Vai abrir o Mercado Livre: <b>entre na sua conta</b> e feche a janela.</li>
-            <li>Adicione um widget <b>Scriptable</b> na tela inicial e escolha <b>Vigia Full</b>. É ele que confere a cada poucos minutos.</li>
-            <li>Permita notificações do Scriptable (Ajustes › Notificações › Scriptable).</li>
+            <li>No Chrome do PC, abra <b>chrome://extensions</b> e ligue o <b>Modo do desenvolvedor</b> (canto de cima, à direita).</li>
+            <li>Clique em <b>Carregar sem compactação</b> e escolha a pasta <code>{PASTA_DA_EXTENSAO}</code>.</li>
+            <li>Aqui, clique em <b>Gerar endereço da vigia</b> e em <b>Copiar</b>.</li>
+            <li>Clique no ícone da extensão (quebra-cabeça › <b>ZXP — Vigia da agenda do Full</b>), cole o endereço, <b>Salvar</b> e aceite a permissão.</li>
+            <li>Confira se está logado no Mercado Livre nesse Chrome. A extensão mostra o estado de cada envio.</li>
           </ol>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button type="button" className="btn btn-primary btn-sm" onClick={gerar} disabled={ocupado}>{script ? "Gerar outro (revoga o anterior)" : "Gerar script da vigia"}</button>
-            {script && <button type="button" className="btn btn-ghost btn-sm" onClick={copiar}>Copiar script</button>}
+            <button type="button" className="btn btn-primary btn-sm" onClick={gerar} disabled={ocupado}>{endereco ? "Gerar outro (revoga o anterior)" : "Gerar endereço da vigia"}</button>
+            {endereco && <button type="button" className="btn btn-ghost btn-sm" onClick={copiar}>Copiar</button>}
           </div>
-          {script && <textarea readOnly value={script} rows={4} aria-label="Script da vigia" onFocus={(e) => e.currentTarget.select()}
-            style={{ width: "100%", boxSizing: "border-box", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--muted)", font: ".72rem/1.4 ui-monospace, monospace", padding: 10 }} />}
+          {endereco && <input readOnly value={endereco} aria-label="Endereço da vigia" onFocus={(e) => e.currentTarget.select()}
+            style={{ width: "100%", boxSizing: "border-box", background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--muted)", font: ".75rem/1.4 ui-monospace, monospace", padding: 10 }} />}
           {msg && <div role="status" style={{ color: "var(--green)", fontSize: ".82rem" }}>{msg}</div>}
         </div>
       )}
@@ -117,10 +126,10 @@ export default function VigiaAgendaFull({ podeEditar }: { podeEditar: boolean })
     <section className="panel" aria-labelledby="vigia-agenda-titulo" style={{ marginBottom: 16 }}>
       <div className="panel-head">
         <span className="panel-title" id="vigia-agenda-titulo">Avise quando abrir data no Full</span>
-        <span className="panel-sub">o app confere o envio a cada ~5 min e manda push quando o ML liberar agenda</span>
+        <span className="panel-sub">a extensão no Chrome do PC confere a cada 2 min e o app manda push quando o ML liberar agenda</span>
       </div>
 
-      <VigiaPeloIphone />
+      <VigiaPeloChrome />
 
       {podeEditar && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
@@ -139,8 +148,8 @@ export default function VigiaAgendaFull({ podeEditar }: { podeEditar: boolean })
       {vigias && vigias.length > 0 && (
         <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
           {vigias.map((v) => {
-            // Com o iPhone vigiando, é ele que vale (o ML recusa a consulta do servidor).
-            const iph = v.iphone ? ROTULO_IPHONE[v.iphone.estado] : null;
+            // Com a extensão vigiando, é ela que vale (o ML recusa a consulta do servidor).
+            const iph = v.iphone ? ROTULO_CHROME[v.iphone.estado] : null;
             const r = iph ?? ROTULO[v.estado] ?? ROTULO.indefinido;
             return (
               <li key={v.inboundId} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "10px 12px", display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
@@ -150,7 +159,7 @@ export default function VigiaAgendaFull({ podeEditar }: { podeEditar: boolean })
                     {r.texto}{!iph && v.estado === "datas_liberadas" && v.datas.length ? `: ${datasPorExtenso(v.datas)}` : ""}
                   </div>
                   <div style={{ color: "var(--muted)", fontSize: ".75rem" }}>
-                    {v.iphone ? `iPhone conferiu ${hora(v.iphone.em)} · ` : ""}servidor {hora(v.ultimaConsulta)}{v.consultas ? ` · ${v.consultas} consultas` : ""}{v.avisadoEm ? ` · avisado ${hora(v.avisadoEm)}` : ""}
+                    {v.iphone ? `Chrome conferiu ${hora(v.iphone.em)} · ` : ""}servidor {hora(v.ultimaConsulta)}{v.consultas ? ` · ${v.consultas} consultas` : ""}{v.avisadoEm ? ` · avisado ${hora(v.avisadoEm)}` : ""}
                   </div>
                   {v.detalhe && <div style={{ color: "var(--muted)", fontSize: ".72rem", fontFamily: "ui-monospace, monospace", overflowWrap: "anywhere" }}>ML: {v.detalhe}</div>}
                 </div>

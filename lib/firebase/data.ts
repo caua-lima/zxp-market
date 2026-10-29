@@ -1229,7 +1229,7 @@ export type VigiaAgendaFull = {
   detalhe: string;
   avisadoEm?: number;
   consultas?: number;
-  /** O que o iPhone (script Vigia Full, logado no ML) viu na última vez. */
+  /** O que a extensão do Chrome (logada no ML) viu na última vez. O nome ficou da tentativa com o iPhone. */
   iphone?: { estado: "datas" | "sem_datas" | "login" | "indefinido"; em: number; trecho?: string };
 };
 
