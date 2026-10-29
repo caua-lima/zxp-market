@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Vigia da agenda do Full</title>
+<style>
+  body { width: 340px; margin: 0; padding: 14px; font: 13px/1.45 system-ui, sans-serif; background: #15150f; color: #f6f3e8; }
+  h1 { font-size: 15px; margin: 0 0 4px; color: #F4B942; }
+  p { margin: 0 0 10px; color: #b9b5a6; }
+  label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: #b9b5a6; margin-bottom: 4px; }
+  input { width: 100%; box-sizing: border-box; background: #2d2c22; border: 1px solid #3b392a; border-radius: 8px; color: #f6f3e8; padding: 8px 10px; font: inherit; }
+  .acoes { display: flex; gap: 8px; margin: 10px 0; }
+  button { border: 0; border-radius: 8px; padding: 8px 12px; font: inherit; font-weight: 700; cursor: pointer; }
+  .pri { background: #F4B942; color: #15150f; }
+  .sec { background: #2d2c22; color: #f6f3e8; border: 1px solid #3b392a; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { padding: 6px 0; border-top: 1px solid #3b392a; display: flex; justify-content: space-between; gap: 8px; }
+  .datas { color: #36B37E; font-weight: 800; }
+  .login, .erro { color: #EC7B69; }
+  .mudo { color: #8f8c7d; font-size: 11px; }
+</style>
+</head>
+<body>
+  <h1>Vigia da agenda do Full</h1>
+  <p>Confere a cada 2 min, com o seu login do ML neste Chrome, e avisa quando abrir data. Funciona com o Chrome aberto.</p>
+  <label for="endereco">Endereço da vigia (copie no app › aba Full)</label>
+  <input id="endereco" type="url" placeholder="https://…/api/widget/vigias?t=…" autocomplete="off">
+  <div class="acoes">
+    <button id="salvar" class="pri">Salvar</button>
+    <button id="agora" class="sec">Conferir agora</button>
+  </div>
+  <div id="msg" class="mudo"></div>
+  <ul id="lista"></ul>
+  <div id="quando" class="mudo"></div>
+  <script src="popup.js" type="module"></script>
+</body>
+</html>
