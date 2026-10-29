@@ -23,6 +23,8 @@ export type NotificationEventType =
   | "stock_low"
   /** O ML abriu data pra agendar um envio pro Full que estava sem agenda (vigia em lib/ml/vigia-agenda-full.ts). */
   | "full_agenda"
+  /** "Ainda sem data": sinal discreto de que a vigia do Full está viva (a cada ~5 min, um substitui o outro). */
+  | "full_agenda_status"
   /** Conquista: meta de faturamento batida, subida de nível no ML. */
   | "milestone"
   /** Push de teste: conteúdo sintético, só do próprio aparelho, com selo TESTE. Nunca é um aviso operacional. */
@@ -337,6 +339,7 @@ export const NOTIFICATION_TYPE_META: Record<
   test: { label: "Teste", severity: "info", group: "sistema" },
   stock_low: { label: "Full no mínimo (agendar coleta)", severity: "warning", group: "alertas" },
   full_agenda: { label: "Agenda do Full liberada", severity: "success", group: "alertas" },
+  full_agenda_status: { label: "Vigia do Full: ainda sem data", severity: "info", group: "sistema" },
   /**
    * Conquista tem tipo próprio, e não "system", porque as duas coisas pedem
    * tratamento oposto: aviso de sistema é ruído técnico que o usuário

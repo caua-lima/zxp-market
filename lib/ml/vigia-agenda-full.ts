@@ -3,7 +3,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { fetchML } from "@/lib/ml/fetch-ml";
 import { getMlAccessToken } from "@/app/api/ml/token";
-import { criarEventoEPublicar, especDoPush } from "@/lib/notification-dispatch";
+import { criarEventoEPublicar, enviarEPersistirEntrega, especDoPush } from "@/lib/notification-dispatch";
 import { buildPayload } from "@/lib/ml/notificar-venda";
 import { datasPorExtenso, lerAgenda, type LeituraDaAgenda, type RespostaDoInbound } from "@/lib/domain/agenda-full";
 
@@ -73,7 +73,50 @@ export async function avisarAgendaLiberada(id: string, datas: string[], marca = 
   return enviados;
 }
 
-export type ResumoDaVigia = { vigias: number; consultadas: number; avisos: number; semToken: boolean };
+/** De quanto em quanto tempo sai o "ainda sem data" (o servidor ignora repetições dentro da mesma janela). */
+export const JANELA_DO_PULSO_MS = 5 * 60_000;
+
+/**
+ * "Ainda sem data": o sinal de vida da vigia, pedido pela extensão do Chrome.
+ * Leve de propósito: só o push (sem evento na Central), a MESMA tag (um
+ * substitui o outro, nunca empilha), validade curta e sem furar o horário
+ * silencioso. O id por janela de 5 min faz a repetição dentro dela não sair.
+ */
+export async function avisarAindaSemData(ids: string[], dono: string, agora = Date.now()): Promise<number> {
+  const janela = Math.floor(agora / JANELA_DO_PULSO_MS);
+  const pushId = `full_agenda_status:${dono.replace(/[^A-Za-z0-9_-]/g, "_")}:${janela}`;
+  const hora = new Date(agora).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+  const titulo = "Vigia do Full: ainda sem data";
+  const corpo = `${ids.map((i) => `#${i}`).join(", ")} · conferido às ${hora}. Quando abrir data, chega outro aviso.`;
+  return enviarEPersistirEntrega(pushId, "full_agenda_status", {
+    ...buildPayload(pushId, "full_agenda_status", titulo, corpo, { orderId: "", tag: "full-agenda-status" }),
+    deepLink: "/?tab=full",
+  }, false, { validadeMs: JANELA_DO_PULSO_MS, atualizaEvento: false, origem: "vigia-extensao" });
+}
+
+/** O mesmo aviso (tipo, prioridade e caminho), marcado como teste: prova que o celular recebe. */
+export async function testarAvisoDaAgenda(agora = Date.now()): Promise<number> {
+  const dedupeKey = `full_agenda:teste:${agora}`;
+  const titulo = "Teste · Agenda do Full";
+  const corpo = "Se isto chegou no celular, o aviso de data liberada também chega. Nada pra fazer agora.";
+  const { enviados } = await criarEventoEPublicar({
+    type: "full_agenda",
+    severity: "info",
+    entityType: "system",
+    entityId: "teste",
+    dedupeKey,
+    title: titulo,
+    body: corpo,
+    financialState: "confirmed",
+    deepLink: "/?tab=full",
+  }, especDoPush(dedupeKey, "full_agenda", {
+    ...buildPayload(dedupeKey, "full_agenda", titulo, corpo, { orderId: "", tag: "full-agenda-teste" }),
+    deepLink: "/?tab=full",
+  }));
+  return enviados;
+}
+
+export type ResumoDaVigia ={ vigias: number; consultadas: number; avisos: number; semToken: boolean };
 
 /** Uma passagem: consulta os envios vigiados (empresa do contexto) e avisa o que liberou. */
 export async function vigiarAgendasFull(opcoes: { agora?: number; buscar?: Buscar; token?: string | null } = {}): Promise<ResumoDaVigia> {

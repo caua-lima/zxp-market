@@ -112,6 +112,8 @@ const TYPE_TO_TOGGLE: Record<NotificationEventType, NotificationTogglesKey | nul
   stock_low: "stock_low",
   // Pedido explícito de quem ligou a vigia (aba Full): não há toggle que o esconda.
   full_agenda: null,
+  // O sinal de vida da vigia: sem toggle (desliga na extensão), mas NÃO fura o horário silencioso.
+  full_agenda_status: null,
   milestone: "milestone",
   // Teste é pedido explícito de quem está diante do aparelho: nenhum toggle o esconde.
   test: null,

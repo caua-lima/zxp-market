@@ -104,7 +104,7 @@ export function severidadePublica(type: string, severidade: unknown): Notificati
  * texto original é mantido — desde que a rede de segurança confirme que não sobrou
  * dinheiro nele (o título de uma tarefa é texto livre: "cobrar R$ 300").
  */
-const TIPOS_COM_TEXTO_PROPRIO: ReadonlySet<string> = new Set(["task_assigned", "task_due", "stock_low", "full_agenda"]);
+const TIPOS_COM_TEXTO_PROPRIO: ReadonlySet<string> = new Set(["task_assigned", "task_due", "stock_low", "full_agenda", "full_agenda_status"]);
 
 function textoSemFinanceiro(
   type: NotificationEventType,
@@ -139,6 +139,8 @@ function textoSemFinanceiro(
       return { title: "Estoque baixo", body: alvo };
     case "full_agenda":
       return { title: "Agenda do Full liberada", body: "Abra o Mercado Livre e agende o envio" };
+    case "full_agenda_status":
+      return { title: "Vigia do Full: ainda sem data", body: "A vigia está conferindo" };
     case "sync_warning":
       return { title: "Aviso de sincronização", body: "Confira a central de avisos" };
     case "milestone":
