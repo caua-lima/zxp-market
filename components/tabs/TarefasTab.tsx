@@ -19,6 +19,8 @@ import TelaHeader from "@/components/TelaHeader";
 import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
 import { fonteCarregada, FONTE_CARREGANDO } from "@/lib/domain/estado-fonte";
 import { gravarChaveApp, lerChaveApp } from "@/lib/storage";
+import SemanaDeTarefas from "@/components/tabs/tarefas/SemanaDeTarefas";
+import { isoLocal, tarefaVisivel } from "@/lib/domain/semana-tarefas";
 
 /**
  * Só e-mail e nome — o que o seletor de responsável precisa. Vem de
@@ -63,23 +65,29 @@ function fmtData(iso?: string): string {
 const isAtrasada = isTaskAtrasada;
 
 type Filtro = "todas" | "pra-mim" | "criei-eu";
+type Vista = "semana" | "quadro" | "lista";
 
 export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openTaskId?: string; chaveDeNavegacao?: number } = {}) {
-  const { email } = useAccess();
+  const { email, isOwner } = useAccess();
   const [primeiraPagina, setTasks] = useState<Task[]>([]);
   /** O quadro bateu o teto de leitura (S22 da auditoria SaaS) — tarefa mais antiga pode estar faltando. */
   const [tasksTruncadas, setTasksTruncadas] = useState(false);
   // Paginação de verdade (S22): as tarefas mais antigas vêm sob demanda.
-  const maisAntigas = useMaisAntigos(primeiraPagina, tasksTruncadas, (t) => t.createdAt, carregarTarefasAnteriores);
+  // Página seguinte só pro dono: ela lê o quadro inteiro, e a regra só deixa o dono fazer isso.
+  const maisAntigas = useMaisAntigos(primeiraPagina, isOwner && tasksTruncadas, (t) => t.createdAt, carregarTarefasAnteriores);
   const tasks = maisAntigas.itens;
   const [pessoas, setPessoas] = useState<PessoaDiretorio[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<Filtro>("todas");
   // Etapa 6: quadro OU lista (a lista é a alternativa ao arrastar — teclado,
   // leitor de tela, celular). A escolha fica por pessoa+empresa (S23).
-  const [vista, setVista] = useState<"quadro" | "lista">(() => (lerChaveApp("tarefas:vista") === "lista" ? "lista" : "quadro"));
+  // A semana (o desenho do dono) é a vista padrão; quadro e lista continuam a um clique.
+  const [vista, setVista] = useState<Vista>(() => {
+    const salva = lerChaveApp("tarefas:vista");
+    return salva === "lista" || salva === "quadro" ? salva : "semana";
+  });
   const [falha, setFalha] = useState<string | null>(null);
-  function trocarVista(v: "quadro" | "lista") {
+  function trocarVista(v: Vista) {
     setVista(v);
     gravarChaveApp("tarefas:vista", v);
   }
@@ -87,7 +95,8 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
   const [prioridadeFiltro, setPrioridadeFiltro] = useState<TaskPriority | "">("");
   const [somenteAtrasadas, setSomenteAtrasadas] = useState(false);
   const [editTask, setEditTask] = useState<Task | null>(null);
-  const [openNew, setOpenNew] = useState(false);
+  /** Nova tarefa aberta (com o prazo do dia em que se clicou "＋", quando foi na semana). */
+  const [nova, setNova] = useState<{ prazo?: string } | null>(null);
 
   // Deep link de uma notificação de tarefa (?tab=tarefas&task=...) — abre o
   // modal de edição assim que a tarefa aparecer na lista carregada. Mesmo
@@ -115,13 +124,18 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
   useDeepLinkConsumido(openTaskId, chaveDeNavegacao, !!openTaskId && tasks.some((x) => x.id === openTaskId), abrirTarefaDoLink);
 
   useEffect(() => {
-    const u1 = watchTasks((ts, truncado) => { setTasks(ts); setTasksTruncadas(truncado); setLoading(false); });
+    if (!email) return;
+    // O dono lê o quadro todo; o resto do time só as suas (é o que a regra deixa).
+    return watchTasks((ts, truncado) => { setTasks(ts); setTasksTruncadas(truncado); setLoading(false); }, { email, todas: isOwner });
+  }, [email, isOwner]);
+
+  useEffect(() => {
     let vivo = true;
     authedFetch("/api/acesso/diretorio")
       .then((r) => (r.ok ? r.json() : { pessoas: [] }))
       .then((j) => { if (vivo) setPessoas(Array.isArray(j?.pessoas) ? j.pessoas : []); })
       .catch(() => { /* seletor de responsável fica vazio; o resto da aba segue normal */ });
-    return () => { u1(); vivo = false; };
+    return () => { vivo = false; };
   }, []);
 
   /**
@@ -139,27 +153,30 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
    * Com o dia num estado que vira à meia-noite, a impureza sai do render e
    * a lista recalcula quando o dia muda — que é quando ela deveria mudar.
    */
-  const [hoje, setHoje] = useState(() => new Date().toISOString().slice(0, 10));
+  const [hoje, setHoje] = useState(() => isoLocal(new Date()));
 
   useEffect(() => {
     // Confere de minuto em minuto. A alternativa — um timeout calculado até
     // a meia-noite — erra quando a máquina dorme e acorda no dia seguinte.
     const t = setInterval(() => {
-      const d = new Date().toISOString().slice(0, 10);
+      const d = isoLocal(new Date());
       setHoje((atual) => (atual === d ? atual : d));
     }, 60_000);
     return () => clearInterval(t);
   }, []);
 
+  /** O que esta pessoa pode ver: o dono, tudo; o resto, as suas (a regra do banco garante o mesmo). */
+  const minhasVisiveis = useMemo(() => tasks.filter((t) => tarefaVisivel(t, email, isOwner)), [tasks, email, isOwner]);
+
   const visiveis = useMemo(() => {
-    let lista = tasks;
+    let lista = minhasVisiveis;
     if (filtro === "pra-mim") lista = lista.filter((t) => t.assignedTo === email);
     else if (filtro === "criei-eu") lista = lista.filter((t) => t.createdBy === email);
     if (responsavelFiltro) lista = lista.filter((t) => t.assignedTo === responsavelFiltro);
     if (prioridadeFiltro) lista = lista.filter((t) => prioridadeDe(t) === prioridadeFiltro);
     if (somenteAtrasadas) lista = lista.filter((t) => !!t.dueDate && t.status !== "done" && t.dueDate < hoje);
     return lista;
-  }, [tasks, filtro, email, responsavelFiltro, prioridadeFiltro, somenteAtrasadas, hoje]);
+  }, [minhasVisiveis, filtro, email, responsavelFiltro, prioridadeFiltro, somenteAtrasadas, hoje]);
 
   const porColuna = (status: TaskStatus) => visiveis.filter((t) => t.status === status);
 
@@ -182,18 +199,31 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
       .catch((err) => setFalha(`Não consegui mover "${t.title}": ${mensagemDeErroDeSalvamento(err)}`));
   }
 
+  /** Arrastou pra outro dia da semana (ou pra "sem prazo"): muda o prazo; se estava concluída, reabre. */
+  async function moverParaDia(t: Task, dia: string | null) {
+    const reabre = t.status === "done";
+    const evento: TaskAtividade = {
+      tipo: "movida",
+      por: email, em: Date.now(),
+      detalhe: `prazo ${t.dueDate ? fmtData(t.dueDate) : "sem prazo"} → ${dia ? fmtData(dia) : "sem prazo"}${reabre ? " (reaberta)" : ""}`,
+    };
+    setFalha(null);
+    await upsertTask({ ...t, dueDate: dia ?? undefined, status: reabre ? "todo" : t.status, lastEditedBy: email, atividade: appendAtividade(t.atividade, evento) })
+      .catch((err) => setFalha(`Não consegui mudar o prazo de "${t.title}": ${mensagemDeErroDeSalvamento(err)}`));
+  }
+
   async function excluir(t: Task) {
     if (!confirm(`Excluir a tarefa "${t.title}"?`)) return;
     setFalha(null);
     await deleteTask(t.id).catch((err) => setFalha(`Não consegui excluir "${t.title}": ${mensagemDeErroDeSalvamento(err)}`));
   }
 
-  const minhas = tasks.filter((t) => t.assignedTo === email).length;
-  const criadas = tasks.filter((t) => t.createdBy === email).length;
-  const abertas = tasks.filter((t) => t.status !== "done").length;
+  const minhas = minhasVisiveis.filter((t) => t.assignedTo === email).length;
+  const criadas = minhasVisiveis.filter((t) => t.createdBy === email).length;
+  const abertas = minhasVisiveis.filter((t) => t.status !== "done").length;
   // Passou do prazo e nao foi concluida. Usa `hoje` (estado que vira a
   // meia-noite) e nao `new Date()`, pelo mesmo motivo do memo dos visiveis.
-  const atrasadas = tasks.filter((t) => !!t.dueDate && t.status !== "done" && t.dueDate < hoje).length;
+  const atrasadas = minhasVisiveis.filter((t) => !!t.dueDate && t.status !== "done" && t.dueDate < hoje).length;
 
   // Distância mínima antes de considerar arrasto (não clique) — sem isso, um
   // toque simples pra abrir "Editar" já dispararia um drag. PointerSensor
@@ -218,7 +248,7 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
     <div className="dash">
       <TelaHeader
         titulo="Tarefas"
-        subtitulo={`${abertas} em aberto de ${tasks.length}`}
+        subtitulo={isOwner ? `${abertas} em aberto de ${minhasVisiveis.length} · todas do time` : `${abertas} em aberto · só as suas`}
         estado={resumirEstadoDaTela({
           fontes: { tarefas: loading ? FONTE_CARREGANDO : fonteCarregada() },
           essenciais: ["tarefas"],
@@ -231,7 +261,7 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
             efeito: "indefinido" as const,
           }] : [],
         })}
-        acao={{ rotulo: "＋ Nova Tarefa", onClick: () => setOpenNew(true) }}
+        acao={{ rotulo: "＋ Nova Tarefa", onClick: () => setNova({}) }}
       />
 
       <AvisoMaisAntigos
@@ -246,22 +276,24 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
       />
 
       <div className="kpi-grid">
-        <div className="kpi k-acc"><div className="k-lbl">Em aberto</div><div className="k-val">{abertas}</div><div className="k-sub">{tasks.length} no total</div></div>
+        <div className="kpi k-acc"><div className="k-lbl">Em aberto</div><div className="k-val">{abertas}</div><div className="k-sub">{minhasVisiveis.length} no total</div></div>
         <div className="kpi k-warn"><div className="k-lbl">Pra mim</div><div className="k-val" style={{ color: "var(--yellow)" }}>{minhas}</div><div className="k-sub">atribuídas a você</div></div>
         <div className="kpi k-pos"><div className="k-lbl">Criadas por mim</div><div className="k-val" style={{ color: "var(--green)" }}>{criadas}</div></div>
       </div>
 
       <div className="seg" style={{ alignSelf: "flex-start" }}>
-        <button type="button" className={`seg-btn ${filtro === "todas" ? "active" : ""}`} onClick={() => setFiltro("todas")}>Todas</button>
+        <button type="button" className={`seg-btn ${filtro === "todas" ? "active" : ""}`} onClick={() => setFiltro("todas")}>{isOwner ? "Todas" : "Todas as minhas"}</button>
         <button type="button" className={`seg-btn ${filtro === "pra-mim" ? "active" : ""}`} onClick={() => setFiltro("pra-mim")}>Pra mim</button>
         <button type="button" className={`seg-btn ${filtro === "criei-eu" ? "active" : ""}`} onClick={() => setFiltro("criei-eu")}>Criei eu</button>
       </div>
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <select value={responsavelFiltro} onChange={(e) => setResponsavelFiltro(e.target.value)} aria-label="Filtrar por responsável" style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px", color: "var(--text)", fontSize: ".82rem", outline: "none" }}>
-          <option value="">Todos os responsáveis</option>
-          {pessoas.map((p) => <option key={p.email} value={p.email}>{p.displayName || p.email}</option>)}
-        </select>
+        {isOwner && (
+          <select value={responsavelFiltro} onChange={(e) => setResponsavelFiltro(e.target.value)} aria-label="Filtrar por responsável" style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px", color: "var(--text)", fontSize: ".82rem", outline: "none" }}>
+            <option value="">Todos os responsáveis</option>
+            {pessoas.map((p) => <option key={p.email} value={p.email}>{p.displayName || p.email}</option>)}
+          </select>
+        )}
         <select value={prioridadeFiltro} onChange={(e) => setPrioridadeFiltro(e.target.value as TaskPriority | "")} aria-label="Filtrar por prioridade" style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px", color: "var(--text)", fontSize: ".82rem", outline: "none" }}>
           <option value="">Todas as prioridades</option>
           {(["critica", "alta", "media", "baixa"] as const).map((p) => <option key={p} value={p}>{PRIORIDADE_META[p].label}</option>)}
@@ -282,6 +314,7 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
       </div>
 
       <div className="seg" role="group" aria-label="Como ver as tarefas" style={{ alignSelf: "flex-start" }}>
+        <button type="button" className={`seg-btn ${vista === "semana" ? "active" : ""}`} aria-pressed={vista === "semana"} onClick={() => trocarVista("semana")}>Semana</button>
         <button type="button" className={`seg-btn ${vista === "quadro" ? "active" : ""}`} aria-pressed={vista === "quadro"} onClick={() => trocarVista("quadro")}>Quadro</button>
         <button type="button" className={`seg-btn ${vista === "lista" ? "active" : ""}`} aria-pressed={vista === "lista"} onClick={() => trocarVista("lista")}>Lista</button>
       </div>
@@ -290,6 +323,17 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
 
       {loading ? (
         <div className="empty-state">Carregando…</div>
+      ) : vista === "semana" ? (
+        <SemanaDeTarefas
+          tarefas={visiveis}
+          hoje={hoje}
+          mostrarResponsavel={isOwner}
+          onMoverParaDia={moverParaDia}
+          onConcluir={(t) => mover(t, "done")}
+          onReabrir={(t) => mover(t, "todo")}
+          onEditar={setEditTask}
+          onNova={(prazo) => setNova({ prazo })}
+        />
       ) : vista === "lista" ? (
         <ListaDeTarefas
           tarefas={visiveis}
@@ -328,8 +372,8 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
         </DndContext>
       )}
 
-      {openNew && (
-        <TaskModal pessoas={pessoas} minhaEmail={email} task={null} onClose={() => setOpenNew(false)} />
+      {nova && (
+        <TaskModal pessoas={pessoas} minhaEmail={email} task={null} prazoInicial={nova.prazo} onClose={() => setNova(null)} />
       )}
       {editTask && (
         <TaskModal pessoas={pessoas} minhaEmail={email} task={editTask} onClose={() => setEditTask(null)} />
@@ -540,16 +584,18 @@ function TaskCard({ task, onMover, onEditar, onExcluir, arrastavel, arrastando, 
   );
 }
 
-function TaskModal({ pessoas, minhaEmail, task, onClose }: {
+function TaskModal({ pessoas, minhaEmail, task, prazoInicial, onClose }: {
   pessoas: PessoaDiretorio[];
   minhaEmail: string;
   task: Task | null;
+  /** "＋" num dia da semana: a tarefa nova já nasce com esse prazo. */
+  prazoInicial?: string;
   onClose: () => void;
 }) {
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
   const [assignedTo, setAssignedTo] = useState(task?.assignedTo ?? minhaEmail);
-  const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
+  const [dueDate, setDueDate] = useState(task?.dueDate ?? prazoInicial ?? "");
   const [status, setStatus] = useState<TaskStatus>(task?.status ?? "todo");
   const [priority, setPriority] = useState<TaskPriority>(task ? prioridadeDe(task) : "media");
   const [saving, setSaving] = useState(false);
