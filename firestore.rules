@@ -351,7 +351,16 @@ service cloud.firestore {
     // ponto do quadro, um atribui tarefa pro outro e vice-versa.
     match /tarefas/{docId} {
       // Member não participa da operação — não lê nem escreve tarefa.
-      allow read, write: if veOperacao();
+      // O dono vê e mexe em todas. O resto do time, só nas SUAS: atribuídas a
+      // si ou criadas por si (lib/domain/semana-tarefas.ts › tarefaVisivel).
+      // A tela já filtra; aqui é o que de fato impede ler a tarefa do outro
+      // direto pelo SDK. Campo ausente (tarefa antiga sem createdBy) dá erro
+      // na comparação e cai no próximo "||" — nunca libera por omissão.
+      allow read, update, delete: if veOperacao() && (isOwner()
+        || resource.data.assignedTo == request.auth.token.email
+        || resource.data.createdBy == request.auth.token.email);
+      allow create: if veOperacao() && (isOwner()
+        || request.resource.data.createdBy == request.auth.token.email);
     }
 
     // Vendas ao vivo em TEMPO REAL: o sinal que o webhook publica a cada venda
@@ -825,7 +834,13 @@ service cloud.firestore {
         allow delete: if escritaLiberadaT() && (false);
       }
       match /tarefas/{docId} {
-        allow read: if veOperacaoT(); allow write: if escritaLiberadaT() && (veOperacaoT());
+        allow read: if veOperacaoT() && (isOwnerT()
+          || resource.data.assignedTo == request.auth.token.email
+          || resource.data.createdBy == request.auth.token.email); allow update, delete: if escritaLiberadaT() && (veOperacaoT() && (isOwnerT()
+          || resource.data.assignedTo == request.auth.token.email
+          || resource.data.createdBy == request.auth.token.email));
+        allow create: if escritaLiberadaT() && (veOperacaoT() && (isOwnerT()
+          || request.resource.data.createdBy == request.auth.token.email));
       }
       match /ao_vivo/{docId} {
         allow read: if isAuthorizedT();
