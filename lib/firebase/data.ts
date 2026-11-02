@@ -905,10 +905,16 @@ export async function saveFinanceiroSaidas(saidas: SaidaFin[]): Promise<void> {
 }
 
 // ── Tarefas (Kanban) ────────────────────────────────────────────
-// Coleção compartilhada, sem dono: owner e colaborador leem e escrevem igual
-// (ver firestore.rules) — é o que permite um atribuir tarefa pro outro.
+// Coleção da empresa. O dono lê e mexe em todas; o resto do time só nas SUAS
+// (atribuídas a si ou criadas por si) — ver firestore.rules e
+// lib/domain/semana-tarefas.ts › tarefaVisivel. Atribuir pro outro continua
+// valendo: quem criou acompanha a tarefa que pediu.
 const TASK_COL = "tarefas";
 const CHAVE_TAREFAS = "tarefas";
+const chaveDasMinhas = (email: string) => `${CHAVE_TAREFAS}:${email.toLowerCase()}`;
+
+/** De quem é o quadro: o dono vê todas; o resto, só as suas. */
+export type EscopoDasTarefas = { email: string; todas: boolean };
 
 /** Teto da leitura — ver `truncado` no callback de `watchTasks`. */
 export const LIMITE_TAREFAS = 500;
@@ -928,7 +934,25 @@ export function carregarTarefasAnteriores(
  * o teto é indistinguível de "é isso mesmo que existe" (achado S22 da
  * auditoria SaaS). Não é paginação real, é o aviso honesto de que ela falta.
  */
-export function watchTasks(cb: (tasks: Task[], truncado: boolean) => void): () => void {
+export function watchTasks(cb: (tasks: Task[], truncado: boolean) => void, escopo?: EscopoDasTarefas): () => void {
+  if (escopo && !escopo.todas) {
+    // Só as suas: duas consultas de igualdade (a regra não deixa ler o quadro
+    // inteiro). Sem orderBy de propósito — igualdade num campo só usa o índice
+    // automático, sem índice composto pra publicar; a ordem vem aqui.
+    const eu = escopo.email.toLowerCase();
+    return assinarComCache(chaveDasMinhas(eu), async () => {
+      const [pra, criei] = await Promise.all([
+        getDocs(query(sCol(TASK_COL), where("assignedTo", "==", eu), limit(LIMITE_TAREFAS))),
+        getDocs(query(sCol(TASK_COL), where("createdBy", "==", eu), limit(LIMITE_TAREFAS))),
+      ]);
+      const porId = new Map<string, Task>();
+      for (const d of [...pra.docs, ...criei.docs]) porId.set(d.id, d.data() as Task);
+      return {
+        itens: [...porId.values()].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)),
+        truncado: pra.docs.length >= LIMITE_TAREFAS || criei.docs.length >= LIMITE_TAREFAS,
+      };
+    }, (d) => cb(d.itens, d.truncado), { ttl: 60 * 1000 });
+  }
   // limit(500) — sem teto, essa era a última coleção do time (compartilhada,
   // vista por todo mundo) sem limit() num listener global. Achado ao investigar
   // a cota do Firestore esgotando TODO DIA: watchTasks roda em DOIS lugares ao
@@ -959,11 +983,14 @@ export async function upsertTask(task: Task) {
     updatedAt: Date.now(),
   }));
   invalidar(CHAVE_TAREFAS);
+  if (email) invalidar(chaveDasMinhas(email));
 }
 
 export async function deleteTask(id: string) {
   await deleteDoc(sDoc(TASK_COL, id));
   invalidar(CHAVE_TAREFAS);
+  const email = getCurrentUserEmail();
+  if (email) invalidar(chaveDasMinhas(email));
 }
 
 // ── Central de Atenção: alertas dispensados ────────────────────

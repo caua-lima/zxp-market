@@ -1651,7 +1651,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
   // Firebase Auth direto — quem entra por login e-mail/senha (criado pelo
   // owner na aba Acesso) nunca teve um displayName do Google, e a saudação
   // caía pro e-mail inteiro em vez do nome de verdade.
-  const { displayName } = useAccess();
+  const { displayName, email: meuEmail, isOwner } = useAccess();
   const primeiroNome = displayName.split(/[ @]/)[0];
   const mes = mesAtual();
 
@@ -1689,7 +1689,8 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
   const [melhoresDiasMetrics, setMelhoresDiasMetrics] = useState<MlMetrics | null>(null);
   const [estoqueForecast, setEstoqueForecast] = useState<{ vendas: Record<string, number>; dias: number; diasAtivos?: Record<string, number> } | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
-  useEffect(() => watchTasks(setTasks), []);
+  // Atrasadas do card: as do time todo pro dono; as suas pro resto (a regra só deixa ler essas).
+  useEffect(() => (meuEmail ? watchTasks(setTasks, { email: meuEmail, todas: isOwner }) : undefined), [meuEmail, isOwner]);
   const tarefasVencidas = useMemo(() => tasks.filter(isTaskAtrasada), [tasks]);
   const [mlAccount, setMlAccount] = useState<{ user?: { nickname?: string; site_id?: string } } | null>(null);
   const [diag, setDiag] = useState<string | null>(null);
