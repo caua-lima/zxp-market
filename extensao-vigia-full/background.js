@@ -36,12 +36,12 @@ const API_DATAS = "https://vendedores.mercadolivre.com.br/api/shipping/inbounds/
  * Não conseguiu perguntar as datas: "indefinido" (não toca, e a próxima volta tenta de novo).
  */
 /**
- * Quais formas de envio contam pro alarme. Padrão: só a COLETA A DOMICÍLIO
- * (pickup) — medido em 03/11/2026: "levar ao centro" (ftl, ftlp, supplier)
- * tinha horário em Araçariguama enquanto a coleta não tinha, e o que o dono usa
- * é a coleta. Na janelinha dá pra incluir as outras.
+ * Só a COLETA A DOMICÍLIO (pickup) conta pro alarme — pedido do dono: "o
+ * restante não importa". Medido em 03/11/2026: veículo particular,
+ * transportadora e fornecedor (ftl, ftlp, supplier) tinham horário em
+ * Araçariguama enquanto a coleta estava "Indisponível no momento".
  */
-export const FORMAS_PADRAO = ["pickup"];
+const FORMAS_DO_ALARME = ["pickup"];
 const NOME_DA_FORMA = { pickup: "coleta", ftl: "caminhão", ftlp: "transportadora", supplier: "fornecedor", spd: "paquetaria" };
 
 async function lerEnvio(id) {
@@ -49,7 +49,7 @@ async function lerEnvio(id) {
   const pagina = lerPaginaDeAgendamento(await r.text(), id, r.url);
   if (pagina.estado === "login" || pagina.estado === "indefinido") return { estado: pagina.estado, tipos: [], datas: [], trecho: "" };
 
-  const { formas = FORMAS_PADRAO } = await chrome.storage.local.get("formas");
+  const formas = FORMAS_DO_ALARME;
   // A coleta é sempre perguntada (a resposta diz por endereço se há data, mesmo
   // com a lista da página desligada); as outras, só quando a página as liga.
   const perguntar = formas.filter((f) => f === "pickup" || pagina.tipos.includes(f));
