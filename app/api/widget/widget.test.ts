@@ -128,6 +128,8 @@ describe("widget", () => {
   });
 });
 
+const COLETA = "com horário: coleta · 2026-11-06";
+
 describe("vigia pela extensão do Chrome (/api/widget/vigias)", () => {
   const gerarVigia = async () => (await (await POST(req("https://app.test/api/widget/token?uso=vigia", "POST"))).json()) as { url: string; script?: string };
   const postar = (url: string, corpo: unknown) => contar(new Request(url, { method: "POST", body: JSON.stringify(corpo) }));
@@ -170,12 +172,12 @@ describe("vigia pela extensão do Chrome (/api/widget/vigias)", () => {
     avisosVigia.lista.length = 0;
     docs.m.set("full_agenda_vigias/80517703", { inboundId: "80517703", ativa: true });
     const { url } = await gerarVigia();
-    expect((await postar(url, { inboundId: "80517703", estado: "datas" })).status).toBe(200);
-    await postar(url, { inboundId: "80517703", estado: "datas" });
+    expect((await postar(url, { inboundId: "80517703", estado: "datas", trecho: COLETA })).status).toBe(200);
+    await postar(url, { inboundId: "80517703", estado: "datas", trecho: COLETA });
     expect(avisosVigia.lista).toEqual(["80517703"]);
     expect(docs.m.get("full_agenda_vigias/80517703")).toMatchObject({ estado: "datas_liberadas", avisadoDatas: "iphone" });
     await postar(url, { inboundId: "80517703", estado: "sem_datas" });
-    await postar(url, { inboundId: "80517703", estado: "datas" });
+    await postar(url, { inboundId: "80517703", estado: "datas", trecho: COLETA });
     expect(avisosVigia.lista).toHaveLength(2);
   });
 
@@ -198,26 +200,26 @@ describe("vigia pela extensão do Chrome (/api/widget/vigias)", () => {
       vi.setSystemTime(1_000_000);
       docs.m.set("full_agenda_vigias/80517703", { inboundId: "80517703", ativa: true });
       const { url } = await gerarVigia();
-      await postar(url, { inboundId: "80517703", estado: "datas" }); // 1º: o aviso com evento
-      await postar(url, { inboundId: "80517703", estado: "datas" }); // cedo demais: não toca
+      await postar(url, { inboundId: "80517703", estado: "datas", trecho: COLETA }); // 1º: o aviso com evento
+      await postar(url, { inboundId: "80517703", estado: "datas", trecho: COLETA }); // cedo demais: não toca
       expect(avisosVigia.toques).toEqual([]);
       vi.setSystemTime(1_060_000);
-      await postar(url, { inboundId: "80517703", estado: "datas" });
+      await postar(url, { inboundId: "80517703", estado: "datas", trecho: COLETA });
       vi.setSystemTime(1_120_000);
-      await postar(url, { inboundId: "80517703", estado: "datas" });
+      await postar(url, { inboundId: "80517703", estado: "datas", trecho: COLETA });
       vi.setSystemTime(1_180_000);
-      await postar(url, { inboundId: "80517703", estado: "datas" }); // MAX_TOQUES (3) já foi
+      await postar(url, { inboundId: "80517703", estado: "datas", trecho: COLETA }); // MAX_TOQUES (3) já foi
       expect(avisosVigia.lista).toEqual(["80517703"]);
       expect(avisosVigia.toques).toEqual(["80517703#2", "80517703#3"]);
 
       // fechou e abriu de novo: recomeça; silenciado: para
       await postar(url, { inboundId: "80517703", estado: "sem_datas" });
       vi.setSystemTime(1_300_000);
-      await postar(url, { inboundId: "80517703", estado: "datas" });
+      await postar(url, { inboundId: "80517703", estado: "datas", trecho: COLETA });
       const d = docs.m.get("full_agenda_vigias/80517703")!;
       docs.m.set("full_agenda_vigias/80517703", { ...d, alarme: { ...(d.alarme as object), silenciadoEm: 1_300_001 } });
       vi.setSystemTime(1_400_000);
-      await postar(url, { inboundId: "80517703", estado: "datas" });
+      await postar(url, { inboundId: "80517703", estado: "datas", trecho: COLETA });
       expect(avisosVigia.lista).toHaveLength(2);
       expect(avisosVigia.toques).toHaveLength(2);
     } finally {
@@ -252,7 +254,11 @@ describe("vigia pela extensão do Chrome (/api/widget/vigias)", () => {
     expect(avisosVigia.toques).toEqual([]);
     expect(docs.m.get("full_agenda_vigias/80517703")).toMatchObject({ iphone: { estado: "indefinido" }, avisadoDatas: "" });
     expect(await (await listar(req(url))).json()).toEqual({ ids: ["80517703"], silenciados: ["80517703"] });
-    // a versão nova, com horário de verdade, volta a avisar
+    // a 1.8 (horário em veículo particular/transportadora/fornecedor) também não toca
+    await postar(url, { inboundId: "80517703", estado: "datas", trecho: "com horário: ftl, ftlp, supplier · 2026-11-04" });
+    expect(avisosVigia.lista).toEqual([]);
+    expect(await (await listar(req(url))).json()).toEqual({ ids: ["80517703"], silenciados: ["80517703"] });
+    // a 1.9, com horário na coleta, volta a avisar
     await postar(url, { inboundId: "80517703", estado: "datas", trecho: "com horário: coleta · 2026-11-06" });
     expect(avisosVigia.lista).toEqual(["80517703"]);
   });

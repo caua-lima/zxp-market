@@ -24,13 +24,17 @@ const nao = () => NextResponse.json({ error: "nao_autorizado" }, { status: 401, 
 const ESTADOS = new Set(["datas", "sem_datas", "login", "indefinido"]);
 
 /**
- * ALARME FALSO DAS VERSÕES ANTIGAS DA EXTENSÃO (até 1.7): elas tratavam "forma
- * de envio liberada" como data e mandavam o trecho "formas liberadas: …". Em
- * 03/11/2026 isso tocou a noite toda com a coleta "Indisponível no momento".
- * Esse aviso não vale como data: o servidor não toca o celular e manda a
- * extensão parar de bipar (lista de silenciados), até ela ser recarregada na 1.9.
+ * SÓ A COLETA A DOMICÍLIO É DATA. Em 03/11/2026 as versões antigas da extensão
+ * tocaram com a coleta "Indisponível no momento": a 1.7 tratava "forma de envio
+ * liberada" como data ("formas liberadas: …") e a 1.8 contava veículo
+ * particular/transportadora/fornecedor ("com horário: ftl, …"). Desde a 1.9 a
+ * extensão só manda "datas" com horário na coleta, e o trecho diz isso
+ * ("com horário: coleta · …"). Qualquer outro "datas" não vale: o servidor não
+ * toca o celular e manda a extensão parar de bipar (lista de silenciados) até
+ * ela ser recarregada.
  */
-const avisoDaVersaoAntiga = (trecho: unknown) => /^formas liberadas/i.test(String(trecho ?? ""));
+const dataNaColeta = (trecho: unknown) => /^com hor[aá]rio: [^·]*\bcoleta\b/i.test(String(trecho ?? ""));
+const avisoDaVersaoAntiga = (trecho: unknown) => /^(formas liberadas|com hor[aá]rio:)/i.test(String(trecho ?? "")) && !dataNaColeta(trecho);
 
 async function naEmpresa<T>(tenantId: string | null, fn: () => Promise<T>): Promise<T> {
   return tenantId ? comTenant(tenantId, fn) : fn();
@@ -87,7 +91,7 @@ export async function POST(req: Request) {
   const recebido = String(corpo?.estado ?? "");
   if (!id || !ESTADOS.has(recebido)) return NextResponse.json({ error: "invalido" }, { status: 400 });
   // "Data" da versão antiga (forma liberada, sem conferir horário) não é data.
-  const estado = recebido === "datas" && avisoDaVersaoAntiga(corpo?.trecho) ? "indefinido" : recebido;
+  const estado = recebido === "datas" && !dataNaColeta(corpo?.trecho) ? "indefinido" : recebido;
 
   const r = await naEmpresa(dono.tenantId, async () => {
     const db = getAdminDb();
