@@ -1,4 +1,4 @@
-import { lerPaginaDeAgendamento } from "./leitura.js";
+import { lerPaginaDeAgendamento, temHorarioLivre } from "./leitura.js";
 import { proximoHorario } from "./horario.js";
 
 /**
@@ -25,6 +25,41 @@ const MINUTOS_COM_DATA = 1;
 const HORA_MS = 60 * 60_000;
 const horaDe = (ms) => Math.floor(ms / HORA_MS);
 const ML = "https://vendedores.mercadolivre.com.br/shipping/inbounds/";
+/** O mesmo endereço que a página do ML usa pra buscar as datas (leitura.js explica). */
+const API_DATAS = "https://vendedores.mercadolivre.com.br/api/shipping/inbounds/";
+
+/**
+ * Lê um envio de ponta a ponta: a página diz se alguma forma de envio está
+ * liberada; se estiver, pergunta as DATAS de cada uma. Só é "datas" quando há
+ * horário livre de verdade — forma liberada sem horário é "sem_datas" (foi o
+ * alarme falso de 03/11: coleta liberada, centros próximos sem data).
+ * Não conseguiu perguntar as datas: "indefinido" (não toca, e a próxima volta tenta de novo).
+ */
+async function lerEnvio(id) {
+  const r = await fetch(`${ML}${id}/appointment-v2`, { credentials: "include", cache: "no-store" });
+  const pagina = lerPaginaDeAgendamento(await r.text(), id, r.url);
+  if (pagina.estado !== "conferir") return { estado: pagina.estado, tipos: [], datas: [], trecho: "" };
+
+  const comHorario = [];
+  const datas = new Set();
+  let falhou = false;
+  for (const tipo of pagina.tipos) {
+    try {
+      const resp = await fetch(`${API_DATAS}${id}/appointment-v2/schedule-availability?shipment_type=${encodeURIComponent(tipo)}`, {
+        credentials: "include", cache: "no-store", headers: { Accept: "application/json" },
+      });
+      if (!resp.ok) { falhou = true; continue; }
+      const achado = temHorarioLivre(await resp.json());
+      if (achado.livre) { comHorario.push(tipo); achado.datas.forEach((d) => datas.add(d)); }
+    } catch { falhou = true; }
+  }
+  const lista = [...datas].sort();
+  if (comHorario.length > 0) {
+    return { estado: "datas", tipos: comHorario, datas: lista, trecho: `com horário: ${comHorario.join(", ")}${lista.length ? ` · ${lista.join(", ")}` : ""}` };
+  }
+  if (falhou) return { estado: "indefinido", tipos: [], datas: [], trecho: `forma liberada (${pagina.tipos.join(", ")}), mas não consegui ler as datas` };
+  return { estado: "sem_datas", tipos: [], datas: [], trecho: `forma liberada (${pagina.tipos.join(", ")}), sem horário nos centros` };
+}
 
 async function config() {
   const { endereco = "", estados = {} } = await chrome.storage.local.get(["endereco", "estados"]);
@@ -100,11 +135,11 @@ async function simularVaga() {
   }
 }
 
-async function contarAoApp(endereco, id, estado, tipos) {
+async function contarAoApp(endereco, id, estado, trecho) {
   try {
     await fetch(endereco, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ inboundId: String(id), estado, trecho: tipos.length ? `formas liberadas: ${tipos.join(", ")}` : "" }),
+      body: JSON.stringify({ inboundId: String(id), estado, trecho: String(trecho || "").slice(0, 300) }),
     });
   } catch { /* sem rede: na próxima volta tenta de novo */ }
 }
@@ -131,21 +166,21 @@ export async function conferir() {
 
   const linhas = [];
   for (const id of ids.slice(0, 5)) {
-    let leitura = { estado: "indefinido", tipos: [] };
+    let leitura = { estado: "indefinido", tipos: [], datas: [], trecho: "" };
     try {
-      const r = await fetch(`${ML}${id}/appointment-v2`, { credentials: "include", cache: "no-store" });
-      leitura = lerPaginaDeAgendamento(await r.text(), id, r.url);
+      leitura = await lerEnvio(id);
     } catch { /* rede: indefinido */ }
 
     const antes = estados[id];
     if (leitura.estado === "datas" && antes !== "datas") {
-      notificar(id, `Agenda do Full liberada · envio #${id}`, "Abriu data pra agendar. Abra o Mercado Livre e agende já.");
+      const quando = leitura.datas.length ? ` Datas: ${leitura.datas.map((d) => d.slice(8, 10) + "/" + d.slice(5, 7)).join(", ")}.` : "";
+      notificar(id, `Agenda do Full liberada · envio #${id}`, `Tem horário livre pra agendar.${quando} Abra o Mercado Livre e agende já.`);
     }
     if (leitura.estado === "login" && antes !== "login") {
       notificar(id, "Vigia do Full: entre no Mercado Livre", "Este Chrome saiu da conta do ML. Entre de novo pra vigia continuar.");
     }
     // Toda volta conta ao app: o cartão mostra a MESMA hora da extensão (e, com data, o celular toca de novo).
-    await contarAoApp(endereco, id, leitura.estado, leitura.tipos);
+    await contarAoApp(endereco, id, leitura.estado, leitura.trecho);
     estados[id] = leitura.estado;
     linhas.push({ id, estado: leitura.estado });
   }
@@ -204,11 +239,10 @@ async function vigiarEnvio(id, { manual = false } = {}) {
     const lista = await fetch(endereco, { cache: "no-store" });
     if (!lista.ok) return { ok: false, texto: "O endereço da vigia não vale mais: copie o do app e Salvar." };
     if (((await lista.json()).ids || []).includes(id)) return { ok: true, texto: `#${id}: já está sendo vigiado.` };
-    const r = await fetch(`${ML}${id}/appointment-v2`, { credentials: "include", cache: "no-store" });
-    const leitura = lerPaginaDeAgendamento(await r.text(), id, r.url);
+    const leitura = await lerEnvio(id);
     if (leitura.estado === "datas") return { ok: false, texto: `#${id}: JÁ TEM DATA ABERTA — agende agora no ML.` };
     if (leitura.estado === "login") return { ok: false, texto: `#${id}: entre no Mercado Livre neste Chrome e tente de novo.` };
-    if (leitura.estado !== "sem_datas") return { ok: false, texto: `#${id}: não achei esse envio no ML. Confira o número.` };
+    if (leitura.estado !== "sem_datas") return { ok: false, texto: `#${id}: não consegui ler esse envio no ML. Confira o número e tente de novo.` };
     const resp = await fetch(endereco, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ inboundId: id, estado: "sem_datas", trecho: "", novo: true }),
