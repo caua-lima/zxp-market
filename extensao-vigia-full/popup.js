@@ -34,9 +34,10 @@ chrome.storage.onChanged.addListener((mudou, area) => {
 });
 
 async function iniciar() {
-  const { endereco = "", ultimo = null, pulso = true } = await chrome.storage.local.get(["endereco", "ultimo", "pulso"]);
+  const { endereco = "", ultimo = null, pulso = true, formas = ["pickup"] } = await chrome.storage.local.get(["endereco", "ultimo", "pulso", "formas"]);
   $("endereco").value = endereco;
   $("pulso").checked = pulso;
+  $("formaCentro").checked = formas.includes("supplier");
   mostrar(ultimo);
 }
 
@@ -66,6 +67,12 @@ $("agora").addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ tipo: "conferir" });
   $("msg").textContent = "";
   mostrar((await chrome.storage.local.get("ultimo")).ultimo);
+});
+
+// A coleta sempre conta; "levar ao centro" só se a pessoa marcar.
+$("formaCentro").addEventListener("change", async (e) => {
+  await chrome.storage.local.set({ formas: e.target.checked ? ["pickup", "ftl", "ftlp", "supplier", "spd"] : ["pickup"] });
+  await chrome.runtime.sendMessage({ tipo: "conferir" });
 });
 
 $("pulso").addEventListener("change", async (e) => {

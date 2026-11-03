@@ -35,15 +35,32 @@ const API_DATAS = "https://vendedores.mercadolivre.com.br/api/shipping/inbounds/
  * alarme falso de 03/11: coleta liberada, centros próximos sem data).
  * Não conseguiu perguntar as datas: "indefinido" (não toca, e a próxima volta tenta de novo).
  */
+/**
+ * Quais formas de envio contam pro alarme. Padrão: só a COLETA A DOMICÍLIO
+ * (pickup) — medido em 03/11/2026: "levar ao centro" (ftl, ftlp, supplier)
+ * tinha horário em Araçariguama enquanto a coleta não tinha, e o que o dono usa
+ * é a coleta. Na janelinha dá pra incluir as outras.
+ */
+export const FORMAS_PADRAO = ["pickup"];
+const NOME_DA_FORMA = { pickup: "coleta", ftl: "caminhão", ftlp: "transportadora", supplier: "fornecedor", spd: "paquetaria" };
+
 async function lerEnvio(id) {
   const r = await fetch(`${ML}${id}/appointment-v2`, { credentials: "include", cache: "no-store" });
   const pagina = lerPaginaDeAgendamento(await r.text(), id, r.url);
-  if (pagina.estado !== "conferir") return { estado: pagina.estado, tipos: [], datas: [], trecho: "" };
+  if (pagina.estado === "login" || pagina.estado === "indefinido") return { estado: pagina.estado, tipos: [], datas: [], trecho: "" };
+
+  const { formas = FORMAS_PADRAO } = await chrome.storage.local.get("formas");
+  // A coleta é sempre perguntada (a resposta diz por endereço se há data, mesmo
+  // com a lista da página desligada); as outras, só quando a página as liga.
+  const perguntar = formas.filter((f) => f === "pickup" || pagina.tipos.includes(f));
+  const outras = pagina.tipos.filter((f) => !formas.includes(f)).map((f) => NOME_DA_FORMA[f] || f);
+  const nota = outras.length ? ` · fora do alarme: ${outras.join(", ")} liberada(s)` : "";
+  if (perguntar.length === 0) return { estado: "sem_datas", tipos: [], datas: [], trecho: `sem data na coleta${nota}` };
 
   const comHorario = [];
   const datas = new Set();
   let falhou = false;
-  for (const tipo of pagina.tipos) {
+  for (const tipo of perguntar) {
     try {
       const resp = await fetch(`${API_DATAS}${id}/appointment-v2/schedule-availability?shipment_type=${encodeURIComponent(tipo)}`, {
         credentials: "include", cache: "no-store", headers: { Accept: "application/json" },
@@ -54,11 +71,12 @@ async function lerEnvio(id) {
     } catch { falhou = true; }
   }
   const lista = [...datas].sort();
+  const nomes = (l) => l.map((f) => NOME_DA_FORMA[f] || f).join(", ");
   if (comHorario.length > 0) {
-    return { estado: "datas", tipos: comHorario, datas: lista, trecho: `com horário: ${comHorario.join(", ")}${lista.length ? ` · ${lista.join(", ")}` : ""}` };
+    return { estado: "datas", tipos: comHorario, datas: lista, trecho: `com horário: ${nomes(comHorario)}${lista.length ? ` · ${lista.join(", ")}` : ""}` };
   }
-  if (falhou) return { estado: "indefinido", tipos: [], datas: [], trecho: `forma liberada (${pagina.tipos.join(", ")}), mas não consegui ler as datas` };
-  return { estado: "sem_datas", tipos: [], datas: [], trecho: `forma liberada (${pagina.tipos.join(", ")}), sem horário nos centros` };
+  if (falhou) return { estado: "indefinido", tipos: [], datas: [], trecho: `não consegui ler as datas (${nomes(perguntar)})` };
+  return { estado: "sem_datas", tipos: [], datas: [], trecho: `sem horário: ${nomes(perguntar)}${nota}` };
 }
 
 async function config() {

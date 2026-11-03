@@ -20,6 +20,10 @@
  *    vem com `errors: ["address_slots_not_available"]` — é exatamente o aviso
  *    do print.
  *
+ * 3. Qual forma conta (background.js › FORMAS_PADRAO): só a COLETA. Em
+ *    03/11 "levar ao centro" (ftl/ftlp/supplier) tinha horário em Araçariguama
+ *    e a coleta não; o dono usa a coleta. As outras entram se ele marcar.
+ *
  * A frase "Não temos datas" em si NÃO serve de sinal: está no dicionário de
  * traduções da página, com ou sem data.
  *
