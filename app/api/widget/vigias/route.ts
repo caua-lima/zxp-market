@@ -23,6 +23,15 @@ import { avisarAgendaLiberada, avisarAindaSemData, testarAvisoDaAgenda, COLECAO_
 const nao = () => NextResponse.json({ error: "nao_autorizado" }, { status: 401, headers: { "Cache-Control": "no-store" } });
 const ESTADOS = new Set(["datas", "sem_datas", "login", "indefinido"]);
 
+/**
+ * ALARME FALSO DAS VERSÕES ANTIGAS DA EXTENSÃO (até 1.7): elas tratavam "forma
+ * de envio liberada" como data e mandavam o trecho "formas liberadas: …". Em
+ * 03/11/2026 isso tocou a noite toda com a coleta "Indisponível no momento".
+ * Esse aviso não vale como data: o servidor não toca o celular e manda a
+ * extensão parar de bipar (lista de silenciados), até ela ser recarregada na 1.9.
+ */
+const avisoDaVersaoAntiga = (trecho: unknown) => /^formas liberadas/i.test(String(trecho ?? ""));
+
 async function naEmpresa<T>(tenantId: string | null, fn: () => Promise<T>): Promise<T> {
   return tenantId ? comTenant(tenantId, fn) : fn();
 }
@@ -32,7 +41,11 @@ export async function GET(req: Request) {
   if (!dono) return nao();
   const ids = await naEmpresa(dono.tenantId, async () => {
     const snap = await getAdminDb().collection(COLECAO_VIGIAS).where("ativa", "==", true).limit(5).get();
-    return snap.docs.map((d) => ({ id: String(d.get("inboundId") ?? d.id), silenciado: Boolean((d.get("alarme") as { silenciadoEm?: number } | undefined)?.silenciadoEm) }));
+    return snap.docs.map((d) => ({
+      id: String(d.get("inboundId") ?? d.id),
+      silenciado: Boolean((d.get("alarme") as { silenciadoEm?: number } | undefined)?.silenciadoEm)
+        || avisoDaVersaoAntiga((d.get("iphone") as { trecho?: string } | undefined)?.trecho),
+    }));
   });
   // silenciados: alguém tocou em "Parar o alarme" no app — o PC para de bipar também.
   return NextResponse.json({ ids: ids.map((x) => x.id), silenciados: ids.filter((x) => x.silenciado).map((x) => x.id) }, { headers: { "Cache-Control": "no-store" } });
@@ -71,8 +84,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, enviados }, { headers: { "Cache-Control": "no-store" } });
   }
   const id = inboundValido(corpo?.inboundId);
-  const estado = String(corpo?.estado ?? "");
-  if (!id || !ESTADOS.has(estado)) return NextResponse.json({ error: "invalido" }, { status: 400 });
+  const recebido = String(corpo?.estado ?? "");
+  if (!id || !ESTADOS.has(recebido)) return NextResponse.json({ error: "invalido" }, { status: 400 });
+  // "Data" da versão antiga (forma liberada, sem conferir horário) não é data.
+  const estado = recebido === "datas" && avisoDaVersaoAntiga(corpo?.trecho) ? "indefinido" : recebido;
 
   const r = await naEmpresa(dono.tenantId, async () => {
     const db = getAdminDb();

@@ -242,6 +242,21 @@ describe("vigia pela extensão do Chrome (/api/widget/vigias)", () => {
     expect(avisosVigia.pulsos).toHaveLength(1);
   });
 
+  it("'data' da extensão antiga (forma liberada sem horário) não toca e manda a extensão parar de bipar", async () => {
+    avisosVigia.lista.length = 0;
+    avisosVigia.toques.length = 0;
+    docs.m.set("full_agenda_vigias/80517703", { inboundId: "80517703", ativa: true, avisadoDatas: "iphone", alarme: { toques: 5 } });
+    const { url } = await gerarVigia();
+    await postar(url, { inboundId: "80517703", estado: "datas", trecho: "formas liberadas: ftl, ftlp, supplier" });
+    expect(avisosVigia.lista).toEqual([]);
+    expect(avisosVigia.toques).toEqual([]);
+    expect(docs.m.get("full_agenda_vigias/80517703")).toMatchObject({ iphone: { estado: "indefinido" }, avisadoDatas: "" });
+    expect(await (await listar(req(url))).json()).toEqual({ ids: ["80517703"], silenciados: ["80517703"] });
+    // a versão nova, com horário de verdade, volta a avisar
+    await postar(url, { inboundId: "80517703", estado: "datas", trecho: "com horário: coleta · 2026-11-06" });
+    expect(avisosVigia.lista).toEqual(["80517703"]);
+  });
+
   it("recusa código torto, envio não vigiado e estado inventado", async () => {
     expect((await listar(req("https://app.test/api/widget/vigias?t=zw_curto"))).status).toBe(401);
     const { url } = await gerarVigia();
