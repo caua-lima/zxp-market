@@ -128,7 +128,7 @@ describe("widget", () => {
   });
 });
 
-const COLETA = "com horário: coleta · 2026-11-06";
+const COLETA = "com horário: coleta no endereço escolhido · 2026-11-06";
 
 describe("vigia pela extensão do Chrome (/api/widget/vigias)", () => {
   const gerarVigia = async () => (await (await POST(req("https://app.test/api/widget/token?uso=vigia", "POST"))).json()) as { url: string; script?: string };
@@ -258,8 +258,11 @@ describe("vigia pela extensão do Chrome (/api/widget/vigias)", () => {
     await postar(url, { inboundId: "80517703", estado: "datas", trecho: "com horário: ftl, ftlp, supplier · 2026-11-04" });
     expect(avisosVigia.lista).toEqual([]);
     expect(await (await listar(req(url))).json()).toEqual({ ids: ["80517703"], silenciados: ["80517703"] });
-    // a 1.9, com horário na coleta, volta a avisar
-    await postar(url, { inboundId: "80517703", estado: "datas", trecho: "com horário: coleta · 2026-11-06" });
+    // a 1.9 (coleta em QUALQUER endereço, até um antigo em outra cidade) também não toca
+    await postar(url, { inboundId: "80517703", estado: "datas", trecho: "com horário: coleta · 2026-11-05" });
+    expect(avisosVigia.lista).toEqual([]);
+    // a 2.0, com horário no endereço escolhido, volta a avisar
+    await postar(url, { inboundId: "80517703", estado: "datas", trecho: COLETA });
     expect(avisosVigia.lista).toEqual(["80517703"]);
   });
 

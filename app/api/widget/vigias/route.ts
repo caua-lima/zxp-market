@@ -29,11 +29,14 @@ const ESTADOS = new Set(["datas", "sem_datas", "login", "indefinido"]);
  * liberada" como data ("formas liberadas: …") e a 1.8 contava veículo
  * particular/transportadora/fornecedor ("com horário: ftl, …"). Desde a 1.9 a
  * extensão só manda "datas" com horário na coleta, e o trecho diz isso
- * ("com horário: coleta · …"). Qualquer outro "datas" não vale: o servidor não
+ * ("com horário: coleta no endereço escolhido · …"). Qualquer outro "datas" não vale: o servidor não
  * toca o celular e manda a extensão parar de bipar (lista de silenciados) até
  * ela ser recarregada.
  */
-const dataNaColeta = (trecho: unknown) => /^com hor[aá]rio: [^·]*\bcoleta\b/i.test(String(trecho ?? ""));
+// Desde a 2.0, só vale horário no ENDEREÇO DE COLETA que o dono escolheu na
+// extensão: em 03/11 a 1.9 tocou por um endereço antigo em São Paulo enquanto
+// os de Mogi Guaçu seguiam sem data.
+const dataNaColeta = (trecho: unknown) => /^com hor[aá]rio: coleta no endere[cç]o escolhido\b/i.test(String(trecho ?? ""));
 const avisoDaVersaoAntiga = (trecho: unknown) => /^(formas liberadas|com hor[aá]rio:)/i.test(String(trecho ?? "")) && !dataNaColeta(trecho);
 
 async function naEmpresa<T>(tenantId: string | null, fn: () => Promise<T>): Promise<T> {
