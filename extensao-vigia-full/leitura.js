@@ -1,70 +1,42 @@
 /**
- * Lê a página de agendamento de um envio pro Full (o HTML que o ML entrega pra
- * quem está logado) e diz se pode haver data — e, depois, se HÁ data.
+ * Diz se a COLETA A DOMICÍLIO de um envio pro Full tem data de verdade.
  *
- * DUAS ETAPAS, porque "forma de envio liberada" NÃO é "tem data":
+ * O dono só usa a coleta ("o restante não importa"): veículo particular,
+ * transportadora e fornecedor ficam de fora.
  *
- * 1. A página (`lerPaginaDeAgendamento`). Nos dados embutidos,
- *    `availableShipmentTypes` lista as formas de envio (pickup, ftl, ftlp,
- *    supplier, spd). Todas `enabled: false` = "Não temos datas disponíveis"
- *    (conferido no código da página do ML, chunk 7177, 29/10/2026). Alguma
- *    ligada = "conferir": a forma está liberada, mas a data pode não existir.
+ * DE ONDE VEM A RESPOSTA: o mesmo endereço que a página de agendamento do ML
+ * usa pra buscar as datas —
+ *   /api/shipping/inbounds/{id}/appointment-v2/schedule-availability?shipment_type=pickup
+ * (achado no código da página, chunk 7177 do fbm-inb-xp-appointment-fe). A
+ * resposta traz, por endereço de coleta,
+ *   { address: { errors: [...] }, schedule_slots: [{ date, available_slots: [...] }] }
+ * e data de verdade é algum `available_slots` com pelo menos um horário. Sem
+ * horário, o endereço vem com `errors: ["address_slots_not_available"]` — o
+ * aviso "Os centros de distribuição próximos não têm datas disponíveis".
  *
- * 2. As datas (`temHorarioLivre`). Em 03/11/2026 a "Coleta a domicílio" ligou e
- *    a tela dizia "Os centros de distribuição próximos não têm datas
- *    disponíveis" — o alarme tocou à toa. A página pede as datas de verdade a
- *    /api/shipping/inbounds/{id}/appointment-v2/schedule-availability?shipment_type=X
- *    e a resposta traz, por endereço (coleta) ou por centro (ftl/ftlp/supplier),
- *    `schedule_slots: [{ date, available_slots: [...] }]`. Data de verdade =
- *    algum `available_slots` com pelo menos um horário. Sem nenhum, o endereço
- *    vem com `errors: ["address_slots_not_available"]` — é exatamente o aviso
- *    do print.
- *
- * 3. Qual forma conta (background.js › FORMAS_DO_ALARME): só a COLETA A
- *    DOMICÍLIO. Em 03/11 veículo particular/transportadora/fornecedor
- *    (ftl/ftlp/supplier) tinham horário em Araçariguama e a coleta estava
- *    "Indisponível no momento"; o resto não importa pro dono.
- *
- * A frase "Não temos datas" em si NÃO serve de sinal: está no dicionário de
- * traduções da página, com ou sem data.
+ * HISTÓRICO (03/11/2026), pra ninguém repetir:
+ *  - "forma de envio liberada" (`availableShipmentTypes` com `enabled: true`)
+ *    NÃO é data: a coleta ligou e não tinha horário — tocou à toa;
+ *  - veículo particular/transportadora/fornecedor tinham horário em
+ *    Araçariguama com a coleta "Indisponível no momento" — tocou à toa de novo;
+ *  - a página de agendamento passou a dar "Algo salió mal" (404) enquanto o
+ *    endereço de datas seguia respondendo — por isso a página não é mais lida;
+ *  - a coleta tinha horário num endereço ANTIGO em São Paulo, e nenhum nos de
+ *    Mogi Guaçu — tocou à toa pela terceira vez. Por isso só valem os endereços
+ *    que o dono marca na janelinha da extensão (sem nenhum marcado, não toca).
  *
  * Usado pela extensão (background.js) e pelos testes do app
  * (lib/domain/leitura-agenda-extensao.test.ts).
  */
 
-/** As formas de envio que a página aceita perguntar (as mesmas constantes do ML). */
-export const FORMAS_DE_ENVIO = ["pickup", "ftl", "ftlp", "supplier", "spd"];
-
-/**
- * @param {string} html
- * @param {string|number} id número do envio
- * @param {string} urlFinal endereço depois dos redirecionamentos
- * @returns {{ estado: "conferir" | "sem_datas" | "login" | "indefinido", tipos: string[] }}
- */
-export function lerPaginaDeAgendamento(html, id, urlFinal) {
-  const texto = String(html || "");
-  if (/\/login|identification|authorization/i.test(String(urlFinal || ""))) return { estado: "login", tipos: [] };
-  if (!texto.includes(`"inboundId":${Number(id)}`)) {
-    // Sem os dados do envio: ou caiu no login, ou o ML mudou a página.
-    return { estado: /iniciar sess[aã]o|login/i.test(texto.slice(0, 5000)) ? "login" : "indefinido", tipos: [] };
-  }
-
-  let tipos = null;
-  const m = texto.match(/"availableShipmentTypes":(\[[^\]]*\])/);
-  if (m) {
-    try { tipos = JSON.parse(m[1]); } catch { tipos = null; }
-  }
-  if (!Array.isArray(tipos)) return { estado: "indefinido", tipos: [] };
-  const habilitados = tipos
-    .filter((t) => t && t.enabled === true && FORMAS_DE_ENVIO.includes(String(t.type)))
-    .map((t) => String(t.type));
-  return habilitados.length > 0 ? { estado: "conferir", tipos: habilitados } : { estado: "sem_datas", tipos: [] };
+/** A pergunta das datas da coleta de um envio (caminho relativo ao site do vendedor). */
+export function caminhoDasDatasDaColeta(id) {
+  return `/api/shipping/inbounds/${encodeURIComponent(String(id))}/appointment-v2/schedule-availability?shipment_type=pickup`;
 }
 
 /**
- * A resposta de schedule-availability tem algum horário livre? Procura em
- * qualquer profundidade um `available_slots` com pelo menos um item — vale pros
- * dois formatos (por endereço na coleta, por centro no ftl/ftlp/supplier).
+ * Alguma parte da resposta tem horário livre? Procura em qualquer profundidade
+ * um `available_slots` com pelo menos um item.
  *
  * @param {unknown} resposta o JSON da resposta
  * @returns {{ livre: boolean, datas: string[] }} as datas com horário livre (as primeiras 5)
@@ -83,4 +55,52 @@ export function temHorarioLivre(resposta) {
   };
   visitar(resposta, 0);
   return { livre, datas: [...datas].sort().slice(0, 5) };
+}
+
+/** Os endereços de coleta que a resposta lista: id e um rótulo legível ("Rua X 81 · Cidade"). */
+export function enderecosDaResposta(json) {
+  const lista = json && Array.isArray(json.availability) ? json.availability : [];
+  return lista
+    .map((a) => a && a.address)
+    .filter((e) => e && e.id != null)
+    .map((e) => ({
+      id: String(e.id),
+      rotulo: [[e.street_name, e.street_number].filter(Boolean).join(" "), e.city_name].filter(Boolean).join(" · ") || `endereço ${e.id}`,
+    }));
+}
+
+/** Texto de "precisa escolher o endereço" — a janelinha e o background reconhecem por ele. */
+export const ESCOLHA_O_ENDERECO = "escolha o endereço da coleta na extensão";
+
+/**
+ * Lê a resposta da pergunta das datas da coleta, olhando SÓ os endereços
+ * escolhidos.
+ *
+ * @param {number} status o código HTTP
+ * @param {string} urlFinal o endereço depois dos redirecionamentos
+ * @param {unknown} json o corpo já lido como JSON (null se não era JSON)
+ * @param {string[]} escolhidos ids dos endereços de coleta que valem pro alarme
+ * @returns {{ estado: "datas" | "sem_datas" | "login" | "indefinido", datas: string[], trecho: string, enderecos: {id: string, rotulo: string}[] }}
+ */
+export function lerRespostaDaColeta(status, urlFinal, json, escolhidos = []) {
+  if (/\/login|identification|authorization/i.test(String(urlFinal || "")) || status === 401 || status === 403) {
+    return { estado: "login", datas: [], trecho: "", enderecos: [] };
+  }
+  if (status !== 200) return { estado: "indefinido", datas: [], trecho: `o ML respondeu ${status}`, enderecos: [] };
+  // Só confia numa resposta com a lista de endereços: qualquer outra coisa não é "sem data".
+  if (!json || typeof json !== "object" || !Array.isArray(json.availability)) {
+    return { estado: "indefinido", datas: [], trecho: "resposta do ML sem agenda", enderecos: [] };
+  }
+  const enderecos = enderecosDaResposta(json);
+  const valem = new Set((escolhidos || []).map(String));
+  if (valem.size === 0) return { estado: "indefinido", datas: [], trecho: ESCOLHA_O_ENDERECO, enderecos };
+  const meus = json.availability.filter((a) => a && a.address && valem.has(String(a.address.id)));
+  if (meus.length === 0) {
+    return { estado: "indefinido", datas: [], trecho: "o endereço escolhido não aparece mais na coleta deste envio", enderecos };
+  }
+  const achado = temHorarioLivre(meus);
+  if (achado.livre) {
+    return { estado: "datas", datas: achado.datas, trecho: `com horário: coleta no endereço escolhido${achado.datas.length ? ` · ${achado.datas.join(", ")}` : ""}`, enderecos };
+  }
+  return { estado: "sem_datas", datas: [], trecho: "sem horário na coleta (endereço escolhido)", enderecos };
 }

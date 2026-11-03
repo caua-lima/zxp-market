@@ -1,4 +1,4 @@
-import { lerPaginaDeAgendamento, temHorarioLivre } from "./leitura.js";
+import { caminhoDasDatasDaColeta, ESCOLHA_O_ENDERECO, lerRespostaDaColeta } from "./leitura.js";
 import { proximoHorario } from "./horario.js";
 
 /**
@@ -25,58 +25,36 @@ const MINUTOS_COM_DATA = 1;
 const HORA_MS = 60 * 60_000;
 const horaDe = (ms) => Math.floor(ms / HORA_MS);
 const ML = "https://vendedores.mercadolivre.com.br/shipping/inbounds/";
-/** O mesmo endereço que a página do ML usa pra buscar as datas (leitura.js explica). */
-const API_DATAS = "https://vendedores.mercadolivre.com.br/api/shipping/inbounds/";
+const SITE_DO_VENDEDOR = "https://vendedores.mercadolivre.com.br";
 
 /**
- * Lê um envio de ponta a ponta: a página diz se alguma forma de envio está
- * liberada; se estiver, pergunta as DATAS de cada uma. Só é "datas" quando há
- * horário livre de verdade — forma liberada sem horário é "sem_datas" (foi o
- * alarme falso de 03/11: coleta liberada, centros próximos sem data).
- * Não conseguiu perguntar as datas: "indefinido" (não toca, e a próxima volta tenta de novo).
+ * Lê um envio: pergunta ao ML as datas da COLETA A DOMICÍLIO (o mesmo endereço
+ * que a página de agendamento usa) e só diz "datas" com horário livre de
+ * verdade. Veículo particular, transportadora e fornecedor não contam. Ver
+ * leitura.js — inclusive o porquê de a página não ser mais lida.
  */
-/**
- * Só a COLETA A DOMICÍLIO (pickup) conta pro alarme — pedido do dono: "o
- * restante não importa". Medido em 03/11/2026: veículo particular,
- * transportadora e fornecedor (ftl, ftlp, supplier) tinham horário em
- * Araçariguama enquanto a coleta estava "Indisponível no momento".
- */
-const FORMAS_DO_ALARME = ["pickup"];
-const NOME_DA_FORMA = { pickup: "coleta", ftl: "caminhão", ftlp: "transportadora", supplier: "fornecedor", spd: "paquetaria" };
-
 async function lerEnvio(id) {
-  const r = await fetch(`${ML}${id}/appointment-v2`, { credentials: "include", cache: "no-store" });
-  const pagina = lerPaginaDeAgendamento(await r.text(), id, r.url);
-  if (pagina.estado === "login" || pagina.estado === "indefinido") return { estado: pagina.estado, tipos: [], datas: [], trecho: "" };
-
-  const formas = FORMAS_DO_ALARME;
-  // A coleta é sempre perguntada (a resposta diz por endereço se há data, mesmo
-  // com a lista da página desligada); as outras, só quando a página as liga.
-  const perguntar = formas.filter((f) => f === "pickup" || pagina.tipos.includes(f));
-  const outras = pagina.tipos.filter((f) => !formas.includes(f)).map((f) => NOME_DA_FORMA[f] || f);
-  const nota = outras.length ? ` · fora do alarme: ${outras.join(", ")} liberada(s)` : "";
-  if (perguntar.length === 0) return { estado: "sem_datas", tipos: [], datas: [], trecho: `sem data na coleta${nota}` };
-
-  const comHorario = [];
-  const datas = new Set();
-  let falhou = false;
-  for (const tipo of perguntar) {
-    try {
-      const resp = await fetch(`${API_DATAS}${id}/appointment-v2/schedule-availability?shipment_type=${encodeURIComponent(tipo)}`, {
-        credentials: "include", cache: "no-store", headers: { Accept: "application/json" },
-      });
-      if (!resp.ok) { falhou = true; continue; }
-      const achado = temHorarioLivre(await resp.json());
-      if (achado.livre) { comHorario.push(tipo); achado.datas.forEach((d) => datas.add(d)); }
-    } catch { falhou = true; }
+  const resp = await fetch(SITE_DO_VENDEDOR + caminhoDasDatasDaColeta(id), {
+    credentials: "include", cache: "no-store", headers: { Accept: "application/json" },
+  });
+  let json = null;
+  try { json = await resp.json(); } catch { json = null; }
+  // Só os endereços de coleta marcados na janelinha valem (leitura.js conta por quê).
+  const { enderecosColeta = [], enderecosConhecidos = {} } = await chrome.storage.local.get(["enderecosColeta", "enderecosConhecidos"]);
+  const leitura = lerRespostaDaColeta(resp.status, resp.url, json, enderecosColeta);
+  if (leitura.enderecos.length) {
+    let mudou = false;
+    for (const e of leitura.enderecos) if (enderecosConhecidos[e.id] !== e.rotulo) { enderecosConhecidos[e.id] = e.rotulo; mudou = true; }
+    if (mudou) await chrome.storage.local.set({ enderecosConhecidos });
   }
-  const lista = [...datas].sort();
-  const nomes = (l) => l.map((f) => NOME_DA_FORMA[f] || f).join(", ");
-  if (comHorario.length > 0) {
-    return { estado: "datas", tipos: comHorario, datas: lista, trecho: `com horário: ${nomes(comHorario)}${lista.length ? ` · ${lista.join(", ")}` : ""}` };
+  if (leitura.trecho === ESCOLHA_O_ENDERECO) {
+    const { avisouEscolher = false } = await chrome.storage.local.get("avisouEscolher");
+    if (!avisouEscolher) {
+      notificar("escolher", "Vigia do Full: escolha o endereço da coleta", "Abra a extensão e marque o endereço onde o ML busca. Sem isso o alarme não toca.");
+      await chrome.storage.local.set({ avisouEscolher: true });
+    }
   }
-  if (falhou) return { estado: "indefinido", tipos: [], datas: [], trecho: `não consegui ler as datas (${nomes(perguntar)})` };
-  return { estado: "sem_datas", tipos: [], datas: [], trecho: `sem horário: ${nomes(perguntar)}${nota}` };
+  return leitura;
 }
 
 async function config() {
@@ -258,8 +236,9 @@ async function vigiarEnvio(id, { manual = false } = {}) {
     if (!lista.ok) return { ok: false, texto: "O endereço da vigia não vale mais: copie o do app e Salvar." };
     if (((await lista.json()).ids || []).includes(id)) return { ok: true, texto: `#${id}: já está sendo vigiado.` };
     const leitura = await lerEnvio(id);
-    if (leitura.estado === "datas") return { ok: false, texto: `#${id}: JÁ TEM DATA ABERTA — agende agora no ML.` };
+    if (leitura.estado === "datas") return { ok: false, texto: `#${id}: JÁ TEM DATA na coleta do seu endereço — agende agora no ML.` };
     if (leitura.estado === "login") return { ok: false, texto: `#${id}: entre no Mercado Livre neste Chrome e tente de novo.` };
+    if (leitura.trecho === ESCOLHA_O_ENDERECO) return { ok: false, texto: `#${id}: marque primeiro o endereço da coleta aqui embaixo.` };
     if (leitura.estado !== "sem_datas") return { ok: false, texto: `#${id}: não consegui ler esse envio no ML. Confira o número e tente de novo.` };
     const resp = await fetch(endereco, {
       method: "POST", headers: { "Content-Type": "application/json" },

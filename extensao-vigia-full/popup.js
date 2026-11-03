@@ -105,5 +105,41 @@ $("simular").addEventListener("click", async () => {
   mostrarAlarme();
 });
 
+/** Os endereços de coleta que o ML lista; marcar é o que faz o alarme olhar pra eles. */
+async function mostrarEnderecos() {
+  const { enderecosConhecidos = {}, enderecosColeta = [] } = await chrome.storage.local.get(["enderecosConhecidos", "enderecosColeta"]);
+  const caixa = $("enderecos");
+  const ids = Object.keys(enderecosConhecidos);
+  if (ids.length === 0) return;
+  caixa.textContent = "";
+  for (const id of ids) {
+    const rotulo = document.createElement("label");
+    rotulo.className = "op";
+    const marca = document.createElement("input");
+    marca.type = "checkbox";
+    marca.checked = enderecosColeta.includes(id);
+    marca.addEventListener("change", async () => {
+      const { enderecosColeta: atuais = [] } = await chrome.storage.local.get("enderecosColeta");
+      const novos = marca.checked ? [...new Set([...atuais, id])] : atuais.filter((x) => x !== id);
+      await chrome.storage.local.set({ enderecosColeta: novos, avisouEscolher: false });
+      $("msg").textContent = novos.length ? "Endereço salvo. Conferindo…" : "Nenhum endereço marcado: o alarme não toca.";
+      $("msg").className = novos.length ? "mudo" : "erro";
+      await chrome.runtime.sendMessage({ tipo: "conferir" });
+    });
+    rotulo.append(marca, document.createTextNode(" " + enderecosConhecidos[id]));
+    caixa.append(rotulo);
+  }
+  if (enderecosColeta.length === 0) {
+    const aviso = document.createElement("div");
+    aviso.className = "erro";
+    aviso.textContent = "Marque o endereço onde o ML busca a coleta. Sem isso o alarme não toca.";
+    caixa.append(aviso);
+  }
+}
+chrome.storage.onChanged.addListener((mudou, area) => {
+  if (area === "local" && (mudou.enderecosConhecidos || mudou.enderecosColeta)) mostrarEnderecos();
+});
+
 iniciar();
 mostrarAlarme();
+mostrarEnderecos();
