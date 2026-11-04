@@ -72,7 +72,7 @@ describe("roleLabel", () => {
     expect(roleLabel("owner")).toBe("Master");
     expect(roleLabel("partner")).toBe("Sócio");
     expect(roleLabel("equipe")).toBe("Colaborador");
-    expect(roleLabel("member")).toBe("Member");
+    expect(roleLabel("member")).toBe("Partner");
   });
 
   it("o valor LEGADO 'colaborador' é Sócio (partner), não o Colaborador de agora", () => {

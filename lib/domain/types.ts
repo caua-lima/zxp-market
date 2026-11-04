@@ -441,13 +441,14 @@ export function papelDe(role: AccessEntry["role"] | undefined | null): Papel {
  *   Master (owner) — tudo;
  *   Sócio (partner) — Dashboard, Pedidos, Tarefas e DRE;
  *   Colaborador (equipe) — só as próprias tarefas.
- * "Member" segue existindo pra registros antigos, mas não é mais oferecido.
- * (O valor gravado "colaborador" é LEGADO e vira partner/Sócio — o rótulo
- * "Colaborador" de agora é o papel "equipe".)
+ *   Partner (member) — só as vendas do dia, ao vivo, e o aviso de cada venda.
+ * Atenção aos nomes: o valor gravado "partner" é o SÓCIO, e o rótulo
+ * "Partner" é o papel "member". O valor gravado "colaborador" é LEGADO e vira
+ * partner/Sócio — o rótulo "Colaborador" de agora é o papel "equipe".
  */
-export function roleLabel(role: AccessEntry["role"]): "Master" | "Sócio" | "Member" | "Colaborador" {
+export function roleLabel(role: AccessEntry["role"]): "Master" | "Sócio" | "Partner" | "Colaborador" {
   const p = papelDe(role);
-  return p === "owner" ? "Master" : p === "member" ? "Member" : p === "equipe" ? "Colaborador" : "Sócio";
+  return p === "owner" ? "Master" : p === "member" ? "Partner" : p === "equipe" ? "Colaborador" : "Sócio";
 }
 
 /**

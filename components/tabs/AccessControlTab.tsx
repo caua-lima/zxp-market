@@ -307,7 +307,7 @@ Ela passa a administrar o time, o plano e a conexão com o Mercado Livre. Você 
   const alcanceDoPapel = (r: AccessEntry["role"]): string => {
     const p = papelDe(r);
     if (p === "owner") return "acesso total, incluindo esta aba";
-    if (p === "member") return "só Dashboard e notificações (perfil antigo)";
+    if (p === "member") return "só as vendas do dia e o aviso de cada venda";
     if (p === "equipe") return "só as próprias tarefas, no app /tarefas";
     return "Dashboard, Pedidos, Tarefas e DRE";
   };
@@ -469,14 +469,14 @@ Ela passa a administrar o time, o plano e a conexão com o Mercado Livre. Você 
                   <option value="owner">Master (acesso a tudo)</option>
                   <option value="partner">Sócio (Dashboard, Pedidos, Tarefas e DRE)</option>
                   <option value="equipe">Colaborador (só as próprias tarefas)</option>
-                  {/* Perfil antigo: só aparece pra quem já o tem, não é mais oferecido. */}
-                  {papelDe(editingEntry?.role) === "member" && <option value="member">Member (perfil antigo: só Dashboard)</option>}
+                  <option value="member">Partner (só as vendas do dia e o aviso de cada venda)</option>
                 </select>
                 <div className="hint">
                   <b>Sócio</b> vê Dashboard, Pedidos, Tarefas e DRE. <b>Colaborador</b> é o
                   funcionário: só vê e conclui as tarefas que você atribui a ele, pelo app
                   de tarefas (<b>/tarefas</b>), e só recebe aviso de tarefa. Crie uma senha
-                  abaixo pra ele entrar.
+                  abaixo pra ele entrar. <b>Partner</b> vê só as vendas do dia, ao vivo, e
+                  recebe o aviso de cada venda.
                 </div>
               </div>
 

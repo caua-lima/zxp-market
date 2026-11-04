@@ -65,7 +65,7 @@ export function FaixaVerComo({ visao, onVoltar }: { visao: VisaoSimulada; onVolt
     <div
       role="status"
       style={{
-        position: "sticky", top: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap",
+        position: "sticky", top: 0, zIndex: 3000, display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap",
         gap: 10, padding: "6px 12px", background: "var(--accent)", color: "#10100E", fontSize: ".82rem", fontWeight: 700,
       }}
     >
