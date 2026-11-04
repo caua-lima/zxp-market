@@ -384,7 +384,7 @@ export type AccessEntry = {
   // "admin"/"user" são papéis legados (contas cadastradas antes desta versão)
   // — continuam existindo em documentos antigos do Firestore, então o tipo
   // aceita ler os dois, mas toda escrita nova usa só "owner"/"colaborador".
-  role: "owner" | "partner" | "member" | "colaborador" | "admin" | "user";
+  role: "owner" | "partner" | "member" | "equipe" | "colaborador" | "admin" | "user";
   displayName?: string;
   photoURL?: string;
   addedAt?: number;
@@ -415,8 +415,11 @@ export type AccessEntry = {
  *             liberadas em permissoesEdicao.
  *   member  — Dashboard e notificações, nada mais. Sem custo, sem margem,
  *             sem estoque, sem preço.
+ *   equipe  — funcionário: SÓ as tarefas atribuídas a ele (conclui, reabre,
+ *             muda o dia). Não vê venda, resultado, estoque nem nada da
+ *             operação; só recebe aviso de tarefa. Usa o app /tarefas.
  */
-export type Papel = "owner" | "partner" | "member";
+export type Papel = "owner" | "partner" | "member" | "equipe";
 
 /**
  * O papel efetivo de um registro.
@@ -429,13 +432,14 @@ export type Papel = "owner" | "partner" | "member";
 export function papelDe(role: AccessEntry["role"] | undefined | null): Papel {
   if (role === "owner") return "owner";
   if (role === "member") return "member";
+  if (role === "equipe") return "equipe";
   return "partner";
 }
 
 /** Rótulo de exibição do papel. */
-export function roleLabel(role: AccessEntry["role"]): "Owner" | "Partner" | "Member" {
+export function roleLabel(role: AccessEntry["role"]): "Owner" | "Partner" | "Member" | "Equipe" {
   const p = papelDe(role);
-  return p === "owner" ? "Owner" : p === "member" ? "Member" : "Partner";
+  return p === "owner" ? "Owner" : p === "member" ? "Member" : p === "equipe" ? "Equipe" : "Partner";
 }
 
 /**
@@ -446,6 +450,9 @@ export function roleLabel(role: AccessEntry["role"]): "Owner" | "Partner" | "Mem
  * ponto inteiro do papel.
  */
 export const ABAS_DO_MEMBER = ["dashboard"] as const;
+
+/** A única aba da equipe (funcionário): as próprias tarefas. */
+export const ABAS_DA_EQUIPE = ["tarefas"] as const;
 
 /**
  * Este papel enxerga esta aba?
@@ -458,6 +465,7 @@ export function podeVerAba(papel: Papel, aba: string): boolean {
   // Acesso é do owner e nunca foi delegável.
   if (aba === "acesso") return papel === "owner";
   if (papel === "member") return (ABAS_DO_MEMBER as readonly string[]).includes(aba);
+  if (papel === "equipe") return (ABAS_DA_EQUIPE as readonly string[]).includes(aba);
   return true;
 }
 

@@ -66,6 +66,12 @@ export function podeCapacidade(
     return cap === "ver_resumo";
   }
 
+  // Equipe (funcionário) não tem NENHUMA capacidade da operação nem do
+  // resultado: só as próprias tarefas, que a regra do Firestore libera direto
+  // (assignedTo == e-mail). As rotas sem capacidade (vincular push, diretório)
+  // continuam abertas a qualquer acesso, e é o que o app /tarefas usa.
+  if (papel === "equipe") return false;
+
   // partner
   if (cap === "administrar") return false;
   if (cap === "ver_resumo" || cap === "ver_operacao" || cap === "ver_financeiro") return true;

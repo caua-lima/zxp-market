@@ -20,7 +20,7 @@
  * conexão antiga — achado direto do S03/S05 (fencing de token).
  */
 
-export type PapelTenant = "owner" | "partner" | "member";
+export type PapelTenant = "owner" | "partner" | "member" | "equipe";
 
 /**
  * O que qualquer rota de servidor recebe depois de `requireTenantAccess`.
@@ -77,6 +77,7 @@ const CAPACIDADES_POR_PAPEL: Record<PapelTenant, readonly string[]> = {
   owner: ["tenant:administrar", "membros:gerir", "conexoes:gerir", "billing:gerir", "dados:editar-tudo"],
   partner: ["dados:ler"],
   member: ["dados:ler-restrito"],
+  equipe: ["tarefas:proprias"],
 };
 
 /**
@@ -86,7 +87,7 @@ const CAPACIDADES_POR_PAPEL: Record<PapelTenant, readonly string[]> = {
  */
 export function capacidadesDoPapel(papel: PapelTenant, permissoesEdicao: readonly string[] = []): ReadonlySet<string> {
   const base = new Set<string>(CAPACIDADES_POR_PAPEL[papel]);
-  if (papel !== "member") {
+  if (papel !== "member" && papel !== "equipe") {
     for (const aba of permissoesEdicao) base.add(`dados:editar:${aba}`);
   }
   return base;

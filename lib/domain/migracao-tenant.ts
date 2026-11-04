@@ -25,7 +25,7 @@
  */
 
 /** Espelha `lib/domain/types.ts::Papel` — mantenha as duas em sincronia se o conjunto mudar. */
-export type PapelTenant = "owner" | "partner" | "member";
+export type PapelTenant = "owner" | "partner" | "member" | "equipe";
 
 /** Só os campos de `AccessEntry` (lib/domain/types.ts) que esta migração lê. */
 export type AccessEntryMinima = { email: string; role: string; permissoesEdicao?: string[] };
@@ -34,6 +34,7 @@ export type AccessEntryMinima = { email: string; role: string; permissoesEdicao?
 function papelDe(role: string | undefined | null): PapelTenant {
   if (role === "owner") return "owner";
   if (role === "member") return "member";
+  if (role === "equipe") return "equipe";
   return "partner";
 }
 
