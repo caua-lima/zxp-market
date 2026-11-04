@@ -29,6 +29,14 @@ const PERMISSION_TAB_LABEL: Record<PermissionTab, string> = {
   custos: "Custos", metas: "Metas", estoque: "Estoque", ads: "Ads (últimas alterações)",
 };
 
+/** Senha provisória do Sócio: 10 caracteres sem os que se confundem (0/O, 1/l/I). */
+function senhaAleatoria(): string {
+  const letras = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = new Uint32Array(10);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => letras[b % letras.length]).join("");
+}
+
 export default function AccessControlTab({
   uid,
   data,
@@ -162,6 +170,9 @@ export default function AccessControlTab({
         // "partner", comparar com "colaborador" fazia as permissoes NUNCA
         // serem gravadas. Member nao tem permissao de edicao por definicao.
         permissoesEdicao: papelDe(effectiveRole) === "partner" ? permissoesEdicao : undefined,
+        // Sócio com senha definida aqui: é provisória — no primeiro login ele cria a dele.
+        // (O Colaborador fica com a senha que o Master criou, a pedido do dono.)
+        ...(password && papelDe(effectiveRole) === "partner" ? { trocarSenha: true } : {}),
       };
       const detalhePermissoes = papelDe(effectiveRole) === "partner"
         ? ` · edita: ${permissoesEdicao.length ? permissoesEdicao.map((t) => PERMISSION_TAB_LABEL[t]).join(", ") : "nenhuma aba"}`
@@ -448,7 +459,18 @@ Ela passa a administrar o time, o plano e a conexão com o Mercado Livre. Você 
                   {senhaVisivel ? "Ocultar" : "Ver"}
                 </button>
               </div>
+              {papelDe(editingEntry ? editingEntry.role : role) === "partner" && (
+                <button
+                  type="button" className="btn btn-ghost btn-xs" style={{ marginTop: 6 }}
+                  onClick={() => { setPassword(senhaAleatoria()); setSenhaVisivel(true); }}
+                >
+                  Gerar senha provisória
+                </button>
+              )}
               <div className="hint">
+                {papelDe(editingEntry ? editingEntry.role : role) === "partner" && (
+                  <><b>Sócio:</b> a senha daqui é provisória — passe pra ele, e no primeiro login ele cria a própria. </>
+                )}
                 Preenchendo, cria um login por e-mail/senha (além do Google). Reeditar troca a senha.
                 {" "}<b>Ver</b> mostra só o que você está digitando agora — senha já cadastrada não
                 dá pra exibir, o Firebase guarda um hash irreversível, não a senha.
