@@ -14,6 +14,7 @@ import {
   query,
   setDoc,
   updateDoc,
+  deleteField,
   where,
 } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
@@ -30,6 +31,7 @@ import {
   type Goals,
   type Product,
   type Task,
+  type TaskAtividade,
 } from "@/lib/domain/types";
 import { getFirebase } from "./client";
 import { assinarComCache, definirEscopoDoCache, invalidar } from "./cache";
@@ -914,7 +916,12 @@ const CHAVE_TAREFAS = "tarefas";
 const chaveDasMinhas = (email: string) => `${CHAVE_TAREFAS}:${email.toLowerCase()}`;
 
 /** De quem é o quadro: o dono vê todas; o resto, só as suas. */
-export type EscopoDasTarefas = { email: string; todas: boolean };
+export type EscopoDasTarefas = {
+  email: string;
+  todas: boolean;
+  /** Colaborador (papel "equipe"): só as ATRIBUÍDAS a si — a regra não deixa ler nem as que ele criaria. */
+  soAtribuidas?: boolean;
+};
 
 /** Teto da leitura — ver `truncado` no callback de `watchTasks`. */
 export const LIMITE_TAREFAS = 500;
@@ -943,10 +950,12 @@ export function watchTasks(cb: (tasks: Task[], truncado: boolean) => void, escop
     return assinarComCache(chaveDasMinhas(eu), async () => {
       const [pra, criei] = await Promise.all([
         getDocs(query(sCol(TASK_COL), where("assignedTo", "==", eu), limit(LIMITE_TAREFAS))),
-        getDocs(query(sCol(TASK_COL), where("createdBy", "==", eu), limit(LIMITE_TAREFAS))),
+        escopo.soAtribuidas
+          ? Promise.resolve({ docs: [] as { id: string; data: () => unknown }[] })
+          : getDocs(query(sCol(TASK_COL), where("createdBy", "==", eu), limit(LIMITE_TAREFAS))),
       ]);
       const porId = new Map<string, Task>();
-      for (const d of [...pra.docs, ...criei.docs]) porId.set(d.id, d.data() as Task);
+      for (const d of [...pra.docs, ...criei.docs] as { id: string; data: () => unknown }[]) porId.set(d.id, d.data() as Task);
       return {
         itens: [...porId.values()].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)),
         truncado: pra.docs.length >= LIMITE_TAREFAS || criei.docs.length >= LIMITE_TAREFAS,
@@ -982,6 +991,27 @@ export async function upsertTask(task: Task) {
     createdBy: task.createdBy ?? email,
     updatedAt: Date.now(),
   }));
+  invalidar(CHAVE_TAREFAS);
+  if (email) invalidar(chaveDasMinhas(email));
+}
+
+/**
+ * Muda só o ANDAMENTO de uma tarefa — status, prazo e rastro. É o que o
+ * Colaborador (papel "equipe") pode fazer: a regra só aceita estes campos.
+ * `dueDate: null` tira o prazo. Usado por todos no arrastar/concluir: não
+ * regrava a tarefa inteira (que podia apagar a edição de outra pessoa feita
+ * no meio tempo).
+ */
+export async function atualizarAndamentoDaTarefa(
+  id: string,
+  patch: { status?: Task["status"]; dueDate?: string | null; atividade?: TaskAtividade[] },
+) {
+  const email = getCurrentUserEmail();
+  const dados: Record<string, unknown> = { lastEditedBy: email, updatedAt: Date.now() };
+  if (patch.status) dados.status = patch.status;
+  if (patch.atividade) dados.atividade = patch.atividade;
+  if (patch.dueDate !== undefined) dados.dueDate = patch.dueDate === null ? deleteField() : patch.dueDate;
+  await updateDoc(sDoc(TASK_COL, id), dados);
   invalidar(CHAVE_TAREFAS);
   if (email) invalidar(chaveDasMinhas(email));
 }
