@@ -386,7 +386,7 @@ function AppShell() {
   }, [sidebarOpen]);
 
   const data = useUserData(user?.uid);
-  const { isOwner, displayName, podeVer, canEditTab } = useAccess();
+  const { isOwner, displayName, podeVer, canEditTab, papel } = useAccess();
   const [profileOpen, setProfileOpen] = useState(false);
 
   // Sem isto, uma venda que chega com o app ABERTO não mostra notificação
@@ -406,9 +406,21 @@ function AppShell() {
    * Defesa extra: aba ativa que o papel não alcança cai pro Dashboard. Vale
    * pra papel rebaixado com a aba já aberta e pra link direto por ?tab=.
    */
-  const activeTab: Tab = podeVer(tab) ? tab : "dashboard";
+  const activeTab: Tab = podeVer(tab) ? tab : ((navItems[0]?.id as Tab | undefined) ?? "dashboard");
 
-  if (!user) return null;
+  /**
+   * O Colaborador (papel "equipe") usa o app de tarefas (/tarefas), que é só
+   * isso. Chegando aqui (link antigo, notificação de tarefa que abre "/?tab=
+   * tarefas&task=…"), vai pra lá levando a tarefa.
+   */
+  const ehColaborador = papel === "equipe";
+  useEffect(() => {
+    if (!ehColaborador) return;
+    const tarefa = searchParams.get("task");
+    window.location.replace(`/tarefas${tarefa ? `?task=${encodeURIComponent(tarefa)}` : ""}`);
+  }, [ehColaborador, searchParams]);
+
+  if (!user || ehColaborador) return null;
 
   const dateLabel = new Date().toLocaleDateString("pt-BR", {
     weekday: "short",

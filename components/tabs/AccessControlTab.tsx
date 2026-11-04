@@ -299,7 +299,7 @@ Ela passa a administrar o time, o plano e a conexão com o Mercado Livre. Você 
    */
   const roleBadge = (r: AccessEntry["role"]) => {
     const p = papelDe(r);
-    const classe = p === "owner" ? "chip chip-green" : p === "partner" ? "chip chip-accent" : "chip chip-muted";
+    const classe = p === "owner" ? "chip chip-green" : p === "partner" ? "chip chip-accent" : p === "equipe" ? "chip chip-yellow" : "chip chip-muted";
     return <span className={classe}>{roleLabel(r)}</span>;
   };
 
@@ -307,8 +307,9 @@ Ela passa a administrar o time, o plano e a conexão com o Mercado Livre. Você 
   const alcanceDoPapel = (r: AccessEntry["role"]): string => {
     const p = papelDe(r);
     if (p === "owner") return "acesso total, incluindo esta aba";
-    if (p === "member") return "só Dashboard e notificações";
-    return "vê todas as abas, exceto Acesso";
+    if (p === "member") return "só Dashboard e notificações (perfil antigo)";
+    if (p === "equipe") return "só as próprias tarefas, no app /tarefas";
+    return "Dashboard, Pedidos, Tarefas e DRE";
   };
 
   /**
@@ -368,9 +369,9 @@ Ela passa a administrar o time, o plano e a conexão com o Mercado Livre. Você 
 
       <div className="kpi-grid">
         <div className="kpi k-acc"><div className="k-lbl">Acessos</div><div className="k-val">{entries.length}</div></div>
-        <div className="kpi k-pos"><div className="k-lbl">Owners</div><div className="k-val" style={{ color: "var(--green)" }}>{owners}</div></div>
-        <div className="kpi k-warn"><div className="k-lbl">Partners</div><div className="k-val" style={{ color: "var(--yellow)" }}>{entries.filter((e) => papelDe(e.role) === "partner").length}</div></div>
-        <div className="kpi"><div className="k-lbl">Members</div><div className="k-val" style={{ color: "var(--muted)" }}>{entries.filter((e) => papelDe(e.role) === "member").length}</div></div>
+        <div className="kpi k-pos"><div className="k-lbl">Master</div><div className="k-val" style={{ color: "var(--green)" }}>{owners}</div></div>
+        <div className="kpi k-warn"><div className="k-lbl">Sócios</div><div className="k-val" style={{ color: "var(--yellow)" }}>{entries.filter((e) => papelDe(e.role) === "partner").length}</div></div>
+        <div className="kpi"><div className="k-lbl">Colaboradores</div><div className="k-val" style={{ color: "var(--muted)" }}>{entries.filter((e) => papelDe(e.role) === "equipe").length}</div></div>
       </div>
 
       <div style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 1fr)" }}>
@@ -465,14 +466,17 @@ Ela passa a administrar o time, o plano e a conexão com o Mercado Livre. Você 
                   onChange={(e) => setRole(e.target.value as AccessEntry["role"]) }
                   disabled={editingEntry?.role === "owner"}
                 >
-                  <option value="owner">Owner (acesso total)</option>
-                  <option value="partner">Partner (vê tudo, exceto Acesso)</option>
-                  <option value="member">Member (só Dashboard e notificações)</option>
+                  <option value="owner">Master (acesso a tudo)</option>
+                  <option value="partner">Sócio (Dashboard, Pedidos, Tarefas e DRE)</option>
+                  <option value="equipe">Colaborador (só as próprias tarefas)</option>
+                  {/* Perfil antigo: só aparece pra quem já o tem, não é mais oferecido. */}
+                  {papelDe(editingEntry?.role) === "member" && <option value="member">Member (perfil antigo: só Dashboard)</option>}
                 </select>
                 <div className="hint">
-                  <b>Partner</b> é o que antes se chamava Colaborador: vê todas as abas e edita
-                  as que você liberar abaixo. <b>Member</b> vê só o Dashboard e recebe
-                  notificações — sem custo, margem, preço, estoque ou DRE.
+                  <b>Sócio</b> vê Dashboard, Pedidos, Tarefas e DRE. <b>Colaborador</b> é o
+                  funcionário: só vê e conclui as tarefas que você atribui a ele, pelo app
+                  de tarefas (<b>/tarefas</b>), e só recebe aviso de tarefa. Crie uma senha
+                  abaixo pra ele entrar.
                 </div>
               </div>
 
