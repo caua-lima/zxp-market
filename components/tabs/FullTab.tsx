@@ -10,6 +10,7 @@ import EstoqueRetidoFull, { type EstoqueFullRetido } from "@/components/tabs/ful
 import { authedFetch } from "@/lib/api/authed-fetch";
 import TelaHeader from "@/components/TelaHeader";
 import VigiaAgendaFull from "@/components/tabs/full/VigiaAgendaFull";
+import CustosDeEnviosFull from "@/components/tabs/full/CustosDeEnviosFull";
 import { useAccess } from "@/components/tabs/AccessGuard";
 
 /**
@@ -80,6 +81,8 @@ export default function FullTab({ products }: { products: Product[] }) {
       />
 
       <VigiaAgendaFull podeEditar={podeEditarEstoque} />
+
+      <CustosDeEnviosFull />
 
       {fonteRetido === "carregando" && <AvisoDaFonte estado="carregando" fonte="o estoque retido no Full" />}
       {fonteRetido === "erro" && (
