@@ -49,6 +49,7 @@ import ProdutosEmRisco from "./ProdutosEmRisco";
 import { findProdutosEmRisco } from "@/lib/domain/risk";
 import { isTaskAtrasada, type Task } from "@/lib/domain/types";
 import { watchTasks } from "@/lib/firebase/data";
+import { margemSemProdutos, termosPadraoDoMes } from "@/lib/domain/margem-sem-produtos";
 
 type Props = { data: UserData; onVerEstoque?: () => void; onVerMetas?: () => void; onNavigate?: (tab: string) => void };
 
@@ -1692,6 +1693,19 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
   // Atrasadas do card: as do time todo pro dono; as suas pro resto (a regra só deixa ler essas).
   useEffect(() => (meuEmail ? watchTasks(setTasks, { email: meuEmail, todas: isOwner }) : undefined), [meuEmail, isOwner]);
   const tarefasVencidas = useMemo(() => tasks.filter(isTaskAtrasada), [tasks]);
+  /**
+   * Margem SEM os produtos em queima de preço (lib/domain/margem-sem-produtos):
+   * em novembro/2026, os açaís. O número grande da margem é o "sem"; o
+   * "contando os açaís" fica embaixo. Sem nada a tirar, é a margem de sempre.
+   */
+  const semQueima = useMemo(
+    () => (mlMetrics ? margemSemProdutos(mlMetrics, termosPadraoDoMes(range.from)) : null),
+    [mlMetrics, range.from],
+  );
+  const margemDoPeriodo = semQueima?.margemSem ?? mlMetrics?.margemComCustos ?? 0;
+  const notaDaMargem = semQueima
+    ? `contando os açaís: ${fmtPct(mlMetrics?.margemComCustos ?? 0, 1)}${semQueima.tirados.margem != null ? ` · açaís: ${fmtPct(semQueima.tirados.margem, 1)}` : ""}`
+    : undefined;
   const [mlAccount, setMlAccount] = useState<{ user?: { nickname?: string; site_id?: string } } | null>(null);
   const [diag, setDiag] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
@@ -2117,12 +2131,16 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
                 },
                 {
                   key: "margemLiquida",
-                  label: "Margem líquida",
-                  value: mlMetrics.margemComCustos ?? 0,
+                  label: semQueima ? "Margem líquida (sem açaí)" : "Margem líquida",
+                  value: margemDoPeriodo,
                   format: "percent",
-                  tone: (mlMetrics.margemComCustos ?? 0) >= (goals?.metaMargem ?? 10) ? "pos" : "warn",
-                  tooltip: "Lucro líquido dividido pelo retorno (valor da venda − taxa ML − frete) do período — não pelo faturamento bruto nem pelo líquido.",
-                  delta: { current: mlMetrics.margemComCustos ?? 0, previous: prevMetrics?.margemComCustos, mode: "points", label: prevLabel },
+                  tone: margemDoPeriodo >= (goals?.metaMargem ?? 10) ? "pos" : "warn",
+                  tooltip: semQueima
+                    ? "Lucro líquido ÷ retorno do período SEM os açaís (queima de preço pra girar caixa). Embaixo, a margem contando os açaís e a margem só deles."
+                    : "Lucro líquido dividido pelo retorno (valor da venda − taxa ML − frete) do período — não pelo faturamento bruto nem pelo líquido.",
+                  nota: notaDaMargem,
+                  // Comparar o "sem açaí" com o mês passado inteiro misturaria duas réguas: a variação fica só sem o recorte.
+                  delta: semQueima ? undefined : { current: mlMetrics.margemComCustos ?? 0, previous: prevMetrics?.margemComCustos, mode: "points", label: prevLabel },
                 },
                 {
                   key: "projecaoMes",
@@ -2153,7 +2171,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
                   projecaoLucro={projecaoLucro}
                   diaAtual={diaAtualNoMes()}
                   totalDias={diasNoMes(mes)}
-                  margemAtual={mlMetrics?.margemComCustos ?? 0}
+                  margemAtual={margemDoPeriodo}
                   metaMargem={goals.metaMargem ?? 10}
                   onVerMetas={onVerMetas}
                 />
@@ -2234,8 +2252,8 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
                 delta={<Delta current={retorno} previous={prevMetrics?.totalRetorno} mode="pct" />} />
               <Kpi label="Lucro líquido" value={lucroLiquido} tone={lucroLiquido >= 0 ? "pos" : "neg"} sub="já com custos operacionais"
                 delta={<Delta current={lucroLiquido} previous={prevMetrics?.lucroComCustos} mode="pct" />} />
-              <Kpi label="Margem líquida" value={mlMetrics?.margemComCustos ?? 0} tone="warn" isPct
-                delta={<Delta current={mlMetrics?.margemComCustos ?? 0} previous={prevMetrics?.margemComCustos} mode="points" />} />
+              <Kpi label={semQueima ? "Margem líquida (sem açaí)" : "Margem líquida"} value={margemDoPeriodo} tone="warn" isPct sub={notaDaMargem}
+                delta={semQueima ? undefined : <Delta current={mlMetrics?.margemComCustos ?? 0} previous={prevMetrics?.margemComCustos} mode="points" />} />
               <Kpi label="Gasto com ADS" value={mlMetrics?.totalAds ?? 0} tone="neg"
                 indisponivel={adsFalhou} sub={adsFalhou ? "ML não retornou — não é zero" : undefined} />
               <Kpi label="Vendas canceladas" value={mlMetrics?.vendasCanceladas ?? 0} tone="neg" sub="não contam no lucro" />
@@ -2265,7 +2283,7 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
           {mlMetrics && (
             <ActionCenter
               anuncios={mlMetrics.anuncios ?? []}
-              margemAtual={mlMetrics.margemComCustos ?? 0}
+              margemAtual={margemDoPeriodo}
               metaMargem={goals?.metaMargem ?? 10}
               totalAds={mlMetrics.totalAds ?? 0}
               adsFalhou={adsFalhou}

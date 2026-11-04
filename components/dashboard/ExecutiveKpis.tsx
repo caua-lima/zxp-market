@@ -45,6 +45,8 @@ export type ExecutiveKpiItem = {
   ctaLabel?: string;
   onClick?: () => void;
   indisponivel?: boolean;
+  /** Uma linha curta embaixo do número (ex.: "contando os açaís: −2,1%"). */
+  nota?: string;
 };
 
 const TONE_VAR: Record<KpiTone, string> = {
@@ -71,6 +73,7 @@ export default function ExecutiveKpis({ items }: { items: ExecutiveKpiItem[] }) 
             <div className="exec-kpi-value money" style={{ color: it.indisponivel ? "var(--text-muted)" : color }}>
               {it.indisponivel ? "—" : it.format === "percent" ? `${fmtPct(it.value, 1)}` : fmtBRL(it.value)}
             </div>
+            {it.nota && <div style={{ fontSize: ".78rem", color: "var(--text-muted, var(--muted))", marginTop: 2 }}>{it.nota}</div>}
             {it.delta && <Delta {...it.delta} />}
             {it.ctaLabel && it.onClick && (
               <button type="button" className="ac-cta" style={{ marginTop: 6 }} onClick={it.onClick}>{it.ctaLabel} →</button>
