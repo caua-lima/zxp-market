@@ -14,6 +14,7 @@ import { papelDe, podeVerAba, type AccessEntry, type Papel, type PermissionTab }
 import { cadastroAbertoNaTela } from "@/lib/marca";
 import CriarEmpresa from "@/components/CriarEmpresa";
 import { FaixaVerComo } from "@/components/VerComo";
+import CrieSuaSenha from "@/components/CrieSuaSenha";
 
 /** "Ver como": a pessoa cuja visão o Master está olhando (components/VerComo.tsx). */
 export type VisaoSimulada = { email: string; displayName: string; papel: Papel };
@@ -309,6 +310,22 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
     // S24: com o cadastro aberto, quem ainda não tem empresa cria a sua.
     if (cadastroAbertoNaTela() && currentEmail) return <CriarEmpresa user={user} onSair={signOut} />;
     return <DeniedScreen onLogout={signOut} userEmail={user.email ?? ""} />;
+  }
+
+  // Senha provisória (Sócio no primeiro login): antes de tudo, a pessoa cria a dela.
+  // Só pra quem entrou com e-mail/senha — quem usa Google não tem senha pra trocar.
+  const entrouComSenha = user.providerData.some((p) => p.providerId === "password");
+  if (access.entry?.trocarSenha === true && entrouComSenha) {
+    return (
+      <CrieSuaSenha
+        nome={access.entry.displayName || currentEmail}
+        onSair={signOut}
+        onPronto={() => {
+          try { window.sessionStorage.removeItem(getAccessCacheKey(currentEmail)); } catch { /* sem storage */ }
+          window.location.reload();
+        }}
+      />
+    );
   }
 
   const role = access.entry?.role ?? "colaborador";

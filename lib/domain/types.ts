@@ -398,6 +398,11 @@ export type AccessEntry = {
   expiraEm?: number;
   /** Só na criação, no modo empresa: prazo pedido em dias (1 a 30). O servidor converte em `expiraEm`. */
   expiraEmDias?: number;
+  /**
+   * Entrou com senha provisória (o Sócio nasce com uma aleatória): o app só
+   * mostra "Crie sua senha" até ela trocar. Quem tira é /api/acesso/senha-definida.
+   */
+  trocarSenha?: boolean;
 };
 
 /**

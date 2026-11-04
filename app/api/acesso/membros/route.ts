@@ -75,6 +75,7 @@ export async function POST(req: Request) {
     email, role: papel,
     ...(papel === "partner" && permissoesEdicao.length ? { permissoesEdicao } : {}),
     ...(typeof corpo.displayName === "string" ? { displayName: corpo.displayName.slice(0, 120) } : {}),
+    ...(corpo.trocarSenha === true ? { trocarSenha: true } : {}),
     expiraEm: expiraEm ?? FieldValue.delete(),
     addedAt: Date.now(), addedBy: gate.email,
   }, { merge: true });
