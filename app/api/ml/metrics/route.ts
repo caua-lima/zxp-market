@@ -838,7 +838,7 @@ export async function GET(req: Request) {
     // Custo marcado como "dre" fica fora do lucro do Dashboard de propósito:
     // é despesa da empresa (pró-labore, contador), não da operação de venda.
     let custosDre = 0;
-    const custosDreDetalhe: { nome: string; valor: number; freq: string }[] = [];
+    const custosDreDetalhe: { nome: string; valor: number; freq: string; categoria?: string }[] = [];
     for (const doc of custosSnap.docs) {
       const d = doc.data();
       const valor = Number(d.valor ?? d.amount ?? 0);
@@ -872,7 +872,7 @@ export async function GET(req: Request) {
 
       if (soDre) {
         custosDre += noPeriodo;
-        custosDreDetalhe.push({ nome: String(d.nome ?? "—"), valor: noPeriodo, freq });
+        custosDreDetalhe.push({ nome: String(d.nome ?? "—"), valor: noPeriodo, freq, ...(d.categoria ? { categoria: String(d.categoria) } : {}) });
       } else {
         custosOp += noPeriodo;
       }

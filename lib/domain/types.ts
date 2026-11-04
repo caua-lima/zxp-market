@@ -71,12 +71,12 @@ export type GoalEntry = {
 
 export type CostCategoria =
   | "embalagem" | "ferramenta" | "equipe" | "logistica" | "servico"
-  | "software" | "impostos" | "retirada" | "contabilidade" | "outros";
+  | "software" | "impostos" | "retirada" | "contabilidade" | "full" | "outros";
 
 export const COST_CATEGORIA_LABEL: Record<CostCategoria, string> = {
   embalagem: "Embalagem", ferramenta: "Ferramenta", equipe: "Equipe", logistica: "Logística",
   servico: "Serviço", software: "Software", impostos: "Impostos", retirada: "Retirada",
-  contabilidade: "Contabilidade", outros: "Outros",
+  contabilidade: "Contabilidade", full: "Full (armazenagem e tarifas)", outros: "Outros",
 };
 
 export type Cost = {

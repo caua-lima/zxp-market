@@ -21,7 +21,7 @@ import {
   cabecalhoDeExportacao, type Pendencia,
 } from "@/lib/domain/apuracao-financeira";
 
-type CustoDre = { nome: string; valor: number; freq: string };
+type CustoDre = { nome: string; valor: number; freq: string; categoria?: string };
 
 type Metrics = {
   faturamentoBruto: number;
@@ -225,7 +225,7 @@ export default function DreTab() {
    *
    * Mesma permissão da aba de Custos: quem não edita custo lá não edita aqui.
    */
-  const [novoCusto, setNovoCusto] = useState(false);
+  const [novoCusto, setNovoCusto] = useState<false | "geral" | "full">(false);
   const { canEditTab } = useAccess();
   const podeCadastrarCusto = canEditTab("custos");
 
@@ -333,6 +333,10 @@ export default function DreTab() {
    */
   const custoColetaFull = coletaFull ? coletaFull.total : 0;
   const resultadoLiquido = resultadoOperacional - m.custosDre - custoColetaFull;
+  // Os custos do Full cadastrados (armazenagem, armazenamento prolongado, retirada…) — categoria "full".
+  // Já estão dentro de custosDre; aqui só ganham linha própria pra não sumir no meio do pró-labore.
+  const custosFullCadastrados = m.custosDreDetalhe.filter((c) => c.categoria === "full").reduce((s, c) => s + c.valor, 0);
+  const despesasSemFull = m.custosDre - custosFullCadastrados;
 
   /**
    * ─── O ESTADO DA APURAÇÃO (FIN-03) ───────────────────────────────────
@@ -721,7 +725,8 @@ export default function DreTab() {
         />
 
         <GrupoDre>Despesas da empresa</GrupoDre>
-        <Linha rotulo="Pró-labore, contador, retirada" valor={m.custosDre} tipo="deducao" base={base} nota="só aparecem aqui, fora do lucro do Dashboard" />
+        <Linha rotulo="Pró-labore, contador, retirada" valor={despesasSemFull} tipo="deducao" base={base} nota="só aparecem aqui, fora do lucro do Dashboard" />
+        <Linha rotulo="Custos do Full (armazenagem e tarifas)" valor={custosFullCadastrados} tipo="deducao" base={base} nota="o que o ML cobra pelo Full fora de cada venda — cadastre em ＋ Custo do Full" />
         {coletaFull && (() => {
           // O texto e o "—" são decididos em lib/domain/coleta-full.ts (com teste):
           // zero com remessa sem custo NÃO é "coleta de graça".
@@ -775,10 +780,18 @@ export default function DreTab() {
             Despesas da empresa no período
             {podeCadastrarCusto && (
               <button
-                type="button" className="btn btn-xs btn-primary" onClick={() => setNovoCusto(true)}
+                type="button" className="btn btn-xs btn-primary" onClick={() => setNovoCusto("geral")}
                 title="Cadastra um custo aqui mesmo — pró-labore, contador, aluguel — e a DRE recalcula na hora"
               >
                 ＋ Adicionar custo
+              </button>
+            )}
+            {podeCadastrarCusto && (
+              <button
+                type="button" className="btn btn-xs btn-ghost" onClick={() => setNovoCusto("full")}
+                title="Armazenagem do Full, armazenamento prolongado, retirada de estoque e outras tarifas do Full que o ML cobra fora de cada venda"
+              >
+                ＋ Custo do Full
               </button>
             )}
           </span>
@@ -821,6 +834,7 @@ export default function DreTab() {
         <CustoForm
           inicial={null}
           escopoPadrao="dre"
+          modelo={novoCusto === "full" ? { nome: "Full — armazenagem", freq: "avulso", categoria: "full" } : undefined}
           onCancelar={() => setNovoCusto(false)}
           onSalvo={() => {
             setNovoCusto(false);

@@ -64,17 +64,19 @@ const tituloEtapa: React.CSSProperties = {
   fontSize: ".8rem", fontWeight: 800, color: "var(--accent)", letterSpacing: ".02em", margin: "4px 0 -6px",
 };
 
-export default function CustoForm({ inicial, escopoPadrao = "dash", onSalvo, onCancelar }: {
+export default function CustoForm({ inicial, escopoPadrao = "dash", modelo, onSalvo, onCancelar }: {
   /** O custo a editar. `null` = cadastrar um novo. */
   inicial: Cost | null;
   /** Onde o custo novo nasce contando. A DRE passa "dre". */
   escopoPadrao?: Escopo;
+  /** Campos já preenchidos no custo NOVO (ex.: o "Custo do Full" da DRE). */
+  modelo?: Partial<Pick<RascunhoCusto, "nome" | "freq" | "categoria">>;
   onSalvo: (custo: Cost) => void;
   onCancelar: () => void;
 }) {
   const hoje = todayStr();
   const [r, setR] = useState<RascunhoCusto>(() =>
-    inicial ? rascunhoDe(inicial, hoje) : rascunhoVazio({ hojeISO: hoje, escopo: escopoPadrao }));
+    inicial ? rascunhoDe(inicial, hoje) : { ...rascunhoVazio({ hojeISO: hoje, escopo: escopoPadrao }), ...(modelo ?? {}) });
   /**
    * Os erros só aparecem depois da primeira tentativa de salvar. Mostrá-los
    * desde a abertura pintaria o formulário de vermelho antes de a pessoa ter
