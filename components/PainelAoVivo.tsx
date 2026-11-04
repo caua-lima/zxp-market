@@ -153,7 +153,11 @@ function Tile({ rotulo, valor, dica }: { rotulo: string; valor: string; dica?: s
   );
 }
 
-export default function PainelAoVivo({ dados, onFechar }: { dados: DadosAoVivo; onFechar: () => void }) {
+/**
+ * `fixo`: o painel É a tela (acesso Partner — só as vendas do dia): sem botão
+ * de fechar, e `extras` (notificação, Sair) no lugar dele.
+ */
+export default function PainelAoVivo({ dados, onFechar, fixo = false, extras }: { dados: DadosAoVivo; onFechar: () => void; fixo?: boolean; extras?: React.ReactNode }) {
   const painel = useRef<HTMLDivElement | null>(null);
   useDialogo(true, painel, onFechar);
 
@@ -192,9 +196,12 @@ export default function PainelAoVivo({ dados, onFechar }: { dados: DadosAoVivo; 
               </svg>
             </button>
           )}
-          <button type="button" className={s.iconeBtn} onClick={onFechar} aria-label="Fechar o painel ao vivo" title="Fechar (Esc)">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
-          </button>
+          {extras}
+          {!fixo && (
+            <button type="button" className={s.iconeBtn} onClick={onFechar} aria-label="Fechar o painel ao vivo" title="Fechar (Esc)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden><path d="M6 6l12 12M18 6L6 18" /></svg>
+            </button>
+          )}
         </div>
 
         <h2 className={s.titulo}>Vendas de hoje ao vivo</h2>

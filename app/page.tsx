@@ -423,6 +423,24 @@ function AppShell() {
 
   if (!user || ehColaborador) return null;
 
+  /**
+   * Partner (papel "member" — as namoradas): só as vendas do dia, ao vivo, e o
+   * aviso de cada venda. Nada de barra lateral, abas ou números de custo.
+   */
+  if (papel === "member") {
+    return (
+      <BarraAoVivo
+        fixo
+        extras={(
+          <>
+            <PushNotificationToggle />
+            <button type="button" className="btn btn-ghost btn-xs" onClick={() => void signOut()}>Sair</button>
+          </>
+        )}
+      />
+    );
+  }
+
   const dateLabel = new Date().toLocaleDateString("pt-BR", {
     weekday: "short",
     day: "2-digit",

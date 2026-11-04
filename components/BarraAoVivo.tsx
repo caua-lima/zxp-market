@@ -40,7 +40,11 @@ export const EVENTO_PDV_MUDOU = "zxp:pdv-mudou";
 
 type PedidoQueMudou = { orderId: string; valida: boolean };
 
-export default function BarraAoVivo() {
+/**
+ * `fixo`: em vez da barra, o painel aberto o tempo todo — é a tela inteira
+ * do acesso Partner ("só o dashboard do dia"). Mesmos números, mesmo tempo real.
+ */
+export default function BarraAoVivo({ fixo = false, extras }: { fixo?: boolean; extras?: React.ReactNode } = {}) {
   const [dadosServidor, setDadosServidor] = useState<DadosAoVivo | null>(null);
   /** Vendas que chegaram pelo sinal/push e que a rota ainda não confirmou. */
   const [pendentes, setPendentes] = useState<VendaNova[]>([]);
@@ -176,6 +180,13 @@ export default function BarraAoVivo() {
   useEffect(() => {
     if (dados && abrirQuandoChegar.current) { abrirQuandoChegar.current = false; setAberto(true); }
   }, [dados]);
+
+  if (fixo) {
+    if (!dados) {
+      return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)" }}>Carregando as vendas de hoje…</div>;
+    }
+    return <PainelAoVivo dados={dados} onFechar={() => {}} fixo extras={extras} />;
+  }
 
   if (!dados) return null;
 
