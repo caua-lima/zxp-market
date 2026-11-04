@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/firebase/auth-context";
 import { initForegroundPush, registrarCliqueDoAviso } from "@/lib/firebase/push";
 import { validarDeepLink } from "@/lib/domain/deep-link";
 import { PushNotificationToggle } from "@/components/PushNotificationToggle";
+import { SeletorVerComo } from "@/components/VerComo";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import AjudaChat from "@/components/AjudaChat";
 import { useUserData } from "@/components/useUserData";
@@ -634,6 +635,7 @@ function AppShell() {
               </button>
             </div>
             {profileOpen && <MyProfileModal onClose={() => setProfileOpen(false)} />}
+            <SeletorVerComo />
             <button
               type="button"
               className="btn btn-primary btn-xs"

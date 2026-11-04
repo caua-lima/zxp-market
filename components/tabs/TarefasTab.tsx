@@ -68,7 +68,9 @@ type Filtro = "todas" | "pra-mim" | "criei-eu";
 type Vista = "semana" | "quadro" | "lista";
 
 export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openTaskId?: string; chaveDeNavegacao?: number } = {}) {
-  const { email, isOwner, papel } = useAccess();
+  const { email: emailReal, emailVisto, isOwner, papel } = useAccess();
+  /** De quem são as tarefas mostradas (no "ver como" do Master, as da pessoa olhada). */
+  const email = emailVisto;
   /**
    * Colaborador (papel "equipe", o funcionário): vê as tarefas atribuídas a ele
    * e só mexe no andamento — concluir, reabrir, mudar o dia. Criar, editar,
@@ -197,7 +199,7 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
       // desta função, e tirar o relógio daqui só empurraria a impureza pra
       // quem chama.
       // eslint-disable-next-line react-hooks/purity -- `mover` so e chamada por evento (clique/arraste); ver o comentario acima
-      por: email, em: Date.now(),
+      por: emailReal, em: Date.now(),
       detalhe: `${COLS.find((c) => c.status === t.status)?.label} → ${COLS.find((c) => c.status === status)?.label}`,
     };
     setFalha(null);
@@ -212,7 +214,7 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
     const reabre = t.status === "done";
     const evento: TaskAtividade = {
       tipo: "movida",
-      por: email, em: Date.now(),
+      por: emailReal, em: Date.now(),
       detalhe: `prazo ${t.dueDate ? fmtData(t.dueDate) : "sem prazo"} → ${dia ? fmtData(dia) : "sem prazo"}${reabre ? " (reaberta)" : ""}`,
     };
     setFalha(null);
@@ -386,11 +388,11 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
       )}
 
       {nova && !colaborador && (
-        <TaskModal pessoas={pessoas} minhaEmail={email} task={null} prazoInicial={nova.prazo} onClose={() => setNova(null)} />
+        <TaskModal pessoas={pessoas} minhaEmail={emailReal} task={null} prazoInicial={nova.prazo} onClose={() => setNova(null)} />
       )}
       {editTask && (colaborador
         ? <DetalheDaTarefa task={editTask} onMover={(s) => { void mover(editTask, s); setEditTask(null); }} onClose={() => setEditTask(null)} />
-        : <TaskModal pessoas={pessoas} minhaEmail={email} task={editTask} onClose={() => setEditTask(null)} />
+        : <TaskModal pessoas={pessoas} minhaEmail={emailReal} task={editTask} onClose={() => setEditTask(null)} />
       )}
     </div>
   );
