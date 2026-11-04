@@ -38,9 +38,18 @@ service cloud.firestore {
       return isAuthorized() && requesterDoc().data.get('role', '') == 'member';
     }
 
-    /** Autorizado e NÃO member — quem pode ver os dados da operação. */
+    /**
+     * "equipe" — o funcionário. Só as tarefas atribuídas a ele (ver a regra de
+     * `tarefas`): nada da operação, nada do resultado. Espelha papelDe e
+     * podeCapacidade em lib/domain.
+     */
+    function isEquipe() {
+      return isAuthorized() && requesterDoc().data.get('role', '') == 'equipe';
+    }
+
+    /** Autorizado e NÃO member nem equipe — quem pode ver os dados da operação. */
     function veOperacao() {
-      return isAuthorized() && !isMember();
+      return isAuthorized() && !isMember() && !isEquipe();
     }
 
     // Owner edita tudo, sempre. Colaborador só edita a `tab` se o próprio
@@ -361,6 +370,13 @@ service cloud.firestore {
         || resource.data.createdBy == request.auth.token.email);
       allow create: if veOperacao() && (isOwner()
         || request.resource.data.createdBy == request.auth.token.email);
+      // Equipe (funcionário): lê só as atribuídas a si e só mexe no andamento —
+      // concluir, reabrir, mudar o dia (status, prazo, rastro). Não cria, não
+      // apaga, não reatribui, não renomeia.
+      allow read: if isEquipe() && resource.data.assignedTo == request.auth.token.email;
+      allow update: if isEquipe() && resource.data.assignedTo == request.auth.token.email
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'dueDate', 'atividade', 'lastEditedBy', 'updatedAt']);
     }
 
     // Vendas ao vivo em TEMPO REAL: o sinal que o webhook publica a cada venda
@@ -368,7 +384,8 @@ service cloud.firestore {
     // hora. Só o servidor escreve (Admin SDK). É faturamento e contagem — o que
     // o member já vê na barra —, então qualquer acesso lê.
     match /ao_vivo/{docId} {
-      allow read: if isAuthorized();
+      // Faturamento: a equipe (funcionário) não vê.
+      allow read: if isAuthorized() && !isEquipe();
       allow write: if false;
     }
 
@@ -442,7 +459,8 @@ service cloud.firestore {
      * original: cada um so mexe na propria.
      */
     match /notification_events_publico/{eventId} {
-      allow read: if isAuthorized();
+      // A equipe só recebe aviso de tarefa (push); o feed de vendas não é dela.
+      allow read: if isAuthorized() && !isEquipe();
       allow create, delete: if false;
       allow update: if isAuthorized()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["readBy", "dismissedBy"])
@@ -728,8 +746,11 @@ service cloud.firestore {
       function isMemberT() {
         return isAuthorizedT() && requesterDocT().data.get('role', '') == 'member';
       }
+      function isEquipeT() {
+        return isAuthorizedT() && requesterDocT().data.get('role', '') == 'equipe';
+      }
       function veOperacaoT() {
-        return isAuthorizedT() && !isMemberT();
+        return isAuthorizedT() && !isMemberT() && !isEquipeT();
       }
       function podeEditarT(tab) {
         return isOwnerT() || (veOperacaoT() && tab in requesterDocT().data.get('permissoesEdicao', []));
@@ -841,9 +862,13 @@ service cloud.firestore {
           || resource.data.createdBy == request.auth.token.email));
         allow create: if escritaLiberadaT() && (veOperacaoT() && (isOwnerT()
           || request.resource.data.createdBy == request.auth.token.email));
+        allow read: if isEquipeT() && resource.data.assignedTo == request.auth.token.email;
+        allow update: if escritaLiberadaT() && (isEquipeT() && resource.data.assignedTo == request.auth.token.email
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['status', 'dueDate', 'atividade', 'lastEditedBy', 'updatedAt']));
       }
       match /ao_vivo/{docId} {
-        allow read: if isAuthorizedT();
+        allow read: if isAuthorizedT() && !isEquipeT();
         allow write: if escritaLiberadaT() && (false);
       }
       match /alertasDispensados/{docId} {
@@ -862,7 +887,7 @@ service cloud.firestore {
                .affectedKeys().hasOnly([request.auth.token.email]));
       }
       match /notification_events_publico/{eventId} {
-        allow read: if isAuthorizedT();
+        allow read: if isAuthorizedT() && !isEquipeT();
         allow create, delete: if escritaLiberadaT() && (false);
         allow update: if escritaLiberadaT() && (isAuthorizedT()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["readBy", "dismissedBy"])

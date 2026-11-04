@@ -50,7 +50,7 @@ export const FUNCOES_COPIADAS = [
   "auditoriaDeMovimentoCoerente",
 ] as const;
 
-const AJUDANTES = ["requesterDoc", "isOwner", "isAuthorized", "isMember", "veOperacao", "podeEditar"];
+const AJUDANTES = ["requesterDoc", "isOwner", "isAuthorized", "isMember", "isEquipe", "veOperacao", "podeEditar"];
 
 export const INICIO = "// <gerado:dados-do-tenant> — NÃO EDITE: `npm run regras:gerar` refaz a partir da raiz";
 export const FIM = "// </gerado:dados-do-tenant>";
@@ -110,8 +110,11 @@ const AJUDANTES_T = `
       function isMemberT() {
         return isAuthorizedT() && requesterDocT().data.get('role', '') == 'member';
       }
+      function isEquipeT() {
+        return isAuthorizedT() && requesterDocT().data.get('role', '') == 'equipe';
+      }
       function veOperacaoT() {
-        return isAuthorizedT() && !isMemberT();
+        return isAuthorizedT() && !isMemberT() && !isEquipeT();
       }
       function podeEditarT(tab) {
         return isOwnerT() || (veOperacaoT() && tab in requesterDocT().data.get('permissoesEdicao', []));

@@ -21,6 +21,8 @@ const DONO = { uid: "d", email: "dono@a.com" };
 const ANA = { uid: "ana", email: "ana@a.com" };
 const BETO = { uid: "beto", email: "beto@a.com" };
 const MEMBRO = { uid: "m", email: "membro@a.com" };
+/** Funcionário (papel "equipe"): só as tarefas atribuídas a ele. */
+const JOAO = { uid: "joao", email: "joao@a.com" };
 
 function ctx(p: { uid: string; email: string }): Firestore {
   return env.authenticatedContext(p.uid, { email: p.email }).firestore() as unknown as Firestore;
@@ -50,6 +52,10 @@ beforeEach(async () => {
       await setDoc(doc(db, acesso, ANA.email), { email: ANA.email, role: "partner" });
       await setDoc(doc(db, acesso, BETO.email), { email: BETO.email, role: "partner" });
       await setDoc(doc(db, acesso, MEMBRO.email), { email: MEMBRO.email, role: "member" });
+      await setDoc(doc(db, acesso, JOAO.email), { email: JOAO.email, role: "equipe" });
+      await setDoc(doc(db, `${base}tarefas/do-joao`), tarefa("do-joao", JOAO.email, DONO.email));
+      await setDoc(doc(db, `${base}ao_vivo/sinal`), { seq: 1, valor: 100 });
+      await setDoc(doc(db, `${base}estoque/p1`), { id: "p1", nome: "Limão" });
       await setDoc(doc(db, `${base}tarefas/da-ana`), tarefa("da-ana", ANA.email, DONO.email));
       await setDoc(doc(db, `${base}tarefas/ana-pediu`), tarefa("ana-pediu", BETO.email, ANA.email));
       await setDoc(doc(db, `${base}tarefas/do-beto`), tarefa("do-beto", BETO.email, DONO.email));
@@ -98,6 +104,34 @@ for (const [nome, base] of [["raiz", ""], ["dentro da empresa", "tenants/a/"]] a
     it("o dono mexe em qualquer uma", async () => {
       await assertSucceeds(updateDoc(d(ctx(DONO), "do-beto"), { status: "doing" }));
       await assertSucceeds(setDoc(d(ctx(DONO), "pro-beto"), tarefa("pro-beto", BETO.email, DONO.email)));
+    });
+
+    it("equipe: lê só as atribuídas a si (a consulta do app /tarefas) e nenhuma outra", async () => {
+      const joao = ctx(JOAO);
+      await assertSucceeds(getDocs(query(col(joao), where("assignedTo", "==", JOAO.email), limit(500))));
+      await assertSucceeds(getDoc(d(joao, "do-joao")));
+      await assertFails(getDoc(d(joao, "da-ana")));
+      await assertFails(getDocs(query(col(joao), where("createdBy", "==", JOAO.email), limit(500))));
+      await assertFails(getDocs(query(col(joao), orderBy("createdAt", "desc"), limit(500))));
+    });
+
+    it("equipe: conclui, reabre e muda o dia; não renomeia, não reatribui, não cria, não apaga", async () => {
+      const joao = ctx(JOAO);
+      await assertSucceeds(updateDoc(d(joao, "do-joao"), { status: "done", lastEditedBy: JOAO.email, updatedAt: 2, atividade: [{ tipo: "concluida", por: JOAO.email, em: 2 }] }));
+      await assertSucceeds(updateDoc(d(joao, "do-joao"), { status: "todo", dueDate: "2026-11-06" }));
+      await assertFails(updateDoc(d(joao, "do-joao"), { title: "outro nome" }));
+      await assertFails(updateDoc(d(joao, "do-joao"), { assignedTo: ANA.email }));
+      await assertFails(updateDoc(d(joao, "da-ana"), { status: "done" }));
+      await assertFails(setDoc(d(joao, "nova"), tarefa("nova", JOAO.email, JOAO.email)));
+      await assertFails(deleteDoc(d(joao, "do-joao")));
+    });
+
+    it("equipe: não vê nada da operação nem o faturamento ao vivo", async () => {
+      const joao = ctx(JOAO);
+      await assertFails(getDoc(doc(joao, `${base}estoque/p1`)));
+      await assertFails(getDoc(doc(joao, `${base}ao_vivo/sinal`)));
+      // o dono continua vendo
+      await assertSucceeds(getDoc(doc(ctx(DONO), `${base}ao_vivo/sinal`)));
     });
 
     it("member não lê nem escreve tarefa nenhuma", async () => {
