@@ -34,10 +34,8 @@ describe("podeVerAba", () => {
     for (const aba of TODAS) expect(podeVerAba("owner", aba)).toBe(true);
   });
 
-  it("partner vê tudo MENOS Acesso — o comportamento de sempre", () => {
-    for (const aba of TODAS) {
-      expect(podeVerAba("partner", aba)).toBe(aba !== "acesso");
-    }
+  it("Sócio (partner) vê Dashboard, Pedidos, Tarefas e DRE — os acessos pedidos em 03/11/2026", () => {
+    expect(TODAS.filter((a) => podeVerAba("partner", a))).toEqual(["dashboard", "pedidos", "dre", "tarefas"]);
   });
 
   it("member só vê o Dashboard", () => {
@@ -59,8 +57,9 @@ describe("podeVerAba", () => {
 
   it("aba desconhecida não é liberada pro member por descuido", () => {
     expect(podeVerAba("member", "aba-que-ainda-nao-existe")).toBe(false);
-    // Partner segue vendo o que for novo — é o papel amplo.
-    expect(podeVerAba("partner", "aba-que-ainda-nao-existe")).toBe(true);
+    // O Sócio também não: a lista dele é fechada.
+    expect(podeVerAba("partner", "aba-que-ainda-nao-existe")).toBe(false);
+    expect(podeVerAba("equipe", "aba-que-ainda-nao-existe")).toBe(false);
   });
 
   it("a lista do member é a fonte única da regra", () => {
@@ -69,21 +68,22 @@ describe("podeVerAba", () => {
 });
 
 describe("roleLabel", () => {
-  it("mostra os nomes novos", () => {
-    expect(roleLabel("owner")).toBe("Owner");
-    expect(roleLabel("partner")).toBe("Partner");
+  it("os três acessos: Master, Sócio e Colaborador", () => {
+    expect(roleLabel("owner")).toBe("Master");
+    expect(roleLabel("partner")).toBe("Sócio");
+    expect(roleLabel("equipe")).toBe("Colaborador");
     expect(roleLabel("member")).toBe("Member");
   });
 
-  it("registro legado aparece como Partner", () => {
-    expect(roleLabel("colaborador")).toBe("Partner");
+  it("o valor LEGADO 'colaborador' é Sócio (partner), não o Colaborador de agora", () => {
+    expect(roleLabel("colaborador")).toBe("Sócio");
   });
 });
 
 describe("equipe (funcionário)", () => {
   it("é reconhecido e rotulado", () => {
     expect(papelDe("equipe")).toBe("equipe");
-    expect(roleLabel("equipe")).toBe("Equipe");
+    expect(roleLabel("equipe")).toBe("Colaborador");
   });
   it("só alcança a aba Tarefas", () => {
     for (const aba of TODAS) expect(podeVerAba("equipe", aba)).toBe(aba === "tarefas");

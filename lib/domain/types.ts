@@ -436,10 +436,18 @@ export function papelDe(role: AccessEntry["role"] | undefined | null): Papel {
   return "partner";
 }
 
-/** Rótulo de exibição do papel. */
-export function roleLabel(role: AccessEntry["role"]): "Owner" | "Partner" | "Member" | "Equipe" {
+/**
+ * Rótulo de exibição do papel — os TRÊS acessos que o dono usa (03/11/2026):
+ *   Master (owner) — tudo;
+ *   Sócio (partner) — Dashboard, Pedidos, Tarefas e DRE;
+ *   Colaborador (equipe) — só as próprias tarefas.
+ * "Member" segue existindo pra registros antigos, mas não é mais oferecido.
+ * (O valor gravado "colaborador" é LEGADO e vira partner/Sócio — o rótulo
+ * "Colaborador" de agora é o papel "equipe".)
+ */
+export function roleLabel(role: AccessEntry["role"]): "Master" | "Sócio" | "Member" | "Colaborador" {
   const p = papelDe(role);
-  return p === "owner" ? "Owner" : p === "member" ? "Member" : p === "equipe" ? "Equipe" : "Partner";
+  return p === "owner" ? "Master" : p === "member" ? "Member" : p === "equipe" ? "Colaborador" : "Sócio";
 }
 
 /**
@@ -451,8 +459,16 @@ export function roleLabel(role: AccessEntry["role"]): "Owner" | "Partner" | "Mem
  */
 export const ABAS_DO_MEMBER = ["dashboard"] as const;
 
-/** A única aba da equipe (funcionário): as próprias tarefas. */
+/** A única aba da equipe (Colaborador, o funcionário): as próprias tarefas. */
 export const ABAS_DA_EQUIPE = ["tarefas"] as const;
+
+/**
+ * As abas do Sócio (partner). O dono pediu (03/11/2026): Dashboard, Pedidos,
+ * Tarefas e DRE. É recorte de TELA: o Sócio continua lendo os dados da
+ * operação no banco (o DRE e o Dashboard são calculados a partir de custos,
+ * estoque e pedidos), só não navega pelas outras abas.
+ */
+export const ABAS_DO_SOCIO = ["dashboard", "pedidos", "tarefas", "dre"] as const;
 
 /**
  * Este papel enxerga esta aba?
@@ -466,6 +482,7 @@ export function podeVerAba(papel: Papel, aba: string): boolean {
   if (aba === "acesso") return papel === "owner";
   if (papel === "member") return (ABAS_DO_MEMBER as readonly string[]).includes(aba);
   if (papel === "equipe") return (ABAS_DA_EQUIPE as readonly string[]).includes(aba);
+  if (papel === "partner") return (ABAS_DO_SOCIO as readonly string[]).includes(aba);
   return true;
 }
 

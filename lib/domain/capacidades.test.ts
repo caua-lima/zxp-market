@@ -93,13 +93,27 @@ describe("capacidadeDaAba espelha podeVerAba", () => {
    */
   const ABAS = ["dashboard", "pedidos", "estoque", "full", "ads", "metas", "tarefas", "custos", "dre", "preco", "desempenho", "acesso"];
 
-  it("concorda com podeVerAba nos três papéis", () => {
-    for (const papel of ["owner", "partner", "member"] as Papel[]) {
+  it("concorda com podeVerAba pro Master e pro member", () => {
+    for (const papel of ["owner", "member"] as Papel[]) {
       for (const aba of ABAS) {
         const viaCapacidade = podeCapacidade(papel, undefined, capacidadeDaAba(aba));
         expect(`${papel}/${aba}=${viaCapacidade}`).toBe(`${papel}/${aba}=${podeVerAba(papel, aba)}`);
       }
     }
+  });
+
+  it("Sócio: toda aba que a tela mostra, a API responde (nunca tela em branco)", () => {
+    // O recorte do Sócio (4 abas) é de TELA: os dados que o Dashboard e o DRE
+    // calculam são os mesmos da operação, então a API continua respondendo a
+    // ele. A direção que importa é esta: aba visível => API liberada.
+    for (const aba of ABAS) {
+      if (podeVerAba("partner", aba)) expect(`partner/${aba}=${podeCapacidade("partner", undefined, capacidadeDaAba(aba))}`).toBe(`partner/${aba}=true`);
+    }
+  });
+
+  it("Colaborador: só Tarefas, que não passa pela API (a regra do Firestore libera as dele)", () => {
+    for (const aba of ABAS) expect(podeVerAba("equipe", aba)).toBe(aba === "tarefas");
+    for (const aba of ABAS) expect(podeCapacidade("equipe", undefined, capacidadeDaAba(aba))).toBe(false);
   });
 
   it("acesso exige administrar", () => {
