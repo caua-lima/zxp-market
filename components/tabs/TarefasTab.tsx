@@ -10,7 +10,7 @@ import {
 } from "@dnd-kit/core";
 import Modal from "@/components/Modal";
 import { appendAtividade, isTaskAtrasada, type Task, type TaskAtividade, type TaskPriority, type TaskStatus } from "@/lib/domain/types";
-import { carregarTarefasAnteriores, deleteTask, upsertTask, watchTasks } from "@/lib/firebase/data";
+import { atualizarAndamentoDaTarefa, carregarTarefasAnteriores, deleteTask, upsertTask, watchTasks } from "@/lib/firebase/data";
 import AvisoMaisAntigos from "@/components/AvisoMaisAntigos";
 import { useMaisAntigos } from "@/components/useMaisAntigos";
 import { useAccess } from "@/components/tabs/AccessGuard";
@@ -68,7 +68,13 @@ type Filtro = "todas" | "pra-mim" | "criei-eu";
 type Vista = "semana" | "quadro" | "lista";
 
 export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openTaskId?: string; chaveDeNavegacao?: number } = {}) {
-  const { email, isOwner } = useAccess();
+  const { email, isOwner, papel } = useAccess();
+  /**
+   * Colaborador (papel "equipe", o funcionário): vê as tarefas atribuídas a ele
+   * e só mexe no andamento — concluir, reabrir, mudar o dia. Criar, editar,
+   * atribuir e excluir são de quem gerencia (a regra do Firestore garante).
+   */
+  const colaborador = papel === "equipe";
   const [primeiraPagina, setTasks] = useState<Task[]>([]);
   /** O quadro bateu o teto de leitura (S22 da auditoria SaaS) — tarefa mais antiga pode estar faltando. */
   const [tasksTruncadas, setTasksTruncadas] = useState(false);
@@ -126,17 +132,19 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
   useEffect(() => {
     if (!email) return;
     // O dono lê o quadro todo; o resto do time só as suas (é o que a regra deixa).
-    return watchTasks((ts, truncado) => { setTasks(ts); setTasksTruncadas(truncado); setLoading(false); }, { email, todas: isOwner });
-  }, [email, isOwner]);
+    return watchTasks((ts, truncado) => { setTasks(ts); setTasksTruncadas(truncado); setLoading(false); }, { email, todas: isOwner, soAtribuidas: colaborador });
+  }, [email, isOwner, colaborador]);
 
   useEffect(() => {
+    // O Colaborador não atribui tarefa: não precisa da lista do time.
+    if (colaborador) return;
     let vivo = true;
     authedFetch("/api/acesso/diretorio")
       .then((r) => (r.ok ? r.json() : { pessoas: [] }))
       .then((j) => { if (vivo) setPessoas(Array.isArray(j?.pessoas) ? j.pessoas : []); })
       .catch(() => { /* seletor de responsável fica vazio; o resto da aba segue normal */ });
     return () => { vivo = false; };
-  }, []);
+  }, [colaborador]);
 
   /**
    * O DIA DE HOJE COMO ESTADO, E NÃO COMO LEITURA DO RELÓGIO.
@@ -195,7 +203,7 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
     setFalha(null);
     // Falhou (sem rede, sem permissão): o card volta pra coluna de antes — e
     // agora a tela DIZ por quê, em vez de parecer que o arrasto não pegou.
-    await upsertTask({ ...t, status, lastEditedBy: email, atividade: appendAtividade(t.atividade, evento) })
+    await atualizarAndamentoDaTarefa(t.id, { status, atividade: appendAtividade(t.atividade, evento) })
       .catch((err) => setFalha(`Não consegui mover "${t.title}": ${mensagemDeErroDeSalvamento(err)}`));
   }
 
@@ -208,7 +216,7 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
       detalhe: `prazo ${t.dueDate ? fmtData(t.dueDate) : "sem prazo"} → ${dia ? fmtData(dia) : "sem prazo"}${reabre ? " (reaberta)" : ""}`,
     };
     setFalha(null);
-    await upsertTask({ ...t, dueDate: dia ?? undefined, status: reabre ? "todo" : t.status, lastEditedBy: email, atividade: appendAtividade(t.atividade, evento) })
+    await atualizarAndamentoDaTarefa(t.id, { dueDate: dia, status: reabre ? "todo" : t.status, atividade: appendAtividade(t.atividade, evento) })
       .catch((err) => setFalha(`Não consegui mudar o prazo de "${t.title}": ${mensagemDeErroDeSalvamento(err)}`));
   }
 
@@ -261,7 +269,7 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
             efeito: "indefinido" as const,
           }] : [],
         })}
-        acao={{ rotulo: "＋ Nova Tarefa", onClick: () => setNova({}) }}
+        acao={colaborador ? undefined : { rotulo: "＋ Nova Tarefa", onClick: () => setNova({}) }}
       />
 
       <AvisoMaisAntigos
@@ -278,14 +286,16 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
       <div className="kpi-grid">
         <div className="kpi k-acc"><div className="k-lbl">Em aberto</div><div className="k-val">{abertas}</div><div className="k-sub">{minhasVisiveis.length} no total</div></div>
         <div className="kpi k-warn"><div className="k-lbl">Pra mim</div><div className="k-val" style={{ color: "var(--yellow)" }}>{minhas}</div><div className="k-sub">atribuídas a você</div></div>
-        <div className="kpi k-pos"><div className="k-lbl">Criadas por mim</div><div className="k-val" style={{ color: "var(--green)" }}>{criadas}</div></div>
+        {colaborador
+          ? <div className="kpi k-neg"><div className="k-lbl">Atrasadas</div><div className="k-val" style={{ color: atrasadas ? "var(--red-text)" : undefined }}>{atrasadas}</div></div>
+          : <div className="kpi k-pos"><div className="k-lbl">Criadas por mim</div><div className="k-val" style={{ color: "var(--green)" }}>{criadas}</div></div>}
       </div>
 
-      <div className="seg" style={{ alignSelf: "flex-start" }}>
+      {!colaborador && <div className="seg" style={{ alignSelf: "flex-start" }}>
         <button type="button" className={`seg-btn ${filtro === "todas" ? "active" : ""}`} onClick={() => setFiltro("todas")}>{isOwner ? "Todas" : "Todas as minhas"}</button>
         <button type="button" className={`seg-btn ${filtro === "pra-mim" ? "active" : ""}`} onClick={() => setFiltro("pra-mim")}>Pra mim</button>
         <button type="button" className={`seg-btn ${filtro === "criei-eu" ? "active" : ""}`} onClick={() => setFiltro("criei-eu")}>Criei eu</button>
-      </div>
+      </div>}
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         {isOwner && (
@@ -332,7 +342,8 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
           onConcluir={(t) => mover(t, "done")}
           onReabrir={(t) => mover(t, "todo")}
           onEditar={setEditTask}
-          onNova={(prazo) => setNova({ prazo })}
+          rotuloEditar={colaborador ? "Ver" : "Editar"}
+          onNova={colaborador ? undefined : (prazo) => setNova({ prazo })}
         />
       ) : vista === "lista" ? (
         <ListaDeTarefas
@@ -340,7 +351,8 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
           nomeDe={(e) => pessoas.find((p) => p.email === e)?.displayName || e || "—"}
           onMover={mover}
           onEditar={setEditTask}
-          onExcluir={excluir}
+          onExcluir={colaborador ? undefined : excluir}
+          rotuloEditar={colaborador ? "Ver" : "Editar"}
         />
       ) : (
         <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
@@ -358,7 +370,8 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
                         task={t}
                         onMover={(s) => mover(t, s)}
                         onEditar={() => setEditTask(t)}
-                        onExcluir={() => excluir(t)}
+                        onExcluir={colaborador ? undefined : () => excluir(t)}
+                        rotuloEditar={colaborador ? "Ver" : "Editar"}
                       />
                     ))
                   )}
@@ -372,11 +385,12 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
         </DndContext>
       )}
 
-      {nova && (
+      {nova && !colaborador && (
         <TaskModal pessoas={pessoas} minhaEmail={email} task={null} prazoInicial={nova.prazo} onClose={() => setNova(null)} />
       )}
-      {editTask && (
-        <TaskModal pessoas={pessoas} minhaEmail={email} task={editTask} onClose={() => setEditTask(null)} />
+      {editTask && (colaborador
+        ? <DetalheDaTarefa task={editTask} onMover={(s) => { void mover(editTask, s); setEditTask(null); }} onClose={() => setEditTask(null)} />
+        : <TaskModal pessoas={pessoas} minhaEmail={email} task={editTask} onClose={() => setEditTask(null)} />
       )}
     </div>
   );
@@ -387,12 +401,14 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
  * pelo teclado ou leitor de tela. As concluídas ficam recolhidas: são o que
  * mais acumula e o que menos se consulta.
  */
-function ListaDeTarefas({ tarefas, nomeDe, onMover, onEditar, onExcluir }: {
+function ListaDeTarefas({ tarefas, nomeDe, onMover, onEditar, onExcluir, rotuloEditar = "Editar" }: {
   tarefas: Task[];
   nomeDe: (email?: string) => string;
   onMover: (t: Task, s: TaskStatus) => void;
   onEditar: (t: Task) => void;
-  onExcluir: (t: Task) => void;
+  /** Sem excluir (Colaborador): o botão some. */
+  onExcluir?: (t: Task) => void;
+  rotuloEditar?: string;
 }) {
   const [verConcluidas, setVerConcluidas] = useState(false);
   const peso = (t: Task) => (t.status === "doing" ? 0 : t.status === "todo" ? 1 : 2);
@@ -426,8 +442,8 @@ function ListaDeTarefas({ tarefas, nomeDe, onMover, onEditar, onExcluir }: {
                   </select>
                 </td>
                 <td data-label="Ações" style={{ whiteSpace: "nowrap" }}>
-                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => onEditar(t)} aria-label={`Editar ${t.title}`}>Editar</button>{" "}
-                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => onExcluir(t)} aria-label={`Excluir ${t.title}`}>Excluir</button>
+                  <button type="button" className="btn btn-ghost btn-xs" onClick={() => onEditar(t)} aria-label={`${rotuloEditar} ${t.title}`}>{rotuloEditar}</button>{" "}
+                  {onExcluir && <button type="button" className="btn btn-ghost btn-xs" onClick={() => onExcluir(t)} aria-label={`Excluir ${t.title}`}>Excluir</button>}
                 </td>
               </tr>
             ))}
@@ -494,11 +510,12 @@ function usePonteiroDeToque(): boolean {
  * Toque: o card rola normalmente e só a ALÇA (44px, com nome) arrasta. Em qualquer
  * dos dois, ←/→ movem a tarefa sem arrastar — é a alternativa por teclado e toque.
  */
-function DraggableTaskCard({ task, onMover, onEditar, onExcluir }: {
+function DraggableTaskCard({ task, onMover, onEditar, onExcluir, rotuloEditar }: {
   task: Task;
   onMover: (s: TaskStatus) => void;
   onEditar: () => void;
-  onExcluir: () => void;
+  onExcluir?: () => void;
+  rotuloEditar?: string;
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({ id: task.id });
   const toque = usePonteiroDeToque();
@@ -518,22 +535,24 @@ function DraggableTaskCard({ task, onMover, onEditar, onExcluir }: {
     );
     return (
       <div ref={setNodeRef} style={{ opacity: isDragging ? 0.35 : 1 }}>
-        <TaskCard task={task} onMover={onMover} onEditar={onEditar} onExcluir={onExcluir} alca={alca} />
+        <TaskCard task={task} onMover={onMover} onEditar={onEditar} onExcluir={onExcluir} rotuloEditar={rotuloEditar} alca={alca} />
       </div>
     );
   }
   return (
     <div ref={setNodeRef} {...listeners} style={{ opacity: isDragging ? 0.35 : 1, cursor: "grab", touchAction: "none" }}>
-      <TaskCard task={task} onMover={onMover} onEditar={onEditar} onExcluir={onExcluir} arrastavel />
+      <TaskCard task={task} onMover={onMover} onEditar={onEditar} onExcluir={onExcluir} rotuloEditar={rotuloEditar} arrastavel />
     </div>
   );
 }
 
-function TaskCard({ task, onMover, onEditar, onExcluir, arrastavel, arrastando, alca }: {
+function TaskCard({ task, onMover, onEditar, onExcluir, rotuloEditar = "Editar", arrastavel, arrastando, alca }: {
   task: Task;
   onMover: (s: TaskStatus) => void;
   onEditar: () => void;
-  onExcluir: () => void;
+  /** Sem excluir (Colaborador): o botão some. */
+  onExcluir?: () => void;
+  rotuloEditar?: string;
   /** Só visual (ícone de grip) — quem de fato liga o arrasto é o wrapper em DraggableTaskCard. */
   arrastavel?: boolean;
   arrastando?: boolean;
@@ -574,13 +593,45 @@ function TaskCard({ task, onMover, onEditar, onExcluir, arrastavel, arrastando, 
             <button type="button" className="btn btn-ghost btn-xs" title="Mover pra trás" aria-label="Mover pra trás" disabled={idx <= 0} onClick={() => onMover(COLS[idx - 1].status)}>←</button>
             <button type="button" className="btn btn-ghost btn-xs" title="Mover pra frente" aria-label="Mover pra frente" disabled={idx >= COLS.length - 1} onClick={() => onMover(COLS[idx + 1].status)}>→</button>
           </div>
-          <button type="button" className="btn btn-warning btn-xs" onClick={onEditar}>Editar</button>
-          <button type="button" className="btn btn-danger btn-xs" onClick={onExcluir}>Excluir</button>
+          <button type="button" className="btn btn-warning btn-xs" onClick={onEditar}>{rotuloEditar}</button>
+          {onExcluir && <button type="button" className="btn btn-danger btn-xs" onClick={onExcluir}>Excluir</button>}
         </div>
       </div>
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * A tarefa aberta pelo Colaborador: só leitura (quem pediu, prazo, prioridade,
+ * detalhes) e os dois botões que ele pode usar — concluir ou reabrir.
+ */
+function DetalheDaTarefa({ task, onMover, onClose }: { task: Task; onMover: (s: TaskStatus) => void; onClose: () => void }) {
+  const feita = task.status === "done";
+  const atrasada = isAtrasada(task);
+  const linha = (rotulo: string, valor: React.ReactNode) => (
+    <div style={{ display: "flex", gap: 10, padding: "6px 0", borderTop: "1px solid var(--border)" }}>
+      <span style={{ minWidth: 92, color: "var(--muted)", fontSize: ".82rem" }}>{rotulo}</span>
+      <span style={{ fontSize: ".9rem" }}>{valor}</span>
+    </div>
+  );
+  return (
+    <Modal open onClose={onClose} titulo="Tarefa">
+      <div className="modal-title" style={{ textDecoration: feita ? "line-through" : undefined }}>{task.title}</div>
+      {task.description && <p style={{ margin: "0 0 10px", whiteSpace: "pre-wrap" }}>{task.description}</p>}
+      {linha("Prazo", task.dueDate ? <span style={{ color: atrasada ? "var(--red-text)" : undefined }}>{fmtData(task.dueDate)}{atrasada ? " · atrasada" : ""}</span> : "sem prazo")}
+      {linha("Prioridade", PRIORIDADE_META[prioridadeDe(task)].label)}
+      {linha("Situação", COLS.find((c) => c.status === task.status)?.label ?? task.status)}
+      {task.createdByName && linha("Pedida por", task.createdByName)}
+      <div className="modal-btns" style={{ marginTop: 14 }}>
+        {feita
+          ? <button type="button" className="btn btn-ghost" onClick={() => onMover("todo")}>↩ Reabrir</button>
+          : <button type="button" className="btn btn-success" onClick={() => onMover("done")}>✓ Concluir</button>}
+        {!feita && task.status !== "doing" && <button type="button" className="btn btn-ghost" onClick={() => onMover("doing")}>Comecei a fazer</button>}
+        <button type="button" className="btn btn-ghost" onClick={onClose}>Fechar</button>
+      </div>
+    </Modal>
   );
 }
 

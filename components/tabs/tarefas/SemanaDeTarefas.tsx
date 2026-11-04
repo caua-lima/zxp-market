@@ -39,7 +39,10 @@ type Props = {
   onConcluir: (t: Task) => void;
   onReabrir: (t: Task) => void;
   onEditar: (t: Task) => void;
-  onNova: (prazo?: string) => void;
+  /** Rótulo do botão que abre a tarefa ("Ver" pro Colaborador, que não edita). */
+  rotuloEditar?: string;
+  /** Sem isto (Colaborador), os "＋" dos dias somem. */
+  onNova?: (prazo?: string) => void;
 };
 
 const ALVO_SEM_PRAZO = "sem-prazo";
@@ -58,7 +61,7 @@ function usePonteiroDeToque(): boolean {
   );
 }
 
-export default function SemanaDeTarefas({ tarefas, hoje, mostrarResponsavel, onMoverParaDia, onConcluir, onReabrir, onEditar, onNova }: Props) {
+export default function SemanaDeTarefas({ tarefas, hoje, mostrarResponsavel, onMoverParaDia, onConcluir, onReabrir, onEditar, rotuloEditar = "Editar", onNova }: Props) {
   const [segunda, setSegunda] = useState(() => segundaDaSemana(hoje));
   const semana = useMemo(() => montarSemana(tarefas, segunda, hoje), [tarefas, segunda, hoje]);
   const ehEstaSemana = segunda === segundaDaSemana(hoje);
@@ -78,7 +81,7 @@ export default function SemanaDeTarefas({ tarefas, hoje, mostrarResponsavel, onM
     if (t.status === "done" || (t.dueDate ?? null) !== dia) onMoverParaDia(t, dia);
   }
 
-  const cardProps = { mostrarResponsavel, hoje, onConcluir, onReabrir, onEditar };
+  const cardProps = { mostrarResponsavel, hoje, onConcluir, onReabrir, onEditar, rotuloEditar };
 
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
@@ -107,12 +110,12 @@ export default function SemanaDeTarefas({ tarefas, hoje, mostrarResponsavel, onM
             <Quadro
               key={d.iso} id={`dia:${d.iso}`} classe={d.hoje ? s.quadroHoje : ""} titulo={d.curto} subtitulo={ddmm(d.iso)}
               rotulo={`${d.longo}, ${ddmm(d.iso)}${d.hoje ? " (hoje)" : ""}`} contagem={d.tarefas.length}
-              onNova={() => onNova(d.iso)} arrastando={!!arrastando}
+              onNova={onNova ? () => onNova(d.iso) : undefined} arrastando={!!arrastando}
             >
               {d.tarefas.map((t) => <CardArrastavel key={t.id} tarefa={t} {...cardProps} />)}
             </Quadro>
           ))}
-          <Quadro id={ALVO_SEM_PRAZO} classe={s.quadroSemPrazo} titulo="SEM PRAZO" contagem={semana.semPrazo.length} onNova={() => onNova()} arrastando={!!arrastando}>
+          <Quadro id={ALVO_SEM_PRAZO} classe={s.quadroSemPrazo} titulo="SEM PRAZO" contagem={semana.semPrazo.length} onNova={onNova ? () => onNova() : undefined} arrastando={!!arrastando}>
             {semana.semPrazo.map((t) => <CardArrastavel key={t.id} tarefa={t} {...cardProps} />)}
           </Quadro>
         </div>
@@ -162,7 +165,7 @@ function Concluidas({ contagem, arrastando, children }: { contagem: number; arra
 }
 
 type CardProps = {
-  tarefa: Task; hoje: string; mostrarResponsavel: boolean;
+  tarefa: Task; hoje: string; mostrarResponsavel: boolean; rotuloEditar: string;
   onConcluir: (t: Task) => void; onReabrir: (t: Task) => void; onEditar: (t: Task) => void;
   alca?: React.ReactNode;
 };
@@ -184,7 +187,7 @@ function CardArrastavel(props: CardProps) {
   );
 }
 
-function Card({ tarefa: t, hoje, mostrarResponsavel, onConcluir, onReabrir, onEditar, alca }: CardProps) {
+function Card({ tarefa: t, hoje, mostrarResponsavel, rotuloEditar, onConcluir, onReabrir, onEditar, alca }: CardProps) {
   const feita = t.status === "done";
   const atrasada = !feita && !!t.dueDate && t.dueDate < hoje;
   return (
@@ -199,7 +202,7 @@ function Card({ tarefa: t, hoje, mostrarResponsavel, onConcluir, onReabrir, onEd
         {feita
           ? <button type="button" className={s.acao} onClick={() => onReabrir(t)} aria-label={`Reabrir ${t.title}`}>↩ Reabrir</button>
           : <button type="button" className={`${s.acao} ${s.acaoConcluir}`} onClick={() => onConcluir(t)} aria-label={`Concluir ${t.title}`}>✓ Concluir</button>}
-        <button type="button" className={s.acao} onClick={() => onEditar(t)} aria-label={`Editar ${t.title}`}>Editar</button>
+        <button type="button" className={s.acao} onClick={() => onEditar(t)} aria-label={`${rotuloEditar} ${t.title}`}>{rotuloEditar}</button>
         {alca}
       </div>
     </div>
