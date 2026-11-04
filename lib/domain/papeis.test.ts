@@ -79,3 +79,13 @@ describe("roleLabel", () => {
     expect(roleLabel("colaborador")).toBe("Partner");
   });
 });
+
+describe("equipe (funcionário)", () => {
+  it("é reconhecido e rotulado", () => {
+    expect(papelDe("equipe")).toBe("equipe");
+    expect(roleLabel("equipe")).toBe("Equipe");
+  });
+  it("só alcança a aba Tarefas", () => {
+    for (const aba of TODAS) expect(podeVerAba("equipe", aba)).toBe(aba === "tarefas");
+  });
+});

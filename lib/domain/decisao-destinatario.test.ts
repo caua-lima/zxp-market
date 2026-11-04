@@ -15,6 +15,7 @@ const TRES_DA_MANHA = Date.UTC(2026, 8, 22, 6, 0);
 
 const DONO: AcessoDoDestinatario = { papel: "owner", permissoesEdicao: [] };
 const MEMBRO: AcessoDoDestinatario = { papel: "member", permissoesEdicao: [] };
+const EQUIPE: AcessoDoDestinatario = { papel: "equipe", permissoesEdicao: [] };
 
 const venda = (over: Partial<SalePushPayload> = {}): Pick<SalePushPayload, "type" | "grossAmount" | "financialState"> => ({
   type: "sale_paid", grossAmount: "129.90", financialState: "estimated", ...over,
@@ -34,6 +35,14 @@ describe("decidirDestinatario", () => {
 
   it("member: envia, sem financeiro", () => {
     expect(decidir({ acesso: MEMBRO })).toMatchObject({ acao: "enviar", nivel: "sem_financeiro" });
+  });
+
+  it("equipe (funcionário): só aviso de tarefa — venda, estoque e o resto não chegam", () => {
+    expect(decidir({ acesso: EQUIPE })).toEqual({ acao: "suprimir", motivo: "fora_do_papel" });
+    expect(decidir({ acesso: EQUIPE, type: "stock_low" })).toEqual({ acao: "suprimir", motivo: "fora_do_papel" });
+    expect(decidir({ acesso: EQUIPE, type: "full_agenda" })).toEqual({ acao: "suprimir", motivo: "fora_do_papel" });
+    expect(decidir({ acesso: EQUIPE, type: "task_assigned" })).toMatchObject({ acao: "enviar", nivel: "sem_financeiro" });
+    expect(decidir({ acesso: EQUIPE, type: "task_due" })).toMatchObject({ acao: "enviar" });
   });
 
   it("dono que desligou o financeiro: sem financeiro", () => {

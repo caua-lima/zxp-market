@@ -34,9 +34,14 @@ export type DecisaoDoDestinatario =
  *
  *  - `agrupada_em_resumo`: a venda entrou numa rajada e a pessoa recebe o
  *    resumo em vez do aviso avulso;
- *  - `prefere_individual`: o resumo da rajada não vale pra quem quer cada venda.
+ *  - `prefere_individual`: o resumo da rajada não vale pra quem quer cada venda;
+ *  - `fora_do_papel`: a equipe (funcionário) só recebe aviso de tarefa — venda,
+ *    estoque, Full, marcos e sistema não são dela.
  */
-export type MotivoSupressao = "sem_acesso" | MotivoDoBloqueio | "agrupada_em_resumo" | "prefere_individual";
+export type MotivoSupressao = "sem_acesso" | MotivoDoBloqueio | "agrupada_em_resumo" | "prefere_individual" | "fora_do_papel";
+
+/** O que a equipe (funcionário) recebe: só o que é tarefa dela, e o teste do próprio aparelho. */
+export const TIPOS_DA_EQUIPE: ReadonlySet<NotificationEventType> = new Set<NotificationEventType>(["task_assigned", "task_due", "test"]);
 
 /**
  * Onde este push está numa rajada de vendas (ver lib/domain/janela-de-vendas):
@@ -65,6 +70,8 @@ export function decidirDestinatario(p: {
 }): DecisaoDoDestinatario {
   // Fail-closed: sem acesso registrado, sem envio — preferência nunca foi autorização.
   if (!p.acesso) return { acao: "suprimir", motivo: "sem_acesso" };
+  // Funcionário: só tarefa. Nem venda sem valor — o resultado da loja não é dele.
+  if (p.acesso.papel === "equipe" && !TIPOS_DA_EQUIPE.has(p.type)) return { acao: "suprimir", motivo: "fora_do_papel" };
 
   // Não deu pra ler a preferência: não se sabe se a pessoa quer este aviso. Espera um
   // pouco (a falha costuma ser passageira); esgotada a espera, segue com a versão

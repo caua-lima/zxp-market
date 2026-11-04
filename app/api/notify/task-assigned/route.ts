@@ -77,7 +77,8 @@ export async function POST(req: Request) {
   const dados = acessoDoResponsavel.data() ?? {};
   const papel = papelDe(dados.role);
   const permissoes: PermissionTab[] = Array.isArray(dados.permissoesEdicao) ? dados.permissoesEdicao : [];
-  if (!podeCapacidade(papel, permissoes, "ver_operacao")) {
+  // A equipe (funcionário) não vê a operação, mas vê as tarefas atribuídas a ela — é o papel inteiro.
+  if (papel !== "equipe" && !podeCapacidade(papel, permissoes, "ver_operacao")) {
     return NextResponse.json({ ok: true, skipped: "responsavel_sem_acesso_a_tarefas" });
   }
 

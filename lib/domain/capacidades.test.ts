@@ -111,3 +111,12 @@ describe("capacidadeDaAba espelha podeVerAba", () => {
     expect(capacidadeDaAba("aba-que-ainda-nao-existe")).toBe("ver_operacao");
   });
 });
+
+describe("equipe (funcionário) — só as próprias tarefas", () => {
+  it("nenhuma capacidade: nem resumo, nem operação, nem financeiro, nem edição — mesmo com permissões sobrando", () => {
+    for (const c of TODAS) expect(podeCapacidade("equipe", ["custos", "estoque"], c)).toBe(false);
+  });
+  it("o registro gravado com role 'equipe' também", () => {
+    expect(podeCapacidadeDoRegistro({ role: "equipe" }, "ver_resumo")).toBe(false);
+  });
+});
