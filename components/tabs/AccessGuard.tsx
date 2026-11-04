@@ -13,6 +13,20 @@ import {
 import { papelDe, podeVerAba, type AccessEntry, type Papel, type PermissionTab } from "@/lib/domain/types";
 import { cadastroAbertoNaTela } from "@/lib/marca";
 import CriarEmpresa from "@/components/CriarEmpresa";
+import { FaixaVerComo } from "@/components/VerComo";
+
+/** "Ver como": a pessoa cuja visão o Master está olhando (components/VerComo.tsx). */
+export type VisaoSimulada = { email: string; displayName: string; papel: Papel };
+const CHAVE_VER_COMO = "zxpmarket:verComo";
+
+function lerVisaoSalva(): VisaoSimulada | null {
+  try {
+    const v = JSON.parse(window.sessionStorage.getItem(CHAVE_VER_COMO) ?? "null") as VisaoSimulada | null;
+    return v && typeof v.email === "string" && typeof v.papel === "string" ? v : null;
+  } catch {
+    return null;
+  }
+}
 
 type AccessInfo = {
   role: AccessEntry["role"];
@@ -38,12 +52,23 @@ type AccessInfo = {
    * regras do Firestore não terem três cópias que divergem.
    */
   podeVer: (aba: string) => boolean;
+  /**
+   * De quem é a visão: o próprio e-mail, ou o da pessoa que o Master está
+   * olhando ("ver como"). Use pra FILTRAR o que aparece; pra gravar autoria
+   * use `email`, que é sempre de quem está logado.
+   */
+  emailVisto: string;
+  /** O logado é o Master, mesmo vendo como outra pessoa (o seletor e a faixa dependem disso). */
+  donoDeVerdade: boolean;
+  visao: VisaoSimulada | null;
+  verComo: (v: VisaoSimulada | null) => void;
 };
 const AccessCtx = createContext<AccessInfo>({
   // Default do contexto é o papel de MENOR poder: se algo renderizar fora do
   // provider, não pode ser por engano que a tela abre.
   role: "member", email: "", isOwner: false, displayName: "", canEdit: false,
   canEditTab: () => false, papel: "member", podeVer: () => false,
+  emailVisto: "", donoDeVerdade: false, visao: null, verComo: () => {},
 });
 export function useAccess() {
   return useContext(AccessCtx);
@@ -119,6 +144,15 @@ function writeCachedAccess(result: AccessResult) {
 export function AccessGuard({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth();
   const [access, setAccess] = useState<AccessResult | null>(null);
+  // "Ver como" do Master — lido da aba do navegador; só vale pra quem é Master de verdade.
+  const [visaoSalva, setVisaoSalva] = useState<VisaoSimulada | null>(() => (typeof window === "undefined" ? null : lerVisaoSalva()));
+  const verComo = (v: VisaoSimulada | null) => {
+    try {
+      if (v) window.sessionStorage.setItem(CHAVE_VER_COMO, JSON.stringify(v));
+      else window.sessionStorage.removeItem(CHAVE_VER_COMO);
+    } catch { /* sem storage: vale só até recarregar */ }
+    setVisaoSalva(v);
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -278,9 +312,13 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
   }
 
   const role = access.entry?.role ?? "colaborador";
-  const papel = papelDe(role);
+  const papelReal = papelDe(role);
+  const donoDeVerdade = papelReal === "owner";
+  // "Ver como": só o Master simula; pra qualquer outro, uma visão salva é ignorada.
+  const visao = donoDeVerdade && visaoSalva && visaoSalva.email !== currentEmail ? visaoSalva : null;
+  const papel = visao ? visao.papel : papelReal;
   const isOwner = papel === "owner"; // só o owner edita tudo; os demais são leitura por padrão
-  const permissoes = access.entry?.permissoesEdicao ?? [];
+  const permissoes = visao ? [] : access.entry?.permissoesEdicao ?? [];
   /**
    * Member nunca edita, mesmo que um `permissoesEdicao` tenha sobrado de
    * quando a conta era colaborador. O papel manda sobre a lista.
@@ -288,9 +326,13 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
   const canEditTab = (tab: PermissionTab) =>
     isOwner || (papel === "partner" && permissoes.includes(tab));
   const podeVer = (aba: string) => podeVerAba(papel, aba);
-  const displayName = access.entry?.displayName || user.displayName || currentEmail;
+  const displayName = visao ? visao.displayName : access.entry?.displayName || user.displayName || currentEmail;
   return (
-    <AccessCtx.Provider value={{ role, email: currentEmail, isOwner, displayName, canEdit: isOwner, canEditTab, papel, podeVer }}>
+    <AccessCtx.Provider value={{
+      role: visao ? visao.papel : role, email: currentEmail, isOwner, displayName, canEdit: isOwner, canEditTab, papel, podeVer,
+      emailVisto: visao ? visao.email : currentEmail, donoDeVerdade, visao, verComo,
+    }}>
+      {visao && <FaixaVerComo visao={visao} onVoltar={() => { verComo(null); if (visao.papel === "equipe") window.location.assign("/"); }} />}
       {children}
     </AccessCtx.Provider>
   );
