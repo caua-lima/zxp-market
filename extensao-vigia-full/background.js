@@ -57,6 +57,12 @@ async function lerEnvio(id) {
   return leitura;
 }
 
+/** Até quantos envios ao mesmo tempo (o app aceita o mesmo — MAX_VIGIAS). */
+const MAX_ENVIOS = 25;
+/** Pausa entre um envio e outro na rodada: 20 perguntas de uma vez ao ML seria grosseiro. */
+const PAUSA_ENTRE_ENVIOS_MS = 300;
+const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function config() {
   const { endereco = "", estados = {} } = await chrome.storage.local.get(["endereco", "estados"]);
   return { endereco, estados };
@@ -91,6 +97,27 @@ async function tocarAlarmePc() {
 
 export async function pararAlarmePc() {
   if (await alarmeTocando()) await chrome.offscreen.closeDocument().catch(() => {});
+}
+
+/**
+ * Foi agendar: abriu a página de agendamento de um envio que está tocando.
+ * Para o alarme dele no PC e no celular (o app marca como parado). Os outros
+ * envios com data, se houver, continuam tocando.
+ */
+async function silenciarEnvio(id) {
+  const { endereco, estados } = await config();
+  if (estados[id] !== "datas") return;
+  const { alarmeParado = {} } = await chrome.storage.local.get("alarmeParado");
+  alarmeParado[id] = true;
+  await chrome.storage.local.set({ alarmeParado });
+  const aindaTocando = Object.entries(estados).some(([outro, estado]) => estado === "datas" && !alarmeParado[outro]);
+  if (!aindaTocando) await pararAlarmePc();
+  if (endereco) {
+    await fetch(endereco, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ silenciar: true, inboundId: String(id) }),
+    }).catch(() => {});
+  }
 }
 
 /** Parar daqui também cala o celular (o app marca o alarme como parado). */
@@ -131,13 +158,22 @@ async function simularVaga() {
   }
 }
 
-async function contarAoApp(endereco, id, estado, trecho) {
-  try {
-    await fetch(endereco, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ inboundId: String(id), estado, trecho: String(trecho || "").slice(0, 300) }),
-    });
-  } catch { /* sem rede: na próxima volta tenta de novo */ }
+const ENDERECO_VENCIDO = "O endereço da vigia não vale mais. No app (aba Full), copie o endereço do cartão, cole aqui e Salvar.";
+
+/**
+ * A lista de envios da rodada. Vem da resposta do lote da rodada anterior
+ * (guardada); só pergunta ao app à parte na primeira vez ou depois de alguém
+ * mudar a lista por aqui (`listaVelha`).
+ */
+async function listaDaRodada(endereco) {
+  const { idsVigiados = null, listaVelha = true } = await chrome.storage.local.get(["idsVigiados", "listaVelha"]);
+  if (Array.isArray(idsVigiados) && !listaVelha) return { ids: idsVigiados };
+  const r = await fetch(endereco, { cache: "no-store" });
+  if (r.status === 401) return { vencido: true };
+  const j = await r.json();
+  const ids = (j.ids || []).map(String);
+  await chrome.storage.local.set({ idsVigiados: ids, listaVelha: false });
+  return { ids };
 }
 
 export async function conferir() {
@@ -145,23 +181,22 @@ export async function conferir() {
   if (!endereco) return { ok: false, motivo: "sem_endereco" };
 
   let ids = [];
-  let silenciados = [];
   try {
-    const r = await fetch(endereco, { cache: "no-store" });
-    if (r.status === 401) {
-      await chrome.storage.local.set({ ultimo: { em: Date.now(), erro: "O endereço da vigia não vale mais. No app (aba Full), copie o endereço do cartão, cole aqui e Salvar." } });
+    const lista = await listaDaRodada(endereco);
+    if (lista.vencido) {
+      await chrome.storage.local.set({ ultimo: { em: Date.now(), erro: ENDERECO_VENCIDO } });
       return { ok: false, motivo: "codigo_invalido" };
     }
-    const j = await r.json();
-    ids = j.ids || [];
-    silenciados = (j.silenciados || []).map(String);
+    ids = lista.ids;
   } catch {
     await chrome.storage.local.set({ ultimo: { em: Date.now(), erro: "Sem conexão com o app." } });
     return { ok: false, motivo: "sem_rede" };
   }
 
   const linhas = [];
-  for (const id of ids.slice(0, 5)) {
+  const lote = [];
+  for (const [i, id] of ids.slice(0, MAX_ENVIOS).entries()) {
+    if (i > 0) await esperar(PAUSA_ENTRE_ENVIOS_MS);
     let leitura = { estado: "indefinido", tipos: [], datas: [], trecho: "" };
     try {
       leitura = await lerEnvio(id);
@@ -175,11 +210,30 @@ export async function conferir() {
     if (leitura.estado === "login" && antes !== "login") {
       notificar(id, "Vigia do Full: entre no Mercado Livre", "Este Chrome saiu da conta do ML. Entre de novo pra vigia continuar.");
     }
-    // Toda volta conta ao app: o cartão mostra a MESMA hora da extensão (e, com data, o celular toca de novo).
-    await contarAoApp(endereco, id, leitura.estado, leitura.trecho);
+    lote.push({ inboundId: String(id), estado: leitura.estado, trecho: String(leitura.trecho || "").slice(0, 300) });
     estados[id] = leitura.estado;
     linhas.push({ id, estado: leitura.estado });
   }
+  // Envio que saiu da vigia (parado no app) não conta mais pra nada aqui — nem pro alarme.
+  const conferidos = new Set(linhas.map((l) => String(l.id)));
+  for (const k of Object.keys(estados)) if (!conferidos.has(k)) delete estados[k];
+
+  // A rodada inteira numa requisição só (com data, é ela que faz o celular tocar de novo).
+  // A resposta traz a lista da próxima rodada e os envios com alarme parado no app.
+  let silenciados = [];
+  try {
+    const r = await fetch(endereco, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lote }),
+    });
+    if (r.status === 401) {
+      await chrome.storage.local.set({ ultimo: { em: Date.now(), erro: ENDERECO_VENCIDO } });
+      return { ok: false, motivo: "codigo_invalido" };
+    }
+    const j = await r.json();
+    silenciados = (j.silenciados || []).map(String);
+    if (Array.isArray(j.ids)) await chrome.storage.local.set({ idsVigiados: j.ids.map(String) });
+  } catch { /* sem rede: o alarme do PC segue pelo que se leu aqui; a próxima rodada conta ao app */ }
 
   const algumaData = linhas.some((l) => l.estado === "datas");
 
@@ -245,12 +299,12 @@ async function vigiarEnvio(id, { manual = false } = {}) {
       body: JSON.stringify({ inboundId: id, estado: "sem_datas", trecho: "", novo: true }),
     });
     if (resp.status === 409) {
-      if (!manual) notificar(id, "Vigia do Full: limite de 5 envios", `Pare um envio no app (aba Full) pra vigiar o #${id}.`);
-      return { ok: false, texto: `#${id}: já são 5 envios vigiados. Pare um no app (aba Full).` };
+      if (!manual) notificar(id, `Vigia do Full: limite de ${MAX_ENVIOS} envios`, `Pare um envio no app (aba Full) pra vigiar o #${id}.`);
+      return { ok: false, texto: `#${id}: já são ${MAX_ENVIOS} envios vigiados. Pare um no app (aba Full).` };
     }
     if (!resp.ok) return { ok: false, texto: `#${id}: o app recusou. Tente de novo.` };
     estados[id] = "sem_datas";
-    await chrome.storage.local.set({ estados });
+    await chrome.storage.local.set({ estados, listaVelha: true });
     if (!manual) notificar(id, `Vigiando o envio #${id}`, "Está sem data. Quando o ML abrir agenda, chega o aviso aqui e no celular.");
     return { ok: true, texto: `#${id}: vigiando.` };
   } catch {
@@ -266,7 +320,7 @@ async function vigiarSeEstiverSemData(id) {
 
 /** O campo da janelinha: vários números de uma vez ("80517703, 80517704 80517705"). */
 async function vigiarVarios(texto) {
-  const ids = [...new Set(String(texto || "").match(/\d{5,15}/g) || [])].slice(0, 5);
+  const ids = [...new Set(String(texto || "").match(/\d{5,15}/g) || [])].slice(0, MAX_ENVIOS);
   if (ids.length === 0) return { linhas: ["Digite o número do envio (ex.: 80517703)."] };
   const linhas = [];
   for (const id of ids) linhas.push((await vigiarEnvio(id, { manual: true })).texto);
@@ -274,10 +328,14 @@ async function vigiarVarios(texto) {
   return { linhas };
 }
 
-chrome.tabs.onUpdated.addListener((_tabId, info, tab) => {
+chrome.tabs.onUpdated.addListener(async (_tabId, info, tab) => {
   if (info.status !== "complete") return;
   const m = PAGINA_DO_ENVIO.exec(tab.url || "");
-  if (m) vigiarSeEstiverSemData(m[1]);
+  if (!m) return;
+  const { estados } = await config();
+  // Foi agendar o envio que está tocando: para o alarme (PC e celular).
+  if (estados[m[1]] === "datas") { await silenciarEnvio(m[1]); return; }
+  vigiarSeEstiverSemData(m[1]);
 });
 
 /**
