@@ -49,6 +49,8 @@ vi.mock("@/lib/ml/vigia-agenda-full", () => ({
   avisarAindaSemData: vi.fn(async (ids: string[]) => { avisosVigia.pulsos.push(ids); return 1; }),
   repetirAlarmeDaAgenda: vi.fn(async (id: string, toque: number) => { avisosVigia.toques.push(`${id}#${toque}`); return 1; }),
   MAX_TOQUES: 3,
+  MAX_VIGIAS: 5,
+  DOC_DA_EXTENSAO: "_extensao",
   INTERVALO_DO_TOQUE_MS: 50_000,
 }));
 vi.mock("@/lib/firebase/contexto-tenant", () => ({ comTenant: (_t: string, fn: () => unknown) => fn() }));
@@ -264,6 +266,27 @@ describe("vigia pela extensão do Chrome (/api/widget/vigias)", () => {
     // a 2.0, com horário no endereço escolhido, volta a avisar
     await postar(url, { inboundId: "80517703", estado: "datas", trecho: COLETA });
     expect(avisosVigia.lista).toEqual(["80517703"]);
+  });
+
+  it("rodada inteira num lote: só grava o que mudou, carimba o 'conferido às' e devolve a próxima lista", async () => {
+    avisosVigia.lista.length = 0;
+    for (const n of [1, 2, 3]) docs.m.set(`full_agenda_vigias/8000000${n}`, { inboundId: `8000000${n}`, ativa: true, iphone: { estado: "sem_datas", em: 1, trecho: "sem horário na coleta (endereço escolhido)" } });
+    docs.m.set("full_agenda_vigias/80000004", { inboundId: "80000004", ativa: true, alarme: { silenciadoEm: 5 } });
+    const { url } = await gerarVigia();
+    const resp = await postar(url, { lote: [
+      { inboundId: "80000001", estado: "sem_datas", trecho: "sem horário na coleta (endereço escolhido)" }, // igual: não grava
+      { inboundId: "80000002", estado: "datas", trecho: COLETA }, // abriu: avisa
+      { inboundId: "80000003", estado: "datas", trecho: "com horário: coleta · 2026-11-05" }, // versão antiga: não vale
+      { inboundId: "99999999", estado: "datas", trecho: COLETA }, // não vigiado: ignora
+    ] });
+    const j = await resp.json();
+    expect(j).toMatchObject({ ok: true, avisos: 1, silenciados: ["80000004"] });
+    expect([...j.ids].sort()).toEqual(["80000001", "80000002", "80000003", "80000004"]);
+    expect(avisosVigia.lista).toEqual(["80000002"]);
+    expect(docs.m.get("full_agenda_vigias/80000001")).toMatchObject({ iphone: { em: 1 } });
+    expect(docs.m.get("full_agenda_vigias/80000002")).toMatchObject({ estado: "datas_liberadas", iphone: { estado: "datas" } });
+    expect(docs.m.get("full_agenda_vigias/80000003")).toMatchObject({ iphone: { estado: "indefinido" } });
+    expect(docs.m.get("full_agenda_vigias/_extensao")).toMatchObject({ envios: 4 });
   });
 
   it("recusa código torto, envio não vigiado e estado inventado", async () => {

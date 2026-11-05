@@ -18,6 +18,15 @@ import { datasPorExtenso, lerAgenda, type LeituraDaAgenda, type RespostaDoInboun
  * a tela mostrar o que o ML disse e pra a leitura poder ser afinada depois.
  */
 export const COLECAO_VIGIAS = "full_agenda_vigias";
+/** Quantos envios a extensão vigia de uma vez (pedido do dono, 05/11/2026: "uns 20"). */
+export const MAX_VIGIAS = 25;
+/**
+ * O "conferido às" da extensão — UM documento na mesma coleção, gravado a cada
+ * rodada (em vez de regravar a hora em cada envio: com 20 envios, isso era o
+ * grosso das gravações do dia). Não tem `ativa`, então nenhuma consulta de
+ * vigias o pega; a tela o lê à parte.
+ */
+export const DOC_DA_EXTENSAO = "_extensao";
 const ML_API = "https://api.mercadolibre.com";
 /** O worker pode passar mais de uma vez em poucos minutos: não pergunta ao ML mais que isso. */
 export const INTERVALO_MINIMO_MS = 4 * 60_000;
@@ -107,7 +116,8 @@ export async function avisarAindaSemData(ids: string[], dono: string, agora = Da
   const pushId = `full_agenda_status:${dono.replace(/[^A-Za-z0-9_-]/g, "_")}:${janela}`;
   const hora = new Date(agora).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
   const titulo = "Vigia do Full: ainda sem data";
-  const corpo = `${ids.map((i) => `#${i}`).join(", ")} · conferido às ${hora}. Quando abrir data, chega outro aviso.`;
+  const lista = ids.length <= 4 ? ids.map((i) => `#${i}`).join(", ") : `${ids.slice(0, 3).map((i) => `#${i}`).join(", ")} e mais ${ids.length - 3}`;
+  const corpo = `${lista} · conferido às ${hora}. Quando abrir data, chega outro aviso.`;
   return enviarEPersistirEntrega(pushId, "full_agenda_status", {
     ...buildPayload(pushId, "full_agenda_status", titulo, corpo, { orderId: "", tag: "full-agenda-status" }),
     deepLink: "/?tab=full",
@@ -142,7 +152,7 @@ export type ResumoDaVigia ={ vigias: number; consultadas: number; avisos: number
 export async function vigiarAgendasFull(opcoes: { agora?: number; buscar?: Buscar; token?: string | null } = {}): Promise<ResumoDaVigia> {
   const agora = opcoes.agora ?? Date.now();
   const db = getAdminDb();
-  const snap = await db.collection(COLECAO_VIGIAS).where("ativa", "==", true).limit(20).get();
+  const snap = await db.collection(COLECAO_VIGIAS).where("ativa", "==", true).limit(MAX_VIGIAS).get();
   const resumo: ResumoDaVigia = { vigias: snap.size, consultadas: 0, avisos: 0, semToken: false };
   if (snap.empty) return resumo;
 
