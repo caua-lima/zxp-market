@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { authedFetch } from "@/lib/api/authed-fetch";
-import { watchVigiasAgendaFull, type VigiaAgendaFull } from "@/lib/firebase/data";
+import { watchVigiasAgendaFull, type ConferenciaDaExtensao, type VigiaAgendaFull } from "@/lib/firebase/data";
 import { datasPorExtenso } from "@/lib/domain/agenda-full";
 
 /**
@@ -74,7 +74,7 @@ function VigiaPeloChrome() {
             <li>Aqui, clique em <b>Gerar endereço da vigia</b> e em <b>Copiar</b>.</li>
             <li>Clique no ícone da extensão (quebra-cabeça › <b>ZXP — Vigia da agenda do Full</b>), cole o endereço, <b>Salvar</b> e aceite a permissão.</li>
             <li>Confira se está logado no Mercado Livre nesse Chrome. A extensão mostra o estado de cada envio.</li>
-            <li><b>Pra vigiar envios (até 5):</b> na janelinha da extensão, digite os números separados por vírgula e clique em <b>Vigiar</b>. Ou abra a página de agendamento de cada um no ML nesse Chrome: a extensão pega sozinha. Eles aparecem aqui embaixo.</li>
+            <li><b>Pra vigiar envios (até 25):</b> na janelinha da extensão, digite os números separados por vírgula e clique em <b>Vigiar</b>. Ou abra a página de agendamento de cada um no ML nesse Chrome: a extensão pega sozinha. Eles aparecem aqui embaixo.</li>
           </ol>
           <p style={{ margin: 0, color: "var(--muted)", fontSize: ".8rem" }}>Gerar outro não desliga a extensão: os 3 últimos endereços continuam valendo.</p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -102,7 +102,8 @@ export default function VigiaAgendaFull({ podeEditar }: { podeEditar: boolean })
   const [ocupado, setOcupado] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  useEffect(() => watchVigiasAgendaFull((v) => { setVigias(v); setErroLeitura(false); }, () => setErroLeitura(true)), []);
+  const [extensao, setExtensao] = useState<ConferenciaDaExtensao | null>(null);
+  useEffect(() => watchVigiasAgendaFull((v, ext) => { setVigias(v); setExtensao(ext); setErroLeitura(false); }, () => setErroLeitura(true)), []);
 
   // Manda o MESMO aviso (tipo e prioridade) marcado como teste: se chegar, o de verdade chega.
   const testarCelular = async () => {
@@ -157,7 +158,14 @@ export default function VigiaAgendaFull({ podeEditar }: { podeEditar: boolean })
             <div style={{ fontSize: ".85rem", opacity: 0.9 }}>O celular toca de novo a cada ~1 min ({v.alarme?.toques ?? 1}/20) até você parar.</div>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <a className="btn btn-sm" style={{ background: "#fff", color: "#111", fontWeight: 800 }} href={`https://vendedores.mercadolivre.com.br/shipping/inbounds/${v.inboundId}/appointment-v2`} target="_blank" rel="noreferrer">Agendar no ML</a>
+            <a
+              className="btn btn-sm" style={{ background: "#fff", color: "#111", fontWeight: 800 }}
+              href={`https://vendedores.mercadolivre.com.br/shipping/inbounds/${v.inboundId}/appointment-v2`} target="_blank" rel="noreferrer"
+              // Foi agendar: o alarme para no celular e no PC (a extensão lê o "parado" na próxima rodada).
+              onClick={() => { void silenciar(v.inboundId); }}
+            >
+              Agendar no ML
+            </a>
             <button type="button" className="btn btn-sm" style={{ background: "#111", color: "#fff", fontWeight: 800 }} disabled={ocupado} onClick={() => silenciar(v.inboundId)}>Parar o alarme</button>
           </div>
         </div>
@@ -178,7 +186,7 @@ export default function VigiaAgendaFull({ podeEditar }: { podeEditar: boolean })
                     {r.texto}{!iph && v.estado === "datas_liberadas" && v.datas.length ? `: ${datasPorExtenso(v.datas)}` : ""}
                   </div>
                   <div style={{ color: "var(--muted)", fontSize: ".75rem" }}>
-                    {v.iphone ? `Chrome conferiu ${hora(v.iphone.em)}` : "a extensão ainda não conferiu"}{v.avisadoEm ? ` · avisado ${hora(v.avisadoEm)}` : ""}
+                    {v.iphone ? `Chrome conferiu ${hora(Math.max(v.iphone.em, extensao?.conferidoEm ?? 0))}` : "a extensão ainda não conferiu"}{v.avisadoEm ? ` · avisado ${hora(v.avisadoEm)}` : ""}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6 }}>

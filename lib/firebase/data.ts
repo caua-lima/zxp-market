@@ -1293,8 +1293,18 @@ export type VigiaAgendaFull = {
 };
 
 /** Os envios vigiados (só leitura: quem grava é o servidor — ver lib/ml/vigia-agenda-full.ts). */
-export function watchVigiasAgendaFull(cb: (v: VigiaAgendaFull[]) => void, onError?: (e: unknown) => void): () => void {
+/** A última rodada da extensão (doc "_extensao" — ver lib/ml/vigia-agenda-full.ts › DOC_DA_EXTENSAO). */
+export type ConferenciaDaExtensao = { conferidoEm: number; envios: number };
+
+export function watchVigiasAgendaFull(
+  cb: (v: VigiaAgendaFull[], extensao: ConferenciaDaExtensao | null) => void,
+  onError?: (e: unknown) => void,
+): () => void {
   return onSnapshot(sCol("full_agenda_vigias"), (snap) => {
-    cb(snap.docs.map((d) => d.data() as VigiaAgendaFull).sort((a, b) => b.criadoEm - a.criadoEm));
+    const extensao = snap.docs.find((d) => d.id === "_extensao");
+    cb(
+      snap.docs.filter((d) => d.id !== "_extensao").map((d) => d.data() as VigiaAgendaFull).sort((a, b) => b.criadoEm - a.criadoEm),
+      extensao ? (extensao.data() as ConferenciaDaExtensao) : null,
+    );
   }, (e) => onError?.(e));
 }
