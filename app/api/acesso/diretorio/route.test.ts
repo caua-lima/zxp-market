@@ -54,4 +54,17 @@ describe("GET /api/acesso/diretorio (S19)", () => {
     expect(JSON.stringify(body)).not.toContain("owner");
     expect(JSON.stringify(body)).not.toContain("permissoesEdicao");
   });
+
+  it('o MASTER recebe o papel de cada um (é o que o "Ver como" lista) — inclusive de quem ainda não logou', async () => {
+    const { requireAccess } = await import('@/lib/api-auth');
+    vi.mocked(requireAccess).mockResolvedValue({
+      email: 'dono@exemplo.com', uid: 'u1', role: 'owner', papel: 'owner', permissoesEdicao: [], pode: () => true,
+    });
+    const { GET } = await import('./route');
+    const body = await (await GET(new Request('https://exemplo.com/api/acesso/diretorio'))).json();
+    expect(body.pessoas).toEqual([
+      { email: 'dono@exemplo.com', displayName: 'Dona Maria', role: 'owner' },
+      { email: 'colega@exemplo.com', displayName: null, role: 'partner' },
+    ]);
+  });
 });
