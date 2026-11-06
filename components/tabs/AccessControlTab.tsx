@@ -65,6 +65,8 @@ export default function AccessControlTab({
   const [displayName, setDisplayName] = useState("");
   const [photoURL, setPhotoURL] = useState("");
   const [password, setPassword] = useState("");
+  /** A última senha gerada por "Gerar senha provisória": se é ela que vai salva, o primeiro login obriga a trocar. */
+  const [senhaGerada, setSenhaGerada] = useState("");
   /**
    * Revelar o que está sendo DIGITADO — não a senha de quem já existe.
    *
@@ -116,6 +118,7 @@ export default function AccessControlTab({
   );
 
   function resetForm() {
+    setSenhaGerada("");
     setEditingEmail(null);
     setEmail("");
     setRole("partner");
@@ -170,9 +173,9 @@ export default function AccessControlTab({
         // "partner", comparar com "colaborador" fazia as permissoes NUNCA
         // serem gravadas. Member nao tem permissao de edicao por definicao.
         permissoesEdicao: papelDe(effectiveRole) === "partner" ? permissoesEdicao : undefined,
-        // Sócio com senha definida aqui: é provisória — no primeiro login ele cria a dele.
-        // (O Colaborador fica com a senha que o Master criou, a pedido do dono.)
-        ...(password && papelDe(effectiveRole) === "partner" ? { trocarSenha: true } : {}),
+        // Senha provisória: a GERADA aqui (qualquer acesso) e qualquer senha de Sócio.
+        // No primeiro login a pessoa cria a dela. Senha DIGITADA pro Colaborador fica valendo.
+        ...(password && (password === senhaGerada || papelDe(effectiveRole) === "partner") ? { trocarSenha: true } : {}),
       };
       const detalhePermissoes = papelDe(effectiveRole) === "partner"
         ? ` · edita: ${permissoesEdicao.length ? permissoesEdicao.map((t) => PERMISSION_TAB_LABEL[t]).join(", ") : "nenhuma aba"}`
@@ -459,18 +462,14 @@ Ela passa a administrar o time, o plano e a conexão com o Mercado Livre. Você 
                   {senhaVisivel ? "Ocultar" : "Ver"}
                 </button>
               </div>
-              {papelDe(editingEntry ? editingEntry.role : role) === "partner" && (
-                <button
-                  type="button" className="btn btn-ghost btn-xs" style={{ marginTop: 6 }}
-                  onClick={() => { setPassword(senhaAleatoria()); setSenhaVisivel(true); }}
-                >
-                  Gerar senha provisória
-                </button>
-              )}
+              <button
+                type="button" className="btn btn-ghost btn-xs" style={{ marginTop: 6 }}
+                onClick={() => { const s = senhaAleatoria(); setPassword(s); setSenhaGerada(s); setSenhaVisivel(true); }}
+              >
+                Gerar senha provisória
+              </button>
               <div className="hint">
-                {papelDe(editingEntry ? editingEntry.role : role) === "partner" && (
-                  <><b>Sócio:</b> a senha daqui é provisória — passe pra ele, e no primeiro login ele cria a própria. </>
-                )}
+                <b>Gerar senha provisória:</b> copie e passe pra pessoa — no primeiro login ela cria a própria. 
                 Preenchendo, cria um login por e-mail/senha (além do Google). Reeditar troca a senha.
                 {" "}<b>Ver</b> mostra só o que você está digitando agora — senha já cadastrada não
                 dá pra exibir, o Firebase guarda um hash irreversível, não a senha.
