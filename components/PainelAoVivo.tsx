@@ -159,7 +159,9 @@ function Tile({ rotulo, valor, dica }: { rotulo: string; valor: string; dica?: s
  */
 export default function PainelAoVivo({ dados, onFechar, fixo = false, extras }: { dados: DadosAoVivo; onFechar: () => void; fixo?: boolean; extras?: React.ReactNode }) {
   const painel = useRef<HTMLDivElement | null>(null);
-  useDialogo(true, painel, onFechar);
+  // Fixo (acesso Partner) o painel É a tela: não é diálogo — não trava o resto da página
+  // (a faixa do "Ver como" do Master ficava sem clique) nem prende o foco.
+  useDialogo(!fixo, painel, onFechar);
 
   // O relógio do painel anda sozinho; os números só mudam quando uma resposta nova chega.
   const [agora, setAgora] = useState(() => Date.now());
@@ -186,7 +188,12 @@ export default function PainelAoVivo({ dados, onFechar, fixo = false, extras }: 
   const precoMedio = hoje.unidades > 0 ? hoje.vendas / hoje.unidades : null;
 
   return createPortal(
-    <div className={s.painel} ref={painel} role="dialog" aria-modal="true" aria-label="Vendas de hoje ao vivo" tabIndex={-1}>
+    <div
+      className={s.painel} ref={painel} tabIndex={-1} aria-label="Vendas de hoje ao vivo"
+      {...(fixo ? {} : { role: "dialog", "aria-modal": true })}
+      // Fixo: na página, abaixo de qualquer faixa do topo, em vez de cobrir a tela por cima.
+      style={fixo ? { position: "relative", inset: "auto", minHeight: "100vh", zIndex: "auto" } : undefined}
+    >
       <div className={s.hero} data-com-meta={dados.metaDoDia ? "true" : undefined}>
         <div className={s.acoesTopo}>
           {podeTelaCheia && (
