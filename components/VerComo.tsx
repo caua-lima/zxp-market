@@ -39,9 +39,17 @@ export function SeletorVerComo() {
     <label style={{ display: "block", marginBottom: 8, fontSize: ".72rem", color: "var(--muted)", fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase" }}>
       Ver como
       <select
-        value={visao?.email ?? ""}
+        value={visao ? (visao.email === email ? `papel:${visao.papel}` : visao.email) : ""}
         onChange={(e) => {
-          const p = outras.find((x) => x.email === e.target.value);
+          const valor = e.target.value;
+          // Só o PERFIL (sem pessoa): a tela daquele papel, com as suas próprias tarefas.
+          if (valor.startsWith("papel:")) {
+            const papel = valor.slice(6) as VisaoSimulada["papel"];
+            verComo({ email, displayName: `${roleLabel(papel)} (exemplo)`, papel });
+            if (papel === "equipe") window.location.assign("/tarefas");
+            return;
+          }
+          const p = outras.find((x) => x.email === valor);
           if (!p || !p.role) { verComo(null); return; }
           const papel = papelDe(p.role);
           verComo({ email: p.email, displayName: p.displayName || p.email, papel });
@@ -51,9 +59,18 @@ export function SeletorVerComo() {
         style={{ display: "block", width: "100%", marginTop: 4, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 8px", color: "var(--text)", fontSize: ".8rem", textTransform: "none", letterSpacing: 0, fontWeight: 600 }}
       >
         <option value="">Eu (Master)</option>
-        {outras.map((p) => (
-          <option key={p.email} value={p.email}>{(p.displayName || p.email)} · {roleLabel(p.role!)}</option>
-        ))}
+        <optgroup label="Perfil">
+          <option value="papel:partner">Sócio</option>
+          <option value="papel:equipe">Colaborador</option>
+          <option value="papel:member">Partner</option>
+        </optgroup>
+        {outras.length > 0 && (
+          <optgroup label="Pessoa">
+            {outras.map((p) => (
+              <option key={p.email} value={p.email}>{(p.displayName || p.email)} · {roleLabel(p.role!)}</option>
+            ))}
+          </optgroup>
+        )}
       </select>
     </label>
   );

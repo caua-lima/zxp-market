@@ -332,7 +332,8 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
   const papelReal = papelDe(role);
   const donoDeVerdade = papelReal === "owner";
   // "Ver como": só o Master simula; pra qualquer outro, uma visão salva é ignorada.
-  const visao = donoDeVerdade && visaoSalva && visaoSalva.email !== currentEmail ? visaoSalva : null;
+  // Pessoa: o e-mail dela. Só o perfil: o próprio e-mail com outro papel.
+  const visao = donoDeVerdade && visaoSalva && (visaoSalva.email !== currentEmail || visaoSalva.papel !== "owner") ? visaoSalva : null;
   const papel = visao ? visao.papel : papelReal;
   const isOwner = papel === "owner"; // só o owner edita tudo; os demais são leitura por padrão
   const permissoes = visao ? [] : access.entry?.permissoesEdicao ?? [];
