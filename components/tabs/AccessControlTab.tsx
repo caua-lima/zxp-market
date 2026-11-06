@@ -181,10 +181,25 @@ export default function AccessControlTab({
         ? ` · edita: ${permissoesEdicao.length ? permissoesEdicao.map((t) => PERMISSION_TAB_LABEL[t]).join(", ") : "nenhuma aba"}`
         : "";
 
-      if (editingEmail) {
-        if (editingEmail !== normalizedEmail) {
+      let avisoDaTroca: string | null = null;
+      if (editingEmail && editingEmail !== normalizedEmail) {
+        /**
+         * TROCA DE E-MAIL: o cadastro é guardado PELO e-mail, então trocar é
+         * criar o novo (com tudo do antigo: papel, nome, permissões) e só
+         * depois apagar o antigo. Antes apagava primeiro e atualizava um
+         * cadastro que não existia — a pessoa ficava sem acesso nenhum.
+         * O próprio cadastro do Master fica até ele entrar com o novo e-mail:
+         * apagar agora o deixaria trancado pra fora.
+         */
+        const antigo = entries.find((e) => e.email === editingEmail);
+        await addAccessEntry({ ...(antigo ?? {}), ...payload, email: normalizedEmail });
+        if (editingEmail === meuEmail) {
+          avisoDaTroca = `Acesso criado pra ${normalizedEmail}. Entre com ele e, depois, exclua o ${editingEmail} aqui.`;
+        } else {
           await removeAccessEntry(editingEmail);
         }
+        logAudit({ acao: "editar", entidade: "acesso", entidadeId: normalizedEmail, entidadeLabel: normalizedEmail, detalhe: `e-mail: ${editingEmail} → ${normalizedEmail} · papel: ${effectiveRole}` }).catch(() => {});
+      } else if (editingEmail) {
         await updateAccessEntry(normalizedEmail, payload);
         logAudit({ acao: "editar", entidade: "acesso", entidadeId: normalizedEmail, entidadeLabel: normalizedEmail, detalhe: `papel: ${effectiveRole}${detalhePermissoes}` }).catch(() => {});
       } else {
@@ -207,6 +222,7 @@ export default function AccessControlTab({
       }
 
       resetForm();
+      if (avisoDaTroca) setConvite(avisoDaTroca);
     } catch (e) {
       // S25: o servidor recusa pelo plano — dizer isso, não um "não foi possível" genérico.
       const motivo = e instanceof Error ? e.message : "";
@@ -408,8 +424,10 @@ Ela passa a administrar o time, o plano e a conexão com o Mercado Livre. Você 
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="usuario@empresa.com"
-                disabled={!!editingEmail}
               />
+              {editingEmail && email.trim().toLowerCase() !== editingEmail && (
+                <div className="hint">Trocar o e-mail cria um login novo: gere uma senha provisória abaixo pra entrar com ele.</div>
+              )}
             </div>
 
             <div className="config-field" style={{ margin: 0 }}>
