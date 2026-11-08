@@ -74,7 +74,7 @@ describe("a navegação real do app", () => {
   });
 
   it("cada item tem um grupo conhecido", () => {
-    const validos = ["visao", "comercial", "operacao", "financeiro", "desempenho", "admin"];
+    const validos = ["visao", "comercial", "operacao", "financeiro", "admin"];
     for (const i of itens) expect(validos, i.id).toContain(i.grupo);
   });
 
