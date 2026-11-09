@@ -128,7 +128,16 @@ function round4(n: number): number {
   return Math.round((num(n) + Number.EPSILON) * 10000) / 10000;
 }
 
-/** A mistura ponderada, num lugar só — é ela que define o que "média" quer dizer. */
+/**
+ * A mistura ponderada, num lugar só — é ela que define o que "média" quer dizer.
+ *
+ * Média anterior ZERO é "sem custo conhecido", não "custo zero": não entra na
+ * conta. Foi o que pôs o Tradicional Agências a R$ 6,02 em vez de R$ 10,44
+ * (nov/2026): o cadastro novo, sem nada no livro, tinha 44 un "em casa" vindas
+ * do que o anúncio de agências declarava — a custo zero — e a transferência de
+ * 60 un a R$ 10,44 virou (44×0 + 60×10,44) ÷ 104. Mesma regra da prévia da
+ * transferência (custoDestinoAposReceber). Brinde de verdade entra a 0,01.
+ */
 export function misturar(
   estoqueAntes: number,
   mediaAntes: number,
@@ -138,7 +147,7 @@ export function misturar(
   const base = Math.max(num(estoqueAntes), 0);
   const q = num(quantidade);
   if (q <= 0) return num(mediaAntes);
-  if (base <= 0) return num(custoUnit);
+  if (base <= 0 || !(num(mediaAntes) > 0)) return num(custoUnit);
   return (base * num(mediaAntes) + q * num(custoUnit)) / (base + q);
 }
 

@@ -364,6 +364,19 @@ describe("misturar — a definição de 'média'", () => {
     expect(misturar(0, 999, 100, 20)).toBe(20);
   });
 
+  it("estoque anterior SEM custo (média 0) não puxa a média pra baixo", () => {
+    // Tradicional Agências: 44 un sem custo + 60 transferidas a 10,4371 davam 6,0214.
+    expect(misturar(44, 0, 60, 10.4371)).toBe(10.4371);
+    expect(misturar(164, 0, 164, 12.9457)).toBe(12.9457);
+  });
+
+  it("transferência pro cadastro de agências recém-criado leva o custo da origem", () => {
+    const r = reconstruirCusto([
+      mov({ id: "tr-e", tipo: "entrada", quantidade: 60, custoUnit: 10.4371, data: "2026-10-18", estoqueAntes: 44 }),
+    ], 0);
+    expect(r.custoMedio).toBe(10.4371);
+  });
+
   it("quantidade zero ou negativa não muda nada", () => {
     expect(misturar(100, 10, 0, 999)).toBe(10);
     expect(misturar(100, 10, -5, 999)).toBe(10);
