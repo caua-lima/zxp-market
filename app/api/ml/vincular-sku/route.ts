@@ -92,10 +92,16 @@ export async function GET(req: Request) {
     const skuDoMlb = new Map<string, string>();
     const tituloPorMlb = new Map<string, string>();
     let anunciosLidos = 0;
+    /**
+     * A conta inteira, anúncio por anúncio (título, situação, logística, SKU):
+     * é o que deixa conferir à mão — sabor por sabor, Full × agências — o que
+     * o casamento por SKU não pegou.
+     */
+    const anuncios: { mlb: string; titulo: string; status: string; logistica: string; sku: string; disponivel: number; preco: number }[] = [];
     for (let i = 0; i < todosMlb.length; i += 20) {
       const chunk = todosMlb.slice(i, i + 20);
       const res = await fetch(
-        `${ML_API}/items?ids=${chunk.join(",")}&attributes=id,title,seller_custom_field,attributes,variations,status`,
+        `${ML_API}/items?ids=${chunk.join(",")}&attributes=id,title,seller_custom_field,attributes,variations,status,shipping,available_quantity,price`,
         { headers, cache: "no-store" },
       );
       if (!res.ok) continue;
@@ -107,6 +113,15 @@ export async function GET(req: Request) {
         if (!mlb) continue;
         anunciosLidos += 1;
         tituloPorMlb.set(mlb, String(b.title ?? ""));
+        anuncios.push({
+          mlb,
+          titulo: String(b.title ?? ""),
+          status: String(b.status ?? ""),
+          logistica: String((b.shipping as Record<string, unknown> | undefined)?.logistic_type ?? ""),
+          sku: skusDoItem(b).join(", "),
+          disponivel: Number(b.available_quantity ?? 0),
+          preco: Number(b.price ?? 0),
+        });
         for (const sku of skusDoItem(b)) {
           const set = mlbsPorSku.get(sku) ?? new Set<string>();
           set.add(mlb);
@@ -169,6 +184,8 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       plano,
+      anuncios,
+      produtos: produtos.map((p) => ({ id: p.id, name: p.name, sku: p.sku, mlbs: Array.from(p.mlbs) })),
       resumo: {
         produtos: produtos.length,
         anunciosDaConta: todosMlb.length,
