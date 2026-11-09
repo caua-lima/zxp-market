@@ -7,7 +7,7 @@ import { mensagemDeErroDeSalvamento, salvarSemPerder } from "@/lib/domain/salvar
 import { motivoDaListaVazia } from "@/lib/domain/estoque-vazio";
 import { linhaCsvSegura } from "@/lib/domain/csv-seguro";
 import { useFormularioSujo } from "@/components/useFormularioSujo";
-import { addMovimento, carregarMovimentosAnteriores, deleteMovimento, deleteProduct, excluirTransferencia, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas, recalcularProduto } from "@/lib/firebase/data";
+import { addMovimento, carregarMovimentosAnteriores, deleteMovimento, deleteProduct, excluirTransferencia, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas, recalcularProduto, updateMovimento } from "@/lib/firebase/data";
 import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas";
 import { fmtBRL, fmtPct } from "@/lib/domain/calc";
 import { getCoverageStatus, COVERAGE_STATUS_LABEL, ehFullLogistic, estoqueForaDoFull, type CoverageStatus } from "@/lib/domain/estoque";
@@ -1401,6 +1401,43 @@ function MovimentosHistorico({ product, movs, onMov }: { product: Product; movs:
   // Movimentação sendo corrigida. Excluir e relançar perdia o histórico de
   // quem lançou — ver EditarMovimentoModal.
   const [editando, setEditando] = useState<EstoqueMovimento | null>(null);
+  const [recalculando, setRecalculando] = useState(false);
+
+  /**
+   * Refaz custo médio, faixas e "em casa" pelo livro inteiro. Serve depois de
+   * uma correção na regra do cálculo (ex.: nov/2026, estoque sem custo que
+   * diluía a média): o livro está certo, só o número guardado ficou velho.
+   */
+  async function recalcular() {
+    setRecalculando(true);
+    try { await recalcularProduto(product.id); }
+    catch (e) { alert("Não consegui recalcular: " + (e instanceof Error ? e.message : String(e))); }
+    finally { setRecalculando(false); }
+  }
+
+  /**
+   * A ponta de ENTRADA de uma transferência não abre no Editar (quantidade e
+   * data desbalanceariam os dois lados), mas o CUSTO pode estar errado — foi o
+   * caso das 84 un do Limão Caipira, que voltaram das agências a R$ 6,47
+   * porque a média de lá estava diluída. Corrigir só o custo não mexe no outro
+   * lado: a saída sai pela média e não carrega custo.
+   */
+  async function corrigirCustoDaTransferencia(m: EstoqueMovimento) {
+    const atual = m.custoUnit != null ? String(m.custoUnit) : "";
+    const digitado = prompt(`Custo por unidade desta transferência (hoje: ${atual ? fmtBRL(Number(atual)) : "sem custo"}):`, atual);
+    if (digitado == null) return;
+    const novo = Number(digitado.replace(",", "."));
+    if (!Number.isFinite(novo) || novo <= 0) { alert("Informe um custo maior que zero."); return; }
+    try {
+      await updateMovimento(m.id, product.id, { custoUnit: novo }, {
+        entidadeLabel: `${product.name || "(sem nome)"} · Transferência`,
+        detalhe: `custo da entrada de ${m.data}: ${atual || "sem custo"} → ${novo}`,
+      });
+    } catch (e) {
+      alert("Não consegui corrigir: " + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
   return (
     <div>
       {editando && (
@@ -1416,6 +1453,9 @@ function MovimentosHistorico({ product, movs, onMov }: { product: Product; movs:
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button type="button" className="btn btn-ghost btn-xs" onClick={() => onMov("saldo_inicial")}>Custo do Full</button>
           <button type="button" className="btn btn-ghost btn-xs" onClick={() => onMov("ajuste")}>Ajuste / perda</button>
+          <button type="button" className="btn btn-ghost btn-xs" onClick={recalcular} disabled={recalculando} title="Refaz o custo médio e o estoque em casa a partir de todas as movimentações">
+            {recalculando ? "Recalculando…" : "Recalcular custo"}
+          </button>
         </div>
       </div>
       {ordenados.length === 0 ? (
@@ -1449,6 +1489,15 @@ function MovimentosHistorico({ product, movs, onMov }: { product: Product; movs:
                         <span style={{ fontSize: ".75rem", color: "var(--muted)" }} title="Pra desfazer esta baixa, cancele a venda na aba PDV — o estoque volta e a venda fica no histórico.">pelo PDV</span>
                       ) : (<>
                       {/* Perna de transferência não se edita sozinha: desbalancearia os dois estoques. */}
+                      {m.transferenciaId && m.tipo === "entrada" && (
+                        <button
+                          type="button" className="btn btn-ghost btn-xs" style={{ marginRight: 6 }}
+                          title="Corrigir só o custo por unidade desta entrada (quantidade e data ficam)"
+                          onClick={() => corrigirCustoDaTransferencia(m)}
+                        >
+                          Corrigir custo
+                        </button>
+                      )}
                       {!m.transferenciaId && (
                         <button
                           type="button" className="btn btn-ghost btn-xs" style={{ marginRight: 6 }}
