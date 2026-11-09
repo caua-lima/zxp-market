@@ -42,7 +42,6 @@ vi.mock("@/lib/firebase/admin", () => {
 vi.mock("server-only", () => ({}));
 const avisosVigia = vi.hoisted(() => ({ lista: [] as string[], pulsos: [] as string[][], toques: [] as string[] }));
 vi.mock("@/lib/ml/vigia-agenda-full", () => ({
-  vigiarAgendasFull: vi.fn(async () => null),
   COLECAO_VIGIAS: "full_agenda_vigias",
   avisarAgendaLiberada: vi.fn(async (id: string) => { avisosVigia.lista.push(id); return 1; }),
   testarAvisoDaAgenda: vi.fn(async () => 2),
