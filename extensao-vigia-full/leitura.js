@@ -44,17 +44,20 @@ export function caminhoDasDatasDaColeta(id) {
 export function temHorarioLivre(resposta) {
   const datas = new Set();
   let livre = false;
+  let amostra = "";
   const visitar = (no, profundidade) => {
     if (!no || typeof no !== "object" || profundidade > 12) return;
     if (Array.isArray(no)) { for (const x of no) visitar(x, profundidade + 1); return; }
     if (Array.isArray(no.available_slots) && no.available_slots.length > 0) {
       livre = true;
       if (typeof no.date === "string") datas.add(no.date.slice(0, 10));
+      // O primeiro horário como o ML mandou: se tocar à toa de novo, mostra o porquê.
+      if (!amostra) { try { amostra = JSON.stringify(no.available_slots[0]).slice(0, 120); } catch { amostra = "?"; } }
     }
     for (const v of Object.values(no)) visitar(v, profundidade + 1);
   };
   visitar(resposta, 0);
-  return { livre, datas: [...datas].sort().slice(0, 5) };
+  return { livre, datas: [...datas].sort().slice(0, 5), amostra };
 }
 
 /** Os endereços de coleta que a resposta lista: id e um rótulo legível ("Rua X 81 · Cidade"). */
@@ -100,7 +103,7 @@ export function lerRespostaDaColeta(status, urlFinal, json, escolhidos = []) {
   }
   const achado = temHorarioLivre(meus);
   if (achado.livre) {
-    return { estado: "datas", datas: achado.datas, trecho: `com horário: coleta no endereço escolhido${achado.datas.length ? ` · ${achado.datas.join(", ")}` : ""}`, enderecos };
+    return { estado: "datas", datas: achado.datas, trecho: `com horário: coleta no endereço escolhido${achado.datas.length ? ` · ${achado.datas.join(", ")}` : ""}${achado.amostra ? ` · ${achado.amostra}` : ""}`, enderecos };
   }
   return { estado: "sem_datas", datas: [], trecho: "sem horário na coleta (endereço escolhido)", enderecos };
 }

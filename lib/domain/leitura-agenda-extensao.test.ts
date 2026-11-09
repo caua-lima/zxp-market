@@ -34,8 +34,10 @@ describe("lerRespostaDaColeta (extensão do Chrome — só a coleta, só nos end
 
   it("horário no endereço marcado: data de verdade, com o dia", () => {
     expect(lerRespostaDaColeta(200, URL_API, COM_DATA_NO_MEU, ["33"])).toMatchObject({
-      estado: "datas", datas: ["2026-11-07"], trecho: "com horário: coleta no endereço escolhido · 2026-11-07",
+      estado: "datas", datas: ["2026-11-07"],
     });
+    // O trecho leva o dia e o primeiro horário como o ML mandou (pra explicar um alarme, se tocar à toa).
+    expect(lerRespostaDaColeta(200, URL_API, COM_DATA_NO_MEU, ["33"]).trecho).toMatch(/^com horário: coleta no endereço escolhido · 2026-11-07 · \{/);
   });
 
   it("nenhum endereço marcado: não toca e pede pra escolher, listando os endereços", () => {
@@ -73,7 +75,7 @@ describe("temHorarioLivre (as datas de verdade, de schedule-availability)", () =
       availability_ref_id: "abc",
       availability: [{ address: { id: 1, errors: ["address_slots_not_available"] }, schedule_slots: [] }],
     };
-    expect(temHorarioLivre(resposta)).toEqual({ livre: false, datas: [] });
+    expect(temHorarioLivre(resposta)).toEqual({ livre: false, datas: [], amostra: "" });
     expect(temHorarioLivre({ availability: [{ address: { id: 1, errors: [] }, schedule_slots: [{ date: "2026-11-05", node_id: "BRSP06", available_slots: [] }] }] }).livre).toBe(false);
   });
 
@@ -87,7 +89,8 @@ describe("temHorarioLivre (as datas de verdade, de schedule-availability)", () =
         ],
       }],
     };
-    expect(temHorarioLivre(resposta)).toEqual({ livre: true, datas: ["2026-11-06"] });
+    expect(temHorarioLivre(resposta)).toMatchObject({ livre: true, datas: ["2026-11-06"] });
+    expect(temHorarioLivre(resposta).amostra).toBe('{"from":"08:00","to":"12:00","charges":{"amount":0}}');
   });
 
   it("ftl/ftlp/supplier (por centro) também vale", () => {

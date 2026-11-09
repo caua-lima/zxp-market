@@ -61,6 +61,8 @@ async function lerEnvio(id) {
 const MAX_ENVIOS = 25;
 /** Pausa entre um envio e outro na rodada: 20 perguntas de uma vez ao ML seria grosseiro. */
 const PAUSA_ENTRE_ENVIOS_MS = 300;
+/** Quanto espera pra perguntar de novo antes de tocar (curto: o Chrome encerra a extensão parada há 30 s). */
+const CONFERENCIA_MS = 15_000;
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function config() {
@@ -203,17 +205,43 @@ export async function conferir() {
     } catch { /* rede: indefinido */ }
 
     const antes = estados[id];
-    if (leitura.estado === "datas" && antes !== "datas") {
-      const quando = leitura.datas.length ? ` Datas: ${leitura.datas.map((d) => d.slice(8, 10) + "/" + d.slice(5, 7)).join(", ")}.` : "";
-      notificar(id, `Agenda do Full liberada · envio #${id}`, `Tem horário livre pra agendar.${quando} Abra o Mercado Livre e agende já.`);
-    }
     if (leitura.estado === "login" && antes !== "login") {
       notificar(id, "Vigia do Full: entre no Mercado Livre", "Este Chrome saiu da conta do ML. Entre de novo pra vigia continuar.");
     }
     lote.push({ inboundId: String(id), estado: leitura.estado, trecho: String(leitura.trecho || "").slice(0, 300) });
-    estados[id] = leitura.estado;
-    linhas.push({ id, estado: leitura.estado });
+    linhas.push({ id, estado: leitura.estado, antes, datas: leitura.datas || [] });
   }
+
+  /**
+   * CONFERÊNCIA ANTES DE TOCAR (09/11/2026). Na rodada das 8h12, três envios
+   * vieram "com horário" ao mesmo tempo e, dois minutos depois, os três sem —
+   * com a página do ML dizendo "Não temos datas disponíveis". Data que ACABOU
+   * de aparecer só vale se continuar lá numa segunda pergunta, uns segundos
+   * depois. Quem já estava tocando não espera de novo.
+   */
+  const novas = linhas.filter((l) => l.estado === "datas" && l.antes !== "datas");
+  if (novas.length) {
+    await esperar(CONFERENCIA_MS);
+    for (const l of novas) {
+      let segunda = { estado: "indefinido", datas: [], trecho: "" };
+      try { segunda = await lerEnvio(l.id); } catch { /* rede: não confirma */ }
+      const item = lote.find((x) => x.inboundId === String(l.id));
+      if (segunda.estado === "datas") {
+        l.datas = segunda.datas || l.datas;
+        const quando = l.datas.length ? ` Datas: ${l.datas.map((d) => d.slice(8, 10) + "/" + d.slice(5, 7)).join(", ")}.` : "";
+        notificar(l.id, `Agenda do Full liberada · envio #${l.id}`, `Tem horário livre pra agendar.${quando} Abra o Mercado Livre e agende já.`);
+        continue;
+      }
+      // Sumiu na segunda pergunta: não toca. O trecho guarda o que a primeira viu.
+      const visto = item ? item.trecho : "";
+      l.estado = segunda.estado === "indefinido" ? "sem_datas" : segunda.estado;
+      if (item) { item.estado = l.estado; item.trecho = `horário sumiu na conferência (${CONFERENCIA_MS / 1000} s) · antes: ${visto}`.slice(0, 300); }
+      const { descartes = [] } = await chrome.storage.local.get("descartes");
+      descartes.unshift({ em: Date.now(), id: String(l.id), visto });
+      await chrome.storage.local.set({ descartes: descartes.slice(0, 20) });
+    }
+  }
+  for (const l of linhas) { estados[l.id] = l.estado; delete l.antes; delete l.datas; }
   // Envio que saiu da vigia (parado no app) não conta mais pra nada aqui — nem pro alarme.
   const conferidos = new Set(linhas.map((l) => String(l.id)));
   for (const k of Object.keys(estados)) if (!conferidos.has(k)) delete estados[k];
