@@ -14,9 +14,9 @@ import { proximoHorario } from "./horario.js";
  */
 
 const ALARME = "vigia-agenda-full";
-const MINUTOS = 2;
+const MINUTOS = 0.5; // a cada 30 s (o mínimo que o Chrome deixa um alarme repetir) — pedido do dono 09/11: vaga dura pouco
 /** Com data aberta o alarme do celular toca a cada volta: aí confere de 1 em 1 minuto. */
-const MINUTOS_COM_DATA = 1;
+const MINUTOS_COM_DATA = 0.5;
 /**
  * O "ainda sem data" no celular é só pra saber que a vigia está viva: UM por
  * hora, na primeira conferência de cada hora cheia (13:00, 14:00…). Data aberta
@@ -62,7 +62,7 @@ const MAX_ENVIOS = 25;
 /** Pausa entre um envio e outro na rodada: 20 perguntas de uma vez ao ML seria grosseiro. */
 const PAUSA_ENTRE_ENVIOS_MS = 300;
 /** Quanto espera pra perguntar de novo antes de tocar (curto: o Chrome encerra a extensão parada há 30 s). */
-const CONFERENCIA_MS = 15_000;
+const CONFERENCIA_MS = 3_000;
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function config() {
