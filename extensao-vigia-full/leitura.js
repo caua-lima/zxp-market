@@ -39,7 +39,7 @@ export function caminhoDasDatasDaColeta(id) {
  * um `available_slots` com pelo menos um item.
  *
  * @param {unknown} resposta o JSON da resposta
- * @returns {{ livre: boolean, datas: string[] }} as datas com horário livre (as primeiras 5)
+ * @returns {{ livre: boolean, datas: string[], amostra: string }} as datas com horário livre (as primeiras 5) e o primeiro horário como o ML mandou
  */
 export function temHorarioLivre(resposta) {
   const datas = new Set();

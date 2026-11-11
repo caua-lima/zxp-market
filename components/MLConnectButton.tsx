@@ -29,8 +29,9 @@ export function MLConnectButton({ aviso }: { aviso?: string | null } = {}) {
 
         const res = await authedFetch("/api/ml/status", { cache: "no-store" });
         if (!res.ok) {
-          const json = await res.json();
-          throw new Error(json?.error || "Não foi possível verificar a conexão ML");
+          // Servidor fora do ar ou banco sem cota responde sem corpo: ler como JSON quebrava com erro em inglês.
+          const json = await res.json().catch(() => null);
+          throw new Error(json?.error ? String(json.error) : `O servidor não respondeu agora (erro ${res.status}). Tente de novo em alguns minutos.`);
         }
 
         const json = await res.json();

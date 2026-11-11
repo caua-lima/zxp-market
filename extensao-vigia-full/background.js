@@ -63,6 +63,8 @@ const MAX_ENVIOS = 25;
 const PAUSA_ENTRE_ENVIOS_MS = 300;
 /** Quanto espera pra perguntar de novo antes de tocar (curto: o Chrome encerra a extensão parada há 30 s). */
 const CONFERENCIA_MS = 3_000;
+/** De quanto em quanto tempo conta ao app que segue tudo igual (o banco tem cota diária). */
+const INTERVALO_DO_APP_MS = 10 * 60_000;
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function config() {
@@ -241,7 +243,8 @@ export async function conferir() {
       await chrome.storage.local.set({ descartes: descartes.slice(0, 20) });
     }
   }
-  for (const l of linhas) { estados[l.id] = l.estado; delete l.antes; delete l.datas; }
+  let mudou = false;
+  for (const l of linhas) { if (estados[l.id] !== l.estado) mudou = true; estados[l.id] = l.estado; delete l.antes; delete l.datas; }
   // Envio que saiu da vigia (parado no app) não conta mais pra nada aqui — nem pro alarme.
   const conferidos = new Set(linhas.map((l) => String(l.id)));
   for (const k of Object.keys(estados)) if (!conferidos.has(k)) delete estados[k];
@@ -249,7 +252,17 @@ export async function conferir() {
   // A rodada inteira numa requisição só (com data, é ela que faz o celular tocar de novo).
   // A resposta traz a lista da próxima rodada e os envios com alarme parado no app.
   let silenciados = [];
-  try {
+  /**
+   * O ML é perguntado a cada 30 s, mas o APP só quando algo mudou, quando há
+   * data aberta (o celular toca de novo a cada volta) ou a cada 10 min (o
+   * "conferido às" e a lista de envios). Mandar toda volta estourou a cota
+   * diária do banco em 10/11/2026 e derrubou o Dash inteiro.
+   */
+  const { ultimoEnvioAoApp = 0 } = await chrome.storage.local.get("ultimoEnvioAoApp");
+  const algumaDataAgora = linhas.some((l) => l.estado === "datas");
+  const contarAoApp = mudou || algumaDataAgora || Date.now() - ultimoEnvioAoApp >= INTERVALO_DO_APP_MS;
+  if (contarAoApp) try {
+    await chrome.storage.local.set({ ultimoEnvioAoApp: Date.now() });
     const r = await fetch(endereco, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ lote }),
