@@ -515,7 +515,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
           qualquer ajuste fino de cadastro. */}
       <EnviosAgendadosPainel produtos={data.products} reservas={reservas} podeEditar={canEdit} emCasaDe={emCasaDe} />
 
-      <ReposicaoPanel produtos={data.products} estoqueML={estoqueML} forecast={forecast} retencao={retencao} retencaoVeio={retencaoVeio} reservas={reservas} />
+      <ReposicaoPanel produtos={data.products} estoqueML={estoqueML} forecast={forecast} retencao={retencao} retencaoVeio={retencaoVeio} carregando={!estoqueVeio} reservas={reservas} />
 
       {/* Produto cadastrado sem nenhum anúncio ligado nunca recebe venda no
           cálculo de lucro — o pedido chega, não acha o produto e o CMV entra
@@ -2256,7 +2256,7 @@ export function ProductModal({ product: initial, isNew, onClose, onSave, todosPr
  * Por isso a folga vem preenchida. Dá pra zerar o campo, e a tela avisa o
  * que isso significa em vez de deixar acontecer calado.
  */
-function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio, reservas }: {
+function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio, carregando = false, reservas }: {
   produtos: Product[];
   /** Envios já agendados pro Full: o plano de envio não sugere mandar de novo o que já tem dia marcado. */
   reservas: Map<string, ReservaDoProduto>;
@@ -2266,6 +2266,8 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio,
   retencao: RetencaoPorProduto[];
   /** O detalhe chegou? Lista vazia é ambígua; sem isto o plano afirmaria demais. */
   retencaoVeio: boolean;
+  /** Ainda lendo o ML: "não consegui ler" seria alarme falso. */
+  carregando?: boolean;
 }) {
   const [dias, setDias] = useState("30");
   const [folga, setFolga] = useState("7");
@@ -2516,7 +2518,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio,
         continua sendo mostrado (sem ele a tela não serve pra nada), com a
         ressalva de que o número pode estar pedindo a mais.
       */}
-      {!retencaoVeio && (
+      {!retencaoVeio && !carregando && (
         <div className="note note-warn" style={{ marginBottom: 12 }}>
           Não consegui ler o detalhe do estoque retido no Full. Unidades em
           transferência entre centros — já pagas e prestes a voltar a vender —
