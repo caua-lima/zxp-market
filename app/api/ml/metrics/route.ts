@@ -635,6 +635,23 @@ export async function GET(req: Request) {
     // silêncio dava número errado (custo some, margem infla) — a tela precisa
     // avisar em vez de mostrar R$ 0,00 como se fosse verdade.
     const ontem = brDayISO(-1);
+
+    /**
+     * Pedidos (ML ao vivo) e Ads (Mercado Ads) são APIs diferentes: correm ao
+     * mesmo tempo. Antes ia tudo em fila — Ads do período, Ads de hoje, pedidos
+     * do período, pedidos de hoje — e o Dashboard levava ~10 s pra abrir. Entre
+     * as duas chamadas de Ads a fila continua (ver acima: rajada dá 429).
+     */
+    const token = await getMlAccessToken();
+    const fromISO = `${fromStr}T00:00:00.000-03:00`;
+    const toISO = `${toStr}T23:59:59.999-03:00`;
+    const hjFromISO = `${hj}T00:00:00.000-03:00`;
+    const hjToISO = `${hj}T23:59:59.999-03:00`;
+    const pedidosPromessa = Promise.all([
+      token ? fetchOrdersLive(token, fromISO, toISO) : Promise.resolve(null),
+      token ? fetchOrdersLive(token, hjFromISO, hjToISO) : Promise.resolve(null),
+    ]);
+
     let adsFalhou = false;
     let adsByItem: Record<string, number> = {};
     if (fromStr <= adsTo) {
@@ -657,15 +674,8 @@ export async function GET(req: Request) {
     );
     const adsHoje: Record<string, number> = adsHojeResumo.gastoPorItem;
 
-    // ── 4. Pedidos do período + de hoje (AO VIVO, com fallback) ─
-    const token = await getMlAccessToken();
-    const fromISO = `${fromStr}T00:00:00.000-03:00`;
-    const toISO = `${toStr}T23:59:59.999-03:00`;
-    const hjFromISO = `${hj}T00:00:00.000-03:00`;
-    const hjToISO = `${hj}T23:59:59.999-03:00`;
-
-    let orders = token ? await fetchOrdersLive(token, fromISO, toISO) : null;
-    let ordersHoje = token ? await fetchOrdersLive(token, hjFromISO, hjToISO) : null;
+    // ── 4. Pedidos do período + de hoje (AO VIVO, com fallback) — já pedidos lá em cima ─
+    let [orders, ordersHoje] = await pedidosPromessa;
 
     // fallback para o Firestore se o fetch ao vivo falhar
     if (!orders) orders = await loadOrders(db, start, end, startBR, endBR);

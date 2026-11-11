@@ -175,10 +175,10 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
   const [changelog, setChangelog] = useState<AdsAlteracao[]>([]);
   useEffect(() => watchAdsAlteracoes(setChangelog), []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (forcar = false) => {
     setLoading(true); setErro(null); setDiag(null);
     try {
-      const r = await authedFetch(`/api/ml/ads?from=${range.from}&to=${range.to}`, { cache: "no-store" });
+      const r = await authedFetch(`/api/ml/ads?from=${range.from}&to=${range.to}${forcar ? "&forcar=1" : ""}`, { cache: "no-store" });
       const j = await r.json();
       if (j.error) {
         setDiag(j.diag ?? null);
@@ -220,7 +220,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
     try {
       // Best-effort: sync que falha não pode impedir a releitura do Ads.
       await authedFetch(`/api/ml/sync-all?from=${range.from}&to=${range.to}`, { method: "POST" }).catch(() => null);
-      await load();
+      await load(true);
     } finally {
       setRessincronizando(false);
     }

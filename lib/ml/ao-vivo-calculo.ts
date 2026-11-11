@@ -123,11 +123,31 @@ async function vendasDoMesAteOntem(db: FirebaseFirestore.Firestore, chave: strin
 }
 
 /** A meta do mês: a do mês corrente, ou a mais recente — a mesma escolha do Dashboard. */
-async function metasDoMes(db: FirebaseFirestore.Firestore, mes: string): Promise<{ meta1: number; meta2: number | null; meta3: number | null } | null> {
-  const snap = await db.collection("metasHistorico").orderBy("createdAt", "desc").limit(60).get().catch(() => null);
+/**
+ * A meta muda uma vez por mês, e o painel ao vivo pergunta a cada 55 s em cada
+ * aba aberta. Antes lia as 60 metas mais recentes a cada pergunta (60 leituras
+ * pra usar uma); agora lê a do mês (1 leitura) e guarda 10 min por empresa.
+ */
+const cacheDaMeta = new Map<string, { at: number; valor: { meta1: number; meta2: number | null; meta3: number | null } | null }>();
+const TTL_META = 10 * 60 * 1000;
+
+async function metasDoMes(db: FirebaseFirestore.Firestore, mes: string, chave = ""): Promise<{ meta1: number; meta2: number | null; meta3: number | null } | null> {
+  const k = `${chave.split("|")[0]}|${mes}`;
+  const g = cacheDaMeta.get(k);
+  if (g && Date.now() - g.at < TTL_META) return g.valor;
+  const valor = await lerMetaDoMes(db, mes);
+  cacheDaMeta.set(k, { at: Date.now(), valor });
+  return valor;
+}
+
+async function lerMetaDoMes(db: FirebaseFirestore.Firestore, mes: string): Promise<{ meta1: number; meta2: number | null; meta3: number | null } | null> {
+  // A do mês corrente; sem ela, a mais recente — a mesma escolha do Dashboard.
+  // Do mês podem existir algumas versões (meta editada): vale a mais nova. Sem
+  // orderBy na consulta, que pediria índice composto — são poucas, ordena aqui.
+  const doMes = await db.collection("metasHistorico").where("mes", "==", mes).limit(20).get().catch(() => null);
+  const snap = doMes && !doMes.empty ? doMes : await db.collection("metasHistorico").orderBy("createdAt", "desc").limit(1).get().catch(() => null);
   if (!snap || snap.empty) return null;
-  const docs = snap.docs.map((d) => d.data());
-  const e = docs.find((d) => d.mes === mes) ?? docs[0];
+  const e = snap.docs.map((d) => d.data()).sort((a, b) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0))[0];
   const meta1 = Number(e?.meta1 ?? 0);
   if (!(meta1 > 0)) return null;
   return { meta1, meta2: Number(e.meta2) > 0 ? Number(e.meta2) : null, meta3: Number(e.meta3) > 0 ? Number(e.meta3) : null };
@@ -256,7 +276,7 @@ export async function calcularAoVivo(opcoes: OpcoesAoVivo): Promise<{ body: Corp
   const mes = hoje.slice(0, 7);
   const [ateOntem, metas] = await Promise.all([
     vendasDoMesAteOntem(db, chave, `${mes}-01`, ontem).catch(() => null),
-    metasDoMes(db, mes),
+    metasDoMes(db, mes, chave),
   ]);
   const [ano, mesNum] = mes.split("-").map(Number);
   const diasNoMes = new Date(Date.UTC(ano, mesNum, 0)).getUTCDate();

@@ -12,8 +12,15 @@ const ML_API = "https://api.mercadolibre.com";
 export const maxDuration = 30;
 
 // cache curto por lambda quente (evita bater no ML a cada abertura da aba)
-let cache: { at: number; dias: number; body: Record<string, unknown> } | null = null;
-const CACHE_TTL = 60 * 1000;
+/**
+ * Por empresa e por janela de dias. Era um só pro processo inteiro (uma empresa
+ * podia receber o número da outra) e valia 1 min — a previsão de 30 dias não
+ * muda de minuto em minuto, e refazer custava ~20 idas ao ML.
+ */
+const cache = new Map<string, { at: number; body: Record<string, unknown> }>();
+const CACHE_TTL = 15 * 60 * 1000;
+/** Páginas de pedidos pedidas ao ML ao mesmo tempo (mais que isso já esbarrou em 429). */
+const PAGINAS_EM_PARALELO = 5;
 
 function normalizeItemId(s: string): string {
   return s.trim().toUpperCase().replace(/^MLB/, "");
@@ -33,8 +40,10 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const dias = Math.max(1, Math.min(180, Number(url.searchParams.get("dias") ?? 30) || 30));
 
-    if (cache && cache.dias === dias && Date.now() - cache.at < CACHE_TTL) {
-      return NextResponse.json({ ...cache.body, cached: true });
+    const chaveCache = `${gate.tenantId ?? "raiz"}|${dias}`;
+    const guardado = cache.get(chaveCache);
+    if (guardado && !url.searchParams.has("forcar") && Date.now() - guardado.at < CACHE_TTL) {
+      return NextResponse.json({ ...guardado.body, cached: true });
     }
 
     const token = await getMlAccessToken();
@@ -97,16 +106,28 @@ export async function GET(req: Request) {
      * "cancelled" e é pulado logo abaixo, e os pedidos novos contam. Só as
      * rotas que somam o faturamento BRUTO precisam de detectarPedidosSubstituidos.
      */
-    let offset = 0;
-    while (true) {
+    const seller = await sellerIdAtual();
+    const pagina = async (offset: number) => {
       const u =
-        `${ML_API}/orders/search?seller=${await sellerIdAtual()}` +
+        `${ML_API}/orders/search?seller=${seller}` +
         `&order.date_created.from=${encodeURIComponent(fromISO)}` +
         `&order.date_created.to=${encodeURIComponent(toISO)}` +
         `&limit=50&offset=${offset}`;
       const res = await fetchML(u, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store" });
-      if (!res.ok) break;
-      const data = (await res.json()) as { results?: Record<string, unknown>[]; paging?: { total?: number } };
+      if (!res.ok) return null;
+      return (await res.json()) as { results?: Record<string, unknown>[]; paging?: { total?: number } };
+    };
+    // A primeira diz quantas são; as outras vão em paralelo (eram ~20 em fila).
+    const primeira = await pagina(0);
+    const paginas: (Awaited<ReturnType<typeof pagina>>)[] = [primeira];
+    const total = Math.min(Number(primeira?.paging?.total ?? 0), 10_000);
+    const offsets: number[] = [];
+    for (let o = 50; o < total; o += 50) offsets.push(o);
+    for (let i = 0; i < offsets.length; i += PAGINAS_EM_PARALELO) {
+      paginas.push(...await Promise.all(offsets.slice(i, i + PAGINAS_EM_PARALELO).map(pagina)));
+    }
+    for (const data of paginas) {
+      if (!data) continue;
       const results = data.results ?? [];
       for (const o of results) {
         const status = String(o.status ?? "").toLowerCase();
@@ -133,9 +154,6 @@ export async function GET(req: Request) {
           rateioFrete.push({ orderId: String(o.id ?? ""), porProduto, totalUnidades });
         }
       }
-      const totalPag = data.paging?.total ?? 0;
-      offset += results.length;
-      if (offset >= totalPag || results.length === 0) break;
     }
 
     /**
@@ -209,7 +227,7 @@ export async function GET(req: Request) {
     }
 
     const body = { vendas, financeiro, diasAtivos, dias, from: fromISO.slice(0, 10), to: toISO.slice(0, 10) };
-    cache = { at: Date.now(), dias, body };
+    cache.set(chaveCache, { at: Date.now(), body });
     return NextResponse.json(body);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

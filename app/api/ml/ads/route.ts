@@ -22,7 +22,7 @@ function statusLabel(campaignId: string, campaignStatus: string): "ativo" | "pau
   return "config_indisponivel";
 }
 import { getValidMlAccessToken } from "@/lib/ml/getToken";
-import { fetchOrdersLive, loadOrders, readShippingCosts } from "@/lib/ml/orders";
+import { fetchOrdersLive, loadOrders, readShippingCosts, menorTexto, maiorTexto, SEM_DOCS } from "@/lib/ml/orders";
 import { classificarVenda, detectarPedidosSubstituidos } from "@/lib/domain/venda-status";
 import { diaBRDe } from "@/lib/domain/periodo-br";
 import { custoNaData, impostoNaData, type CustoFaixa, type ImpostoFaixa } from "@/lib/domain/types";
@@ -198,6 +198,15 @@ function vendasPorItem(
   return { porItem: map, porProduto };
 }
 
+/**
+ * A aba Ads refaz ~10 idas ao ML (métricas, campanhas, status, pedidos) e lê
+ * produtos, fretes e devoluções a cada abertura — 14 s. O resultado de um
+ * período não muda de minuto em minuto: fica 5 min por empresa e período.
+ * `?forcar` refaz na hora (o botão de atualizar da tela).
+ */
+const cacheAds = new Map<string, { at: number; corpo: Record<string, unknown> }>();
+const TTL_ADS = 5 * 60 * 1000;
+
 export async function GET(req: Request) {
   // Somente leitura, e o resumo diário busca o gasto de publicidade daqui — sem
   // `allowCron` a chamada interna leva 401 e o aviso morre calado.
@@ -213,6 +222,12 @@ export async function GET(req: Request) {
     // hoje no fuso BR. Mesma trava que o dashboard já usa.
     const hj = todayISO(0);
     const adsTo = to > hj ? hj : to;
+
+    const chaveCache = `${gate.tenantId ?? "raiz"}|${from}|${to}`;
+    const guardado = cacheAds.get(chaveCache);
+    if (guardado && !url.searchParams.has("forcar") && Date.now() - guardado.at < TTL_ADS) {
+      return NextResponse.json({ ...guardado.corpo, cached: true });
+    }
 
     let ads;
     try {
@@ -275,8 +290,8 @@ export async function GET(req: Request) {
 
     // ── Devoluções + cancelamentos (excluídos do lucro, igual ao dashboard) ──
     const [retUTC, retBR] = await Promise.all([
-      db.collection("ml_returns").where("date_created", ">=", start).where("date_created", "<=", end).get(),
-      db.collection("ml_returns").where("date_created", ">=", fromISO).where("date_created", "<=", toISO).get(),
+      db.collection("ml_returns").where("date_created", ">=", menorTexto(start, fromISO)).where("date_created", "<=", maiorTexto(end, toISO)).get(),
+      SEM_DOCS,
     ]);
     const cancelIds = new Set<string>();
     const devolIds = new Set<string>();
@@ -314,6 +329,7 @@ export async function GET(req: Request) {
       if (a.campaignId) campaignIdByItem[id] = a.campaignId;
       costByItem[id] = a.cost;
     }
+    const statusPromessa = getItemStatusByItem(mlbsAds).catch(() => ({} as Record<string, string>));
     const cfg = await getAdsSettingsByItem(mlbsAds, campaignIdByItem, costByItem, { from, to }).catch(
       () => ({
         porItem: {} as Record<string, AdSettings>, amostraCampanha: null,
@@ -327,7 +343,7 @@ export async function GET(req: Request) {
     );
     // Status do catálogo (se o anúncio em si está ativo/pausado/encerrado) —
     // vira só um dado extra no tooltip agora; a etiqueta principal é da campanha.
-    const statusPorItem = await getItemStatusByItem(mlbsAds).catch(() => ({} as Record<string, string>));
+    const statusPorItem = await statusPromessa;
 
     // id → nome de TODAS as campanhas da conta, pra nomear também as fatias de
     // campanhas que não são a principal do anúncio.
@@ -486,7 +502,7 @@ export async function GET(req: Request) {
     // orçamento/ROAS vierem 0, mostra o objeto para achar o campo certo sem
     // chutar. cfgDiag: status HTTP das URLs de campanhas tentadas — se
     // nenhuma respondeu 200, o problema é o endpoint, não o nome do campo.
-    return NextResponse.json({
+    const corpo = {
       items, from, to,
       semGastoNoPeriodo, // quantos anúncios ficaram de fora por não ter investido
       cfgAmostra: { campanha: cfg.amostraCampanha, campanhaOrfa: cfg.amostraCampanhaOrfa },
@@ -505,7 +521,10 @@ export async function GET(req: Request) {
         lucroAntesAds: lucroContaAntesAds, itens: vendas.size,
         receitaSemCusto,
       },
-    });
+    };
+    cacheAds.set(chaveCache, { at: Date.now(), corpo });
+    for (const [k, v] of cacheAds) if (Date.now() - v.at > TTL_ADS) cacheAds.delete(k);
+    return NextResponse.json(corpo);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: "unexpected", details: msg, items: [] }, { status: 500 });
