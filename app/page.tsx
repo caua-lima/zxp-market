@@ -655,10 +655,11 @@ function AppShell() {
                 type="button"
                 className="btn btn-ghost btn-xs"
                 onClick={handleSwapAccount}
+                title="Trocar de conta"
                 disabled={swappingAccount}
                 style={{ flex: 1, justifyContent: "center", opacity: swappingAccount ? 0.6 : 1, cursor: swappingAccount ? 'not-allowed' : 'pointer' }}
               >
-                {swappingAccount ? 'Trocando...' : 'Trocar conta'}
+                {swappingAccount ? 'Trocando...' : 'Trocar'}
               </button>
               <button
                 type="button"

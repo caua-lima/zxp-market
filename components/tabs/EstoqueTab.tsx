@@ -93,6 +93,12 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
   const [retencaoVeio, setRetencaoVeio] = useState(false);
   const [forecast, setForecast] = useState<Forecast>({ vendas: {}, dias: DIAS_ALVO });
   const [loadingML, setLoadingML] = useState(false);
+  /**
+   * O estoque do ML já chegou ao menos uma vez. Antes disso, todo produto
+   * parece "sem estoque": os cartões mostravam 26 de 26 em ruptura e R$ 0,00
+   * de capital por uns 15 s, um alarme falso a cada abertura da aba.
+   */
+  const [estoqueVeio, setEstoqueVeio] = useState(false);
   const [movimentos, setMovimentos] = useState<EstoqueMovimento[]>([]);
   /** O livro bateu o teto de leitura (S22) — pode haver movimentação mais antiga faltando aqui. */
   const [movimentosTruncados, setMovimentosTruncados] = useState(false);
@@ -163,7 +169,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
         setRetencao(ef?.porProduto ?? []);
         setRetencaoVeio(!!ef);
       }
-    } catch { /* ignora */ } finally { setLoadingML(false); }
+    } catch { /* ignora */ } finally { setLoadingML(false); setEstoqueVeio(true); }
   }, []);
 
   useEffect(() => {
@@ -470,17 +476,17 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
         */}
         {/* Cada cartão diz a UNIDADE do número (produtos, unidades ou dinheiro) e leva ao filtro que o explica. */}
         <MetricCard
-          tom={resumoSituacao.ruptura > 0 ? "neg" : "pos"} rotulo="Em ruptura (produtos)"
-          valor={resumoSituacao.ruptura} corValor={resumoSituacao.ruptura > 0 ? "var(--red-text)" : "var(--green)"}
-          sub={resumoSituacao.ruptura === 0 ? "nenhum produto sem estoque" : "sem estoque — o anúncio perde posição a cada hora"}
-          acao={resumoSituacao.ruptura > 0 ? { rotulo: `Ver ${resumoSituacao.ruptura} produto(s) →`, onClick: () => verSinal("ruptura") } : undefined}
+          tom={!estoqueVeio ? "acc" : resumoSituacao.ruptura > 0 ? "neg" : "pos"} rotulo="Em ruptura (produtos)"
+          valor={!estoqueVeio ? "…" : resumoSituacao.ruptura} corValor={!estoqueVeio ? "var(--muted)" : resumoSituacao.ruptura > 0 ? "var(--red-text)" : "var(--green)"}
+          sub={!estoqueVeio ? "lendo o estoque no Mercado Livre…" : resumoSituacao.ruptura === 0 ? "nenhum produto sem estoque" : "sem estoque — o anúncio perde posição a cada hora"}
+          acao={estoqueVeio && resumoSituacao.ruptura > 0 ? { rotulo: `Ver ${resumoSituacao.ruptura} produto(s) →`, onClick: () => verSinal("ruptura") } : undefined}
         />
 
         <MetricCard
-          tom={resumoSituacao.coberturaBaixa > 0 ? "warn" : "pos"} rotulo="Cobertura baixa (produtos)"
-          valor={resumoSituacao.coberturaBaixa} corValor={resumoSituacao.coberturaBaixa > 0 ? "var(--yellow)" : "var(--green)"}
+          tom={!estoqueVeio ? "acc" : resumoSituacao.coberturaBaixa > 0 ? "warn" : "pos"} rotulo="Cobertura baixa (produtos)"
+          valor={!estoqueVeio ? "…" : resumoSituacao.coberturaBaixa} corValor={!estoqueVeio ? "var(--muted)" : resumoSituacao.coberturaBaixa > 0 ? "var(--yellow)" : "var(--green)"}
           sub={`duram menos de ${DIAS_COBERTURA_BAIXA} dias — ainda dá tempo de repor`}
-          acao={resumoSituacao.coberturaBaixa > 0 ? { rotulo: `Ver ${resumoSituacao.coberturaBaixa} produto(s) →`, onClick: () => verSinal("cobertura_baixa") } : undefined}
+          acao={estoqueVeio && resumoSituacao.coberturaBaixa > 0 ? { rotulo: `Ver ${resumoSituacao.coberturaBaixa} produto(s) →`, onClick: () => verSinal("cobertura_baixa") } : undefined}
         />
 
         {/*
@@ -490,8 +496,8 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
         */}
         <MetricCard
           tom="pos" rotulo="Capital em estoque (R$)"
-          valor={fmtBRL(resumoSituacao.capitalEmEstoque)} corValor="var(--green)"
-          sub={resumoSituacao.semCusto > 0
+          valor={!estoqueVeio ? "…" : fmtBRL(resumoSituacao.capitalEmEstoque)} corValor={!estoqueVeio ? "var(--muted)" : "var(--green)"}
+          sub={!estoqueVeio ? "somando casa + Full…" : resumoSituacao.semCusto > 0
             ? <>(casa + Full) × custo médio · <b style={{ color: "var(--yellow)" }}>subestimado</b>: {resumoSituacao.semCusto} sem custo</>
             : <>{unCasa} em casa · {unFull} no Full, ao custo médio</>}
           acao={resumoSituacao.semCusto > 0 ? { rotulo: `Ver ${resumoSituacao.semCusto} sem custo →`, onClick: () => verSinal("sem_custo") } : undefined}
