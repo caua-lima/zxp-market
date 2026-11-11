@@ -554,6 +554,11 @@ function DevolucoesPanel({ total, emAndamento, detalhe }: { total: number; emAnd
 }
 
 // ── Vendas do Dia (hero) ───────────────────────────────────────
+const PRINCIPAIS_DO_DIA = new Set([
+  "Faturamento bruto", "Lucro líquido", "Ticket médio", "Unidades",
+  "Gasto com ADS", "ROAS direto", "ROAS de equilíbrio", "Custo por pedido",
+]);
+
 function VendasDoDiaHero({ hoje, ontem, rotulo, rotuloAnterior }: {
   hoje?: HojeBreakdown;
   ontem?: HojeBreakdown | null;
@@ -562,6 +567,7 @@ function VendasDoDiaHero({ hoje, ontem, rotulo, rotuloAnterior }: {
   rotulo: string;
   rotuloAnterior: string;
 }) {
+  const [verTodos, setVerTodos] = useState(false);
   const vazio: HojeBreakdown = {
     faturamentoBruto: 0, faturamentoLiquido: 0, vendasCanceladas: 0, vendasDevolvidas: 0,
     totalCMV: 0, totalAds: 0, totalEnvio: 0,
@@ -684,6 +690,12 @@ function VendasDoDiaHero({ hoje, ontem, rotulo, rotuloAnterior }: {
 
   const foraDaConta = receitaForaDoCalculo(d);
   const top = h.produtoTop;
+  /**
+   * Os 8 que respondem "como foi o dia"; os outros (base da margem, un./pedido,
+   * custos um a um, venda por ADS, margem sem ADS) ficam a um clique — eram 17
+   * quadrinhos de uma vez.
+   */
+  const visiveis = verTodos ? stats : stats.filter((s) => PRINCIPAIS_DO_DIA.has(s.label));
 
   return (
     <section className="hero">
@@ -708,7 +720,7 @@ function VendasDoDiaHero({ hoje, ontem, rotulo, rotuloAnterior }: {
       </div>
 
       <div className="hero-grid">
-        {stats.map((s) => {
+        {visiveis.map((s) => {
           const v = s.anterior != null && s.value != null ? variacao(s.value, s.anterior) : null;
           return (
             <div key={s.label} className="hero-stat" title={s.hint}>
@@ -745,6 +757,13 @@ function VendasDoDiaHero({ hoje, ontem, rotulo, rotuloAnterior }: {
           );
         })}
       </div>
+
+      <button
+        type="button" className="btn btn-ghost btn-xs" style={{ marginTop: 10 }}
+        onClick={() => setVerTodos((v) => !v)} aria-expanded={verTodos}
+      >
+        {verTodos ? "Mostrar só o principal" : `Ver detalhes (${stats.length - visiveis.length} a mais)`}
+      </button>
 
       {foraDaConta > 5 && (
         <div style={{ marginTop: 10, fontSize: ".8rem", color: "var(--warning)", lineHeight: 1.55 }}>

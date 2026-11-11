@@ -213,7 +213,7 @@ export function PushNotificationToggle() {
   // de vendas/alertas). Este botão é sobre ESTE aparelho especificamente;
   // usar o mesmo glifo dos dois lado a lado parecia um sino duplicado.
   const icone = status === "denied" ? "🔕" : "📱";
-  const texto = status === "on" ? "Notificações ativas" : status === "denied" ? "Bloqueado" : "Ativar notificações";
+  const texto = status === "on" ? "Notificações ativas" : status === "denied" ? "Avisos bloqueados" : "Ativar notificações";
   const title = status === "denied"
     ? "Notificações bloqueadas nas configurações do navegador/site — libere lá antes de tentar de novo."
     : status === "on"

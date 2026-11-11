@@ -649,24 +649,27 @@ function AppShell() {
             </div>
             {profileOpen && <MyProfileModal onClose={() => setProfileOpen(false)} />}
             <SeletorVerComo />
-            <button
-              type="button"
-              className="btn btn-primary btn-xs"
-              onClick={handleSwapAccount}
-              disabled={swappingAccount}
-              style={{ width: "100%", justifyContent: "center", marginBottom: 6, opacity: swappingAccount ? 0.6 : 1, cursor: swappingAccount ? 'not-allowed' : 'pointer' }}
-            >
-              {swappingAccount ? 'Trocando...' : 'Trocar conta'}
-            </button>
-            <button
-              type="button"
-              className="btn btn-ghost btn-xs"
-              onClick={signOut}
-              disabled={swappingAccount}
-              style={{ width: "100%", justifyContent: "center", opacity: swappingAccount ? 0.6 : 1, cursor: swappingAccount ? 'not-allowed' : 'pointer' }}
-            >
-              Sair
-            </button>
+            {/* Lado a lado e discretos: não são ação do dia (o amarelo cheio puxava o olho à toa). */}
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs"
+                onClick={handleSwapAccount}
+                disabled={swappingAccount}
+                style={{ flex: 1, justifyContent: "center", opacity: swappingAccount ? 0.6 : 1, cursor: swappingAccount ? 'not-allowed' : 'pointer' }}
+              >
+                {swappingAccount ? 'Trocando...' : 'Trocar conta'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-xs"
+                onClick={signOut}
+                disabled={swappingAccount}
+                style={{ flex: 1, justifyContent: "center", opacity: swappingAccount ? 0.6 : 1, cursor: swappingAccount ? 'not-allowed' : 'pointer' }}
+              >
+                Sair
+              </button>
+            </div>
           </div>
         </aside>
 
