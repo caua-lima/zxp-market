@@ -25,7 +25,7 @@ import {
   prevPeriod,
   fmtPct,
 } from "@/lib/domain/calc";
-import { calcularMetaDiaria, idealAteHoje } from "@/lib/domain/meta-diaria";
+import { calcularMetaDiaria } from "@/lib/domain/meta-diaria";
 import { diaEmFoco, rotuloDoDia } from "@/lib/domain/dia-em-foco";
 import { lerConferencia } from "@/lib/domain/apuracao-financeira";
 import { MARCA_DOURADO } from "@/lib/marca";
@@ -40,7 +40,7 @@ import PerformanceGauge from "./PerformanceGauge";
 import DateRangePicker from "./DateRangePicker";
 import AvisoRemessasFull from "./AvisoRemessasFull";
 import { authedFetch } from "@/lib/api/authed-fetch";
-import { abreviarValor, getGaugeStatus, getGaugeStatusLabel, getGoalInsight, getRevenuePaceLabel, getRevenuePaceStatus, rawGoalPercent, selectActiveGoal } from "@/lib/domain/gauge";
+import { getGaugeStatus, selectActiveGoal } from "@/lib/domain/gauge";
 import ActionCenter from "./ActionCenter";
 import ExecutiveKpis, { Delta } from "./ExecutiveKpis";
 import RevenueLineChart from "./RevenueLineChart";
@@ -549,40 +549,6 @@ function DevolucoesPanel({ total, emAndamento, detalhe }: { total: number; emAnd
       ) : (
         <div style={{ color: "var(--muted)", fontSize: ".82rem" }}>Sem devoluções no período. </div>
       )}
-    </div>
-  );
-}
-
-// ── Hoje vs Ontem (leitura curta em texto) ──────────────────────
-function HojeVsOntem({ hoje, ontem, rotulo, rotuloAnterior }: {
-  hoje?: HojeBreakdown;
-  ontem: MlMetrics | null;
-  /* O dia mostrado nem sempre e hoje: com o periodo filtrado em "Ontem" ou
-     num mes fechado, ele acompanha o periodo. Chamar tudo de "hoje" foi a
-     origem do problema — ver lib/domain/dia-em-foco.ts. */
-  rotulo: string;
-  rotuloAnterior: string;
-}) {
-  if (!hoje) return null;
-  const margemHoje = margemReal(paraDominioDoDia(hoje)) ?? 0;
-
-  let diffTxt: React.ReactNode = null;
-  if (ontem && ontem.faturamentoLiquido !== 0) {
-    const diffPct = ((hoje.faturamentoLiquido - ontem.faturamentoLiquido) / Math.abs(ontem.faturamentoLiquido)) * 100;
-    const tone = diffPct >= 0 ? "var(--success)" : "var(--danger)";
-    diffTxt = (
-      <> Diferença de <b style={{ color: tone }}>{diffPct >= 0 ? "+" : ""}{fmtPct(diffPct, 1)}</b> vs {rotuloAnterior.toLowerCase()} ({fmtBRL(ontem.faturamentoLiquido)}).</>
-    );
-  } else if (ontem) {
-    diffTxt = <> {rotuloAnterior} não teve faturamento pra comparar.</>;
-  }
-
-  return (
-    <div className="panel" style={{ fontSize: ".92rem", lineHeight: 1.6, color: "var(--text-secondary,var(--muted))" }}>
-      <b style={{ color: "var(--text-primary,var(--text))" }}>{rotulo}:</b>{" "}
-      {fmtBRL(hoje.faturamentoLiquido)} faturados, {hoje.pedidos} pedido(s), margem de{" "}
-      <b style={{ color: margemHoje >= 0 ? "var(--success)" : "var(--danger)" }}>{fmtPct(margemHoje, 1)}</b>.
-      {diffTxt}
     </div>
   );
 }
@@ -1193,41 +1159,17 @@ function MetaDiariaCard({
 // é nova, nenhum número muda.
 
 function MetasOverviewCard({
-  fatBruto, meta1, meta2, meta3, projecao, projecaoLucro, diaAtual, totalDias, margemAtual, metaMargem, onVerMetas,
+  fatBruto, meta1, meta2, meta3, projecaoLucro, diaAtual, totalDias,
 }: {
   fatBruto: number;
   meta1: number;
   meta2: number | null;
   meta3: number | null;
-  projecao: number;
   projecaoLucro: number;
   diaAtual: number;
   totalDias: number;
-  margemAtual: number;
-  metaMargem: number;
-  onVerMetas?: () => void;
 }) {
   const { activeMeta, metaIndex, metas } = selectActiveGoal(fatBruto, meta1, meta2, meta3);
-  // Segue a meta VIGENTE, e trava o dia dentro do mês (ver idealAteHoje).
-  const idealDia = idealAteHoje(activeMeta, diaAtual, totalDias);
-  const deltaIdeal = fatBruto - idealDia;
-
-  const falta = Math.max(activeMeta - fatBruto, 0);
-  const diasRestantes = Math.max(totalDias - diaAtual + 1, 1);
-  const ritmoDiaNecessario = falta > 0 ? falta / diasRestantes : undefined;
-
-  // Ritmo compara contra o IDEAL até hoje, não contra a meta inteira — ver
-  // comentário em getRevenuePaceStatus (era a causa do "Abaixo do ritmo"
-  // aparecer sempre no início do mês, mesmo em dia).
-  const toneRevenue = getRevenuePaceStatus(fatBruto, activeMeta, idealDia);
-  const revenueStatusLabel = getRevenuePaceLabel(fatBruto, activeMeta, toneRevenue);
-  const insightRevenue = getGoalInsight("revenue", { falta, ritmoDiaNecessario, projecao, metaLabel: `Meta ${metaIndex}` });
-
-  const pctMargemRaw = rawGoalPercent(margemAtual, metaMargem);
-  const toneMargin = getGaugeStatus("margin", pctMargemRaw);
-  const marginStatusLabel = getGaugeStatusLabel("margin", pctMargemRaw, toneMargin);
-  const insightMargin = getGoalInsight("margin", { margemAtual, metaMargem });
-
   return (
     <div className="goals-card">
       <div className="goals-card-head">
@@ -1259,40 +1201,9 @@ function MetasOverviewCard({
       )}
 
       {/* O ritmo em barras: a meta do mês com a marquinha de "onde deveria estar hoje", e a meta
-          diária acumulada (124% = à frente). Mesma meta vigente e mesmo dia dos velocímetros abaixo. */}
+          diária acumulada (124% = à frente). A margem fica no card do topo (não se repete aqui). */}
       <RitmoDaMeta faturamento={fatBruto} meta={activeMeta} metaIndex={metaIndex} diaAtual={diaAtual} diasNoMes={totalDias} />
 
-      <div className="pg-row">
-        <PerformanceGauge
-          title={`Meta do Mês ${metaIndex}`}
-          eyebrow={`Meta do Mês ${metaIndex}`}
-          value={fatBruto}
-          max={activeMeta}
-          status={toneRevenue}
-          valueLabel={`${fmtBRL(fatBruto)} de ${abreviarValor(activeMeta)}`}
-          helperText={revenueStatusLabel}
-          insight={insightRevenue}
-          comparison={{ label: "Ideal até hoje", value: fmtBRL(idealDia), tone: deltaIdeal >= 0 ? "success" : "danger" }}
-          minLabel="R$ 0"
-          maxLabel={abreviarValor(activeMeta)}
-          tooltip={`Percentual do faturamento líquido em relação à Meta ${metaIndex} selecionada.`}
-          ctaLabel={onVerMetas ? "Ver metas" : undefined}
-          onClick={onVerMetas}
-        />
-        <PerformanceGauge
-          title="Margem Líquida"
-          eyebrow="Margem Líquida"
-          value={margemAtual}
-          max={metaMargem}
-          status={toneMargin}
-          valueLabel={`${fmtPct(margemAtual, 1)} (meta ${fmtPct(metaMargem, 1)})`}
-          helperText={marginStatusLabel}
-          insight={insightMargin}
-          minLabel="0%"
-          maxLabel={`${fmtPct(metaMargem, 0)}`}
-          tooltip="Lucro líquido operacional dividido pelo retorno (valor da venda − taxa ML − frete) do período. Custos incluídos seguem as regras atuais do Dashboard."
-        />
-      </div>
     </div>
   );
 }
@@ -2167,13 +2078,9 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
                   meta1={goals.meta1}
                   meta2={goals.meta2 ?? null}
                   meta3={goals.meta3 ?? null}
-                  projecao={projecao}
                   projecaoLucro={projecaoLucro}
                   diaAtual={diaAtualNoMes()}
                   totalDias={diasNoMes(mes)}
-                  margemAtual={margemDoPeriodo}
-                  metaMargem={goals.metaMargem ?? 10}
-                  onVerMetas={onVerMetas}
                 />
               ) : (
                 <div className="goals-card" style={{ color: "var(--text-secondary)", fontSize: ".85rem" }}>
@@ -2183,13 +2090,6 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
             </section>
           )}
 
-          {/* Hoje vs Ontem — leitura rápida em texto */}
-          {mlMetrics && (
-            <HojeVsOntem
-              hoje={mlMetrics.hoje} ontem={ontemMetrics}
-              rotulo={rotuloDia} rotuloAnterior={rotuloDiaAnterior}
-            />
-          )}
 
           {/* Fluxo e tendência */}
           <section>
@@ -2218,8 +2118,6 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
             </div>
             <div className="kpi-grid">
               <Kpi label="Faturamento bruto" value={fatBruto} tone="acc" sub="tudo, inclui cancelados/devolvidos" />
-              <Kpi label="Faturamento líquido" value={fatLiquido} tone="acc" sub={fatPresencial > 0 ? `− canceladas − devoluções · inclui ${fmtBRL(fatPresencial)} presencial` : "− canceladas − devoluções"}
-                delta={<Delta current={fatLiquido} previous={prevMetrics?.faturamentoLiquido} mode="pct" />} />
               {/* O número do painel do Mercado Livre, pra conferir sem abrir a
                   Conferência. É o líquido MAIS os pedidos que o ML cancelou só
                   pra recriar na separação de envio: ele conta o original e os
@@ -2250,10 +2148,6 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
               )}
               <Kpi label="Retorno sobre vendas" value={retorno} tone="acc"
                 delta={<Delta current={retorno} previous={prevMetrics?.totalRetorno} mode="pct" />} />
-              <Kpi label="Lucro líquido" value={lucroLiquido} tone={lucroLiquido >= 0 ? "pos" : "neg"} sub="já com custos operacionais"
-                delta={<Delta current={lucroLiquido} previous={prevMetrics?.lucroComCustos} mode="pct" />} />
-              <Kpi label={semQueima ? "Margem líquida (sem açaí)" : "Margem líquida"} value={margemDoPeriodo} tone="warn" isPct sub={notaDaMargem}
-                delta={semQueima ? undefined : <Delta current={mlMetrics?.margemComCustos ?? 0} previous={prevMetrics?.margemComCustos} mode="points" />} />
               <Kpi label="Gasto com ADS" value={mlMetrics?.totalAds ?? 0} tone="neg"
                 indisponivel={adsFalhou} sub={adsFalhou ? "ML não retornou — não é zero" : undefined} />
               <Kpi label="Vendas canceladas" value={mlMetrics?.vendasCanceladas ?? 0} tone="neg" sub="não contam no lucro" />
@@ -2265,6 +2159,10 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
               no lucro daqui — vão pro Resultado líquido da DRE. */}
           <ColetaFullDoPeriodo from={mlMetrics?.from} to={mlMetrics?.to} />
 
+          {/* Conferências: úteis pra bater número, não pra decidir o dia — ficam fechadas. */}
+          <details className="panel dash-conferencias">
+            <summary className="panel-title" style={{ cursor: "pointer" }}>Conferências · visitas, painel do ML e Mercado Pago</summary>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
           <ConversaoVisitas
             from={mlMetrics?.from}
             to={mlMetrics?.to}
@@ -2278,6 +2176,10 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
               periodo={`${formatDateBR(mlMetrics.from)} a ${formatDateBR(mlMetrics.to)}`}
             />
           )}
+
+          <ConferenciaMP reconc={mlMetrics?.reconc} total={mlMetrics?.ordersCount} />
+            </div>
+          </details>
 
           {/* Central de Atenção — abaixo dos KPIs, acima das tabelas secundárias */}
           {mlMetrics && (
@@ -2393,8 +2295,6 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
           {/* Média de vendas por dia */}
           <MediaVendasDia anuncios={mlMetrics?.anuncios ?? []} from={mlMetrics?.from} to={mlMetrics?.to} />
 
-          {/* Conferência da margem contra o dinheiro real */}
-          <ConferenciaMP reconc={mlMetrics?.reconc} total={mlMetrics?.ordersCount} />
 
           {/* Melhores dias da semana */}
           <MelhoresDias serie={melhoresDiasMetrics?.serieDiaria ?? []} from={melhoresDiasMetrics?.from} to={melhoresDiasMetrics?.to} />

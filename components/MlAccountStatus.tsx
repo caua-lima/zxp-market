@@ -57,7 +57,8 @@ export function MlAccountStatus() {
       </span>
     );
   }
-  if (loading) return podeConectar ? <MLConnectButton aviso={recusa} /> : null;
+  // Carregando: nada (antes piscava "Conectar ML" com a conta conectada).
+  if (loading) return null;
   if (!data || !data.connected) return <MLConnectButton aviso={recusa} />;
 
   async function swapAccount() {
@@ -89,7 +90,7 @@ export function MlAccountStatus() {
         <button
           onClick={swapAccount}
           disabled={swapLoading}
-          className="btn btn-xs btn-primary"
+          className="btn btn-xs btn-ghost"
           title="Reconectar o Mercado Livre (renova permissões, inclusive Publicidade)"
           aria-label="Reconectar Mercado Livre"
           style={{
@@ -100,7 +101,7 @@ export function MlAccountStatus() {
         >
           {swapLoading
             ? <><span aria-hidden>⏳</span><span className="acct-btn-label">Reconectando...</span></>
-            : <><span aria-hidden>🔌</span><span className="acct-btn-label">Reconectar ML</span></>}
+            : <span aria-hidden>🔌</span>}
         </button>
         {feedback && (
           <div style={{
