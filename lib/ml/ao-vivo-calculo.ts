@@ -3,7 +3,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { devolucaoConcluida } from "@/lib/domain/devolucao-estado";
 import { diaBRDe, recortarPorDiaBR } from "@/lib/domain/periodo-br";
 import { metaDoDia, prepararPedidosAoVivo, resumirAoVivo, type MetaDoDia, type ProdutoAoVivo, type ResumoAoVivo } from "@/lib/domain/ao-vivo";
-import { fetchOrdersLive, loadOrders } from "@/lib/ml/orders";
+import { fetchOrdersLive, loadOrders, menorTexto, maiorTexto, SEM_DOCS } from "@/lib/ml/orders";
 import { getMlAccessToken } from "@/app/api/ml/token";
 import { sellerIdAtual } from "@/lib/ml/vendedor";
 import { aoVivoComPresencial, type ContextoDaMeta } from "@/lib/domain/ao-vivo-presencial";
@@ -105,8 +105,8 @@ async function vendasDoMesAteOntem(db: FirebaseFirestore.Firestore, chave: strin
   const iniBR = `${primeiroDia}T00:00:00.000-03:00`, fimBR = `${ontem}T23:59:59.999-03:00`;
   const pedidos = recortarPorDiaBR(await loadOrders(db, ini, fim, iniBR, fimBR), primeiroDia, ontem).dentro;
   const [a, b] = await Promise.all([
-    db.collection("ml_returns").where("date_created", ">=", ini).where("date_created", "<=", fim).get(),
-    db.collection("ml_returns").where("date_created", ">=", iniBR).where("date_created", "<=", fimBR).get(),
+    db.collection("ml_returns").where("date_created", ">=", menorTexto(ini, iniBR)).where("date_created", "<=", maiorTexto(fim, fimBR)).get(),
+    SEM_DOCS,
   ]);
   const cancel = new Set<string>(), devol = new Set<string>();
   for (const snap of [a, b]) for (const d of snap.docs) {
@@ -217,8 +217,8 @@ export async function calcularAoVivo(opcoes: OpcoesAoVivo): Promise<{ body: Corp
 
   // Cancelamentos e devoluções dos dois dias — mesma leitura do Dashboard.
   const [retUTC, retBR] = await Promise.all([
-    db.collection("ml_returns").where("date_created", ">=", start).where("date_created", "<=", end).get(),
-    db.collection("ml_returns").where("date_created", ">=", startBR).where("date_created", "<=", endBR).get(),
+    db.collection("ml_returns").where("date_created", ">=", menorTexto(start, startBR)).where("date_created", "<=", maiorTexto(end, endBR)).get(),
+    SEM_DOCS,
   ]);
   const cancelIds = new Set<string>();
   const devolIds = new Set<string>();

@@ -26,6 +26,19 @@ export type OrderDoc = {
 };
 
 /** Lê os pedidos de um intervalo (UTC e BR) do Firestore, deduplicando por order_id. */
+/**
+ * UMA busca no lugar das duas (janela UTC + janela BR). As duas janelas se
+ * sobrepõem quase inteiras — a BR começa e termina 3 h antes, e em texto
+ * "…-03:00" vem antes de "…Z" —, então a união delas é um intervalo só:
+ * do menor começo ao maior fim. Mesmo resultado, metade das leituras (as
+ * duas buscas liam o período inteiro cada uma; em 11/11/2026 a cota diária
+ * do Firestore acabou antes das 13 h).
+ */
+export const menorTexto = (a: string, b: string) => (a < b ? a : b);
+export const maiorTexto = (a: string, b: string) => (a > b ? a : b);
+/** O lugar da segunda busca, vazio: quem chama continua juntando as duas como antes. */
+export const SEM_DOCS = { docs: [] as FirebaseFirestore.QueryDocumentSnapshot[] };
+
 export async function loadOrders(
   db: FirebaseFirestore.Firestore,
   start: string,
@@ -34,8 +47,8 @@ export async function loadOrders(
   endBR: string,
 ): Promise<FirebaseFirestore.DocumentData[]> {
   const [snapUTC, snapBR] = await Promise.all([
-    db.collection("ml_orders").where("date_created", ">=", start).where("date_created", "<=", end).get(),
-    db.collection("ml_orders").where("date_created", ">=", startBR).where("date_created", "<=", endBR).get(),
+    db.collection("ml_orders").where("date_created", ">=", menorTexto(start, startBR)).where("date_created", "<=", maiorTexto(end, endBR)).get(),
+    SEM_DOCS,
   ]);
   const map = new Map<string, FirebaseFirestore.DocumentData>();
   for (const snap of [snapUTC, snapBR])

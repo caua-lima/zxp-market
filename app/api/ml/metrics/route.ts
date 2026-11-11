@@ -9,7 +9,7 @@ import { devolucaoConcluida } from "@/lib/domain/devolucao-estado";
 import { contribuicaoNoPeriodo } from "@/lib/domain/vigencia-custo";
 import { lerPeriodo } from "@/lib/domain/periodo";
 import { getAdsGastoEDireto, getAdsSpendByItem, probeAds } from "@/lib/ml/ads";
-import { completarFretesFaltantes, fetchOrdersLive, loadOrders, readShippingCosts } from "@/lib/ml/orders";
+import { completarFretesFaltantes, fetchOrdersLive, loadOrders, readShippingCosts, menorTexto, maiorTexto, SEM_DOCS } from "@/lib/ml/orders";
 import { getMlAccessToken } from "../token";
 import { custoNaData, impostoNaData, type CustoFaixa, type ImpostoFaixa } from "@/lib/domain/types";
 import { diaBRDe, recortarPorDiaBR } from "@/lib/domain/periodo-br";
@@ -733,8 +733,8 @@ export async function GET(req: Request) {
     // Devolução = venda revertida, produto volta ao estoque → 0 a 0.
     // Os dois entram no faturamento BRUTO, mas saem do líquido e do lucro.
     const [retUTC, retBR] = await Promise.all([
-      db.collection("ml_returns").where("date_created", ">=", start).where("date_created", "<=", end).get(),
-      db.collection("ml_returns").where("date_created", ">=", startBR).where("date_created", "<=", endBR).get(),
+      db.collection("ml_returns").where("date_created", ">=", menorTexto(start, startBR)).where("date_created", "<=", maiorTexto(end, endBR)).get(),
+      SEM_DOCS,
     ]);
     /**
      * A consulta acima UNE uma janela UTC com uma janela BR — união que

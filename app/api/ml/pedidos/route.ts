@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { menorTexto, maiorTexto, SEM_DOCS } from "@/lib/ml/orders";
 import { registrarSkus } from "@/lib/domain/indice-sku";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
@@ -44,8 +45,8 @@ export async function GET(req: Request) {
 
     // Pedidos do período (dedupe UTC/BR)
     const [snapUTC, snapBR] = await Promise.all([
-      db.collection("ml_orders").where("date_created", ">=", start).where("date_created", "<=", end).get(),
-      db.collection("ml_orders").where("date_created", ">=", startBR).where("date_created", "<=", endBR).get(),
+      db.collection("ml_orders").where("date_created", ">=", menorTexto(start, startBR)).where("date_created", "<=", maiorTexto(end, endBR)).get(),
+      SEM_DOCS,
     ]);
     const ordersMap = new Map<string, FirebaseFirestore.DocumentData>();
     for (const snap of [snapUTC, snapBR])
@@ -58,8 +59,8 @@ export async function GET(req: Request) {
     // app/api/ml/metrics/route.ts usa pro Dashboard (não é cálculo novo, só
     // reaproveitado aqui pra marcar cada pedido).
     const [retUTC, retBR] = await Promise.all([
-      db.collection("ml_returns").where("date_created", ">=", start).where("date_created", "<=", end).get(),
-      db.collection("ml_returns").where("date_created", ">=", startBR).where("date_created", "<=", endBR).get(),
+      db.collection("ml_returns").where("date_created", ">=", menorTexto(start, startBR)).where("date_created", "<=", maiorTexto(end, endBR)).get(),
+      SEM_DOCS,
     ]);
     const cancelIds = new Set<string>();
     const devolIds = new Set<string>();

@@ -14,6 +14,9 @@ let buscaDoMl: Record<string, unknown>[] = [];
 vi.mock("@/lib/ml/orders", () => ({
   fetchOrdersLive: vi.fn(async () => buscaDoMl.map((p) => ({ ...p }))),
   loadOrders: vi.fn(async () => []),
+  menorTexto: (a: string, b: string) => (a < b ? a : b),
+  maiorTexto: (a: string, b: string) => (a > b ? a : b),
+  SEM_DOCS: { docs: [] },
 }));
 
 let banco: Record<string, Record<string, unknown>> = {};

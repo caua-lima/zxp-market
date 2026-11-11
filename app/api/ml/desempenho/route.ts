@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { menorTexto, maiorTexto, SEM_DOCS } from "@/lib/ml/orders";
 import { diaRelativoBR, diasNaJanela, janelaDeDias } from "@/lib/domain/janela-dias";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
@@ -84,10 +85,10 @@ export async function GET(req: Request) {
     const endBR = `${toStr}T23:59:59.999-03:00`;
 
     const [snapUTC, snapBR, retUTC, retBR, perfil] = await Promise.all([
-      db.collection("ml_orders").where("date_created", ">=", start).where("date_created", "<=", end).get(),
-      db.collection("ml_orders").where("date_created", ">=", startBR).where("date_created", "<=", endBR).get(),
-      db.collection("ml_returns").where("date_created", ">=", start).where("date_created", "<=", end).get(),
-      db.collection("ml_returns").where("date_created", ">=", startBR).where("date_created", "<=", endBR).get(),
+      db.collection("ml_orders").where("date_created", ">=", menorTexto(start, startBR)).where("date_created", "<=", maiorTexto(end, endBR)).get(),
+      SEM_DOCS,
+      db.collection("ml_returns").where("date_created", ">=", menorTexto(start, startBR)).where("date_created", "<=", maiorTexto(end, endBR)).get(),
+      SEM_DOCS,
       fetchMlUserProfileFresh(),
     ]);
 
