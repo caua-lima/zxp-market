@@ -144,8 +144,10 @@ async function lerMetaDoMes(db: FirebaseFirestore.Firestore, mes: string): Promi
   // A do mês corrente; sem ela, a mais recente — a mesma escolha do Dashboard.
   // Do mês podem existir algumas versões (meta editada): vale a mais nova. Sem
   // orderBy na consulta, que pediria índice composto — são poucas, ordena aqui.
-  const doMes = await db.collection("metasHistorico").where("mes", "==", mes).limit(20).get().catch(() => null);
-  const snap = doMes && !doMes.empty ? doMes : await db.collection("metasHistorico").orderBy("createdAt", "desc").limit(1).get().catch(() => null);
+  // Erro aqui nunca derruba o painel: sem meta, ele mostra o resto.
+  const tentar = async (consulta: () => Promise<FirebaseFirestore.QuerySnapshot>) => { try { return await consulta(); } catch { return null; } };
+  const doMes = await tentar(() => db.collection("metasHistorico").where("mes", "==", mes).limit(20).get());
+  const snap = doMes && !doMes.empty ? doMes : await tentar(() => db.collection("metasHistorico").orderBy("createdAt", "desc").limit(1).get());
   if (!snap || snap.empty) return null;
   const e = snap.docs.map((d) => d.data()).sort((a, b) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0))[0];
   const meta1 = Number(e?.meta1 ?? 0);
