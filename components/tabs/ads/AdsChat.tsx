@@ -326,6 +326,14 @@ export default function AdsChat({ linhas, metaMargem }: { linhas: LinhaAds[]; me
             { rotulo: "Vendas", valor: fmtBRL(l.v) },
             { rotulo: "Investido", valor: fmtBRL(l.i.cost) },
           ];
+          if (l.roasIdeal == null && l.v <= 0) {
+            // Sem venda não é "margem insuficiente": só não há base pra calcular.
+            return {
+              titulo: `${l.i.title} — sem venda no período`, tone: "info" as const,
+              motivo: l.motivoSemIdeal ?? "Sem venda no período, não dá pra calcular o ROAS que cobre a meta. Amplie as datas no topo da aba.",
+              metricas,
+            };
+          }
           if (l.roasIdeal == null) {
             return {
               titulo: `${l.i.title} — sem ROAS que entregue ${num(metaMargem, 0)}%`, tone: "critical" as const,
