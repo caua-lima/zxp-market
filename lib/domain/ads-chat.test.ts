@@ -191,3 +191,20 @@ describe("interpretarPergunta — as intenções novas", () => {
     expect(interpretarPergunta("e o eucalipto?", TITULOS, "prioridade").intencao).toBe("analisar");
   });
 });
+
+describe("ROAS ideal de um produto (pedido do dono, 12/11/2026)", () => {
+  const titulos = ["Erva-mate Para Tereré Trots Limão Caipira 500g", "Erva Mate Tereré Trot's Sertanejos 5 Sabores", "Trots Menta Stronger 500g"];
+  it("com o produto, é a conta dele — não a explicação genérica", () => {
+    const r = interpretarPergunta("Qual roas ideal para o ads do limão caipira?", titulos);
+    expect(r.intencao).toBe("roas-ideal");
+    expect(r.alvos).toEqual([0]);
+  });
+  it("'ser' e 'roas' saem antes de casar: não corta 'Sertanejos'", () => {
+    const r = interpretarPergunta("qual deve ser o roas ideal do sertanejos", titulos);
+    expect(r.intencao).toBe("roas-ideal");
+    expect(r.alvos).toEqual([1]);
+  });
+  it("sem produto, continua sendo a pergunta de conceito", () => {
+    expect(interpretarPergunta("Qual o ROAS ideal?", titulos).intencao).toBe("conceito");
+  });
+});

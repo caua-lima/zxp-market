@@ -311,6 +311,52 @@ export default function AdsChat({ linhas, metaMargem }: { linhas: LinhaAds[]; me
         };
       }
 
+      case "roas-ideal": {
+        // A conta do anúncio: o ROAS mínimo pra sobrar a meta de margem DEPOIS do Ads
+        // (calculateTargetRoas — mesma coluna "ROAS ideal" da tabela).
+        const blocos: BlocoResposta[] = alvos.slice(0, 5).map((i) => {
+          const l = linhas[i];
+          const margemAntes = l.v > 0 ? (l.i.lucroAntesAds / l.v) * 100 : null;
+          const tacosMax = margemAntes != null ? margemAntes - metaMargem : null;
+          const metricas: BlocoResposta["metricas"] = [
+            { rotulo: "ROAS ideal", valor: l.roasIdeal != null ? `${num(l.roasIdeal, 2)}x` : "não existe", destaque: true },
+            { rotulo: "ROAS atual", valor: l.i.cost > 0 ? `${num(l.r, 2)}x` : "—" },
+            { rotulo: "Margem antes do Ads", valor: margemAntes != null ? `${num(margemAntes, 1)}%` : "sem dado" },
+            { rotulo: "Ads máx. (% da venda)", valor: tacosMax != null && tacosMax > 0 ? `${num(tacosMax, 1)}%` : "0%" },
+            { rotulo: "Vendas", valor: fmtBRL(l.v) },
+            { rotulo: "Investido", valor: fmtBRL(l.i.cost) },
+          ];
+          if (l.roasIdeal == null) {
+            return {
+              titulo: `${l.i.title} — sem ROAS que entregue ${num(metaMargem, 0)}%`, tone: "critical" as const,
+              motivo: l.motivoSemIdeal
+                ?? `Antes do Ads a margem já é ${margemAntes != null ? `${num(margemAntes, 1)}%` : "desconhecida"} — abaixo de ${num(metaMargem, 0)}%. Nenhum ROAS resolve: o caminho é preço ou custo.`,
+              metricas,
+            };
+          }
+          const acima = l.i.cost > 0 && l.r >= l.roasIdeal;
+          return {
+            titulo: `${l.i.title} — ROAS ideal ${num(l.roasIdeal, 2)}x`,
+            tone: l.i.cost === 0 ? "info" as const : acima ? "pos" as const : "warn" as const,
+            motivo:
+              `Antes do Ads este anúncio deixa ${num(margemAntes ?? 0, 1)}% de margem. Pra sobrar ${num(metaMargem, 0)}% depois do Ads, `
+              + `o Ads pode levar no máximo ${num(tacosMax ?? 0, 1)}% da venda — ou seja, cada R$ 1 investido tem que trazer `
+              + `R$ ${num(l.roasIdeal, 2)} em vendas (ROAS ${num(l.roasIdeal, 2)}x). `
+              + (l.i.cost === 0
+                ? "Sem investimento no período, ainda não há ROAS atual pra comparar."
+                : acima
+                  ? `Hoje está em ${num(l.r, 2)}x: acima do ideal, a margem de ${num(metaMargem, 0)}% está garantida.`
+                  : `Hoje está em ${num(l.r, 2)}x: abaixo do ideal. Suba o ROAS objetivo da campanha pra ${num(l.roasIdeal, 2)}x (ou mais) no Mercado Ads.`),
+            metricas,
+          };
+        });
+        return {
+          de: "consultor",
+          texto: `ROAS ideal com margem de ${num(metaMargem, 0)}% depois do Ads (meta da aba Metas), no período selecionado:`,
+          blocos,
+        };
+      }
+
       case "metrica": {
         const investido = linhas.reduce((s2, l) => s2 + l.i.cost, 0);
         const direta = linhas.reduce((s2, l) => s2 + l.i.directSales, 0);

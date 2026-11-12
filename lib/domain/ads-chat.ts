@@ -39,6 +39,7 @@ export type Intencao =
   | "prioridade"      // "o que arrumo primeiro?" — ordenado por dinheiro
   | "comparar"        // "compare o menta com o eucalipto"
   | "metrica"         // "quanto gastei em ads?" — número direto
+  | "roas-ideal"      // "qual o ROAS ideal do limão caipira?" — a conta, com os números dele
   | "ajuda"           // não entendi / primeira vez
   | "nao-encontrado"; // entendi a intenção, mas não achei o produto
 
@@ -104,6 +105,11 @@ const RE_QUALIFICADOR_CONCEITO = /(ideal|alvo|equilibrio|break|minimo|significa|
 /** "quanto gastei", "qual meu roas" — pede UM numero, nao uma analise. */
 const RE_METRICA = /(quanto (gastei|investi|lucrei|vendi|faturei)|qual (?:o |a |meu |minha |e o |sao os )*(roas|acos|tacos|lucro|gasto|investimento|faturamento|margem)|total (gasto|investido|de vendas))/;
 
+/**
+ * ROAS ideal / alvo / objetivo / mínimo. Com um produto na pergunta, a resposta
+ * é a CONTA daquele anúncio (com a meta de margem), não a explicação do conceito.
+ */
+const RE_ROAS_IDEAL = /(roas\b.*\b(ideal|alvo|objetivo|minimo|certo|devo|colocar|configurar|usar)|(ideal|alvo|objetivo|minimo)\b.*\broas\b)/;
 const RE_RUINS = /(prejuiz|perdend|ruim|ruins|pior|piores|negativ|vermelh|queimand|desligar|pausar|cortar)/;
 const RE_BONS = /(bom|bons|melhor(?!\s+a\s+se)|melhores|lucrand|lucrativ|positiv|escalar|indo bem|vale a pena)/;
 const RE_RESUMO = /(resumo|geral|panorama|visao geral|como esta o ads|situacao|balanco|total)/;
@@ -196,6 +202,18 @@ export function interpretarPergunta(
    * conceito, e as duas contêm palavras que outras regras capturariam.
    */
   if (RE_PRIORIDADE.test(t)) return { intencao: "prioridade", alvos: [], termo: "" };
+
+  /**
+   * "qual o ROAS ideal pro Limão Caipira?" — com produto, é a conta dele.
+   * Vem antes do conceito: sem esta checagem, "ROAS ideal" casava com a
+   * explicação genérica e o nome do produto era ignorado.
+   */
+  if (RE_ROAS_IDEAL.test(t)) {
+    // Sem as palavras da própria pergunta ("roas", "ideal"…), sobra o nome do produto.
+    const soProduto = t.replace(/\b(roas|ideal|alvo|objetivo|minimo|certo|colocar|configurar|usar|deve|ser)\b/g, " ");
+    const doProduto = casarAnuncios(soProduto, titulos);
+    if (doProduto.length > 0) return { intencao: "roas-ideal", alvos: doProduto, termo: t };
+  }
   if (RE_METRICA.test(t) && !RE_QUALIFICADOR_CONCEITO.test(t)) {
     return { intencao: "metrica", alvos: [], termo: "" };
   }
