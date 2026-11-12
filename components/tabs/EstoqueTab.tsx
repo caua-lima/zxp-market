@@ -2020,6 +2020,8 @@ export function ProductModal({ product: initial, isNew, onClose, onSave, todosPr
   const [erroNome, setErroNome] = useState(false);
   /** Foto do que foi aberto — pra saber se há alteração a perder. */
   const [aoAbrir] = useState(() => JSON.stringify({ p, custoStr }));
+  /** O custo como apareceu no campo ao abrir — arredondado pra 2 casas. */
+  const [custoAoAbrir] = useState(custoStr);
   const sujo = JSON.stringify({ p, custoStr }) !== aoAbrir;
 
   function set(patch: Partial<Product>) {
@@ -2042,6 +2044,32 @@ export function ProductModal({ product: initial, isNew, onClose, onSave, todosPr
     if (!p.name.trim()) { setErroNome(true); return; }
     setErroNome(false);
     const cleaned = mlbs.map((m) => m.trim()).filter(Boolean);
+    /**
+     * O custo só muda se a pessoa MEXEU no campo. O campo mostra o custo médio
+     * arredondado (10,44); salvar o formulário pra trocar nome ou SKU regravava
+     * esse arredondado por cima do custo do livro (10,4371) e criava uma faixa
+     * nova — o custo andava sozinho a cada edição (achado em 12/11/2026).
+     */
+    const mexeuNoCusto = isNew || custoStr.trim() !== custoAoAbrir.trim();
+    if (!mexeuNoCusto) {
+      const saveObj: Product = { ...p, mlbs: cleaned, mlb: cleaned[0] ?? "" };
+      if (!(saveObj.grupo ?? "").trim()) delete saveObj.grupo; else saveObj.grupo = saveObj.grupo!.trim();
+      if (!saveObj.canal) delete saveObj.canal;
+      const pctSem = parseNum(p.imposto ?? "0");
+      const faixasSem = p.impostoFaixas ?? [];
+      if (faixasSem.length && pctSem !== impostoNaData({ impostoFaixas: faixasSem }, todayISO())) {
+        const faixas = faixasSem.filter((f) => f.desde !== todayISO());
+        faixas.push({ desde: todayISO(), pct: pctSem });
+        faixas.sort((a, b) => a.desde.localeCompare(b.desde));
+        saveObj.impostoFaixas = faixas;
+      }
+      setSaving(true);
+      setErroSalvar(null);
+      const r0 = await salvarSemPerder(() => onSave(saveObj));
+      if (!r0.ok) setErroSalvar(r0.mensagem);
+      setSaving(false);
+      return;
+    }
     // O custo digitado vira o custo médio efetivo (base do estoque atual).
     const saveObj: Product = { ...p, mlbs: cleaned, mlb: cleaned[0] ?? "", custo: custoStr };
     // Grupo em branco ou canal "não definido" saem do documento em vez de gravar texto vazio.
