@@ -1,6 +1,7 @@
 import "server-only";
 import { etapaOk, etapaParcial, type ResultadoEtapa } from "@/lib/domain/sync-resultado";
 import { escolherLote, precisaReconferir } from "@/lib/domain/reconciliacao";
+import { custoDoVendedor } from "@/lib/domain/frete-vendedor";
 import { fetchML } from "@/lib/ml/fetch-ml";
 import { getAdminDb } from "@/lib/firebase/admin";
 import {
@@ -174,7 +175,13 @@ async function fetchShipment(accessToken: string, shipmentId: string): Promise<S
         buyerPaidShipping = Number(jc?.receiver?.cost ?? 0);
       }
     } catch { /* segue */ }
-    if (cost == null) cost = buyerCost === 0 ? (listCost > 0 ? listCost : baseCost > 0 ? baseCost : 0) : 0;
+    /**
+     * Sem `senders`: o vendedor paga a TARIFA menos o que o comprador pagou.
+     * Antes, comprador pagando qualquer parte virava "vendedor paga 0" — e
+     * não é: no Abacaxi de 12/11 a tarifa era R$ 12,94, o comprador pagou
+     * R$ 5,99 e o vendedor R$ 6,95. Frete zerado inflava a margem do pedido.
+     */
+    if (cost == null) cost = custoDoVendedor(listCost, baseCost, buyerCost);
 
     return { cost, buyerPaidShipping, status, substatus, logistic, tracking, estimated, estimadaAte, dateDelivered };
   } catch {
@@ -203,6 +210,9 @@ async function fetchShipment(accessToken: string, shipmentId: string): Promise<S
  * uma vez por dia; passada a janela, para — o ML não mexe mais, e continuar
  * perguntando gastaria chamada à toa.
  */
+/** Versão da regra do frete do vendedor (2 = tarifa − parte do comprador, 12/11/2026). */
+const REGRA_DO_FRETE = 2;
+
 async function terminalShipmentIds(db: FirebaseFirestore.Firestore, orderIds: string[]): Promise<Set<string>> {
   const set = new Set<string>();
   const agora = Date.now();
@@ -220,7 +230,10 @@ async function terminalShipmentIds(db: FirebaseFirestore.Firestore, orderIds: st
         orderId: snap.id,
         statusEnvio: st,
         // `shipping_cost` ausente é buraco, não zero: zero é frete grátis.
-        temDadoFinanceiro: typeof snap.get("shipping_cost") === "number",
+        // Frete 0 gravado pela regra antiga (comprador pagou parte → "vendedor 0") é
+        // suspeito: conta como sem dado até ser relido com a regra certa.
+        temDadoFinanceiro: typeof snap.get("shipping_cost") === "number"
+          && !(snap.get("shipping_cost") === 0 && snap.get("freteRegra") !== REGRA_DO_FRETE),
         finalizadoEm: String(snap.get("date_delivered") ?? snap.get("date_created") ?? ""),
         ultimaTentativa: Number(snap.get("reconciliadoEm") ?? 0) || null,
       }, agora);
@@ -440,7 +453,7 @@ export async function syncOrdersRange(
       // Quando reconferimos — é o que faz a janela de ajuste girar em vez de
       // reconsultar o mesmo pedido a cada rodada.
       complemento.reconciliadoEm = Date.now();
-      if (typeof info.cost === "number") complemento.shipping_cost = info.cost;
+      if (typeof info.cost === "number") { complemento.shipping_cost = info.cost; complemento.freteRegra = REGRA_DO_FRETE; }
       if (typeof info.buyerPaidShipping === "number") complemento.shipping_cost_comprador = info.buyerPaidShipping;
       complemento.shipping_status = info.status;
       complemento.shipping_substatus = info.substatus;

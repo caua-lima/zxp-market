@@ -1,4 +1,5 @@
 import "server-only";
+import { custoDoVendedor } from "@/lib/domain/frete-vendedor";
 import { fetchML } from "./fetch-ml";
 import { sellerIdAtual } from "@/lib/ml/vendedor";
 
@@ -181,13 +182,9 @@ export async function fetchShippingCost(token: string, shipmentId: string): Prom
       base_cost?: number;
       shipping_option?: { cost?: number; list_cost?: number };
     };
-    const pagoPeloComprador = Number(j.shipping_option?.cost ?? 0);
-    // Comprador pagou o frete → o vendedor não arca com nada. É zero de
-    // verdade, não ausência de dado, e por isso devolve 0 em vez de null.
-    if (pagoPeloComprador > 0) return 0;
-    const list = Number(j.shipping_option?.list_cost ?? 0);
-    const base = Number(j.base_cost ?? 0);
-    return list > 0 ? list : base > 0 ? base : 0;
+    // O vendedor paga a tarifa menos o que o comprador pagou — comprador
+    // pagando uma PARTE não zera a parte do vendedor (ver custoDoVendedor).
+    return custoDoVendedor(Number(j.shipping_option?.list_cost ?? 0), Number(j.base_cost ?? 0), Number(j.shipping_option?.cost ?? 0));
   } catch {
     return null;
   }
