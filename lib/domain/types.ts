@@ -377,7 +377,8 @@ export type AdsAlteracao = {
 // "pedidos"/"dre" (telas só de leitura, sem nada pra "editar"). "ads" entrou
 // quando o registro de alterações de campanha (ads_alteracoes) foi criado —
 // as MÉTRICAS de Ads continuam só-leitura, só o changelog é editável.
-export type PermissionTab = "custos" | "metas" | "estoque" | "ads";
+/** "etiquetas" libera o módulo de Etiquetas pro Sócio (o Colaborador já usa). */
+export type PermissionTab = "custos" | "metas" | "estoque" | "ads" | "etiquetas";
 
 export type AccessEntry = {
   email: string;
@@ -515,7 +516,7 @@ export function abaEhEditavel(
   if (aba === "dre") return ctx.canEditTab("custos");
   // PDV: vender baixa o estoque — quem edita estoque vende (as regras exigem o mesmo).
   if (aba === "pdv") return ctx.canEditTab("estoque");
-  if ((["custos", "metas", "estoque", "ads"] as const).includes(aba as PermissionTab)) {
+  if ((["custos", "metas", "estoque", "ads", "etiquetas"] as const).includes(aba as PermissionTab)) {
     return ctx.canEditTab(aba as PermissionTab);
   }
   // acesso, dashboard, pedidos, preco, full, desempenho: tudo-ou-nada do owner.

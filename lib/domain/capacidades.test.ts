@@ -134,3 +134,24 @@ describe("equipe (funcionário) — só as próprias tarefas", () => {
     expect(podeCapacidadeDoRegistro({ role: "equipe" }, "ver_resumo")).toBe(false);
   });
 });
+
+describe("Financeiro privado e Etiquetas (13/11/2026)", () => {
+  it("financeiro privado é SÓ do owner — nem o Sócio com tudo liberado", () => {
+    expect(podeCapacidade("owner", undefined, "ver_financeiro_privado")).toBe(true);
+    expect(podeCapacidade("partner", ["custos", "metas", "estoque", "ads", "etiquetas"], "ver_financeiro_privado")).toBe(false);
+    expect(podeCapacidade("member", undefined, "ver_financeiro_privado")).toBe(false);
+    expect(podeCapacidade("equipe", undefined, "ver_financeiro_privado")).toBe(false);
+  });
+  it("etiquetas: owner e Colaborador sim; Sócio só liberado; Partner não", () => {
+    expect(podeCapacidade("owner", undefined, "usar_etiquetas")).toBe(true);
+    expect(podeCapacidade("equipe", undefined, "usar_etiquetas")).toBe(true);
+    expect(podeCapacidade("partner", undefined, "usar_etiquetas")).toBe(false);
+    expect(podeCapacidade("partner", ["etiquetas"], "usar_etiquetas")).toBe(true);
+    expect(podeCapacidade("member", ["etiquetas"], "usar_etiquetas")).toBe(false);
+  });
+  it("o Colaborador com etiquetas continua sem operação nem financeiro", () => {
+    for (const c of ["ver_operacao", "ver_financeiro", "editar_estoque"] as Capacidade[]) {
+      expect(podeCapacidade("equipe", undefined, c)).toBe(false);
+    }
+  });
+});

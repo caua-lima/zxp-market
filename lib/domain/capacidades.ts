@@ -36,7 +36,19 @@ export type Capacidade =
   | "editar_estoque"
   | "editar_ads"
   /** Integração com o ML, usuários, rotinas, diagnósticos e backup. */
-  | "administrar";
+  | "administrar"
+  /**
+   * Financeiro PRIVADO (extratos, recebíveis, contas a pagar do módulo
+   * Financeiro): só o owner. Não é o `ver_financeiro`, que o Sócio também tem
+   * (DRE, custos) — reaproveitar aquele abriria o caixa pro Sócio.
+   */
+  | "ver_financeiro_privado"
+  /**
+   * Etiquetas: converter, marcar a sigla e tirar a lista de separação. O
+   * Colaborador usa (é quem separa) sem ganhar operação, financeiro nem
+   * catálogo; o Sócio só quando o owner liberar ("etiquetas" nas permissões).
+   */
+  | "usar_etiquetas";
 
 /** As capacidades de edição, e a aba que cada uma libera. */
 const EDICAO: Record<string, PermissionTab> = {
@@ -60,6 +72,13 @@ export function podeCapacidade(
   cap: Capacidade,
 ): boolean {
   if (papel === "owner") return true;
+  // Exclusivo do owner — nenhuma lista de permissões abre.
+  if (cap === "ver_financeiro_privado") return false;
+  if (cap === "usar_etiquetas") {
+    if (papel === "equipe") return true;
+    if (papel === "partner") return (permissoesEdicao ?? []).includes("etiquetas");
+    return false;
+  }
 
   if (papel === "member") {
     // O ponto inteiro do papel: só o resultado, nada do núcleo do negócio.

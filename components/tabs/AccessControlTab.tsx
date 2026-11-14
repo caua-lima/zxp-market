@@ -24,9 +24,9 @@ import TelaHeader from "@/components/TelaHeader";
 import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
 import { fonteCarregada, FONTE_CARREGANDO } from "@/lib/domain/estado-fonte";
 
-const PERMISSION_TABS: PermissionTab[] = ["custos", "metas", "estoque", "ads"];
+const PERMISSION_TABS: PermissionTab[] = ["custos", "metas", "estoque", "ads", "etiquetas"];
 const PERMISSION_TAB_LABEL: Record<PermissionTab, string> = {
-  custos: "Custos", metas: "Metas", estoque: "Estoque", ads: "Ads (últimas alterações)",
+  custos: "Custos", metas: "Metas", estoque: "Estoque", ads: "Ads (últimas alterações)", etiquetas: "Etiquetas (converter e separar)",
 };
 
 /** Senha provisória do Sócio: 10 caracteres sem os que se confundem (0/O, 1/l/I). */
