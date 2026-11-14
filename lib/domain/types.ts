@@ -211,6 +211,13 @@ export type Product = {
    * Ver lib/domain/indice-sku.ts.
    */
   skusAnteriores?: string[];
+  /**
+   * Sigla de separação escrita na etiqueta (`TT`, `BM`…) — ver lib/etiquetas/siglas.ts.
+   * Full e Agências do mesmo produto usam a mesma (é o mesmo pacote na prateleira).
+   */
+  siglaSeparacao?: string;
+  /** Kit: o que vai dentro de UMA unidade vendida. `[]` = kit sem composição (fica pendente). */
+  kitComponentes?: { sigla: string; quantidade: number }[];
   /** De que lado do estoque este cadastro está. O fato (logística do anúncio no ML) vale mais, quando existe. */
   canal?: "full" | "agencias";
   ativo: boolean;
