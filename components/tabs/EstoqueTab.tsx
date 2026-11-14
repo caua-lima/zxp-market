@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { explicarFonte } from "@/lib/domain/estado-fonte";
 import { CUSTO_FAIXA_SENTINELA, custoNaData, impostoNaData, rotuloDoMovimento, TIPO_MOVIMENTO_LABEL, type EstoqueMovimento, type MovimentoTipo, type Product } from "@/lib/domain/types";
+import { normalizarSigla } from "@/lib/etiquetas/siglas";
 import { mensagemDeErroDeSalvamento, salvarSemPerder } from "@/lib/domain/salvar-formulario";
 import { motivoDaListaVazia } from "@/lib/domain/estoque-vazio";
 import { linhaCsvSegura } from "@/lib/domain/csv-seguro";
@@ -797,7 +798,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
                       const v = sugerirVersao(p, destino);
                       setVersao({
                         origem: p,
-                        novo: { id: newId(), name: v.nome, sku: v.sku, grupo: v.grupo, canal: destino, custo: String(custoMedioDe(p) || p.custo || ""), ...(p.imposto ? { imposto: p.imposto } : {}), mlbs: [""], ativo: true },
+                        novo: { id: newId(), name: v.nome, sku: v.sku, grupo: v.grupo, canal: destino, custo: String(custoMedioDe(p) || p.custo || ""), ...(p.imposto ? { imposto: p.imposto } : {}), ...(p.siglaSeparacao ? { siglaSeparacao: p.siglaSeparacao } : {}), mlbs: [""], ativo: true },
                       });
                     }}
                     reserva={reservas.get(p.id) ?? null}
@@ -2170,6 +2171,17 @@ export function ProductModal({ product: initial, isNew, onClose, onSave, todosPr
           <option value="agencias">Agências</option>
         </select>
         <div className="hint">Se o anúncio já informa a logística (Full ou não), o app usa essa — este campo vale quando o ML não responde.</div>
+      </div>
+
+      <div className="config-field">
+        <label htmlFor="produto-sigla">Sigla de separação</label>
+        <input
+          id="produto-sigla" type="text" maxLength={4} placeholder="Ex: TT"
+          value={p.siglaSeparacao ?? ""}
+          onChange={(e) => set({ siglaSeparacao: normalizarSigla(e.target.value).slice(0, 4) || undefined })}
+          style={{ textTransform: "uppercase" }}
+        />
+        <div className="hint">Vai escrita na etiqueta (2 unidades = 2TT). Use a <strong>mesma</strong> no Full e nas Agências do mesmo produto.</div>
       </div>
 
       <div className="config-field">
