@@ -339,6 +339,36 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Financeiro PRIVADO (aba Financeiro): só o owner lê e grava — nem o
+    // Sócio, que vê DRE e custos. Extrato e contas a pagar ficam em coleções
+    // próprias, nunca em documento que outro papel lê (regra não esconde
+    // campo de documento autorizado). Valores em centavos inteiros.
+    match /fin_contas/{docId} {
+      allow read: if isOwner();
+      allow write: if isOwner() && request.resource.data.id == docId
+        && request.resource.data.nome is string && request.resource.data.nome.size() <= 80;
+      allow delete: if isOwner();
+    }
+    match /fin_movimentos/{docId} {
+      allow read: if isOwner();
+      allow write: if isOwner() && request.resource.data.id == docId
+        && request.resource.data.centavos is int
+        && request.resource.data.data is string && request.resource.data.data.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+      allow delete: if isOwner();
+    }
+    match /fin_obrigacoes/{docId} {
+      allow read: if isOwner();
+      allow write: if isOwner() && request.resource.data.id == docId
+        && request.resource.data.centavos is int && request.resource.data.centavos > 0;
+      allow delete: if isOwner();
+    }
+    match /fin_recorrencias/{docId} {
+      allow read: if isOwner();
+      allow write: if isOwner() && request.resource.data.id == docId
+        && request.resource.data.centavos is int && request.resource.data.centavos > 0;
+      allow delete: if isOwner();
+    }
+
     // Vigia da AGENDA do Full: envios sem data no ML que o app confere a cada
     // poucos minutos e avisa quando abrir vaga (lib/ml/vigia-agenda-full.ts).
     // A tela só lê; ligar, desligar e o resultado de cada consulta são do
@@ -853,6 +883,31 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'canceladaEm', 'canceladaPor', 'motivoCancelamento'])
           && request.resource.data.canceladaPor == request.auth.token.email);
         allow delete: if escritaLiberadaT() && (false);
+      }
+      match /fin_contas/{docId} {
+        allow read: if isOwnerT();
+        allow write: if escritaLiberadaT() && (isOwnerT() && request.resource.data.id == docId
+          && request.resource.data.nome is string && request.resource.data.nome.size() <= 80);
+        allow delete: if escritaLiberadaT() && (isOwnerT());
+      }
+      match /fin_movimentos/{docId} {
+        allow read: if isOwnerT();
+        allow write: if escritaLiberadaT() && (isOwnerT() && request.resource.data.id == docId
+          && request.resource.data.centavos is int
+          && request.resource.data.data is string && request.resource.data.data.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'));
+        allow delete: if escritaLiberadaT() && (isOwnerT());
+      }
+      match /fin_obrigacoes/{docId} {
+        allow read: if isOwnerT();
+        allow write: if escritaLiberadaT() && (isOwnerT() && request.resource.data.id == docId
+          && request.resource.data.centavos is int && request.resource.data.centavos > 0);
+        allow delete: if escritaLiberadaT() && (isOwnerT());
+      }
+      match /fin_recorrencias/{docId} {
+        allow read: if isOwnerT();
+        allow write: if escritaLiberadaT() && (isOwnerT() && request.resource.data.id == docId
+          && request.resource.data.centavos is int && request.resource.data.centavos > 0);
+        allow delete: if escritaLiberadaT() && (isOwnerT());
       }
       match /tarefas/{docId} {
         allow read: if veOperacaoT() && (isOwnerT()
