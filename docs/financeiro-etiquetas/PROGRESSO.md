@@ -8,10 +8,10 @@ Nada pela metade aparece na tela: a aba só entra na navegação quando o fluxo 
 
 | # | Etapa | Estado |
 |---|---|---|
-| 1 | Baseline, papéis, prova do motor ZPL com o arquivo real | **bloqueado** — ver "Bloqueio" |
+| 1 | Baseline, papéis, prova do motor ZPL com o arquivo real | feito — 19/19 etiquetas renderizadas (Zebrash v1.38.0) |
 | 2 | Permissões: `ver_financeiro_privado` (só owner) e `usar_etiquetas` (owner + Colaborador; Sócio se liberado) | feito |
-| 3 | Etiquetas: ler o lote (ZIP/TXT), achar o envio, preview, PDF/impressão do original | parcial — leitor feito; preview/PDF dependem do motor |
-| 4 | Resolução envio → produtos, siglas/kits, marcação segura, lista de separação PDF | parcial — domínio + rota feitos; tela e PDF pendentes |
+| 3 | Etiquetas: ler o lote (ZIP/TXT), achar o envio, preview, PDF/impressão do original | feito — aba Etiquetas e /etiquetas |
+| 4 | Resolução envio → produtos, siglas/kits, marcação segura, lista de separação PDF | feito |
 | 5 | Financeiro manual: contas, movimentos, obrigações, vínculo com Custos | feito (aba no ar; vínculo com Custos pendente) |
 | 6 | Conexão MP, cobertura, recebíveis, relatórios, sincronização, conciliação | a fazer |
 | 7 | Testes de isolamento, revisão de UI, documentação final | a fazer |
@@ -32,14 +32,14 @@ Nada pela metade aparece na tela: a aba só entra na navegação quando o fluxo 
 - `/api/financeiro` — tudo pelo servidor (`private, no-store`), pra extrato não ficar no IndexedDB do navegador.
 - Aba **Financeiro** (grupo Financeiro) — só aparece pro owner; Sócio/Partner/Colaborador não veem nem pelo "Ver como".
 
-## Bloqueio
+## Motor ZPL (feito)
 
-A instalação de dependências novas (`zpl-renderer-js@5.0.0` — motor ZPL/WASM, MIT; e as de PDF/ZIP) foi barrada pelo controle de segurança do ambiente do assistente. Sem um motor, não há preview, PDF das etiquetas nem impressão dentro do app. Caminhos:
-
-1. O dono instala (`npm install --save-exact zpl-renderer-js@5.0.0 pdf-lib@1.17.1 fflate@0.8.2`) ou libera a instalação; o assistente audita licenças/ativos e segue a prova técnica.
-2. Motor próprio sem dependência: GFA (já decodificado em teste local), Code 128 e QR implementados no projeto, texto em canvas, PDF e ZIP com as APIs do navegador (`CompressionStream`/`DecompressionStream`). Mais código para manter e fidelidade de fonte aproximada.
+- `zpl-renderer-js@5.0.0` (MIT; Zebrash v1.38.0 em WASM), `pdf-lib@1.17.1`, `fflate@0.8.2` — versões exatas.
+- O WASM (7 MB) é copiado de `node_modules` pra `public/motor/zebrash-<versão>.wasm` no `predev`/`prebuild` (`scripts/copiar-motor-zpl.mjs`); não vai pro git e não depende de CDN.
+- Render num Web Worker (`lib/etiquetas/render.worker.ts`), uma etiqueta por vez. Antes do render, `normalizarParaRender` tira os espaços dos dados do `^GFA` — o avião do ML vem com `: : :` e o motor recusava 4 das 19 etiquetas. O arquivo impresso continua o original.
+- Tela: abre ZIP/TXT/ZPL (ou cola), consulta os envios, mostra a prévia, marca a sigla (ou etiqueta auxiliar), imprime, baixa PDF 4×6, baixa ZPL pra Zebra e gera a lista de separação A4. O conteúdo das etiquetas nunca sai do navegador; só os números de envio vão pro `/api/etiquetas/resolver`.
 
 ## Pendências conhecidas
 
-- Siglas ainda não cadastradas nos produtos (só `TT` = Trot's Tradicional foi confirmada pelo dono; as demais usadas em 13/11 — MS, BM, LC, ML, MC, PF, TL, S, AH, AC, CH — precisam de confirmação antes de entrar no cadastro).
-- Colaborador: hoje é redirecionado para `/tarefas`; o acesso às Etiquetas por lá entra junto com a tela.
+- Siglas cadastradas em 21 produtos (confirmadas pelo dono em 17/11).
+- Colaborador: usa `/etiquetas` (atalho no cabeçalho do `/tarefas`).
