@@ -52,3 +52,6 @@ exportacoes/
 # Logs do emulador do Firebase (ensaio de restauração)
 firebase-debug.log
 firestore-debug.log
+
+# motor ZPL copiado de node_modules (scripts/copiar-motor-zpl.mjs)
+/public/motor/

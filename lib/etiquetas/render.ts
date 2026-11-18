@@ -25,3 +25,11 @@ export function normalizarParaRender(zpl: string): string {
     (_m, cabecalho: string, dados: string) => cabecalho.replace(/\s+/g, "") + dados.replace(/\s+/g, ""),
   );
 }
+
+/**
+ * Onde o navegador busca o motor (7 MB). Copiado de node_modules pra
+ * `public/` no `predev`/`prebuild` (scripts/copiar-motor-zpl.mjs) — servido
+ * pelo próprio site, sem CDN de terceiro. A versão no nome evita cache velho.
+ */
+export const VERSAO_MOTOR = "5.0.0";
+export const URL_DO_MOTOR = `/motor/zebrash-${VERSAO_MOTOR}.wasm`;
