@@ -9,7 +9,7 @@ import { mensagemDeErroDeSalvamento, salvarSemPerder } from "@/lib/domain/salvar
 import { motivoDaListaVazia } from "@/lib/domain/estoque-vazio";
 import { linhaCsvSegura } from "@/lib/domain/csv-seguro";
 import { useFormularioSujo } from "@/components/useFormularioSujo";
-import { addMovimento, carregarMovimentosAnteriores, deleteMovimento, deleteProduct, excluirTransferencia, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas, recalcularProduto, updateMovimento } from "@/lib/firebase/data";
+import { addMovimento, deleteMovimento, deleteProduct, excluirTransferencia, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas, recalcularProduto, updateMovimento } from "@/lib/firebase/data";
 import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas";
 import { fmtBRL, fmtPct } from "@/lib/domain/calc";
 import { getCoverageStatus, COVERAGE_STATUS_LABEL, ehFullLogistic, estoqueForaDoFull, type CoverageStatus } from "@/lib/domain/estoque";
@@ -24,10 +24,6 @@ import { gravarChaveApp, lerChaveApp } from "@/lib/storage";
 import { composicaoDoEstoque } from "@/lib/domain/full-indisponivel";
 import TelaHeader from "@/components/TelaHeader";
 import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
-import Paginacao from "@/components/Paginacao";
-import AvisoMaisAntigos from "@/components/AvisoMaisAntigos";
-import { useMaisAntigos } from "@/components/useMaisAntigos";
-import { paginar } from "@/lib/domain/paginacao";
 import EntradaMassaModal from "@/components/tabs/estoque/EntradaMassaModal";
 import DestinacaoPanel from "@/components/tabs/estoque/Destinacao";
 import { calcularCompra, custoComDesconto, descontoValido } from "@/lib/domain/preco-com-desconto";
@@ -43,7 +39,7 @@ import ImpostoMassaModal from "@/components/tabs/estoque/ImpostoMassaModal";
 import VincularSkuModal from "@/components/tabs/estoque/VincularSkuModal";
 import { DIAS_ALVO, hojeBR, todayISO, parseNum, mlbsDe, normMlb, custoMedioDe, anunciosDe, fullDe, precosDe, previsaoDe, coberturaFmt } from "@/components/tabs/estoque/estoque-compartilhado";
 import type { EstoqueML, Forecast, PlanoSku } from "@/components/tabs/estoque/estoque-compartilhado";
-import { filtrarProdutos, precisaDeAcao, proximaAcao, ordenarPorUrgencia, contarSinais, resumoDoEstoque, ROTULO_SINAL, FILTRO_ESTOQUE_VAZIO, type FiltroEstoque, type ProdutoNaLista, type SinalDoProduto, DIAS_COBERTURA_BAIXA } from "@/lib/domain/estoque-situacao";
+import { filtrarProdutos, proximaAcao, ordenarPorUrgencia, contarSinais, resumoDoEstoque, FILTRO_ESTOQUE_VAZIO, type FiltroEstoque, type ProdutoNaLista, DIAS_COBERTURA_BAIXA } from "@/lib/domain/estoque-situacao";
 import DetalheProduto from "@/components/tabs/estoque/DetalheProduto";
 import MetricCard from "@/components/MetricCard";
 import RodapeDePagina from "@/components/RodapeDePagina";
@@ -102,8 +98,6 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
    */
   const [estoqueVeio, setEstoqueVeio] = useState(false);
   const [movimentos, setMovimentos] = useState<EstoqueMovimento[]>([]);
-  /** O livro bateu o teto de leitura (S22) — pode haver movimentação mais antiga faltando aqui. */
-  const [movimentosTruncados, setMovimentosTruncados] = useState(false);
   const [remessas, setRemessas] = useState<Remessa[]>([]);
   const [remessasIgnoradas, setRemessasIgnoradas] = useState<Set<string>>(new Set());
   const [movModal, setMovModal] = useState<{ product: Product; tipo: MovimentoTipo } | null>(null);
@@ -126,9 +120,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
   const [trocasSku, setTrocasSku] = useState<TrocaDeSku[] | null>(null);
 
   /** A vista: o recorte da lista. O padrão é a pergunta que se faz ao abrir. */
-  const [vista, setVista] = useState<"acao" | "todos" | "movimentos" | "destinacao">("acao");
-  /** Página da vista de movimentações. Volta pra 1 quando a busca muda. */
-  const [paginaMov, setPaginaMov] = useState(1);
+  const [vista, setVista] = useState<"todos" | "destinacao">("todos");
   const [filtroEstoque, setFiltroEstoque] = useState<FiltroEstoque>(FILTRO_ESTOQUE_VAZIO);
   const [vincularSku, setVincularSku] = useState(false);
 
@@ -180,7 +172,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
     // depois de um `await`.
     void (async () => { await carregarEstoque(); })();
   }, [carregarEstoque]);
-  useEffect(() => watchMovimentos((movs, truncado) => { setMovimentos(movs); setMovimentosTruncados(truncado); }), []);
+  useEffect(() => watchMovimentos((movs) => { setMovimentos(movs); }), []);
   useEffect(() => watchRemessasIgnoradas(setRemessasIgnoradas), []);
   /** Envios agendados pro Full e o que cada produto tem reservado (já abatido pelas baixas do livro). */
   const { reservas } = useReservasFull(movimentos);
@@ -324,25 +316,18 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
    * mudam: é derivado da chave abaixo, sem efeito que espelhe estado.
    */
   const chaveDaLista = `${vista}|${search}|${JSON.stringify(filtroEstoque)}`;
-  /** Os cartões do resumo levam ao filtro que explica o número: vista "Todos" + só aquele sinal. */
-  const verSinal = (sinal: SinalDoProduto) => {
-    setVista("todos");
-    setSearch("");
-    setFiltroEstoque((f) => ({ ...f, sinais: [sinal] }));
-  };
   const pgLista = usePaginacaoProgressiva(chaveDaLista);
   const limiteDeLinhas = pgLista.limite;
 
   const filtered = useMemo(() => {
     const alvo = { ...filtroEstoque, busca: search };
     let ids = filtrarProdutos(paraSituacao, alvo);
-    if (vista === "acao") ids = ids.filter(precisaDeAcao);
     ids = ordenarPorUrgencia(ids);
 
     // Volta pros Product originais, na ordem que a urgência definiu.
     const mapa = new Map(data.products.map((p) => [p.id, p]));
     return ids.map((x) => mapa.get(x.id)).filter((p): p is Product => !!p);
-  }, [paraSituacao, data.products, filtroEstoque, search, vista]);
+  }, [paraSituacao, data.products, filtroEstoque, search]);
 
   const total = data.products.length;
   const ativos = data.products.filter((p) => p.ativo).length;
@@ -481,14 +466,12 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
           tom={!estoqueVeio ? "acc" : resumoSituacao.ruptura > 0 ? "neg" : "pos"} rotulo="Em ruptura (produtos)"
           valor={!estoqueVeio ? "…" : resumoSituacao.ruptura} corValor={!estoqueVeio ? "var(--muted)" : resumoSituacao.ruptura > 0 ? "var(--red-text)" : "var(--green)"}
           sub={!estoqueVeio ? "lendo o estoque no Mercado Livre…" : resumoSituacao.ruptura === 0 ? "nenhum produto sem estoque" : "sem estoque — o anúncio perde posição a cada hora"}
-          acao={estoqueVeio && resumoSituacao.ruptura > 0 ? { rotulo: `Ver ${resumoSituacao.ruptura} produto(s) →`, onClick: () => verSinal("ruptura") } : undefined}
         />
 
         <MetricCard
           tom={!estoqueVeio ? "acc" : resumoSituacao.coberturaBaixa > 0 ? "warn" : "pos"} rotulo="Cobertura baixa (produtos)"
           valor={!estoqueVeio ? "…" : resumoSituacao.coberturaBaixa} corValor={!estoqueVeio ? "var(--muted)" : resumoSituacao.coberturaBaixa > 0 ? "var(--yellow)" : "var(--green)"}
           sub={`duram menos de ${DIAS_COBERTURA_BAIXA} dias — ainda dá tempo de repor`}
-          acao={estoqueVeio && resumoSituacao.coberturaBaixa > 0 ? { rotulo: `Ver ${resumoSituacao.coberturaBaixa} produto(s) →`, onClick: () => verSinal("cobertura_baixa") } : undefined}
         />
 
         {/*
@@ -502,14 +485,12 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
           sub={!estoqueVeio ? "somando casa + Full…" : resumoSituacao.semCusto > 0
             ? <>(casa + Full) × custo médio · <b style={{ color: "var(--yellow)" }}>subestimado</b>: {resumoSituacao.semCusto} sem custo</>
             : <>{unCasa} em casa · {unFull} no Full, ao custo médio</>}
-          acao={resumoSituacao.semCusto > 0 ? { rotulo: `Ver ${resumoSituacao.semCusto} sem custo →`, onClick: () => verSinal("sem_custo") } : undefined}
         />
 
         <MetricCard
           tom={resumoSituacao.remessasPendentes > 0 ? "warn" : "acc"} rotulo="Remessas pendentes"
           valor={resumoSituacao.remessasPendentes} corValor={resumoSituacao.remessasPendentes > 0 ? "var(--yellow)" : "var(--muted)"}
           sub={resumoSituacao.remessasPendentes === 0 ? "nenhuma baixa em aberto" : "chegaram no Full e a saída do galpão não foi lançada"}
-          acao={resumoSituacao.remessasPendentes > 0 ? { rotulo: "Ver produtos →", onClick: () => verSinal("remessa_pendente") } : undefined}
         />
       </div>
 
@@ -555,28 +536,10 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
       <div className="panel" style={{ padding: "10px 12px" }}>
         <div className="seg" style={{ marginBottom: 10 }}>
           <button
-            type="button" className={`seg-btn ${vista === "acao" ? "active" : ""}`}
-            onClick={() => setVista("acao")}
-          >
-            Precisa de ação ({paraSituacao.filter(precisaDeAcao).length})
-          </button>
-          <button
             type="button" className={`seg-btn ${vista === "todos" ? "active" : ""}`}
             onClick={() => setVista("todos")}
           >
             Todos os produtos ({ativos})
-          </button>
-          {/*
-            A terceira vista. Movimentação de estoque só existia DENTRO da
-            linha expandida de cada produto — pra ver o que entrou na semana
-            passada era preciso abrir produto por produto e lembrar o que
-            tinha visto em cada um.
-          */}
-          <button
-            type="button" className={`seg-btn ${vista === "movimentos" ? "active" : ""}`}
-            onClick={() => setVista("movimentos")}
-          >
-            Movimentações ({movimentos.length})
           </button>
           {/* O que fica pras agências e o que vai pro Full — editável a qualquer hora. */}
           <button
@@ -622,41 +585,13 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
           </label>
         </div>
 
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-          {(Object.keys(ROTULO_SINAL) as SinalDoProduto[]).map((sinal) => {
-            const n = sinaisContados[sinal];
-            const on = filtroEstoque.sinais.includes(sinal);
-            return (
-              <button
-                key={sinal}
-                type="button"
-                className={`chip chip-btn${on ? " is-on" : ""}`}
-                aria-pressed={on}
-                // Sinal sem nenhum produto fica desabilitado em vez de sumir:
-                // um filtro que aparece e desaparece conforme os dados muda de
-                // lugar entre uma visita e outra.
-                disabled={n === 0 && !on}
-                onClick={() => setFiltroEstoque((f) => ({
-                  ...f,
-                  sinais: f.sinais.includes(sinal)
-                    ? f.sinais.filter((x) => x !== sinal)
-                    : [...f.sinais, sinal],
-                }))}
-              >
-                {ROTULO_SINAL[sinal]} ({n})
-              </button>
-            );
-          })}
-
-          {(filtroEstoque.sinais.length > 0 || filtroEstoque.logistica || filtroEstoque.incluirInativos) && (
-            <button
-              type="button" className="btn btn-ghost btn-xs"
-              onClick={() => setFiltroEstoque(FILTRO_ESTOQUE_VAZIO)}
-            >
+        {(filtroEstoque.logistica || filtroEstoque.incluirInativos) && (
+          <div style={{ marginTop: 10 }}>
+            <button type="button" className="btn btn-ghost btn-xs" onClick={() => setFiltroEstoque(FILTRO_ESTOQUE_VAZIO)}>
               Limpar filtros
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Aviso no topo porque a causa do total inflado não está na linha de um
@@ -699,15 +634,6 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
           emCasaDe={emCasaDe}
           noAnuncioDe={(p) => fullDe(p, estoqueML).proprio}
           busca={search}
-        />
-      ) : vista === "movimentos" ? (
-        <MovimentacoesPanel
-          movimentos={movimentos}
-          produtos={data.products}
-          busca={search}
-          pagina={paginaMov}
-          onPagina={setPaginaMov}
-          truncado={movimentosTruncados}
         />
       ) : (
       <>
@@ -988,139 +914,6 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
   );
 }
 
-/**
- * Todas as movimentações de estoque, do mais recente pro mais antigo.
- *
- * ─── POR QUE ESTA VISTA PRECISAVA EXISTIR ───────────────────────────────
- *
- * Movimentação só aparecia DENTRO da linha expandida de cada produto. Pra
- * responder "o que entrou na semana passada?" era preciso abrir produto por
- * produto e lembrar o que tinha visto em cada um — e a resposta certa é uma
- * lista ordenada por data, que é o que isto é.
- *
- * Paginada porque a lista cresce pra sempre: nenhuma movimentação some, e
- * desenhar quinhentas linhas de uma vez trava a aba num celular.
- */
-function MovimentacoesPanel({ movimentos, produtos, busca, pagina, onPagina, truncado }: {
-  movimentos: EstoqueMovimento[];
-  produtos: Product[];
-  busca: string;
-  pagina: number;
-  onPagina: (n: number) => void;
-  /** O livro bateu o teto de leitura (S22 da auditoria SaaS): pode haver movimentação mais antiga faltando. */
-  truncado?: boolean;
-}) {
-  // Paginação de verdade (S22): a primeira página vem de watchMovimentos; as
-  // seguintes, sob demanda, a partir da última que a tela mostra.
-  const maisAntigos = useMaisAntigos(movimentos, Boolean(truncado), (m) => m.data, carregarMovimentosAnteriores);
-  const todos = maisAntigos.itens;
-  const nomePorId = useMemo(
-    () => new Map(produtos.map((p) => [p.id, p.name || p.id])),
-    [produtos],
-  );
-
-  const ordenados = useMemo(() => {
-    const chave = (x: unknown) => String(x ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-    const termo = chave(busca).trim();
-
-    const lista = todos.filter((m) => {
-      if (!termo) return true;
-      const alvo = chave(`${nomePorId.get(m.productId) ?? ""} ${m.obs ?? ""} ${rotuloDoMovimento(m)}`);
-      return termo.split(/\s+/).every((w) => alvo.includes(w));
-    });
-
-    /**
-     * Mais recente primeiro, e o desempate é o id.
-     *
-     * Sem desempate, duas movimentações do MESMO dia — o caso comum, porque
-     * a data é só o dia — trocariam de lugar entre duas pinturas, e a linha
-     * que a pessoa estava lendo saltaria.
-     */
-    return [...lista].sort((a, b) =>
-      String(b.data ?? "").localeCompare(String(a.data ?? "")) || String(b.id).localeCompare(String(a.id)));
-  }, [todos, nomePorId, busca]);
-
-  const p = paginar(ordenados, pagina, 25);
-
-  return (
-    <div className="panel">
-      <div className="panel-head" style={{ marginBottom: 8 }}>
-        <span className="panel-title">Movimentações de estoque</span>
-        <span className="panel-sub">entradas, ajustes e envios pro Full — do mais recente pro mais antigo</span>
-      </div>
-
-      <AvisoMaisAntigos
-        total={todos.length}
-        rotulo="movimentações"
-        nota="Isto não afeta o custo médio nem a quantidade em estoque, que são recalculados a partir do livro inteiro."
-        temMais={maisAntigos.temMais}
-        carregando={maisAntigos.carregando}
-        erro={maisAntigos.erro}
-        extras={maisAntigos.extras}
-        onCarregar={() => void maisAntigos.carregarMais()}
-      />
-
-      {ordenados.length === 0 ? (
-        <div className="empty-state">
-          <span className="empty-ico">📋</span>
-          {busca.trim()
-            ? <>Nenhuma movimentação bate com <b>{busca.trim()}</b>. Existem {todos.length} carregadas.</>
-            : "Nenhuma movimentação lançada ainda."}
-        </div>
-      ) : (
-        <>
-          <div className="table-wrapper" style={{ border: "none" }}>
-            <table className="tbl-modern tbl-cards">
-              <thead>
-                <tr>
-                  <th style={{ textAlign: "left" }}>Data</th>
-                  <th style={{ textAlign: "left" }}>Produto</th>
-                  <th style={{ textAlign: "left" }}>Tipo</th>
-                  <th style={{ textAlign: "right" }}>Qtd</th>
-                  <th style={{ textAlign: "right" }}>Custo un.</th>
-                  <th style={{ textAlign: "left" }}>Observação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {p.itens.map((m) => {
-                  /*
-                    A cor segue a MESMA regra da linha expandida do produto
-                    (ver o histórico dentro de ProductRow): compra é entrada,
-                    envio pro Full é transferência, ajuste segue o sinal. Duas
-                    regras de cor pro mesmo dado fariam a mesma movimentação
-                    aparecer verde num lugar e vermelha no outro.
-                  */
-                  const ehCompra = m.tipo === "entrada";
-                  const ehFullMov = m.tipo === "saida_full";
-                  const sinal = ehCompra ? "+" : ehFullMov ? "−" : (m.quantidade >= 0 ? "+" : "−");
-                  const cor = ehCompra ? "var(--green)" : ehFullMov ? "var(--yellow)" : (m.quantidade >= 0 ? "var(--green)" : "var(--red)");
-                  return (
-                    <tr key={m.id}>
-                      <td data-label="Data" style={{ whiteSpace: "nowrap" }}>{m.data}</td>
-                      <td data-label="Produto" style={{ fontWeight: 600 }}>
-                        {nomePorId.get(m.productId) ?? <span style={{ color: "var(--muted)" }}>produto removido</span>}
-                      </td>
-                      <td data-label="Tipo">{rotuloDoMovimento(m)}</td>
-                      <td data-label="Qtd" style={{ textAlign: "right", color: cor, fontWeight: 700, whiteSpace: "nowrap" }}>
-                        {sinal}{Math.abs(m.quantidade)}
-                      </td>
-                      <td data-label="Custo un." style={{ textAlign: "right", whiteSpace: "nowrap", color: m.custoUnit ? "var(--text)" : "var(--muted)" }}>
-                        {m.custoUnit ? fmtBRL(parseNum(String(m.custoUnit))) : "—"}
-                      </td>
-                      <td data-label="Observação" style={{ color: "var(--muted)" }}>{m.obs || "—"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          <Paginacao pagina={p} onIr={onPagina} unidade="movimentação" />
-        </>
-      )}
-    </div>
-  );
-}
 function ProductRow({
   product, estoqueML, expanded, onToggle, onEdit, onMov, onAgencias, onAgendar, onTransferir, onVersao, grupoInfo, reserva, duplicadas = 0, situacao = null, casaDasAgencias = null,
 }: {
