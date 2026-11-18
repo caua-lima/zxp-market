@@ -3,6 +3,7 @@ import { requireAccess } from "@/lib/api-auth";
 import { getMlAccessToken, getMlTokenData } from "../token";
 import { fetchOrdersLive } from "@/lib/ml/orders";
 import { montarBlocoVendas, serieDiariaDeVendas } from "@/lib/domain/reputacao-vendas";
+import { canceladoPorSeparacao } from "@/lib/domain/separacao-pacote";
 import { diasNaJanela, janelaDeDias } from "@/lib/domain/janela-dias";
 import { lerPeriodo } from "@/lib/domain/periodo";
 import { CacheDeFonte, estadoDaFonte, lerJanelasNomeadas } from "@/lib/domain/fonte-desempenho";
@@ -152,7 +153,9 @@ export async function GET(req: Request) {
      * mesmos pedidos, e percorrer a lista duas vezes com dois formatos e como
      * as duas contas divergem.
      */
-    const paraDominio = pedidos.map((o) => ({
+    // Pacote separado na agência: o original cancelado pelo ML não é uma
+    // venda a mais — os pedidos novos já são a compra (lib/domain/separacao-pacote).
+    const paraDominio = pedidos.filter((o) => !canceladoPorSeparacao(o as { status?: unknown; motivo_cancelamento?: unknown })).map((o) => ({
       orderId: String(o.order_id ?? ""),
       status: o.status,
       shippingId: (o.shipping_id as string | null | undefined) ?? null,

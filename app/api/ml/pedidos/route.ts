@@ -5,6 +5,8 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
 import { custoNaData, impostoNaData, type CustoFaixa, type ImpostoFaixa } from "@/lib/domain/types";
 import { paraBR } from "@/lib/domain/tempo";
+import { detectarPedidosSubstituidos, ehStatusNaoVenda } from "@/lib/domain/venda-status";
+import { diaBRDe } from "@/lib/domain/periodo-br";
 
 type ProdutoData = { custo: number; custoMedioFaixas?: CustoFaixa[]; imposto: number; impostoFaixas?: ImpostoFaixa[]; name: string };
 type OrderItem = { sku?: string; item_id?: string; quantity?: number; unit_price?: number; sale_fee?: number; title?: string };
@@ -77,6 +79,25 @@ export async function GET(req: Request) {
      * mas a API devolve um pedido por produto. Sem juntar, cada linha mostrava
      * só parte da compra e o lucro real da venda não aparecia em lugar nenhum.
      */
+    /**
+     * Separação de pacote: o ML cancela os pedidos originais e cria outros no
+     * lugar (lib/domain/separacao-pacote). O original não é venda cancelada
+     * nem venda — some da lista; os novos aparecem como as vendas que são.
+     * Mesma detecção do Dashboard (detectarPedidosSubstituidos).
+     */
+    const substituidos = detectarPedidosSubstituidos(
+      [...ordersMap.values()].map((o) => ({
+        orderId: String(o.order_id ?? ""),
+        packId: (o.pack_id as string | null | undefined) ?? null,
+        status: o.status,
+        motivoCancelamento: (o.motivo_cancelamento as string | null | undefined) ?? null,
+        buyerId: (o.buyer_id as string | null | undefined) ?? null,
+        dia: diaBRDe(String(o.date_created ?? "")),
+        itens: ((o.items as OrderItem[]) ?? []).map((it) => ({ itemId: String(it.item_id ?? ""), qty: Number(it.quantity ?? 1) })),
+      })),
+    );
+    for (const id of substituidos) ordersMap.delete(id);
+
     const porPacote = new Map<string, FirebaseFirestore.DocumentData[]>();
     for (const d of ordersMap.values()) {
       const chave = String(d.pack_id ?? "") || String(d.order_id ?? "");
@@ -103,8 +124,12 @@ export async function GET(req: Request) {
       // Mais antigo primeiro: a venda herda a data e o id do primeiro pedido.
       grupo.sort((a, b) => String(a.date_created ?? "").localeCompare(String(b.date_created ?? "")));
       const base = grupo[0];
+      // A venda vale se algum pedido do pacote vale: o status da linha não
+      // pode ser herdado de um pedido cancelado só porque ele é o mais antigo.
+      const valido = grupo.find((o) => !ehStatusNaoVenda(o.status));
       return {
         ...base,
+        status: (valido ?? base).status,
         order_id: String(base.pack_id ?? base.order_id ?? ""),
         // O frete é do pacote inteiro; somar o de cada pedido contaria duplicado
         // quando o ML repete o valor. Usamos o maior informado no grupo.
