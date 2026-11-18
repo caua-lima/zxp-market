@@ -155,3 +155,11 @@ describe("Financeiro privado e Etiquetas (13/11/2026)", () => {
     }
   });
 });
+
+describe("aba Financeiro", () => {
+  it("aparece só pro owner e exige a capacidade privada", () => {
+    expect(capacidadeDaAba("financeiro")).toBe("ver_financeiro_privado");
+    expect(podeVerAba("owner", "financeiro")).toBe(true);
+    for (const p of ["partner", "member", "equipe"] as Papel[]) expect(podeVerAba(p, "financeiro")).toBe(false);
+  });
+});
