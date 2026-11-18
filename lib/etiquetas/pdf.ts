@@ -55,7 +55,27 @@ function cortar(texto: string, fonte: PDFFont, tamanho: number, largura: number)
   return `${t}...`;
 }
 
-export async function pdfDaListaDeSeparacao(e: { linhas: readonly LinhaDaLista[]; geradoEm: Date; arquivo?: string }): Promise<Uint8Array> {
+/** "2TT + BM" → [{TT,2},{BM,1}]. */
+export function partesDoTexto(texto: string | null | undefined): { sigla: string; quantidade: number }[] {
+  const out: { sigla: string; quantidade: number }[] = [];
+  for (const parte of String(texto ?? "").split("+").map((x) => x.trim()).filter(Boolean)) {
+    const m = parte.match(/^(\d*)([A-Z0-9]+)$/);
+    if (m) out.push({ sigla: m[2], quantidade: m[1] ? Number(m[1]) : 1 });
+  }
+  return out;
+}
+
+/** "2TT + BM" → "2x Trot's Tradicional + 1x Trot's Boldo & Menta" (sigla sem nome fica a sigla). */
+export function descreverTexto(texto: string | null | undefined, nomes: Readonly<Record<string, string>> = {}): string {
+  return partesDoTexto(texto).map((p) => `${p.quantidade}x ${nomes[p.sigla] ?? p.sigla}`).join(" + ");
+}
+
+export async function pdfDaListaDeSeparacao(e: {
+  linhas: readonly LinhaDaLista[]; geradoEm: Date; arquivo?: string;
+  /** Sigla → nome do produto (do cadastro do Estoque). */
+  nomes?: Readonly<Record<string, string>>;
+}): Promise<Uint8Array> {
+  const nomes = e.nomes ?? {};
   const doc = await PDFDocument.create();
   doc.setTitle("Lista de separação");
   doc.setCreator("ZXP Market");
@@ -91,12 +111,10 @@ export async function pdfDaListaDeSeparacao(e: { linhas: readonly LinhaDaLista[]
   // 1) O que tirar da prateleira.
   const porSigla = new Map<string, { quantidade: number }>();
   for (const l of prontas) {
-    for (const parte of String(l.texto).split("+").map((s) => s.trim()).filter(Boolean)) {
-      const m = parte.match(/^(\d*)([A-Z0-9]+)$/);
-      if (!m) continue;
-      const atual = porSigla.get(m[2]) ?? { quantidade: 0 };
-      atual.quantidade += m[1] ? Number(m[1]) : 1;
-      porSigla.set(m[2], atual);
+    for (const p of partesDoTexto(l.texto)) {
+      const atual = porSigla.get(p.sigla) ?? { quantidade: 0 };
+      atual.quantidade += p.quantidade;
+      porSigla.set(p.sigla, atual);
     }
   }
   escrever("Separar (unidades)", M, { fonte: negrito, tam: 12 });
@@ -106,8 +124,10 @@ export async function pdfDaListaDeSeparacao(e: { linhas: readonly LinhaDaLista[]
   for (const [sigla, v] of siglas) {
     garantir(22);
     page.drawRectangle({ x: M, y: y - 4, width: 12, height: 12, borderColor: rgb(0, 0, 0), borderWidth: 0.8 });
-    escrever(sigla, M + 22, { fonte: negrito, tam: 14 });
-    escrever(`${v.quantidade} un`, M + 90, { fonte: negrito, tam: 14 });
+    escrever(sigla, M + 22, { fonte: negrito, tam: 14, max: 50 });
+    escrever(nomes[sigla] ?? "(sem nome no cadastro)", M + 78, { tam: 12, max: largura - 78 - 80, cor: nomes[sigla] ? rgb(0, 0, 0) : cinza });
+    const qtd = `${v.quantidade} un`;
+    page.drawText(qtd, { x: A4[0] - M - negrito.widthOfTextAtSize(qtd, 14), y, size: 14, font: negrito });
     y -= 22;
   }
   const totalUn = siglas.reduce((s, [, v]) => s + v.quantidade, 0);
@@ -134,15 +154,17 @@ export async function pdfDaListaDeSeparacao(e: { linhas: readonly LinhaDaLista[]
   escrever("Conferência por etiqueta", M, { fonte: negrito, tam: 12 });
   y -= 18;
   for (const l of e.linhas) {
-    const altura = 16 + 11 * l.itens.length;
-    garantir(altura);
+    const descricao = l.texto ? descreverTexto(l.texto, nomes) : "";
+    const linhasItens = l.texto ? 1 : l.itens.length;
+    garantir(16 + 11 * linhasItens);
     linhaH();
     page.drawRectangle({ x: M, y: y - 3, width: 10, height: 10, borderColor: rgb(0, 0, 0), borderWidth: 0.8 });
     escrever(`#${l.ordem}`, M + 16, { fonte: negrito, tam: 10, max: 34 });
     escrever(l.envio ?? "sem envio", M + 52, { tam: 10, max: 90 });
     escrever(l.texto ?? "PENDENTE", M + 150, { fonte: negrito, tam: 11, cor: l.texto ? rgb(0, 0, 0) : vermelho });
     y -= 13;
-    for (const it of l.itens) { escrever(`${it.quantidade}x ${it.titulo}`, M + 150, { tam: 8, cor: cinza }); y -= 11; }
+    if (l.texto) { escrever(descricao, M + 150, { tam: 9 }); y -= 11; }
+    else for (const it of l.itens) { escrever(`${it.quantidade}x ${it.titulo}`, M + 150, { tam: 8, cor: cinza }); y -= 11; }
     y -= 3;
   }
   return doc.save();

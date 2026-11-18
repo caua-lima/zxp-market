@@ -8,7 +8,7 @@ import { lerArquivos } from "@/lib/etiquetas/arquivos";
 import { lerLote, pareceZpl, type LoteZpl } from "@/lib/etiquetas/lote-zpl";
 import { linhasDaLista, montarSaida, zplDeSaida, type EnvioResolvido, type EtiquetaDeSaida } from "@/lib/etiquetas/montagem";
 import { base64ParaBytes, renderizarEtiqueta } from "@/lib/etiquetas/motor-cliente";
-import { pdfDaListaDeSeparacao, pdfDasEtiquetas } from "@/lib/etiquetas/pdf";
+import { descreverTexto, pdfDaListaDeSeparacao, pdfDasEtiquetas } from "@/lib/etiquetas/pdf";
 
 /**
  * ETIQUETAS — o conversor ZPL da expedição.
@@ -67,6 +67,7 @@ export default function EtiquetasTab() {
   const [consultando, setConsultando] = useState(false);
   const [falhaConsulta, setFalhaConsulta] = useState<string | null>(null);
   const [semSigla, setSemSigla] = useState<string[]>([]);
+  const [nomes, setNomes] = useState<Record<string, string>>({});
   const [marcar, setMarcar] = useState(true);
   const [previas, setPrevias] = useState<Record<string, string>>({});
   const [errosRender, setErrosRender] = useState<Record<string, string>>({});
@@ -90,11 +91,12 @@ export default function EtiquetasTab() {
       const r = await authedFetch("/api/etiquetas/resolver", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ envios }),
       });
-      const j = (await r.json().catch(() => null)) as { envios?: EnvioResolvido[]; produtosSemSigla?: string[]; error?: string } | null;
+      const j = (await r.json().catch(() => null)) as { envios?: EnvioResolvido[]; produtosSemSigla?: string[]; nomesDasSiglas?: Record<string, string>; error?: string } | null;
       if (minha !== geracao.current) return;
       if (!r.ok || !j?.envios) throw new Error(j?.error ? `erro ${r.status}: ${j.error}` : `erro ${r.status}`);
       setResolvidos(new Map(j.envios.map((e) => [e.envio, e])));
       setSemSigla(j.produtosSemSigla ?? []);
+      setNomes(j.nomesDasSiglas ?? {});
     } catch (e) {
       if (minha === geracao.current) setFalhaConsulta(e instanceof Error ? e.message : String(e));
     } finally {
@@ -215,14 +217,14 @@ export default function EtiquetasTab() {
     if (!lido) return;
     setOcupado("lista");
     try {
-      const bytes = await pdfDaListaDeSeparacao({ linhas, geradoEm: new Date(), arquivo: lido.arquivos.join(", ") });
+      const bytes = await pdfDaListaDeSeparacao({ linhas, geradoEm: new Date(), arquivo: lido.arquivos.join(", "), nomes });
       baixar(bytes as BlobPart, `lista-separacao-${carimbo()}.pdf`, "application/pdf");
     } catch (e) {
       alert(`Não consegui gerar a lista: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setOcupado(null);
     }
-  }, [lido, linhas]);
+  }, [lido, linhas, nomes]);
 
   const baixarZpl = useCallback(() => {
     if (!lido) return;
@@ -303,7 +305,7 @@ export default function EtiquetasTab() {
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               {totais.length === 0 && <span style={{ color: "var(--muted)", fontSize: ".86rem" }}>{consultando ? "…" : "Nenhum envio com sigla ainda."}</span>}
               {totais.map(([sigla, q]) => (
-                <span key={sigla} className="pill" style={{ fontSize: ".95rem" }}><b>{sigla}</b> · {q} un</span>
+                <span key={sigla} className="pill" style={{ fontSize: ".95rem" }}><b>{sigla}</b>{nomes[sigla] ? ` ${nomes[sigla]}` : ""} · {q} un</span>
               ))}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14, alignItems: "center" }}>
@@ -347,6 +349,7 @@ export default function EtiquetasTab() {
                       ? <span className={s.tipo === "auxiliar" ? "chip chip-accent" : "chip chip-green"}>{s.texto}</span>
                       : <span className="chip chip-yellow">pendente</span>}
                   </div>
+                  {s.texto && <div style={{ fontSize: ".74rem" }}>{descreverTexto(s.texto, nomes)}</div>}
                   <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>{s.envio ? `Envio ${s.envio}` : "sem envio"}</div>
                   {s.aviso && <div style={{ fontSize: ".72rem", color: "var(--warning)" }}>{s.aviso}</div>}
                 </button>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PDFDocument } from "pdf-lib";
-import { pdfDaListaDeSeparacao, pdfDasEtiquetas, textoPdf } from "./pdf";
+import { descreverTexto, partesDoTexto, pdfDaListaDeSeparacao, pdfDasEtiquetas, textoPdf } from "./pdf";
 
 // PNG 1x1 preto.
 const PNG = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNgAAAAAgABSK+kcQAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0));
@@ -30,5 +30,18 @@ describe("pdfDaListaDeSeparacao", () => {
   it("textoPdf troca o que a fonte padrão não escreve", () => {
     expect(textoPdf("Trot’s — a → b “x” ✓")).toBe("Trot's - a > b \"x\" ");
     expect(textoPdf("ação")).toBe("ação");
+  });
+});
+
+describe("sigla + nome", () => {
+  const nomes = { TT: "Trot's Tradicional", BM: "Trot's Boldo & Menta" };
+  it("partesDoTexto e descreverTexto", () => {
+    expect(partesDoTexto("2TT + BM")).toEqual([{ sigla: "TT", quantidade: 2 }, { sigla: "BM", quantidade: 1 }]);
+    expect(descreverTexto("2TT + BM", nomes)).toBe("2x Trot's Tradicional + 1x Trot's Boldo & Menta");
+    expect(descreverTexto("MS", nomes)).toBe("1x MS");
+  });
+  it("a lista sai com os nomes", async () => {
+    const bytes = await pdfDaListaDeSeparacao({ linhas: [{ ordem: 1, envio: "1", texto: "2TT", itens: [] }], geradoEm: new Date(), nomes });
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBe(1);
   });
 });

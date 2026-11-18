@@ -37,6 +37,8 @@ export async function POST(req: Request) {
   const prodSnap = await db.collection("estoque").get();
   const cadastro: SiglaDoProduto[] = [];
   const semSigla: string[] = [];
+  /** Sigla → nome do sabor (sem o "Agências"), pra lista de separação dizer o que é cada sigla. */
+  const nomesDasSiglas: Record<string, string> = {};
   for (const d of prodSnap.docs) {
     const p = d.data();
     const sigla = String(p.siglaSeparacao ?? "").trim();
@@ -46,6 +48,8 @@ export async function POST(req: Request) {
     const componentes = Array.isArray(p.kitComponentes)
       ? (p.kitComponentes as ComponenteKit[]).map((c) => ({ sigla: String(c?.sigla ?? ""), quantidade: Number(c?.quantidade ?? 0) }))
       : undefined;
+    const nomeDoSabor = (String(p.grupo ?? "").trim() || String(p.name ?? d.id).replace(/\s*ag[eê]ncias?\s*$/i, "")).replace(/´/g, "'").trim();
+    if (p.ativo !== false || !nomesDasSiglas[sigla]) nomesDasSiglas[sigla] = nomeDoSabor;
     cadastro.push({ produtoId: d.id, nome: String(p.name ?? d.id), sigla, skus, mlbs, ...(componentes ? { componentes } : {}) });
   }
 
@@ -108,7 +112,7 @@ export async function POST(req: Request) {
   });
 
   return NextResponse.json(
-    { envios: resultado, produtosSemSigla: semSigla },
+    { envios: resultado, produtosSemSigla: semSigla, nomesDasSiglas },
     { headers: { "Cache-Control": "private, no-store" } },
   );
 }
