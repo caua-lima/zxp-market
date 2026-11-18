@@ -70,8 +70,19 @@ describe("estadoDoPedido — um mapeamento pros três caminhos", () => {
       items: [{ item_id: "MLB1", sku: "SKU-1", title: "Produto", quantity: 2, unit_price: 64.95, sale_fee: 9.1 }],
       pack_id: "2000009",
       shipping_id: "4400",
+      motivo_cancelamento: null,
+      pedido_da_separacao: false,
       last_updated: "2026-09-20T10:05:00.000-04:00",
     });
+  });
+
+  it("separação de pacote: grava o motivo do ML no original e marca o pedido novo", () => {
+    const original = estadoDoPedido({ ...PEDIDO, status: "cancelled", cancel_detail: { group: "internal", code: "pack_splitted", requested_by: "meli" } });
+    expect(original.motivo_cancelamento).toBe("pack_splitted");
+    expect(original.pedido_da_separacao).toBe(false);
+    const novo = estadoDoPedido({ ...PEDIDO, tags: ["splitted_order", "paid"] });
+    expect(novo.pedido_da_separacao).toBe(true);
+    expect(novo.motivo_cancelamento).toBeNull();
   });
 
   it("itens com item_id e sale_fee — a rota legada gravava sem os dois, e a margem do pedido mudava", () => {

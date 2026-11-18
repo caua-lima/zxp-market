@@ -35,6 +35,8 @@
  * torna velha a leitura do envio.
  */
 
+import { motivoDoCancelamento, nasceuDeSeparacao } from "./separacao-pacote";
+
 type RawItem = Record<string, unknown>;
 
 /** Normaliza os itens de um pedido do ML para o formato armazenado no Firestore. */
@@ -99,6 +101,13 @@ export function estadoDoPedido(o: Record<string, unknown>): Record<string, unkno
      * dividir pacote. Condicional pelo mesmo motivo do comprador.
      */
     ...(envio ? { shipping_id: envio } : {}),
+    /**
+     * Por que o ML cancelou (`cancel_detail.code`) e se o pedido nasceu de uma
+     * separação de pacote — ver lib/domain/separacao-pacote.ts. É o que separa
+     * "o comprador cancelou" de "o pacote foi separado na agência".
+     */
+    motivo_cancelamento: motivoDoCancelamento(o),
+    pedido_da_separacao: nasceuDeSeparacao(o),
     // A versão do retrato. Só entra quando o ML mandou: sem ela o documento
     // continua com a versão que tinha (ver podeGravarEstado).
     ...(versaoDoPedido(o.last_updated) !== null ? { last_updated: String(o.last_updated) } : {}),
