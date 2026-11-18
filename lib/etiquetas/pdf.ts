@@ -96,7 +96,8 @@ export async function pdfDaListaDeSeparacao(e: {
     const tam = o.tam ?? 10;
     page.drawText(cortar(t, fonte, tam, o.max ?? largura - (x - M)), { x, y, size: tam, font: fonte, color: o.cor ?? rgb(0, 0, 0) });
   };
-  const linhaH = () => page.drawLine({ start: { x: M, y: y + 4 }, end: { x: A4[0] - M, y: y + 4 }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) });
+  // Acima da linha de texto (a base do texto é `y`; a letra de 11 pt sobe até ~y+9).
+  const linhaH = () => page.drawLine({ start: { x: M, y: y + 12 }, end: { x: A4[0] - M, y: y + 12 }, thickness: 0.5, color: rgb(0.8, 0.8, 0.8) });
 
   const prontas = e.linhas.filter((l) => l.texto);
   const pendentes = e.linhas.filter((l) => !l.texto);
@@ -157,7 +158,7 @@ export async function pdfDaListaDeSeparacao(e: {
     const descricao = l.texto ? descreverTexto(l.texto, nomes) : "";
     const linhasItens = l.texto ? 1 : l.itens.length;
     garantir(16 + 11 * linhasItens);
-    linhaH();
+    if (l !== e.linhas[0]) linhaH();
     page.drawRectangle({ x: M, y: y - 3, width: 10, height: 10, borderColor: rgb(0, 0, 0), borderWidth: 0.8 });
     escrever(`#${l.ordem}`, M + 16, { fonte: negrito, tam: 10, max: 34 });
     escrever(l.envio ?? "sem envio", M + 52, { tam: 10, max: 90 });
@@ -165,7 +166,7 @@ export async function pdfDaListaDeSeparacao(e: {
     y -= 13;
     if (l.texto) { escrever(descricao, M + 150, { tam: 9 }); y -= 11; }
     else for (const it of l.itens) { escrever(`${it.quantidade}x ${it.titulo}`, M + 150, { tam: 8, cor: cinza }); y -= 11; }
-    y -= 3;
+    y -= 6;
   }
   return doc.save();
 }
