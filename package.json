@@ -25,12 +25,15 @@
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "chart.js": "^4.5.1",
+    "fflate": "0.8.2",
     "firebase": "^12.12.1",
     "firebase-admin": "^13.10.0",
     "next": "16.3.5",
+    "pdf-lib": "1.17.1",
     "react": "19.2.4",
     "react-chartjs-2": "^5.3.1",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "zpl-renderer-js": "5.0.0"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",
