@@ -117,6 +117,7 @@ export function podeCapacidadeDoRegistro(
 export function capacidadeDaAba(aba: string): Capacidade {
   if (aba === "acesso") return "administrar";
   if (aba === "financeiro") return "ver_financeiro_privado";
+  if (aba === "etiquetas") return "usar_etiquetas";
   if (aba === "dashboard") return "ver_resumo";
   // PDV mostra custo e lucro de cada venda.
   if (aba === "dre" || aba === "custos" || aba === "preco" || aba === "pdv") return "ver_financeiro";

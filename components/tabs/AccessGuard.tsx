@@ -12,6 +12,7 @@ import {
 } from "@/lib/firebase/data";
 import { papelDe, podeVerAba, type AccessEntry, type Papel, type PermissionTab } from "@/lib/domain/types";
 import { cadastroAbertoNaTela } from "@/lib/marca";
+import { podeCapacidade } from "@/lib/domain/capacidades";
 import CriarEmpresa from "@/components/CriarEmpresa";
 import { FaixaVerComo } from "@/components/VerComo";
 import CrieSuaSenha from "@/components/CrieSuaSenha";
@@ -343,7 +344,9 @@ export function AccessGuard({ children }: { children: React.ReactNode }) {
    */
   const canEditTab = (tab: PermissionTab) =>
     isOwner || (papel === "partner" && permissoes.includes(tab));
-  const podeVer = (aba: string) => podeVerAba(papel, aba);
+  // Etiquetas não é aba de papel: Colaborador usa (pelo /tarefas) e o Sócio só se o owner liberar.
+  const podeVer = (aba: string) =>
+    aba === "etiquetas" ? podeCapacidade(papel, permissoes, "usar_etiquetas") : podeVerAba(papel, aba);
   const displayName = visao ? visao.displayName : access.entry?.displayName || user.displayName || currentEmail;
   return (
     <AccessCtx.Provider value={{
