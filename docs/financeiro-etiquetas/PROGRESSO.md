@@ -12,7 +12,7 @@ Nada pela metade aparece na tela: a aba só entra na navegação quando o fluxo 
 | 2 | Permissões: `ver_financeiro_privado` (só owner) e `usar_etiquetas` (owner + Colaborador; Sócio se liberado) | feito |
 | 3 | Etiquetas: ler o lote (ZIP/TXT), achar o envio, preview, PDF/impressão do original | parcial — leitor feito; preview/PDF dependem do motor |
 | 4 | Resolução envio → produtos, siglas/kits, marcação segura, lista de separação PDF | parcial — domínio + rota feitos; tela e PDF pendentes |
-| 5 | Financeiro manual: contas, movimentos, obrigações, vínculo com Custos | a fazer |
+| 5 | Financeiro manual: contas, movimentos, obrigações, vínculo com Custos | feito (aba no ar; vínculo com Custos pendente) |
 | 6 | Conexão MP, cobertura, recebíveis, relatórios, sincronização, conciliação | a fazer |
 | 7 | Testes de isolamento, revisão de UI, documentação final | a fazer |
 
@@ -24,6 +24,13 @@ Nada pela metade aparece na tela: a aba só entra na navegação quando o fluxo 
 - `lib/domain/capacidades.ts` — as duas capacidades novas, com teste (Sócio com tudo liberado continua sem o financeiro privado; Colaborador com etiquetas continua sem operação/financeiro).
 - `app/api/etiquetas/resolver` — envio → pedidos/itens/sigla. Pedidos sincronizados primeiro; o resto do ML só depois de conferir `sender_id` = vendedor conectado. Resposta mínima, `private, no-store`.
 - `Product.siglaSeparacao` e `Product.kitComponentes` — o cadastro das siglas mora no produto do Estoque.
+
+## Financeiro (feito)
+
+- `lib/financeiro/dinheiro.ts` e `modelo.ts` — centavos inteiros; transferência fora do resultado; saldo só com abertura comprovada; baixa parcial; recorrência sem duplicar; dedupe por referência; CSV sem fórmula.
+- Coleções `fin_contas`, `fin_movimentos`, `fin_obrigacoes`, `fin_recorrencias` — só o owner (regras provadas no emulador: 10 testes). Entram no roteamento por empresa e no backup. As regras novas valem em produção depois do `firebase deploy --only firestore:rules` (do dono); até lá, o SDK do navegador já é negado por padrão nessas coleções e a tela usa só o servidor.
+- `/api/financeiro` — tudo pelo servidor (`private, no-store`), pra extrato não ficar no IndexedDB do navegador.
+- Aba **Financeiro** (grupo Financeiro) — só aparece pro owner; Sócio/Partner/Colaborador não veem nem pelo "Ver como".
 
 ## Bloqueio
 
