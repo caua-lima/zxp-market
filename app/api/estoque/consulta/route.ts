@@ -45,11 +45,18 @@ export async function GET(req: Request) {
   const anuncios: Record<string, AnuncioConsulta> = {};
   const token = await getMlAccessToken().catch(() => null);
   if (!token) return NextResponse.json({ respostas: ["A conta do Mercado Livre está desconectada — sem ela não sei o estoque dos anúncios."] });
+  const lidos = new Set<string>();
+  const lerLote = (ids: string[]) => fetchML(`${ML_API}/items?ids=${ids.join(",")}&attributes=id,available_quantity,status,shipping,inventory_id,item_relations`, {
+    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store",
+  }).catch(() => null);
   for (let i = 0; i < mlbs.length; i += 20) {
-    const r = await fetchML(`${ML_API}/items?ids=${mlbs.slice(i, i + 20).join(",")}&attributes=id,available_quantity,status,shipping,inventory_id,item_relations`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store",
-    }).catch(() => null);
+    const ids = mlbs.slice(i, i + 20);
+    // Uma segunda tentativa: o ML às vezes falha uma leitura isolada (visto em 18/11 — o chat respondeu 0 un).
+    let r = await lerLote(ids);
+    if (!r || !r.ok) r = await lerLote(ids);
     if (!r || !r.ok) continue;
+    // O ML respondeu por estes: anúncio que não veio (excluído, 404 no lote) é de fato fora do estoque.
+    for (const id of ids) lidos.add(id);
     for (const row of (await r.json()) as { body?: Record<string, unknown> }[]) {
       const b = row?.body;
       if (!b?.id) continue;
@@ -79,6 +86,15 @@ export async function GET(req: Request) {
     }
   } catch { /* sem ritmo: a resposta diz que não sabe a cobertura */ }
 
-  const respostas = grupos.map((g) => respostaDeEstoque(resumirGrupo(g, produtos, anuncios, vendas, DIAS, vendasPorMlb)));
+  /**
+   * Anúncio que o ML não devolveu NÃO é anúncio zerado: responder "0 un" ali
+   * é o pior erro possível (manda comprar o que já tem). Sem a leitura de
+   * todos os anúncios do sabor, o chat diz que não conseguiu.
+   */
+  const semLeitura = (g: string) => [...new Set(produtos.filter((p) => nomeDoGrupo(p) === g).flatMap((p) => p.mlbs)
+    .map((m) => (m.toUpperCase().startsWith("MLB") ? m.toUpperCase() : `MLB${m}`)))].filter((m) => !lidos.has(m));
+  const respostas = grupos.map((g) => semLeitura(g).length
+    ? `${g}: não consegui ler ${semLeitura(g).length} anúncio(s) no Mercado Livre agora, então não vou chutar o estoque. Pergunte de novo em alguns segundos.`
+    : respostaDeEstoque(resumirGrupo(g, produtos, anuncios, vendas, DIAS, vendasPorMlb)));
   return NextResponse.json({ respostas }, { headers: { "Cache-Control": "private, no-store" } });
 }
