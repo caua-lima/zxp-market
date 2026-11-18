@@ -2185,6 +2185,14 @@ export function ProductModal({ product: initial, isNew, onClose, onSave, todosPr
       </div>
 
       <div className="config-field">
+        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input type="checkbox" checked={p.estoqueDividido === true} onChange={(e) => set({ estoqueDividido: e.target.checked || undefined })} />
+          Estoque dividido entre os anúncios
+        </label>
+        <div className="hint">Marque se você reparte o que tem em casa entre anúncios diferentes (ex.: 8 + 8): o Dash soma. Sem marcar, cada anúncio mostra o total e vale o maior. Anúncios sincronizados pelo catálogo contam uma vez sempre.</div>
+      </div>
+
+      <div className="config-field">
         <label>Anúncios / Códigos MLB</label>
         {mlbs.map((m, i) => (
           <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>

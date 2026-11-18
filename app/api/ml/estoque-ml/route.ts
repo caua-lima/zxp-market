@@ -33,7 +33,7 @@ export async function GET(req: Request) {
       for (const m of list) { const n = normId(m); if (n) ids.add(n); }
     }
     const arr = Array.from(ids);
-    const estoque: Record<string, { available: number; sold: number; status: string; price: number; regularPrice: number; hasPromo: boolean; logistic: string; inventoryId: string }> = {};
+    const estoque: Record<string, { available: number; sold: number; status: string; price: number; regularPrice: number; hasPromo: boolean; logistic: string; inventoryId: string; poolProprio?: string }> = {};
 
     // Multi-get de 20 em 20 (preço de lista + original + logística p/ saber se é Full)
     //
@@ -45,7 +45,7 @@ export async function GET(req: Request) {
     for (let i = 0; i < arr.length; i += 20) {
       const chunk = arr.slice(i, i + 20);
       const res = await fetchML(
-        `${ML_API}/items?ids=${chunk.join(",")}&attributes=id,available_quantity,sold_quantity,status,price,original_price,shipping,inventory_id`,
+        `${ML_API}/items?ids=${chunk.join(",")}&attributes=id,available_quantity,sold_quantity,status,price,original_price,shipping,inventory_id,item_relations`,
         { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store" },
       );
       if (!res.ok) continue;
@@ -69,6 +69,11 @@ export async function GET(req: Request) {
           // Vazio quando o ML não informa — nesse caso NÃO se deduplica nada
           // (melhor inflar visivelmente do que sumir com estoque em silêncio).
           inventoryId: String(b.inventory_id ?? ""),
+          // Anúncio sincronizado com outro ("Sincronizado com #…", catálogo): mesmo estoque.
+          ...((() => {
+            const rel = Array.isArray(b.item_relations) ? (b.item_relations as { id?: string }[]).map((r) => String(r?.id ?? "").toUpperCase()).filter(Boolean) : [];
+            return rel.length ? { poolProprio: [id, ...rel].sort().join("+") } : {};
+          })()),
         };
       }
     }

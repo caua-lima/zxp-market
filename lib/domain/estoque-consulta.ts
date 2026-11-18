@@ -8,11 +8,14 @@
  *    (`inventoryId`): dois anúncios no mesmo pool respondem o mesmo número;
  *  · ritmo = vendas dos últimos N dias ÷ N, e pra quantos dias dá.
  *
- * Puro e autossuficiente (sem `@/`).
+ * Agências: o mesmo cálculo da tela do Estoque (consolidarEstoqueAnuncios) —
+ * anúncios sincronizados pelo catálogo contam uma vez; estoque dividido soma.
  */
 
-export type ProdutoConsulta = { id: string; name: string; grupo?: string; mlbs: string[]; ativo?: boolean };
-export type AnuncioConsulta = { available: number; logistic: string; status?: string; inventoryId?: string };
+import { consolidarEstoqueAnuncios } from "./estoque";
+
+export type ProdutoConsulta = { id: string; name: string; grupo?: string; mlbs: string[]; ativo?: boolean; estoqueDividido?: boolean };
+export type AnuncioConsulta = { available: number; logistic: string; status?: string; inventoryId?: string; poolProprio?: string };
 export type ResumoDoGrupo = {
   nome: string;
   agencias: number;
@@ -71,6 +74,7 @@ export function resumirGrupo(
   const pools = new Set<string>();
   const vistos = new Set<string>();
   for (const p of doGrupo) {
+    const proprios: { id: string; available: number; logistic: string; poolProprio?: string }[] = [];
     for (const m of p.mlbs) {
       const mlb = normMlb(m);
       if (vistos.has(mlb)) continue;
@@ -84,9 +88,10 @@ export function resumirGrupo(
         pools.add(pool);
         full += qtd;
       } else {
-        agencias += qtd;
+        proprios.push({ id: mlb, available: qtd, logistic: a.logistic, poolProprio: a.poolProprio });
       }
     }
+    if (proprios.length) agencias += consolidarEstoqueAnuncios(proprios, { dividido: p.estoqueDividido === true }).proprio;
   }
   const vendas = doGrupo.reduce((s, p) => s + (Number(vendasPorProduto[p.id]) || 0), 0);
   const mediaDia = vendas > 0 && diasDoPeriodo > 0 ? vendas / diasDoPeriodo : null;

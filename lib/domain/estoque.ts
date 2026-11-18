@@ -130,6 +130,23 @@ export type AnuncioEstoque = {
    * anúncio conta por si (não deduplica no escuro).
    */
   inventoryId?: string;
+  /** O anúncio (MLB) — identifica o estoque próprio quando não há sincronização. */
+  id?: string;
+  /**
+   * Estoque próprio SINCRONIZADO: anúncios ligados pelo ML ("Sincronizado com
+   * #…", `item_relations` — o do catálogo e o tradicional) vendem as MESMAS
+   * unidades e mostram o mesmo número. Mesmo `poolProprio` = um estoque só.
+   */
+  poolProprio?: string;
+};
+
+export type OpcoesConsolidacao = {
+  /**
+   * O dono DIVIDIU o estoque de casa entre anúncios independentes (ex.:
+   * Sertanejo 8 + 8): aí os estoques próprios distintos SOMAM. Sem isto, vale
+   * a armadilha 3 (cada anúncio declara o monte inteiro → o maior).
+   */
+  dividido?: boolean;
 };
 
 export type EstoqueConsolidado = {
@@ -154,9 +171,11 @@ export function ehFullLogistic(logistic: string): boolean {
   return logistic === "fulfillment";
 }
 
-export function consolidarEstoqueAnuncios(anuncios: AnuncioEstoque[]): EstoqueConsolidado {
+export function consolidarEstoqueAnuncios(anuncios: AnuncioEstoque[], opcoes: OpcoesConsolidacao = {}): EstoqueConsolidado {
   let full = 0;
   let proprio = 0;
+  /** Estoque próprio por pool (sincronizados juntos): o MAIOR declarado dentro do pool. */
+  const proprios = new Map<string, number>();
   let ehFull = false;
   let temDado = false;
   let fullCompartilhado = false;
@@ -171,7 +190,8 @@ export function consolidarEstoqueAnuncios(anuncios: AnuncioEstoque[]): EstoqueCo
        * só declara quanto aceita vender dele (ver armadilha 3 acima).
        */
       anunciosProprios += 1;
-      proprio = Math.max(proprio, a.available);
+      const pool = String(a.poolProprio ?? "").trim() || String(a.id ?? "").trim() || `anuncio-${anunciosProprios}`;
+      proprios.set(pool, Math.max(proprios.get(pool) ?? 0, a.available));
       continue;
     }
     ehFull = true;
@@ -184,6 +204,8 @@ export function consolidarEstoqueAnuncios(anuncios: AnuncioEstoque[]): EstoqueCo
     full += a.available;
   }
 
+  const valores = [...proprios.values()];
+  proprio = opcoes.dividido ? valores.reduce((s, v) => s + v, 0) : valores.reduce((m, v) => Math.max(m, v), 0);
   return { full, proprio, ehFull, temDado, fullCompartilhado, proprioCompartilhado: anunciosProprios > 1 };
 }
 

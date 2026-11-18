@@ -26,7 +26,7 @@ import { calcularLucroEstoque, medirTaxas } from "@/lib/domain/estoque-lucro";
 import type { FinanceiroProduto, LucroEstoque } from "@/lib/domain/estoque-lucro";
 import { impostoNaData } from "@/lib/domain/types";
 import type { Product } from "@/lib/domain/types";
-export type MlItem = { available: number; sold: number; status: string; price: number; regularPrice: number; hasPromo: boolean; logistic: string; inventoryId?: string };
+export type MlItem = { available: number; sold: number; status: string; price: number; regularPrice: number; hasPromo: boolean; logistic: string; inventoryId?: string; poolProprio?: string };
 
 export type EstoqueML = Record<string, MlItem>;
 
@@ -121,7 +121,8 @@ export function fullDe(p: Product, estoqueML: EstoqueML): { qtd: number; proprio
   const c = consolidarEstoqueAnuncios(
     anunciosDe(p, estoqueML)
       .filter(({ item }) => item)
-      .map(({ item }) => ({ available: item!.available, logistic: item!.logistic, inventoryId: item!.inventoryId })),
+      .map(({ mlb, item }) => ({ id: mlb, available: item!.available, logistic: item!.logistic, inventoryId: item!.inventoryId, poolProprio: item!.poolProprio })),
+    { dividido: p.estoqueDividido === true },
   );
   return { qtd: c.full, proprio: c.proprio, ehFull: c.ehFull, temDado: c.temDado, fullCompartilhado: c.fullCompartilhado, proprioCompartilhado: c.proprioCompartilhado };
 }

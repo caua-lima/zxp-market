@@ -214,3 +214,18 @@ describe("getCoverageStatus — achado S16 da auditoria SaaS", () => {
     expect(getCoverageStatus(20, 0, 5)).toBe("critico"); // zerado sempre critico, mesmo com cobertura "calculavel"
   });
 });
+
+describe("consolidarEstoqueAnuncios — anúncios próprios sincronizados e estoque dividido (17/11/2026)", () => {
+  const prop = (available: number, id: string, poolProprio?: string): AnuncioEstoque => ({ available, logistic: "xd_drop_off", id, ...(poolProprio ? { poolProprio } : {}) });
+  it("par sincronizado pelo catálogo conta uma vez (não 5 + 5)", () => {
+    const par = "MLB2+MLB3";
+    expect(consolidarEstoqueAnuncios([prop(5, "MLB2", par), prop(5, "MLB3", par)], { dividido: true }).proprio).toBe(5);
+  });
+  it("estoque dividido: soma os estoques distintos (Sertanejo 8 avulso + 8 no par = 16)", () => {
+    const par = "MLB2+MLB3";
+    expect(consolidarEstoqueAnuncios([prop(8, "MLB1"), prop(8, "MLB2", par), prop(8, "MLB3", par)], { dividido: true }).proprio).toBe(16);
+  });
+  it("sem 'dividido' continua a armadilha 3: cada anúncio declara o monte → o maior", () => {
+    expect(consolidarEstoqueAnuncios([prop(18, "MLB1"), prop(18, "MLB2")]).proprio).toBe(18);
+  });
+});

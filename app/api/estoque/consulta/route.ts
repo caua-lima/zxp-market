@@ -30,7 +30,7 @@ export async function GET(req: Request) {
   const produtos: ProdutoConsulta[] = snap.docs.map((d) => {
     const p = d.data();
     const mlbs: string[] = Array.isArray(p.mlbs) && p.mlbs.length ? p.mlbs.map(String) : p.mlb ? [String(p.mlb)] : [];
-    return { id: d.id, name: String(p.name ?? d.id), grupo: p.grupo ? String(p.grupo) : undefined, mlbs, ativo: p.ativo !== false };
+    return { id: d.id, name: String(p.name ?? d.id), grupo: p.grupo ? String(p.grupo) : undefined, mlbs, ativo: p.ativo !== false, estoqueDividido: p.estoqueDividido === true };
   }).filter((p) => p.ativo);
 
   const grupos = gruposQueBatem(palavras, produtos).slice(0, 3);
@@ -45,7 +45,7 @@ export async function GET(req: Request) {
   const token = await getMlAccessToken().catch(() => null);
   if (!token) return NextResponse.json({ respostas: ["A conta do Mercado Livre está desconectada — sem ela não sei o estoque dos anúncios."] });
   for (let i = 0; i < mlbs.length; i += 20) {
-    const r = await fetchML(`${ML_API}/items?ids=${mlbs.slice(i, i + 20).join(",")}&attributes=id,available_quantity,status,shipping,inventory_id`, {
+    const r = await fetchML(`${ML_API}/items?ids=${mlbs.slice(i, i + 20).join(",")}&attributes=id,available_quantity,status,shipping,inventory_id,item_relations`, {
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store",
     }).catch(() => null);
     if (!r || !r.ok) continue;
@@ -57,6 +57,9 @@ export async function GET(req: Request) {
         logistic: String((b.shipping as Record<string, unknown> | undefined)?.logistic_type ?? ""),
         status: String(b.status ?? ""),
         inventoryId: String(b.inventory_id ?? ""),
+        ...(Array.isArray(b.item_relations) && b.item_relations.length
+          ? { poolProprio: [String(b.id).toUpperCase(), ...(b.item_relations as { id?: string }[]).map((r) => String(r?.id ?? "").toUpperCase())].sort().join("+") }
+          : {}),
       };
     }
   }

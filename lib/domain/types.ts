@@ -216,6 +216,12 @@ export type Product = {
    * Full e Agências do mesmo produto usam a mesma (é o mesmo pacote na prateleira).
    */
   siglaSeparacao?: string;
+  /**
+   * O estoque de casa foi DIVIDIDO entre anúncios independentes (ex.: Sertanejo
+   * 8 + 8): o "em casa" soma os anúncios. Sem isto, cada anúncio declara o
+   * monte inteiro e vale o maior (ver consolidarEstoqueAnuncios).
+   */
+  estoqueDividido?: boolean;
   /** Kit: o que vai dentro de UMA unidade vendida. `[]` = kit sem composição (fica pendente). */
   kitComponentes?: { sigla: string; quantidade: number }[];
   /** De que lado do estoque este cadastro está. O fato (logística do anúncio no ML) vale mais, quando existe. */
