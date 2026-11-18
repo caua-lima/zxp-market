@@ -6,7 +6,10 @@
  *    venda desconta sozinha no ML — ver estoqueForaDoFull);
  *  · Full = o disponível dos anúncios do Full, contando UMA vez cada pool
  *    (`inventoryId`): dois anúncios no mesmo pool respondem o mesmo número;
- *  · ritmo = vendas dos últimos N dias ÷ N, e pra quantos dias dá.
+ *  · ritmo = vendas dos últimos N dias ÷ N, e pra quantos dias dá — no total
+ *    e SEPARADO por lado: venda em anúncio do Full é do Full, o resto é das
+ *    agências (pela logística do anúncio vendido; sem a venda por anúncio,
+ *    pelo lado do produto).
  *
  * Agências: o mesmo cálculo da tela do Estoque (consolidarEstoqueAnuncios) —
  * anúncios sincronizados pelo catálogo contam uma vez; estoque dividido soma.
@@ -14,7 +17,7 @@
 
 import { consolidarEstoqueAnuncios } from "./estoque";
 
-export type ProdutoConsulta = { id: string; name: string; grupo?: string; mlbs: string[]; ativo?: boolean; estoqueDividido?: boolean };
+export type ProdutoConsulta = { id: string; name: string; grupo?: string; mlbs: string[]; ativo?: boolean; estoqueDividido?: boolean; canal?: "full" | "agencias" };
 export type AnuncioConsulta = { available: number; logistic: string; status?: string; inventoryId?: string; poolProprio?: string };
 export type ResumoDoGrupo = {
   nome: string;
@@ -26,6 +29,13 @@ export type ResumoDoGrupo = {
   /** null = sem venda no período (não dá pra dizer pra quantos dias dá). */
   mediaDia: number | null;
   diasDeCobertura: number | null;
+  /** O mesmo ritmo, por lado. null = sem venda daquele lado no período. */
+  vendasFull: number;
+  vendasAgencias: number;
+  mediaDiaFull: number | null;
+  mediaDiaAgencias: number | null;
+  diasDeCoberturaFull: number | null;
+  diasDeCoberturaAgencias: number | null;
 };
 
 export function normalizar(s: unknown): string {
@@ -67,6 +77,8 @@ export function resumirGrupo(
   anuncios: Readonly<Record<string, AnuncioConsulta>>,
   vendasPorProduto: Readonly<Record<string, number>>,
   diasDoPeriodo: number,
+  /** Vendas por anúncio ("MLB…"), pra separar Full × agências pela logística de quem vendeu. */
+  vendasPorMlb?: Readonly<Record<string, number>>,
 ): ResumoDoGrupo {
   const doGrupo = produtos.filter((p) => nomeDoGrupo(p) === grupo);
   let agencias = 0;
@@ -94,12 +106,50 @@ export function resumirGrupo(
     if (proprios.length) agencias += consolidarEstoqueAnuncios(proprios, { dividido: p.estoqueDividido === true }).proprio;
   }
   const vendas = doGrupo.reduce((s, p) => s + (Number(vendasPorProduto[p.id]) || 0), 0);
-  const mediaDia = vendas > 0 && diasDoPeriodo > 0 ? vendas / diasDoPeriodo : null;
+
+  // Full × agências: pela logística do anúncio que vendeu; o que não casar
+  // com anúncio do Full (venda achada pelo SKU, anúncio sem leitura) é das agências.
+  let vendasFull = 0;
+  if (vendasPorMlb) {
+    const vistosV = new Set<string>();
+    for (const p of doGrupo) {
+      for (const m of p.mlbs) {
+        const mlb = normMlb(m);
+        if (vistosV.has(mlb)) continue;
+        vistosV.add(mlb);
+        if (anuncios[mlb]?.logistic === "fulfillment") vendasFull += Number(vendasPorMlb[mlb]) || 0;
+      }
+    }
+  } else {
+    // Sem a venda por anúncio: pelo lado do produto (canal; senão, tem anúncio no Full e não é "Agências").
+    for (const p of doGrupo) {
+      const ladoFull = p.canal ? p.canal === "full"
+        : !/ag[eê]ncias?\s*$/i.test(p.name) && p.mlbs.some((m) => anuncios[normMlb(m)]?.logistic === "fulfillment");
+      if (ladoFull) vendasFull += Number(vendasPorProduto[p.id]) || 0;
+    }
+  }
+  vendasFull = Math.min(vendasFull, vendas);
+  const vendasAgencias = Math.max(vendas - vendasFull, 0);
+
+  const media = (n: number) => (n > 0 && diasDoPeriodo > 0 ? n / diasDoPeriodo : null);
+  const cobertura = (estoque: number, m: number | null) => (m ? Math.floor(estoque / m) : null);
+  const mediaDia = media(vendas);
+  const mediaDiaFull = media(vendasFull);
+  const mediaDiaAgencias = media(vendasAgencias);
   const total = agencias + full;
   return {
     nome: grupo, agencias, full, total, vendasNoPeriodo: vendas, diasDoPeriodo, mediaDia,
-    diasDeCobertura: mediaDia ? Math.floor(total / mediaDia) : null,
+    diasDeCobertura: cobertura(total, mediaDia),
+    vendasFull, vendasAgencias, mediaDiaFull, mediaDiaAgencias,
+    diasDeCoberturaFull: cobertura(full, mediaDiaFull),
+    diasDeCoberturaAgencias: cobertura(agencias, mediaDiaAgencias),
   };
+}
+
+/** 6,4 · 12 — uma casa abaixo de 10, inteiro acima. */
+function ritmoBR(m: number): string {
+  const v = m >= 10 ? Math.round(m) : Math.round(m * 10) / 10;
+  return String(v).replace(".", ",");
 }
 
 /** A frase do chat. `alvoDias`: quanto o estoque deveria durar (o "Estoque deve durar" da Reposição). */
@@ -111,8 +161,12 @@ export function respostaDeEstoque(r: ResumoDoGrupo, alvoDias = 30): string {
   if (r.mediaDia == null) {
     partes.push(`Sem venda nos últimos ${r.diasDoPeriodo} dias, então não dá pra dizer pra quantos dias dá.`);
   } else {
-    const ritmo = r.mediaDia >= 10 ? Math.round(r.mediaDia) : Math.round(r.mediaDia * 10) / 10;
-    partes.push(`Vende ~${String(ritmo).replace(".", ",")}/dia (últimos ${r.diasDoPeriodo} dias): dá pra uns ${r.diasDeCobertura} dias.`);
+    const lado = (nome: string, m: number | null, vendidas: number, dias: number | null, estoque: number) =>
+      m == null
+        ? `${nome}: sem venda`
+        : `${nome}: ~${ritmoBR(m)}/dia (${vendidas} un)${estoque === 0 ? " — está zerado" : dias != null ? ` — o estoque dele dá ~${dias} dias` : ""}`;
+    partes.push(`Média de vendas nos últimos ${r.diasDoPeriodo} dias — ${lado("Full", r.mediaDiaFull, r.vendasFull, r.diasDeCoberturaFull, r.full)}; ${lado("Agências", r.mediaDiaAgencias, r.vendasAgencias, r.diasDeCoberturaAgencias, r.agencias)}.`);
+    partes.push(`Somando os dois: ~${ritmoBR(r.mediaDia)}/dia, dá pra uns ${r.diasDeCobertura} dias.`);
     if ((r.diasDeCobertura ?? 0) < alvoDias) {
       const falta = Math.max(Math.ceil(r.mediaDia * alvoDias) - r.total, 0);
       partes.push(`Precisa repor: pra durar ${alvoDias} dias faltam ~${falta} un.`);

@@ -30,7 +30,8 @@ export async function GET(req: Request) {
   const produtos: ProdutoConsulta[] = snap.docs.map((d) => {
     const p = d.data();
     const mlbs: string[] = Array.isArray(p.mlbs) && p.mlbs.length ? p.mlbs.map(String) : p.mlb ? [String(p.mlb)] : [];
-    return { id: d.id, name: String(p.name ?? d.id), grupo: p.grupo ? String(p.grupo) : undefined, mlbs, ativo: p.ativo !== false, estoqueDividido: p.estoqueDividido === true };
+    return { id: d.id, name: String(p.name ?? d.id), grupo: p.grupo ? String(p.grupo) : undefined, mlbs, ativo: p.ativo !== false, estoqueDividido: p.estoqueDividido === true,
+      ...(p.canal === "full" || p.canal === "agencias" ? { canal: p.canal as "full" | "agencias" } : {}) };
   }).filter((p) => p.ativo);
 
   const grupos = gruposQueBatem(palavras, produtos).slice(0, 3);
@@ -66,13 +67,18 @@ export async function GET(req: Request) {
 
   // Ritmo de venda: a previsão do Estoque (mesma conta, em cache de 15 min).
   let vendas: Record<string, number> = {};
+  let vendasPorMlb: Record<string, number> | undefined;
   try {
     const f = await fetch(new URL(`/api/ml/estoque-forecast?dias=${DIAS}`, req.url), {
       headers: { authorization: req.headers.get("authorization") ?? "" }, cache: "no-store",
     });
-    if (f.ok) vendas = ((await f.json()) as { vendas?: Record<string, number> }).vendas ?? {};
+    if (f.ok) {
+      const j = (await f.json()) as { vendas?: Record<string, number>; vendasPorMlb?: Record<string, number> };
+      vendas = j.vendas ?? {};
+      vendasPorMlb = j.vendasPorMlb;
+    }
   } catch { /* sem ritmo: a resposta diz que não sabe a cobertura */ }
 
-  const respostas = grupos.map((g) => respostaDeEstoque(resumirGrupo(g, produtos, anuncios, vendas, DIAS)));
+  const respostas = grupos.map((g) => respostaDeEstoque(resumirGrupo(g, produtos, anuncios, vendas, DIAS, vendasPorMlb)));
   return NextResponse.json({ respostas }, { headers: { "Cache-Control": "private, no-store" } });
 }

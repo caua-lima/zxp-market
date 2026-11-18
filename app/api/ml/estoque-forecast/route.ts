@@ -100,6 +100,7 @@ export async function GET(req: Request) {
 
     // Pedidos do período (paginado). Cancelados/inválidos não contam como venda.
     const vendas: Record<string, number> = {};
+    const vendasPorMlb: Record<string, number> = {};
     /**
      * Separação de envio (o ML cancela o pedido e cria outros no mesmo pacote)
      * já sai certo aqui SEM tratamento especial: o original vem com status
@@ -141,6 +142,8 @@ export async function GET(req: Request) {
           const sku = normalizeSku(String(item.seller_sku ?? ""));
           const qty = Number(it.quantity ?? 0) || 0;
           totalUnidades += qty;
+          // Por anúncio também: o chat separa a venda do Full da das agências pela logística do anúncio.
+          if (mlbNum) vendasPorMlb[`MLB${mlbNum}`] = (vendasPorMlb[`MLB${mlbNum}`] ?? 0) + qty;
           const pid = porMlb.get(mlbNum) ?? porSku.get(sku);
           if (!pid) continue;
           vendas[pid] = (vendas[pid] ?? 0) + qty;
@@ -226,7 +229,7 @@ export async function GET(req: Request) {
       // Sem visitas, `diasAtivos` fica vazio e quem consome usa a janela.
     }
 
-    const body = { vendas, financeiro, diasAtivos, dias, from: fromISO.slice(0, 10), to: toISO.slice(0, 10) };
+    const body = { vendas, vendasPorMlb, financeiro, diasAtivos, dias, from: fromISO.slice(0, 10), to: toISO.slice(0, 10) };
     cache.set(chaveCache, { at: Date.now(), body });
     return NextResponse.json(body);
   } catch (err: unknown) {

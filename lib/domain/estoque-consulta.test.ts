@@ -36,6 +36,26 @@ describe("resumirGrupo e resposta", () => {
     expect(respostaDeEstoque(r)).toMatch(/240 un no total — 183 un em casa .* 57 un no Full/);
     expect(respostaDeEstoque(r)).toMatch(/Não precisa repor/);
   });
+  it("média de vendas separada: Full × agências pela logística do anúncio que vendeu", () => {
+    // MLB1/MLB2 são do Full (mesmo pool), MLB3 é de agência.
+    const r = resumirGrupo("Trot´s Menta Limão", PRODUTOS, ANUNCIOS, { "ml-full": 150, "ml-ag": 30 }, 30, { MLB1: 100, MLB2: 50, MLB3: 30 });
+    expect(r).toMatchObject({ vendasFull: 150, vendasAgencias: 30, mediaDiaFull: 5, mediaDiaAgencias: 1, diasDeCoberturaFull: 11, diasDeCoberturaAgencias: 183 });
+    const t = respostaDeEstoque(r);
+    expect(t).toMatch(/Full: ~5\/dia \(150 un\) — o estoque dele dá ~11 dias/);
+    expect(t).toMatch(/Agências: ~1\/dia \(30 un\) — o estoque dele dá ~183 dias/);
+    expect(t).toMatch(/Somando os dois: ~6\/dia/);
+  });
+
+  it("sem a venda por anúncio, separa pelo lado do produto", () => {
+    const r = resumirGrupo("Trot´s Menta Limão", PRODUTOS, ANUNCIOS, { "ml-full": 90, "ml-ag": 60 }, 30);
+    expect(r).toMatchObject({ vendasFull: 90, vendasAgencias: 60 });
+  });
+
+  it("lado sem venda e lado zerado aparecem por extenso", () => {
+    const r = resumirGrupo("Trot´s Menta Limão", PRODUTOS, { ...ANUNCIOS, MLB1: { ...ANUNCIOS.MLB1, available: 0 }, MLB2: { ...ANUNCIOS.MLB2, available: 0 } }, { "ml-full": 30 }, 30, { MLB1: 30 });
+    expect(respostaDeEstoque(r)).toMatch(/Full: ~1\/dia \(30 un\) — está zerado; Agências: sem venda/);
+  });
+
   it("cobertura curta pede reposição com a quantidade que falta", () => {
     const r = resumirGrupo("Trot´s Menta Limão", PRODUTOS, ANUNCIOS, { "ml-full": 600 }, 30);
     expect(r.diasDeCobertura).toBe(12);
