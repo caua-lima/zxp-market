@@ -142,10 +142,10 @@ describe("Financeiro privado e Etiquetas (13/11/2026)", () => {
     expect(podeCapacidade("member", undefined, "ver_financeiro_privado")).toBe(false);
     expect(podeCapacidade("equipe", undefined, "ver_financeiro_privado")).toBe(false);
   });
-  it("etiquetas: owner e Colaborador sim; Sócio só liberado; Partner não", () => {
+  it("etiquetas: owner, Colaborador e Sócio sim; member não", () => {
     expect(podeCapacidade("owner", undefined, "usar_etiquetas")).toBe(true);
     expect(podeCapacidade("equipe", undefined, "usar_etiquetas")).toBe(true);
-    expect(podeCapacidade("partner", undefined, "usar_etiquetas")).toBe(false);
+    expect(podeCapacidade("partner", undefined, "usar_etiquetas")).toBe(true);
     expect(podeCapacidade("partner", ["etiquetas"], "usar_etiquetas")).toBe(true);
     expect(podeCapacidade("member", ["etiquetas"], "usar_etiquetas")).toBe(false);
   });

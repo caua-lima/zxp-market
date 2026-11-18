@@ -24,7 +24,8 @@ import TelaHeader from "@/components/TelaHeader";
 import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
 import { fonteCarregada, FONTE_CARREGANDO } from "@/lib/domain/estado-fonte";
 
-const PERMISSION_TABS: PermissionTab[] = ["custos", "metas", "estoque", "ads", "etiquetas"];
+// "etiquetas" saiu da lista: o Sócio sempre usa as Etiquetas (18/11/2026).
+const PERMISSION_TABS: PermissionTab[] = ["custos", "metas", "estoque", "ads"];
 const PERMISSION_TAB_LABEL: Record<PermissionTab, string> = {
   custos: "Custos", metas: "Metas", estoque: "Estoque", ads: "Ads (últimas alterações)", etiquetas: "Etiquetas (converter e separar)",
 };

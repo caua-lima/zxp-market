@@ -46,7 +46,7 @@ export type Capacidade =
   /**
    * Etiquetas: converter, marcar a sigla e tirar a lista de separação. O
    * Colaborador usa (é quem separa) sem ganhar operação, financeiro nem
-   * catálogo; o Sócio só quando o owner liberar ("etiquetas" nas permissões).
+   * catálogo; o Sócio também (pedido do dono em 18/11/2026).
    */
   | "usar_etiquetas";
 
@@ -76,7 +76,7 @@ export function podeCapacidade(
   if (cap === "ver_financeiro_privado") return false;
   if (cap === "usar_etiquetas") {
     if (papel === "equipe") return true;
-    if (papel === "partner") return (permissoesEdicao ?? []).includes("etiquetas");
+    if (papel === "partner") return true;
     return false;
   }
 
