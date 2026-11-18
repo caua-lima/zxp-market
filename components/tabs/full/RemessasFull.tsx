@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { EstoqueMovimento } from "@/lib/domain/types";
+import type { EstoqueMovimento, Product } from "@/lib/domain/types";
+import type { EstoqueML } from "@/components/tabs/estoque/estoque-compartilhado";
+import { descontarDoAnuncioDeAgencias, irmaoDeAgencias, trazerDasAgencias } from "@/components/tabs/estoque/envio-full-agencias";
 import { movIdRemessa, remessaTemBaixa, type Remessa } from "@/lib/domain/remessas";
 import CustosColetaFull from "@/components/tabs/full/CustosColetaFull";
 import { addMovimento, ignorarRemessaFull, reabrirRemessaFull, salvarCustoRemessaFull, watchRemessasIgnoradas } from "@/lib/firebase/data";
@@ -9,7 +11,7 @@ import { authedFetch } from "@/lib/api/authed-fetch";
 import { fmtBRL } from "@/lib/domain/calc";
 
 // ── Remessas pro Full: baixa a partir do que o ML recebeu ─────────────────
-export default function RemessasFull({ movimentos }: { movimentos: EstoqueMovimento[] }) {
+export default function RemessasFull({ movimentos, products = [] }: { movimentos: EstoqueMovimento[]; /** Pra o envio sair do cadastro de Agências do sabor. */ products?: Product[] }) {
   const [dados, setDados] = useState<{
     opStatus?: number; opErro?: string; remessas?: Remessa[]; dias?: number;
     janela?: { from: string; to: string };
@@ -118,12 +120,23 @@ export default function RemessasFull({ movimentos }: { movimentos: EstoqueMovime
     const alvos = r.produtos.filter((p) => p.productId && !movDoProduto(r, p.productId));
     if (!alvos.length) { alert("Nada pendente: os produtos com cadastro já têm baixa nesta remessa."); return; }
     setSalvando(r.remessa);
+    const avisos: string[] = [];
     try {
+      // O estoque do ML (Full e agências) entra na média da transferência das Agências pro Full.
+      const estoqueML = await authedFetch("/api/ml/estoque-ml", { cache: "no-store" })
+        .then((x) => x.json()).then((j: { estoque?: EstoqueML }) => j.estoque ?? {}).catch(() => ({} as EstoqueML));
       for (const p of alvos) {
         const chave = `${r.remessa}|${p.productId}`;
         const qtd = Math.round(Number(qtds[chave] ?? p.qtd) || 0);
         if (qtd <= 0) continue;
         const dif = qtd - p.qtd;
+        // O que está em casa mora nas Agências: traz de lá antes da baixa (ver envio-full-agencias.ts).
+        const produto = products.find((x) => x.id === p.productId);
+        const irmao = produto ? irmaoDeAgencias(produto, products) : null;
+        let trazido = 0;
+        if (produto && irmao) {
+          trazido = await trazerDasAgencias({ full: produto, irmao, quantidade: qtd, data: r.data, idBase: movIdRemessa(r.remessa, p.productId), estoqueML });
+        }
         await addMovimento({
           id: movIdRemessa(r.remessa, p.productId),
           productId: p.productId,
@@ -132,10 +145,15 @@ export default function RemessasFull({ movimentos }: { movimentos: EstoqueMovime
           data: r.data,
           obs: `Remessa Full #${r.remessa} · ML recebeu ${p.qtd}${dif !== 0 ? ` · você informou ${qtd} (${dif > 0 ? "+" : ""}${dif})` : ""}`,
         });
+        if (trazido > 0 && irmao) {
+          const ml = await descontarDoAnuncioDeAgencias(irmao, trazido);
+          if (!ml.ok) avisos.push(ml.texto);
+        }
       }
     } catch (e) {
       alert("Erro ao dar baixa: " + (e instanceof Error ? e.message : String(e)));
     }
+    if (avisos.length) alert(avisos.join(" | "));
     setSalvando("");
   }
 

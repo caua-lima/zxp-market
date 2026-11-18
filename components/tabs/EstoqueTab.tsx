@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { explicarFonte } from "@/lib/domain/estado-fonte";
 import { CUSTO_FAIXA_SENTINELA, custoNaData, impostoNaData, rotuloDoMovimento, TIPO_MOVIMENTO_LABEL, type EstoqueMovimento, type MovimentoTipo, type Product } from "@/lib/domain/types";
 import { normalizarSigla } from "@/lib/etiquetas/siglas";
+import { descontarDoAnuncioDeAgencias, irmaoDeAgencias, trazerDasAgencias } from "@/components/tabs/estoque/envio-full-agencias";
 import { mensagemDeErroDeSalvamento, salvarSemPerder } from "@/lib/domain/salvar-formulario";
 import { motivoDaListaVazia } from "@/lib/domain/estoque-vazio";
 import { linhaCsvSegura } from "@/lib/domain/csv-seguro";
@@ -791,6 +792,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
                     onAgendar={() => setAgendarProduct(p)}
                     onTransferir={() => setTransferirDe(p)}
                     grupoInfo={grupoInfoPorId.get(p.id) ?? null}
+                    casaDasAgencias={(() => { const ag = irmaoDeAgencias(p, data.products); return ag ? fullDe(ag, estoqueML).proprio : null; })()}
                     onVersao={() => {
                       const f = fullDe(p, estoqueML);
                       const atual: Canal | null = p.canal ?? (f.ehFull ? "full" : f.proprio > 0 ? "agencias" : null);
@@ -912,6 +914,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
           tipo={movModal.tipo}
           estoqueML={estoqueML}
           reservado={reservas.get(movModal.product.id)?.reservado ?? 0}
+          irmaoAgencias={irmaoDeAgencias(movModal.product, data.products)}
           onClose={() => setMovModal(null)}
           onSaved={() => setMovModal(null)}
         />
@@ -1119,7 +1122,7 @@ function MovimentacoesPanel({ movimentos, produtos, busca, pagina, onPagina, tru
   );
 }
 function ProductRow({
-  product, estoqueML, expanded, onToggle, onEdit, onMov, onAgencias, onAgendar, onTransferir, onVersao, grupoInfo, reserva, duplicadas = 0, situacao = null,
+  product, estoqueML, expanded, onToggle, onEdit, onMov, onAgencias, onAgendar, onTransferir, onVersao, grupoInfo, reserva, duplicadas = 0, situacao = null, casaDasAgencias = null,
 }: {
   product: Product;
   uid: string;
@@ -1140,6 +1143,8 @@ function ProductRow({
   grupoInfo: { nome: string; cadastros: number; totalUn: number; partes: string[] } | null;
   /** Abre o cadastro do mesmo produto no outro canal (Full ↔ agências). */
   onVersao: () => void;
+  /** Produto Full com cadastro de Agências: o "em casa" é o mesmo das Agências (um estoque físico só). */
+  casaDasAgencias?: number | null;
   /** Envios agendados pro Full que ainda seguram unidades deste produto. */
   reserva: ReservaDoProduto | null;
 }) {
@@ -1151,7 +1156,9 @@ function ProductRow({
   // estoqueForaDoFull) — mostra o valor do anúncio, que é o que reflete vendas
   // de verdade, em vez do livro de movimentações (que só sobe, nunca desce
   // sozinho quando vende).
-  const casaExibida = ehFull ? casa : proprio;
+  // Full com irmão de Agências: o que está em casa mora lá — mostra o mesmo número.
+  const casaDoIrmao = ehFull && casaDasAgencias != null && casa <= 0;
+  const casaExibida = casaDoIrmao ? casaDasAgencias! : ehFull ? casa : proprio;
   const custoMedio = custoMedioDe(product);
   const totalUn = full + estoqueForaDoFull(casa, proprio, ehFull);
   const fullBaixo = ehFull && full <= FULL_BAIXO;
@@ -1239,6 +1246,11 @@ function ProductRow({
           }}
         >
           {casaExibida} un
+          {casaDoIrmao && (
+            <span title="O que está em casa fica no cadastro de Agências deste sabor. Enviar pro Full tira de lá." style={{ display: "block", fontSize: ".75rem", color: "var(--muted)", fontWeight: 400 }}>
+              mesmo das Agências
+            </span>
+          )}
           {/* Sem Full, "Em casa" vem do maior anúncio próprio — e com dois
               anúncios sobre o mesmo galpão o número parece "faltar" se ninguém
               explicar de onde ele saiu. */}
@@ -1541,7 +1553,7 @@ function MovimentosHistorico({ product, movs, onMov }: { product: Product; movs:
   );
 }
 
-function MovimentoModal({ product, tipo, estoqueML, reservado, onClose, onSaved }: { product: Product; tipo: MovimentoTipo; estoqueML: EstoqueML; reservado: number; onClose: () => void; onSaved: () => void }) {
+function MovimentoModal({ product, tipo, estoqueML, reservado, onClose, onSaved, irmaoAgencias = null }: { product: Product; tipo: MovimentoTipo; estoqueML: EstoqueML; reservado: number; onClose: () => void; onSaved: () => void; /** Envio pro Full sai do cadastro de Agências do sabor (ver envio-full-agencias.ts). */ irmaoAgencias?: Product | null }) {
   const isEntrada = tipo === "entrada";
   const isSaldo = tipo === "saldo_inicial";
   const isAjuste = tipo === "ajuste";
@@ -1656,6 +1668,11 @@ function MovimentoModal({ product, tipo, estoqueML, reservado, onClose, onSaved 
      */
     const movId = idDoLancamento.current;
     try {
+      // Envio pro Full: o que está em casa mora nas Agências — traz de lá antes da baixa.
+      let trazido = 0;
+      if (tipo === "saida_full" && irmaoAgencias) {
+        trazido = await trazerDasAgencias({ full: product, irmao: irmaoAgencias, quantidade: Math.abs(qNum), data, idBase: movId, estoqueML });
+      }
       await addMovimento({
         id: movId,
         productId: product.id,
@@ -1687,6 +1704,10 @@ function MovimentoModal({ product, tipo, estoqueML, reservado, onClose, onSaved 
       // regrava a mesma entrada (id fixo) e o mesmo envio (id fixo): sem duplicar nada.
       if (isEntrada && destinoFull.trim() !== "") {
         await criarEnvioAgendado({ productId: product.id, quantidade: destinoNum, data: diaFull, obs: obs.trim() }, idDoEnvio.current);
+      }
+      if (trazido > 0 && irmaoAgencias) {
+        const ml = await descontarDoAnuncioDeAgencias(irmaoAgencias, trazido);
+        if (!ml.ok) alert(ml.texto);
       }
       onSaved();
     } catch (err: unknown) {
@@ -2371,7 +2392,7 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio,
     [retencao],
   );
 
-  const paraDominio = useMemo(() => produtos.map((p) => {
+  const porProduto = useMemo(() => produtos.map((p) => {
     const f = previsaoDe(p, estoqueML, forecast);
 
     /**
@@ -2418,6 +2439,38 @@ function ReposicaoPanel({ produtos, estoqueML, forecast, retencao, retencaoVeio,
       parcial: diasBase < forecast.dias,
     };
   }), [produtos, estoqueML, forecast, retencaoPorProduto, reservas]);
+
+  /**
+   * UMA LINHA POR SABOR (17/11/2026). O que está em casa mora no cadastro
+   * "… Agências"; o do Full guarda só o Full. Planejar cada cadastro sozinho
+   * dizia "sem estoque em casa · comprar 90" no Pura Folha com 300 em casa.
+   * Aqui o Full e o seu irmão de Agências viram uma linha só: estoque e venda
+   * somados; o irmão sai da lista.
+   */
+  const paraDominio = useMemo(() => {
+    const porId = new Map(porProduto.map((x) => [x.id, x]));
+    const absorvidos = new Set<string>();
+    const juntos = porProduto.map((x) => {
+      const prod = produtos.find((p) => p.id === x.id);
+      const irmao = prod ? irmaoDeAgencias(prod, produtos) : null;
+      const ag = irmao ? porId.get(irmao.id) : undefined;
+      if (!ag) return x;
+      absorvidos.add(ag.id);
+      return {
+        ...x,
+        nome: String(prod?.grupo ?? "").trim() || x.nome,
+        estoqueTotal: x.estoqueTotal + ag.estoqueTotal,
+        estoqueFisico: x.estoqueFisico + ag.estoqueFisico,
+        emCasa: x.emCasa + ag.emCasa,
+        agendadoFull: x.agendadoFull + ag.agendadoFull,
+        mediaDiaria: x.mediaDiaria + ag.mediaDiaria,
+        ativo: x.ativo || ag.ativo,
+        diasBase: Math.max(x.diasBase, ag.diasBase),
+        parcial: x.parcial && ag.parcial,
+      };
+    });
+    return juntos.filter((x) => !absorvidos.has(x.id));
+  }, [porProduto, produtos]);
 
   const plano = useMemo(
     () => montarPlanoReposicao(paraDominio, diasN, folgaN, { prazoFornecedorDias: prazoN, loteMinimo: loteN }),

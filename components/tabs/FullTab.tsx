@@ -94,7 +94,7 @@ export default function FullTab({ products }: { products: Product[] }) {
         />
       )}
       <EstoqueRetidoFull dados={retido} custoPorProduto={custoPorProduto} />
-      <RemessasFull movimentos={movimentos} />
+      <RemessasFull movimentos={movimentos} products={products} />
       <HistoricoMovimentos movimentos={movimentos} products={products} truncado={movimentosTruncados} />
     </div>
   );
