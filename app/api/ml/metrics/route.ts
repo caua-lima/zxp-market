@@ -206,6 +206,7 @@ function computeAggregates(
       orderId: String(o.order_id ?? ""),
       packId: o.pack_id as string | null | undefined,
       status: o.status,
+      motivoCancelamento: (o.motivo_cancelamento as string | null | undefined) ?? null,
       // Comprador + dia + itens: a 2ª regra de detectarPedidosSubstituidos,
       // que pega a separação de envio quando o ML não reaproveita o pack_id.
       buyerId: (o.buyer_id as string | null | undefined) ?? null,

@@ -1,5 +1,6 @@
 import "server-only";
 import { custoDoVendedor } from "@/lib/domain/frete-vendedor";
+import { motivoDoCancelamento } from "@/lib/domain/separacao-pacote";
 import { fetchML } from "./fetch-ml";
 import { sellerIdAtual } from "@/lib/ml/vendedor";
 
@@ -23,6 +24,7 @@ export type OrderDoc = {
   shipping_cost?: number | null;
   /** Pacote: agrupa os pedidos de uma mesma compra com produtos diferentes. */
   pack_id?: string | null;
+  motivo_cancelamento?: string | null;
   items: OrderItemDoc[];
 };
 
@@ -92,6 +94,8 @@ export async function fetchOrdersLive(
           total_amount: Number(o.total_amount ?? 0),
           shipping_id: String((o.shipping as Record<string, unknown>)?.id ?? ""),
           pack_id: o.pack_id ? String(o.pack_id) : null,
+          // "pack_splitted" = o ML cancelou só porque o pacote foi separado (lib/domain/separacao-pacote).
+          motivo_cancelamento: motivoDoCancelamento(o),
           /**
            * O comprador é o que permite reconhecer a SEPARAÇÃO DE ENVIO quando
            * o Mercado Livre não reaproveita o `pack_id`: o pedido original é

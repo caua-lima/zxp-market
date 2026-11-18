@@ -1,3 +1,5 @@
+import { CODIGO_PACOTE_SEPARADO } from "./separacao-pacote";
+
 /**
  * "Esta venda valeu?" — a pergunta que decide se um pedido entra no faturamento.
  *
@@ -66,6 +68,11 @@ export type PedidoParaSubstituicao = {
   dia?: string;
   /** Itens do pedido, pra provar que os novos cobrem o que o cancelado tinha. */
   itens?: { itemId: string; qty: number }[];
+  /**
+   * `cancel_detail.code` do ML. "pack_splitted" é a prova direta da separação
+   * (ver lib/domain/separacao-pacote.ts) — vale antes das regras por dedução.
+   */
+  motivoCancelamento?: string | null;
 };
 
 /**
@@ -144,6 +151,14 @@ export function detectarPedidosSubstituidos(pedidos: PedidoParaSubstituicao[]): 
   const substituidos = new Set<string>();
   for (const p of pedidos) {
     if (!ehStatusNaoVenda(p.status)) continue;
+
+    // Regra 0 — o próprio ML disse: cancelado porque o pacote foi separado.
+    // Não depende de achar os pedidos novos (eles nascem com outro pack_id e,
+    // muitas vezes, em outro dia).
+    if (String(p.motivoCancelamento ?? "").trim() === CODIGO_PACOTE_SEPARADO) {
+      substituidos.add(String(p.orderId));
+      continue;
+    }
 
     // 1ª regra — pacote sobreviveu.
     const pack = String(p.packId ?? "").trim();

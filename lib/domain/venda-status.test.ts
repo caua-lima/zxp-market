@@ -94,6 +94,15 @@ describe("detectarPedidosSubstituidos — separacao de envio nao e cancelamento"
     { orderId: "novo2", packId: "pack1", status: "paid" },
   ];
 
+  it("regra 0: cancel_detail pack_splitted basta — pacote todo cancelado, novos em outro pack e em outro dia (caso real de 18/11)", () => {
+    const s = detectarPedidosSubstituidos([
+      { orderId: "a", packId: "p1", status: "cancelled", motivoCancelamento: "pack_splitted", dia: "2026-11-17" },
+      { orderId: "b", packId: "p1", status: "cancelled", motivoCancelamento: "pack_splitted", dia: "2026-11-17" },
+      { orderId: "real", packId: "p2", status: "cancelled", motivoCancelamento: "buyer_cancel_express", dia: "2026-11-17" },
+    ]);
+    expect([...s].sort()).toEqual(["a", "b"]);
+  });
+
   it("marca o original como substituido", () => {
     const s = detectarPedidosSubstituidos(pacoteSeparado);
     expect(s.has("orig")).toBe(true);

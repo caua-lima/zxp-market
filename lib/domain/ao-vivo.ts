@@ -171,6 +171,8 @@ export type PedidoBrutoAoVivo = {
   total_amount?: unknown;
   pack_id?: unknown;
   buyer_id?: unknown;
+  /** `cancel_detail.code` do ML ("pack_splitted" = pacote separado, não cancelamento). */
+  motivo_cancelamento?: unknown;
   items?: { item_id?: unknown; quantity?: unknown; title?: unknown; unit_price?: unknown }[];
 };
 
@@ -194,6 +196,7 @@ export function prepararPedidosAoVivo(
       orderId: String(o.order_id ?? ""),
       packId: (o.pack_id as string | null | undefined) ?? null,
       status: o.status,
+      motivoCancelamento: (o.motivo_cancelamento as string | null | undefined) ?? null,
       buyerId: (o.buyer_id as string | null | undefined) ?? null,
       dia: diaBRDe(String(o.date_created ?? "")),
       itens: itensDe(o).map((it) => ({ itemId: String(it.item_id ?? ""), qty: Number(it.quantity ?? 1) })),
