@@ -18,6 +18,21 @@ export type ResultadoGravacao = {
 };
 
 /**
+ * O que, uma vez dito pelo ML, não volta atrás: o motivo de um cancelamento e
+ * a marca de pedido recriado na separação de pacote. Vai junto mesmo quando o
+ * retrato é "mais velho" — a busca do ML devolve um `last_updated` alguns
+ * segundos anterior ao do GET do pedido (medido em 18/11: 05:36:53 × 05:37:39
+ * no mesmo pedido), e sem isto o sync nunca gravava o motivo de quem o webhook
+ * já tinha gravado.
+ */
+export function fatosPermanentes(estado: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...(estado.motivo_cancelamento ? { motivo_cancelamento: estado.motivo_cancelamento } : {}),
+    ...(estado.pedido_da_separacao === true ? { pedido_da_separacao: true } : {}),
+  };
+}
+
+/**
  * Pedidos por transação. Menor que o lote de 400 do batch antigo: a transação
  * trava os documentos que leu, e um webhook que chega no meio espera por ela.
  */
@@ -63,7 +78,7 @@ export async function gravarPedidos(
       lote.forEach((p, k) => {
         const antes = snaps[k].exists ? snaps[k].data() : undefined;
         const { gravar, motivo } = podeGravarEstado(versaoDoPedido(p.estado.last_updated), antes?.last_updated);
-        const dados = { ...(p.complemento ?? {}), ...(gravar ? p.estado : {}) };
+        const dados = { ...(p.complemento ?? {}), ...fatosPermanentes(p.estado), ...(gravar ? p.estado : {}) };
         // Retrato velho e nada de outra API: não há o que gravar, e tocar o
         // documento só mudaria o `updatedAt` de algo que não mudou.
         if (Object.keys(dados).length > 0) {
