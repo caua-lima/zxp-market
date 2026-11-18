@@ -1,6 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { authedFetch } from "@/lib/api/authed-fetch";
+import { perguntaDeEstoque } from "@/lib/domain/estoque-consulta";
 import { buscarTopicos, relacionadosDe, sugestoesPara, type Topico } from "@/lib/domain/ajuda";
 import ChatFlutuante from "@/components/ChatFlutuante";
 
@@ -34,6 +36,23 @@ export default function AjudaChat({ abaAtual }: { abaAtual?: string }) {
   function perguntar(pergunta: string) {
     const q = pergunta.trim();
     if (!q) return;
+    // "Quanto de estoque tenho do Menta Limão?" — número ao vivo, não tópico de ajuda.
+    if (perguntaDeEstoque(q)) {
+      setMsgs((m) => [...m, { de: "voce", texto: q }, { de: "ajuda", texto: "Conferindo o estoque agora…" }]);
+      setTexto("");
+      void (async () => {
+        let resposta = "Não consegui conferir o estoque agora. Tente de novo em instantes.";
+        try {
+          const r = await authedFetch(`/api/estoque/consulta?q=${encodeURIComponent(q)}`, { cache: "no-store" });
+          const j = (await r.json().catch(() => null)) as { respostas?: string[]; naoEhEstoque?: boolean } | null;
+          if (r.status === 403) resposta = "Seu acesso não inclui o estoque.";
+          else if (j?.respostas?.length) resposta = j.respostas.join("\n\n");
+        } catch { /* fica a mensagem de falha */ }
+        setMsgs((m) => [...m.slice(0, -1), { de: "ajuda", texto: resposta }]);
+        requestAnimationFrame(() => fimRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }));
+      })();
+      return;
+    }
     const achados = buscarTopicos(q, abaAtual);
     const resposta: Msg = achados.length > 0
       ? {
