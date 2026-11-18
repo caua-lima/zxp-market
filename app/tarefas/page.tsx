@@ -58,6 +58,7 @@ function TelaDeTarefas() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <PushNotificationToggle />
+          {podeVer("etiquetas") && <Link className="btn btn-ghost btn-sm" href="/etiquetas">Etiquetas</Link>}
           {papel !== "equipe" && <Link className="btn btn-ghost btn-sm" href="/">Painel</Link>}
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => void signOut()}>Sair</button>
         </div>
