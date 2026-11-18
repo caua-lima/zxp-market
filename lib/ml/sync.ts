@@ -12,6 +12,7 @@ import {
 } from "@/lib/ml/notificar-venda";
 import { MAX_AVISOS_POR_SYNC, instanteDaConfirmacao } from "@/lib/domain/confirmacao-de-venda";
 import { estadoDoPedido, mapOrderItems } from "@/lib/domain/estado-do-pedido";
+import { canceladoPorSeparacao, nasceuDeSeparacao } from "@/lib/domain/separacao-pacote";
 import { gravarPedidos } from "@/lib/ml/gravar-pedido";
 import { sellerIdAtual } from "@/lib/ml/vendedor";
 
@@ -504,7 +505,8 @@ async function notificarVendasPendentes(orders: unknown[]): Promise<void> {
   // Mais recentes primeiro e com teto por execução — segunda trava contra um enxame de pushes.
   const candidatos = orders
     .map((o) => o as Record<string, unknown>)
-    .filter((o) => String(o.status ?? "") === "paid" && vendaRecente(instanteDaConfirmacao(o)))
+    // Pedido que nasceu da separação de pacote é a mesma compra já avisada.
+    .filter((o) => String(o.status ?? "") === "paid" && !nasceuDeSeparacao(o) && vendaRecente(instanteDaConfirmacao(o)))
     .sort((a, b) => Date.parse(instanteDaConfirmacao(b)) - Date.parse(instanteDaConfirmacao(a)))
     .slice(0, MAX_AVISOS_POR_SYNC);
   if (candidatos.length === 0) return;
@@ -563,6 +565,13 @@ export async function syncReturnsRange(
     for (const order of all.slice(i, i + BATCH_SIZE)) {
       const o = order as Record<string, unknown>;
       const id = String(o.id);
+      // Pacote separado na agência não é cancelamento: o ML cancela o original
+      // e cria pedidos novos (lib/domain/separacao-pacote). Sai do cache de
+      // cancelados — inclusive o que um sync antigo já tinha gravado.
+      if (canceladoPorSeparacao(o)) {
+        batch.delete(db.collection("ml_returns").doc(id));
+        continue;
+      }
       batch.set(
         db.collection("ml_returns").doc(id),
         {

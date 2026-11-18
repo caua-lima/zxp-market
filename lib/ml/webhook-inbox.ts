@@ -10,6 +10,7 @@ import { publicarSinalAoVivo } from "@/lib/ml/ao-vivo-tempo-real";
 import { criarEventoEPublicar, especDoPush } from "@/lib/notification-dispatch";
 import { instanteDaConfirmacao } from "@/lib/domain/confirmacao-de-venda";
 import { estadoDoPedido, mapOrderItems } from "@/lib/domain/estado-do-pedido";
+import { canceladoPorSeparacao, nasceuDeSeparacao } from "@/lib/domain/separacao-pacote";
 import { buildCancelContent, buildOrderDeepLink } from "@/lib/domain/notifications";
 import {
   APAGAR,
@@ -225,6 +226,8 @@ export async function processarNotificacaoDePedido(orderId: string, sellerId: st
     // O ID do envio, não o valor: `order.shipping_cost` é o que o comprador
     // pagou (zero em frete grátis), e usá-lo inflava a margem do aviso.
     shippingId: String((order.shipping as Record<string, unknown>)?.id ?? "").trim() || null,
+    // Pedido recriado na separação de pacote: a compra já foi avisada.
+    nasceuDeSeparacao: nasceuDeSeparacao(order),
   });
 
   /**
@@ -236,7 +239,10 @@ export async function processarNotificacaoDePedido(orderId: string, sellerId: st
    * `jaConheciaComoPago` fica como atalho — se o doc ainda diz "paid", não
    * precisa nem ler notification_events.
    */
-  const anunciamosAVenda = status !== "cancelled"
+  // Pacote separado na agência: o ML cancela o original e recria — não é
+  // cancelamento de comprador, e avisar "venda cancelada" seria alarme falso.
+  const separacao = canceladoPorSeparacao(order);
+  const anunciamosAVenda = status !== "cancelled" || separacao
     ? false
     : jaConheciaComoPago ||
       (await db.collection("notification_events").doc(`sale_paid:${orderId}`).get()).exists;

@@ -146,7 +146,9 @@ export type ResultadoNotificacao =
   | { estado: "ja_existia"; eventId: string }
   | { estado: "agrupada"; eventId: string }
   | { estado: "antiga" }
-  | { estado: "nao_paga" };
+  | { estado: "nao_paga" }
+  /** Pedido recriado pelo ML na separação de pacote: a compra já foi avisada. */
+  | { estado: "separacao" };
 
 export type PedidoParaNotificar = {
   orderId: string;
@@ -159,6 +161,8 @@ export type PedidoParaNotificar = {
    */
   datePaid?: string;
   items: ItemPedido[];
+  /** Tag "splitted_order": o ML recriou o pedido ao separar o pacote (lib/domain/separacao-pacote). */
+  nasceuDeSeparacao?: boolean;
   /**
    * Envio do pedido, pra apurar o frete que o VENDEDOR paga.
    *
@@ -253,6 +257,7 @@ export async function notificarVendaConfirmada(
   ctx?: { porMlb: Map<string, ProdutoCusto>; porSku: Map<string, ProdutoCusto>; metaMargem: number | null },
 ): Promise<ResultadoNotificacao> {
   if (pedido.status !== "paid") return { estado: "nao_paga" };
+  if (pedido.nasceuDeSeparacao) return { estado: "separacao" };
   // A idade que conta é a da APROVAÇÃO do pagamento quando o pedido a informa: pedido criado
   // ontem e pago agora é venda de agora. Sem ela, cai na criação (o comportamento anterior).
   if (!vendaRecente(pedido.datePaid || pedido.dateCreated)) return { estado: "antiga" };
