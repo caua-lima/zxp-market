@@ -232,17 +232,6 @@ export const TOPICOS: Topico[] = [
     relacionados: ["dre"],
   },
   {
-    id: "preco",
-    pergunta: "Como sei se meu preço está certo?",
-    aba: "preco",
-    termos: ["preco", "precificar", "simular", "quanto cobrar", "aumentar preco", "margem alvo"],
-    resposta:
-      "A aba Preço simula: você informa o preço e ela mostra o que sobra depois de custo, frete, comissão e imposto.\n\n"
-      + "Serve pros dois lados — testar um preço novo antes de mexer no anúncio, e entender por que um produto atual não fecha.\n\n"
-      + "Lembre que a comissão do ML muda por faixa de preço, então um aumento pequeno às vezes rende mais do que parece.",
-    relacionados: ["margem-nao-bate"],
-  },
-  {
     id: "colaborador",
     pergunta: "Como dou acesso pra outra pessoa?",
     aba: "acesso",
@@ -335,8 +324,8 @@ export const TOPICOS: Topico[] = [
   {
     id: "taxas-ml",
     pergunta: "Como funcionam as taxas do Mercado Livre?",
-    aba: "preco",
-    relacionados: ["preco", "margem-nao-bate"],
+    aba: "pedidos",
+    relacionados: ["margem-nao-bate"],
     // "taxas do mercado livre" precisa estar aqui como expressão: sem ela, a
     // pergunta caía no tópico de faturamento, que tem "mercado livre" e vence
     // por peso de termo composto.
@@ -360,8 +349,8 @@ export const TOPICOS: Topico[] = [
   {
     id: "margem-fina-produto-barato",
     pergunta: "Por que meus produtos baratos deixam tão pouco?",
-    aba: "preco",
-    relacionados: ["taxas-ml", "preco", "margem-nao-bate"],
+    aba: "pedidos",
+    relacionados: ["taxas-ml", "margem-nao-bate"],
     termos: [
       "produto barato", "ticket baixo", "margem fina", "pouco lucro", "nao compensa",
       "quase nao sobra", "margem baixa", "kit",
@@ -374,8 +363,7 @@ export const TOPICOS: Topico[] = [
       + "Três saídas, em ordem de eficácia:\n"
       + "· VENDER EM KIT — dilui frete e custo operacional por unidade. É a que mais muda o resultado.\n"
       + "· SUBIR O PREÇO — o ganho é inteiro seu, enquanto cortar custo esbarra em taxa que não desce.\n"
-      + "· REVISAR O CUSTO na origem — só compensa quando há volume pra negociar.\n\n"
-      + "Use a aba Preço pra simular antes de mexer no anúncio.",
+      + "· REVISAR O CUSTO na origem — só compensa quando há volume pra negociar.",
   },
   {
     id: "custo-medio",
@@ -433,7 +421,7 @@ export const TOPICOS: Topico[] = [
     id: "imposto",
     pergunta: "Como configuro o imposto dos produtos?",
     aba: "estoque",
-    relacionados: ["custo-medio", "preco"],
+    relacionados: ["custo-medio"],
     termos: [
       "imposto", "aliquota", "tributo", "simples", "porcentagem imposto",
       "configurar imposto", "nota fiscal",
