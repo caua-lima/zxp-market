@@ -3,7 +3,8 @@ import { registrarSkus } from "@/lib/domain/indice-sku";
 import { devolucaoConcluida, ehDevolucao } from "@/lib/domain/devolucao-estado";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { requireAccess } from "@/lib/api-auth";
-import { getAdsFullByItem, getAdsSettingsByItem, getItemStatusByItem, probeAds, type AdSettings } from "@/lib/ml/ads";
+import { getAdsFullByItem, getAdsSettingsByItem, getItemStatusByItem, probeAds, verificarConsolidacao, type AdSettings } from "@/lib/ml/ads";
+import { contarAnunciosPorCampanha } from "@/lib/domain/ads-consolidacao";
 
 /**
  * Etiqueta é sobre a CAMPANHA (o que o vendedor pediu), não o anúncio no
@@ -230,6 +231,9 @@ export async function GET(req: Request) {
       return NextResponse.json({ ...guardado.corpo, cached: true });
     }
 
+    // Em paralelo com tudo: só pergunta ao ML quando o período inclui ontem.
+    const consolidacaoPromessa = verificarConsolidacao(from, adsTo);
+
     let ads;
     try {
       ads = from <= adsTo ? await getAdsFullByItem(from, adsTo) : [];
@@ -249,6 +253,14 @@ export async function GET(req: Request) {
     // visual aqui, e cortar cedo também poupa chamada de config (campanha)
     // pra quem nem entraria na tela.
     const totalAntesDoFiltro = ads.length;
+    /**
+     * Contagem ANTES do filtro: o painel do ML conta todo anúncio cadastrado
+     * na campanha, inclusive o que não gastou no período ("MS, LC, TT": 3 no
+     * ML, 2 no app, porque o terceiro teve R$ 0).
+     */
+    const anunciosCadastrados = contarAnunciosPorCampanha(
+      ads.map((a) => ({ campaignId: a.campaignId, status: a.status })),
+    );
     ads = ads.filter((a) => a.cost > 0);
     const semGastoNoPeriodo = totalAntesDoFiltro - ads.length;
 
@@ -511,7 +523,21 @@ export async function GET(req: Request) {
       cfgDiag: cfg.tentativas,
       campanhasEncontradas: cfg.campanhasEncontradas,
       campanhasTotal: cfg.campanhasTotal,
-      campanhasResumo: cfg.campanhasResumo,
+      /**
+       * `anunciosCadastrados` vem da listagem das métricas (todos os anúncios
+       * do período, com a campanha atual de cada um). A contagem antiga
+       * (`totalAds`, busca filtrada por campanha) errava — 0 em "MS, LC, TT",
+       * 2 em campanhas que têm 1 — e fica só como fallback.
+       */
+      campanhasResumo: cfg.campanhasResumo.map((c) => ({
+        ...c,
+        anunciosCadastrados: anunciosCadastrados.get(String(c.id)) ?? (anunciosCadastrados.size > 0 ? 0 : c.totalAds),
+      })),
+      /**
+       * O ML ainda não liberou ONTEM na API pública (ver ads-consolidacao.ts).
+       * A tela usa isto pra não confundir dia faltando com anúncio rateado.
+       */
+      consolidacao: await consolidacaoPromessa,
       anunciosTotal: cfg.anunciosTotal,
       anunciosNoPeriodo: cfg.anunciosNoPeriodo,
       anunciosContagemFalhou: cfg.anunciosContagemFalhou,

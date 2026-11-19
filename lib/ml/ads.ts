@@ -2,6 +2,7 @@ import "server-only";
 import { fetchML } from "./fetch-ml";
 import { getValidMlAccessToken } from "@/lib/ml/getToken";
 import { METRICAS_CAMPANHA, metricasDaCampanha, type MetricasCampanha } from "@/lib/domain/ads-metricas-campanha";
+import { avaliarConsolidacao, periodoIncluiOntem, type Consolidacao } from "@/lib/domain/ads-consolidacao";
 
 const ML_API = "https://api.mercadolibre.com";
 
@@ -1014,6 +1015,44 @@ export async function getAdsSettingsByItem(
     gastoSemVinculo,
     amostraCampanhaOrfa,
   };
+}
+
+/**
+ * O ML já consolidou ONTEM na API pública? Ver lib/domain/ads-consolidacao.ts.
+ *
+ * Só pergunta quando o período inclui ontem; duas buscas pequenas (o custo de
+ * um dia só) no anunciante principal.
+ * `null` = período não inclui ontem, ou o ML não respondeu (sem resposta não
+ * se afirma nada — nem que está pendente, nem que não está).
+ */
+export async function verificarConsolidacao(from: string, to: string): Promise<Consolidacao | null> {
+  const ontem = periodoIncluiOntem(from, to, Date.now());
+  if (!ontem) return null;
+  try {
+    const token = await getValidMlAccessToken();
+    /**
+     * Os dois lados no MESMO anunciante: a lista de anúncios da tela vem só
+     * do principal (adItemRows), então comparar com campanhas de todos os
+     * anunciantes acusaria pendência onde há só outra marca gastando.
+     */
+    const adv = await getAdvertiser(token);
+    if (!adv) return null;
+    const lista = [adv];
+    const q = (o: number) => `date_from=${ontem}&date_to=${ontem}&metrics=cost&limit=50&offset=${o}`;
+    let custoCampanhas = 0;
+    let custoAnuncios = 0;
+    for (const adv of lista) {
+      const [camps, ads] = await Promise.all([
+        buscar((o) => [`${base(adv)}/campaigns/search?${q(o)}`, `${legado(adv)}/campaigns?${q(o)}`], token),
+        buscar((o) => [`${base(adv)}/ads/search?${q(o)}`, `${legado(adv)}/items?${q(o)}`], token),
+      ]);
+      custoCampanhas += camps.reduce((s, c) => s + metrica(c, "cost"), 0);
+      custoAnuncios += ads.reduce((s, a) => s + metrica(a, "cost"), 0);
+    }
+    return avaliarConsolidacao(ontem, custoCampanhas, custoAnuncios);
+  } catch {
+    return null;
+  }
 }
 
 /** Diagnóstico: mostra o que cada rota respondeu, com um trecho do corpo. */
