@@ -405,3 +405,183 @@ describe("rotuloCampanha", () => {
     expect(rotuloCampanha(undefined)).toBe("Sem campanha");
   });
 });
+
+/**
+ * Conferência de 19/11 (06:45), período 13–19/11, contra o painel do Mercado
+ * Ads. O recurso de campanha da API pública ainda não tinha o dia 18 (ontem);
+ * o de anúncio já tinha o custo de ontem. Ver lib/domain/ads-consolidacao.ts.
+ *
+ *   Pura Folha - Agências   painel: 105 cliques · R$ 68,54 · receita R$ 240,10
+ *                            anúncio: 105 cliques · R$ 68,54 · receita R$ 26,90
+ *                            campanha (sem ontem): 67 cliques · R$ 29,93 · R$ 26,90
+ */
+describe("ML sem ONTEM consolidado — não é rateio", () => {
+  const puraFolhaAg: ItemParaCampanha = {
+    campaignId: "7948602", campaignName: "Pura Folha - Agências",
+    clicks: 105, prints: 14619, cost: 68.54,
+    directSales: 26.9, directUnits: 1, totalSales: 727.3, totalUnits: 27,
+    lucroLiquido: 3.09, lucroDiretoLiquido: -65.89, diretoDisponivel: true,
+    margemAntesAds: 0.0985,
+    campanhas: [{
+      campaignId: "7948602", campaignName: "Pura Folha - Agências",
+      clicks: 105, prints: 14619, cost: 68.54, directSales: 26.9, directUnits: 1, sales: 26.9,
+    }],
+  };
+  const semOntem = new Map([["7948602", {
+    clicks: 67, prints: 9927, cost: 29.93, receitaAtribuida: 26.9, receitaDireta: 26.9,
+    vendasAtribuidas: 1, vendasDiretas: 1,
+  }]]);
+
+  it("o bug: sem saber da defasagem, acusa 'rateado' numa campanha de 1 anúncio", () => {
+    // Modo "geral": o único em que ainda existe rateio de receita entre campanhas.
+    const [c] = agregarPorCampanha([puraFolhaAg], "geral", semOntem);
+    expect(c.cost).toBeCloseTo(29.93, 2); // menos da metade do painel
+    expect(c.atribuicaoIncerta).toBe(true);
+  });
+
+  it("com a defasagem informada: investido e cliques batem com o painel", () => {
+    const [c] = agregarPorCampanha([puraFolhaAg], "pub", semOntem, { campanhasDefasadas: true });
+    expect(c.cost).toBeCloseTo(68.54, 2);
+    expect(c.clicks).toBe(105);
+    expect(c.fonteMetricas).toBe("anuncios");
+  });
+
+  it("não marca 'rateado' — marca receita parcial, com o motivo certo", () => {
+    const [c] = agregarPorCampanha([puraFolhaAg], "pub", semOntem, { campanhasDefasadas: true });
+    expect(c.atribuicaoIncerta).toBe(false);
+    expect(c.receitaParcial).toBe(true);
+    expect(c.lucroAproximado).toBe(true);
+    expect(c.avisoLucro).toMatch(/ONTEM/);
+    expect(c.avisoLucro).not.toMatch(/proporcao do que cada uma gastou/);
+  });
+
+  it("dá o ROAS dos dias consolidados, que é o comparável", () => {
+    const [c] = agregarPorCampanha([puraFolhaAg], "pub", semOntem, { campanhasDefasadas: true });
+    expect(c.roasConsolidado).toBeCloseTo(26.9 / 29.93, 3);
+  });
+
+  it("campanha que não gastou ontem não ganha marca nenhuma, mesmo defasada", () => {
+    const hoje = new Map([["7948602", { ...semOntem.get("7948602")!, cost: 68.54, clicks: 105, prints: 14619 }]]);
+    const [c] = agregarPorCampanha([puraFolhaAg], "pub", hoje, { campanhasDefasadas: true });
+    expect(c.receitaParcial).toBe(false);
+    expect(c.lucroAproximado).toBe(false);
+  });
+});
+
+/**
+ * "MS, LC, TT - Agências" em 13–19/11 no painel: 3 anúncios patrocinados,
+ * 100 cliques, R$ 34,91, receita R$ 251,37 (224,40 direta), 9 vendas
+ * atribuídas (8 diretas), ROAS 7,2x. Dois anúncios gastaram; o terceiro não.
+ */
+describe("campanha conferida contra o painel (dia consolidado)", () => {
+  const anuncio = (over: Partial<ItemParaCampanha>): ItemParaCampanha => ({
+    campaignId: "7469663", campaignName: "MS, LC, TT - Agências",
+    clicks: 0, prints: 0, cost: 0, directSales: 0, directUnits: 0,
+    totalSales: 0, totalUnits: 0, lucroLiquido: 0, lucroDiretoLiquido: 0,
+    diretoDisponivel: true, dailyBudget: 40, roasTarget: 15,
+    ...over,
+  });
+  const itens = [
+    anuncio({ clicks: 64, prints: 23056, cost: 22.1, directSales: 134.58, directUnits: 5, margemAntesAds: 0.2 }),
+    anuncio({ clicks: 36, prints: 6056, cost: 12.81, directSales: 89.82, directUnits: 2, margemAntesAds: 0.2 }),
+  ];
+  const reais = new Map([["7469663", {
+    clicks: 100, prints: 29112, cost: 34.91, receitaAtribuida: 251.37, receitaDireta: 224.4,
+    vendasAtribuidas: 9, vendasDiretas: 8, anunciosCadastrados: 3, nome: "MS, LC, TT - Agências",
+  }]]);
+
+  it("bate campo a campo: cliques, impressões, investido, receita, vendas, ROAS", () => {
+    const [c] = agregarPorCampanha(itens, "pub", reais);
+    expect(c.clicks).toBe(100);
+    expect(c.prints).toBe(29112);
+    expect(c.cost).toBeCloseTo(34.91, 2);
+    expect(c.receitaAtribuida).toBeCloseTo(251.37, 2);
+    expect(c.vendasAtribuidas).toBe(9);
+    expect(c.roasMlAds).toBeCloseTo(7.2, 1);
+    expect(c.dailyBudget).toBe(40);
+    expect(c.roasTarget).toBe(15);
+  });
+
+  it("anúncios: 3 cadastrados (o painel), 2 com gasto (o app contava só esses)", () => {
+    const [c] = agregarPorCampanha(itens, "pub", reais);
+    expect(c.anunciosCadastrados).toBe(3);
+    expect(c.anuncios).toBe(2);
+  });
+
+  it("modo pub: receita = venda direta da CAMPANHA, unidades diretas da campanha", () => {
+    const [c] = agregarPorCampanha(itens, "pub", reais);
+    expect(c.receita).toBeCloseTo(224.4, 2);
+    expect(c.unidades).toBe(8);
+  });
+
+  it("lucro = receita direta × margem dos produtos − investido", () => {
+    const [c] = agregarPorCampanha(itens, "pub", reais);
+    expect(c.lucroAposAds).toBeCloseTo(224.4 * 0.2 - 34.91, 2);
+    expect(c.margem).toBeCloseTo(((224.4 * 0.2 - 34.91) / 224.4) * 100, 2);
+    expect(c.lucroAproximado).toBe(false);
+  });
+
+  it("ROAS de equilíbrio = 1 ÷ margem antes de ads (20% → 5x)", () => {
+    const [c] = agregarPorCampanha(itens, "pub", reais);
+    expect(c.margemAntesAds).toBeCloseTo(0.2, 5);
+    expect(c.roasEquilibrio).toBeCloseTo(5, 5);
+  });
+
+  it("margem ≤ 0: nenhum ROAS salva — equilíbrio null, não infinito", () => {
+    const ruins = itens.map((i) => ({ ...i, margemAntesAds: -0.05 }));
+    const [c] = agregarPorCampanha(ruins, "pub", reais);
+    expect(c.roasEquilibrio).toBeNull();
+    expect(c.lucroAposAds).toBeLessThan(0);
+  });
+});
+
+describe("anúncio que trocou de campanha no período", () => {
+  /**
+   * As campanhas "- Agências" foram criadas em 12/11 e receberam anúncios
+   * que rodavam em campanhas antigas. O `/ads/search` carimba a linha inteira
+   * com a campanha ATUAL — a venda direta feita na antiga vinha junto.
+   */
+  const item: ItemParaCampanha = {
+    campaignId: "nova", campaignName: "Açaí - Agências",
+    clicks: 18, prints: 2116, cost: 6.36,
+    directSales: 120, directUnits: 3, totalSales: 300, totalUnits: 7,
+    lucroLiquido: 50, lucroDiretoLiquido: 20, diretoDisponivel: true,
+    margemAntesAds: 0.25,
+  };
+  const reais = new Map([["nova", {
+    clicks: 1, prints: 283, cost: 0.09, receitaAtribuida: 0, receitaDireta: 0, vendasAtribuidas: 0, vendasDiretas: 0,
+  }]]);
+
+  it("modo pub: a receita é a que o ML atribui a ESTA campanha (0), não a do anúncio (120)", () => {
+    const [c] = agregarPorCampanha([item], "pub", reais);
+    expect(c.receita).toBe(0);
+    expect(c.cost).toBeCloseTo(0.09, 2);
+    expect(c.lucroAposAds).toBeCloseTo(-0.09, 2);
+  });
+
+  it("e não chama isso de rateio — a receita já é da campanha", () => {
+    const [c] = agregarPorCampanha([item], "pub", reais);
+    expect(c.lucroAproximado).toBe(false);
+  });
+});
+
+describe("campanha sem nenhum anúncio com gasto", () => {
+  it("aparece na lista (o painel lista; 15 × 14 no app)", () => {
+    const reais = new Map([
+      ["7261169", { clicks: 0, prints: 754, cost: 0, receitaAtribuida: 0, nome: "Menta & Cereja - Full", anunciosCadastrados: 1 }],
+    ]);
+    const r = agregarPorCampanha([item({ campaignId: "outra" })], "pub", reais);
+    const c = r.find((x) => x.campaignId === "7261169")!;
+    expect(c).toBeDefined();
+    expect(c.campaignName).toBe("Menta & Cereja - Full");
+    expect(c.prints).toBe(754);
+    expect(c.anunciosCadastrados).toBe(1);
+    expect(c.lucroAposAds).toBeNull();
+    expect(c.motivoSemLucro).toMatch(/nao investiu/);
+  });
+
+  it("campanha parada (zero em tudo) continua fora — é ruído", () => {
+    const reais = new Map([["morta", { clicks: 0, prints: 0, cost: 0, receitaAtribuida: 0 }]]);
+    expect(agregarPorCampanha([item()], "pub", reais).some((c) => c.campaignId === "morta")).toBe(false);
+  });
+});
