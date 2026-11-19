@@ -456,7 +456,8 @@ export async function GET(req: Request) {
          * medido em 5 campanhas da conta, os dois so batem quando a venda
          * assistida e zero; no resto o app mostrava 6 contra 14 do ML.
          */
-        adUnitsAtribuidas: a.directUnits + a.indirectUnits,
+        // Unidades (o que o painel conta); itens distintos só se o ML não mandou unidade.
+        adUnitsAtribuidas: a.vendasAtribuidas ?? a.directUnits + a.indirectUnits,
         indirectUnits: a.indirectUnits,
         totalSales: v.receita, totalUnits: v.unidades,
         lucroAntesAds, lucroLiquido, custoDisponivel,

@@ -1,6 +1,7 @@
 import "server-only";
 import { fetchML } from "./fetch-ml";
 import { getValidMlAccessToken } from "@/lib/ml/getToken";
+import { METRICAS_CAMPANHA, metricasDaCampanha, type MetricasCampanha } from "@/lib/domain/ads-metricas-campanha";
 
 const ML_API = "https://api.mercadolibre.com";
 
@@ -87,6 +88,15 @@ function extrairLinhas(j: unknown): Record<string, unknown>[] {
 
 /** Número de uma métrica, esteja ela em row.metrics.X, row.metrics_summary.X ou row.X. */
 function metrica(row: Record<string, unknown>, chave: string): number {
+  return metricaOuNull(row, chave) ?? 0;
+}
+
+/**
+ * Igual a `metrica`, mas distingue "o ML mandou zero" de "o ML não mandou o
+ * campo". Para unidades vendidas isso importa: zero é um fato, ausente é
+ * "pergunte de outro jeito" — tratar os dois como 0 apagaria vendas reais.
+ */
+function metricaOuNull(row: Record<string, unknown>, chave: string): number | null {
   const fontes = [row.metrics, row.metrics_summary, row].filter(
     (f): f is Record<string, unknown> => !!f && typeof f === "object",
   );
@@ -94,7 +104,7 @@ function metrica(row: Record<string, unknown>, chave: string): number {
     const v = f[chave];
     if (v != null && v !== "") return Number(v) || 0;
   }
-  return 0;
+  return null;
 }
 
 const CHAVES_ID = ["item_id", "mlb_item_id", "item", "id"] as const;
@@ -361,8 +371,14 @@ export type AdItemFull = {
   directSales: number; // receita das vendas DIRETAS do anúncio
   directUnits: number; // unidades diretas
   indirectSales: number;
-  /** Unidades de venda ASSISTIDA. direct + indirect = "Vendas atribuidas" do painel do ML. */
+  /** ITENS de venda ASSISTIDA (produtos distintos, não unidades). */
   indirectUnits: number;
+  /**
+   * "Vendas atribuídas" como o painel do ML conta: UNIDADES, direta +
+   * assistida. `null` quando o ML não devolveu campo de unidade (degrau de
+   * métricas mais simples) — aí quem chama cai em itens diretos + assistidos.
+   */
+  vendasAtribuidas: number | null;
   /** campaign_id, quando a própria linha de métricas já trouxe — evita uma
    *  chamada extra por item em getAdsSettingsByItem. */
   campaignId: string;
@@ -392,8 +408,10 @@ export type AdItemCampanha = {
   units: number;
   directSales: number;
   directUnits: number;
-  /** Unidades de venda ASSISTIDA. direta + assistida = "Vendas atribuidas" do ML. */
+  /** ITENS de venda ASSISTIDA (produtos distintos, não unidades). */
   indirectUnits: number;
+  /** Unidades atribuídas (direta + assistida) nesta campanha; ver AdItemFull. */
+  vendasAtribuidas: number | null;
 };
 
 /**
@@ -403,21 +421,51 @@ export type AdItemCampanha = {
  * campanhas da conta — onde a venda indireta era zero os dois batiam, e onde
  * nao era o app mostrava 6 contra 14 do ML.
  */
+/** Unidades atribuídas da linha (direta + assistida), ou null se o ML não mandou. */
+function unidadesAtribuidas(row: Record<string, unknown>): number | null {
+  const total = metricaOuNull(row, "units_quantity");
+  if (total != null) return total;
+  const d = metricaOuNull(row, "direct_units_quantity");
+  const i = metricaOuNull(row, "indirect_units_quantity");
+  return d == null && i == null ? null : (d ?? 0) + (i ?? 0);
+}
+
 const AD_METRICS = "clicks,prints,ctr,cost,cpc,acos,cvr,total_amount,direct_amount,indirect_amount,direct_items_quantity,indirect_items_quantity,advertising_items_quantity";
+
+/**
+ * Degraus de métricas por anúncio, do mais completo ao essencial.
+ *
+ * O primeiro acrescenta as UNIDADES (`*_units_quantity`): é o que o painel do
+ * ML conta em "Vendas atribuídas". `*_items_quantity` conta produtos
+ * distintos no carrinho e fica abaixo sempre que alguém leva mais de uma
+ * unidade.
+ *
+ * Antes havia só dois degraus — o completo e o essencial (sem receita
+ * nenhuma). Uma métrica nova recusada pelo ML zeraria a receita da tela
+ * inteira; com o degrau do meio, o pior caso volta ao que já funcionava.
+ */
+const AD_METRICS_DEGRAUS = [
+  `${AD_METRICS},direct_units_quantity,indirect_units_quantity,units_quantity`,
+  AD_METRICS,
+  "clicks,prints,ctr,cost,cpc,acos",
+];
 
 /** Métricas COMPLETAS de Product Ads por item no período (pra aba de análise). */
 export async function getAdsFullByItem(
   from: string, to: string, mlbs: string[] = [],
 ): Promise<AdItemFull[]> {
   const token = await getValidMlAccessToken();
-  let rows: Record<string, unknown>[];
-  try {
-    rows = await adItemRows(from, to, AD_METRICS);
-  } catch (e) {
-    // Uma métrica inválida derruba a busca inteira → tenta o conjunto essencial.
-    if (String(e).includes("ml_ads_http_4")) rows = await adItemRows(from, to, "clicks,prints,ctr,cost,cpc,acos");
-    else throw e;
+  let rows: Record<string, unknown>[] | null = null;
+  for (let i = 0; i < AD_METRICS_DEGRAUS.length; i++) {
+    try {
+      rows = await adItemRows(from, to, AD_METRICS_DEGRAUS[i]);
+      break;
+    } catch (e) {
+      // Só métrica recusada (4xx) desce um degrau; o resto é erro de verdade.
+      if (!String(e).includes("ml_ads_http_4") || i === AD_METRICS_DEGRAUS.length - 1) throw e;
+    }
   }
+  if (!rows) throw new Error("ml_ads_sem_dados");
   rows = await resolverMlb(rows, token, mlbs);
 
   /**
@@ -432,6 +480,7 @@ export async function getAdsFullByItem(
     itemId: string; title: string; status: string; campaignId: string;
     clicks: number; prints: number; cost: number; sales: number; units: number;
     directSales: number; directUnits: number; indirectSales: number; indirectUnits: number;
+    vendasAtribuidas: number | null;
     /** Mesmas métricas fatiadas por campanha — ver AdItemFull.campanhas. */
     porCampanha: Map<string, AdItemCampanha>;
   };
@@ -443,6 +492,7 @@ export async function getAdsFullByItem(
       itemId, title: "", status: "", campaignId: "",
       clicks: 0, prints: 0, cost: 0, sales: 0, units: 0,
       directSales: 0, directUnits: 0, indirectSales: 0, indirectUnits: 0,
+      vendasAtribuidas: null,
       porCampanha: new Map<string, AdItemCampanha>(),
     };
     if (!cur.title) cur.title = String(row.title ?? row.name ?? row.campaign_name ?? "");
@@ -469,10 +519,13 @@ export async function getAdsFullByItem(
     cur.directUnits += metrica(row, "direct_items_quantity");
     cur.indirectSales += metrica(row, "indirect_amount");
     cur.indirectUnits += metrica(row, "indirect_items_quantity");
+    const vendasLinha = unidadesAtribuidas(row);
+    if (vendasLinha != null) cur.vendasAtribuidas = (cur.vendasAtribuidas ?? 0) + vendasLinha;
 
     const fatia: AdItemCampanha = cur.porCampanha.get(linhaCampanha) ?? {
       campaignId: linhaCampanha,
       clicks: 0, prints: 0, cost: 0, sales: 0, units: 0, directSales: 0, directUnits: 0, indirectUnits: 0,
+      vendasAtribuidas: null,
     };
     fatia.clicks += metrica(row, "clicks");
     fatia.prints += metrica(row, "prints");
@@ -482,6 +535,7 @@ export async function getAdsFullByItem(
     fatia.directSales += metrica(row, "direct_amount");
     fatia.directUnits += metrica(row, "direct_items_quantity");
     fatia.indirectUnits += metrica(row, "indirect_items_quantity");
+    if (vendasLinha != null) fatia.vendasAtribuidas = (fatia.vendasAtribuidas ?? 0) + vendasLinha;
     cur.porCampanha.set(linhaCampanha, fatia);
 
     porItem.set(itemId, cur);
@@ -505,6 +559,7 @@ export async function getAdsFullByItem(
     directUnits: a.directUnits,
     indirectSales: a.indirectSales,
     indirectUnits: a.indirectUnits,
+    vendasAtribuidas: a.vendasAtribuidas,
     campanhas: Array.from(a.porCampanha.values()).sort((x, y) => y.cost - x.cost),
   }));
 }
@@ -620,7 +675,7 @@ export async function getAdsSettingsByItem(
      * são estas que batem com o painel do Mercado Ads. `null` quando o ML não
      * respondeu com métricas, e aí a tela cai no que dá pra derivar do anúncio.
      */
-    real: { clicks: number; prints: number; cost: number; receitaAtribuida: number } | null;
+    real: MetricasCampanha | null;
   }[];
   anunciosTotal: number;
   anunciosNoPeriodo: number;
@@ -670,7 +725,7 @@ export async function getAdsSettingsByItem(
   // precisa ser feita na URL do anunciante certo.
   const advDaCampanha = new Map<string, Adv>();
   /** campaignId → métricas do PRÓPRIO recurso de campanha (as que batem com o painel do ML). */
-  const metricasReaisPorCampanha = new Map<string, { clicks: number; prints: number; cost: number; receitaAtribuida: number }>();
+  const metricasReaisPorCampanha = new Map<string, MetricasCampanha>();
   const camposCrus: Record<string, unknown>[] = [];
   for (const a of todosAdvs) {
     /**
@@ -691,30 +746,37 @@ export async function getAdsSettingsByItem(
      *
      * Pedindo as métricas aqui, a campanha passa a trazer o próprio número.
      */
-    const filtroPeriodo = periodo
-      ? `&date_from=${periodo.from}&date_to=${periodo.to}&metrics=clicks,prints,cost,direct_amount,indirect_amount`
-      : "";
-    const linhas = await buscar(
-      (o) => [
-        `${base(a)}/campaigns/search?limit=50&offset=${o}${filtroPeriodo}`,
-        `${legado(a)}/campaigns?limit=50&offset=${o}${filtroPeriodo}`,
-      ],
-      token,
-    ).catch(() => []);
+    /**
+     * Do conjunto de métricas mais completo ao mínimo (ver METRICAS_CAMPANHA):
+     * uma métrica desconhecida faz o ML recusar a chamada inteira, e cair
+     * direto no "sem métricas" apagaria até o investimento da campanha.
+     */
+    const conjuntos = periodo ? METRICAS_CAMPANHA : [""];
+    let linhas: Record<string, unknown>[] = [];
+    for (const metricas of conjuntos) {
+      const filtroPeriodo = periodo
+        ? `&date_from=${periodo.from}&date_to=${periodo.to}&metrics=${metricas}`
+        : "";
+      const r = await buscar(
+        (o) => [
+          `${base(a)}/campaigns/search?limit=50&offset=${o}${filtroPeriodo}`,
+          `${legado(a)}/campaigns?limit=50&offset=${o}${filtroPeriodo}`,
+        ],
+        token,
+      ).catch((e) => {
+        tentativas.push({ url: `[metricas-campanha] ${metricas}`, status: Number(String(e).match(/http_(\d+)/)?.[1] ?? -1) });
+        return null;
+      });
+      if (r) { linhas = r; break; }
+    }
     for (const c of linhas) {
       const id = texto(primeiro(c, ["id", "campaign_id"]));
       if (!id) continue;
       advDaCampanha.set(id, a);
       // Só existe quando o período foi informado (ver filtroPeriodo acima).
-      if (periodo) {
-        const cost = metrica(c, "cost");
-        const clicks = metrica(c, "clicks");
-        const prints = metrica(c, "prints");
-        const atribuida = metrica(c, "direct_amount") + metrica(c, "indirect_amount");
-        // Guarda mesmo zerado: campanha que não gastou no período é um fato,
-        // e distinguir "não gastou" de "não perguntei" é o ponto todo.
-        metricasReaisPorCampanha.set(id, { clicks, prints, cost, receitaAtribuida: atribuida });
-      }
+      // Guarda mesmo zerado: campanha que não gastou no período é um fato,
+      // e distinguir "não gastou" de "não perguntei" é o ponto todo.
+      if (periodo) metricasReaisPorCampanha.set(id, metricasDaCampanha(c));
     }
     camposCrus.push(...linhas);
   }
