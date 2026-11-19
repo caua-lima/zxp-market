@@ -23,6 +23,11 @@ export type AdItem = {
   /** false = sem venda vinculada no período pra calcular a margem do "direto"
    *  — não é prejuízo real, é falta de dado (ver route.ts). */
   diretoDisponivel: boolean;
+  /**
+   * Margem antes de ads (fração) do anúncio ou, sem venda própria, do
+   * produto. `null` = sem custo/venda pra medir. Base do lucro por campanha.
+   */
+  margemAntesAds?: number | null;
   /** Todo item vendido tem custo cadastrado — sem isso não há lucro a afirmar. */
   custoDisponivel: boolean;
   dailyBudget: number; roasTarget: number; acosTarget: number;
@@ -43,6 +48,8 @@ export type AdItemCampanhaUI = {
   sales: number; units: number;
   directSales: number; directUnits: number;
   indirectUnits: number;
+  /** Unidades atribuídas (direta + assistida), como o painel conta. */
+  vendasAtribuidas?: number | null;
 };
 
 export const STATUS_META: Record<StatusAnuncio, { label: string; cor: string; bg: string }> = {

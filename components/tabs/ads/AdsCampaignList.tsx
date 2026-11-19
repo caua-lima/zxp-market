@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Modal from "@/components/Modal";
 import { fmtBRL } from "@/lib/domain/calc";
 import { agregarPorCampanha, rotuloCampanha, type CampanhaAgregada, type ItemParaCampanha, type MetricasReais } from "@/lib/domain/ads-campaigns";
+import type { Consolidacao } from "@/lib/domain/ads-consolidacao";
 import { corMargem, corRoas, num, type Modo } from "./ads-types";
 import AdsFunnel from "./AdsFunnel";
 import t from "./AdsTable.module.css";
@@ -14,7 +15,7 @@ import t from "./AdsTable.module.css";
  * campanha tem seu próprio "Ver performance", que abre o mesmo funil aplicado
  * só a ela — mesmas fórmulas, mesmo componente, só o recorte muda.
  */
-export default function AdsCampaignList({ itens, modo, metricasReais }: {
+export default function AdsCampaignList({ itens, modo, metricasReais, consolidacao }: {
   itens: ItemParaCampanha[];
   modo: Modo;
   /**
@@ -24,12 +25,19 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
    * mais de uma campanha).
    */
   metricasReais?: Map<string, MetricasReais>;
+  /**
+   * O ML ainda não consolidou ONTEM no recurso de campanha. Sem isto a tela
+   * comparava uma fonte sem ontem com outra com ontem e acendia "rateado" em
+   * quase toda campanha (ver lib/domain/ads-consolidacao.ts).
+   */
+  consolidacao?: Consolidacao | null;
 }) {
   // "log" (logística) não tem recorte próprio de campanha — cai no geral.
   const modoAgg: "pub" | "geral" = modo === "pub" ? "pub" : "geral";
+  const defasadas = !!consolidacao?.pendente;
   const campanhas = useMemo(
-    () => agregarPorCampanha(itens, modoAgg, metricasReais),
-    [itens, modoAgg, metricasReais],
+    () => agregarPorCampanha(itens, modoAgg, metricasReais, { campanhasDefasadas: defasadas }),
+    [itens, modoAgg, metricasReais, defasadas],
   );
   const [aberta, setAberta] = useState<CampanhaAgregada | null>(null);
 
@@ -51,6 +59,17 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
         </span>
       </div>
 
+      {/* Diz o que falta e quando volta a bater, em vez de deixar a diferença parecer erro de conta. */}
+      {defasadas && consolidacao && (
+        <div className="panel-sub" role="status" style={{ margin: "0 0 10px", padding: "8px 10px", borderRadius: 8, background: "var(--warning-soft)", color: "var(--text)" }}>
+          <b>⏳ O Mercado Livre ainda não liberou as vendas de ontem ({consolidacao.dia.split("-").reverse().join("/")}) na API.</b>{" "}
+          Investimento e cliques já batem com o painel ({fmtBRL(consolidacao.custoAnuncios)} gastos ontem);
+          a receita atribuída de ontem ainda não chegou, então receita, ROAS e lucro deste período estão menores do que serão.
+          Nas campanhas marcadas, o ROAS &quot;consolidado&quot; é o dos dias que o ML já fechou. Para decidir verba,
+          use um período que termine anteontem.
+        </div>
+      )}
+
       <div className="table-wrapper" style={{ border: "none" }}>
         <table className={`tbl-modern tbl-cards ${t.tabela}`}>
           <thead>
@@ -71,9 +90,13 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
                 <td className={t.campanha}>
                   <span className={t.topo}><span className={t.nome} title={c.campaignName || c.campaignId}>{rotuloCampanha(c.campaignName)}</span></span>
                   <span className={t.produto}>
-                    {c.anuncios} anúncio(s) · {num(c.clicks)} cliques
+                    {/* Cadastrados = o que o painel do ML mostra; "com gasto" = quem entrou na conta do período. */}
+                    {c.anunciosCadastrados ?? c.anuncios} anúncio(s)
+                    {c.anunciosCadastrados != null && c.anunciosCadastrados !== c.anuncios && ` (${c.anuncios} com gasto)`}
+                    {" · "}{num(c.clicks)} cliques
                     {/* Um anúncio desta campanha roda em outra também: o "≈" do lucro e esta marca dizem o mesmo fato. */}
                     {c.atribuicaoIncerta && <span title={c.avisoLucro ?? undefined} style={{ marginLeft: 6, cursor: "help", color: "var(--warning)" }}>⚠ rateado</span>}
+                    {c.receitaParcial && <span title={c.avisoLucro ?? undefined} style={{ marginLeft: 6, cursor: "help", color: "var(--warning)" }}>⏳ receita parcial</span>}
                   </span>
                 </td>
                 <td data-label="Verba · meta">
@@ -83,7 +106,15 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
                   </div>
                 </td>
                 <td data-label="Investido"><div className={t.celula}><span className={t.valor}>{fmtBRL(c.cost)}</span></div></td>
-                <td data-label="Receita"><div className={t.celula}><span className={t.valor}>{fmtBRL(c.receita)}</span></div></td>
+                <td data-label="Receita">
+                  <div className={t.celula}>
+                    <span className={t.valor}>{fmtBRL(c.receita)}</span>
+                    {/* "Vendas atribuídas" do painel: unidades, direta + assistida. */}
+                    <span className={t.sub} title={`Receita atribuída total no Mercado Ads: ${fmtBRL(c.receitaAtribuida)} (direta + assistida).`}>
+                      {num(c.vendasAtribuidas)} vendas atribuídas
+                    </span>
+                  </div>
+                </td>
                 {/* Dois ROAS de propósito: o do modo e o do painel do Mercado Ads (receita atribuída total). Sem o segundo,
                     o daqui parece quebrado ao lado do ML (4,71x aqui × 10,77x lá, mesma campanha). */}
                 <td data-label="ROAS">
@@ -95,6 +126,21 @@ export default function AdsCampaignList({ itens, modo, metricasReais }: {
                         title={`No Mercado Ads esta campanha aparece com ROAS ${num(c.roasMlAds, 2)}x, porque lá a conta usa a receita atribuída TOTAL (${fmtBRL(c.receitaAtribuida)}: clique direto + venda assistida). Aqui a base é ${fmtBRL(c.receita)}. Os dois estão certos e respondem perguntas diferentes.`}
                       >
                         no ML {num(c.roasMlAds, 2)}x
+                      </span>
+                    )}
+                    {c.receitaParcial && c.roasConsolidado != null && (
+                      <span className={`${t.sub} ${t.ajuda}`} title="ROAS do Mercado Ads só dos dias que o ML já consolidou — sem o investimento de ontem, que ainda não tem a venda de ontem do lado.">
+                        consolidado {num(c.roasConsolidado, 2)}x
+                      </span>
+                    )}
+                    {/* O ROAS que paga a conta: abaixo dele a campanha dá prejuízo com a margem real do produto. */}
+                    {c.roasEquilibrio != null && (
+                      <span
+                        className={`${t.sub} ${t.ajuda}`}
+                        style={{ color: c.roas != null && c.roas >= c.roasEquilibrio ? "var(--green)" : "var(--red-text)" }}
+                        title={`ROAS mínimo pra não dar prejuízo: 1 ÷ margem antes de ads (${num((c.margemAntesAds ?? 0) * 100, 1)}%, já com custo, imposto, taxa do ML e frete). Na mesma base da coluna ROAS.`}
+                      >
+                        mín. {num(c.roasEquilibrio, 2)}x
                       </span>
                     )}
                   </div>

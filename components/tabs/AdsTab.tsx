@@ -16,6 +16,8 @@ import AdsModeDescription from "@/components/tabs/ads/AdsModeDescription";
 import AdsOverview, { type OverviewTotais } from "@/components/tabs/ads/AdsOverview";
 import AdsFunnel from "@/components/tabs/ads/AdsFunnel";
 import AdsCampaignList from "@/components/tabs/ads/AdsCampaignList";
+import type { MetricasReais } from "@/lib/domain/ads-campaigns";
+import type { Consolidacao } from "@/lib/domain/ads-consolidacao";
 import AdsParticipacao from "@/components/tabs/ads/AdsParticipacao";
 import AdsDecisionPanel from "@/components/tabs/ads/AdsDecisionPanel";
 import AdsChat from "@/components/tabs/ads/AdsChat";
@@ -149,8 +151,12 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
   const [campanhasTotal, setCampanhasTotal] = useState(0);
   const [campanhasResumo, setCampanhasResumo] = useState<{
     id: string; name: string; status: string; gasto: number; totalAds: number;
-    real?: { clicks: number; prints: number; cost: number; receitaAtribuida: number } | null;
+    /** "N anúncios patrocinados" do painel — inclui quem não gastou no período. */
+    anunciosCadastrados?: number;
+    real?: MetricasReais | null;
   }[]>([]);
+  /** O ML ainda não consolidou ONTEM na API pública (ver lib/domain/ads-consolidacao.ts). */
+  const [consolidacao, setConsolidacao] = useState<Consolidacao | null>(null);
   const [anunciosTotal, setAnunciosTotal] = useState(0);
   const [anunciosNoPeriodo, setAnunciosNoPeriodo] = useState(0);
   const [anunciosContagemFalhou, setAnunciosContagemFalhou] = useState(false);
@@ -163,8 +169,10 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
    * um anúncio roda em mais de uma campanha (ver agregarPorCampanha).
    */
   const metricasReaisPorCampanha = useMemo(() => {
-    const m = new Map<string, { clicks: number; prints: number; cost: number; receitaAtribuida: number }>();
-    for (const c of campanhasResumo) if (c.id && c.real) m.set(String(c.id), c.real);
+    const m = new Map<string, MetricasReais>();
+    for (const c of campanhasResumo) {
+      if (c.id && c.real) m.set(String(c.id), { ...c.real, nome: c.name, anunciosCadastrados: c.anunciosCadastrados });
+    }
     return m;
   }, [campanhasResumo]);
 
@@ -192,6 +200,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
         setSemGastoNoPeriodo(j.semGastoNoPeriodo ?? 0);
         setCampanhasTotal(j.campanhasTotal ?? 0);
         setCampanhasResumo(j.campanhasResumo ?? []);
+        setConsolidacao(j.consolidacao ?? null);
         setAnunciosTotal(j.anunciosTotal ?? 0);
         setAnunciosNoPeriodo(j.anunciosNoPeriodo ?? 0);
         setAnunciosContagemFalhou(!!j.anunciosContagemFalhou);
@@ -529,7 +538,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
 
                       {/* O mesmo funil, recortado por campanha — o de cima
                           soma tudo e esconde a campanha que está sangrando. */}
-                      <AdsCampaignList itens={items} modo={modo} metricasReais={metricasReaisPorCampanha} />
+                      <AdsCampaignList itens={items} modo={modo} metricasReais={metricasReaisPorCampanha} consolidacao={consolidacao} />
 
                       <div className="note" style={{ marginTop: 12 }}>
                         <b>Orçamento é da campanha, não do anúncio.</b> Ele aparece só aqui de

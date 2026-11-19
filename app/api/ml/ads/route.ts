@@ -474,6 +474,13 @@ export async function GET(req: Request) {
         totalSales: v.receita, totalUnits: v.unidades,
         lucroAntesAds, lucroLiquido, custoDisponivel,
         lucroDiretoAntesAds, lucroDiretoLiquido, diretoDisponivel,
+        /**
+         * A margem em si, e não só o lucro já multiplicado pela venda direta
+         * do anúncio: a tela aplica sobre a venda que o ML atribui à CAMPANHA
+         * (ver agregarPorCampanha). `null` quando não há margem — mesma regra
+         * do `diretoDisponivel`.
+         */
+        margemAntesAds: diretoDisponivel ? margemItem : null,
         // Configuração da campanha do anúncio (0/"" quando não achamos a campanha).
         dailyBudget: c?.dailyBudget ?? 0,
         roasTarget: c?.roasTarget ?? 0,
