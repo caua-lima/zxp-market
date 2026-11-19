@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { caixasOcupadas, etiquetaAuxiliar, marcarEtiqueta, regiaoLivre, semMarcacao, textoSeguro } from "./marcacao";
+import { arranjoQueCabe, caixasOcupadas, etiquetaAuxiliar, marcarEtiqueta, regiaoLivre, semMarcacao, textoSeguro } from "./marcacao";
 
 const base = (extra = "") => [
   "^XA", "^CI28", "^LH5,15",
@@ -40,8 +40,9 @@ describe("marcarEtiqueta — nunca cobre o que o ML desenhou", () => {
     const r = marcarEtiqueta(base(), "TT^FS^XA");
     expect(r.ok && r.zpl.includes("^FDTTFSXA^FS")).toBe(true);
   });
-  it("texto longo demais pra caixa: não marca ilegível", () => {
-    expect(marcarEtiqueta(base(), "2TT + BM + MS + LC + PF").ok).toBe(false);
+  it("5 produtos ainda cabem empilhados; 7 com quantidade já não — não marca ilegível", () => {
+    expect(marcarEtiqueta(base(), "2TT + BM + MS + LC + PF").ok).toBe(true);
+    expect(marcarEtiqueta(base(), "2TT + 3BM + 4MS + 2LC + 5PF + 2AH + 3AC").ok).toBe(false);
   });
 });
 
@@ -52,5 +53,30 @@ describe("etiquetaAuxiliar", () => {
     expect(z).toContain("^FD2TT^FS");
     expect(z).toContain("Envio 90000000001");
     expect(z).not.toMatch(/Rua|CEP/);
+  });
+});
+
+describe("pacote com vários produtos (envio 48573153721: TT + MS + PF)", () => {
+  it("empilha as siglas no canto em vez de mandar etiqueta auxiliar", () => {
+    const r = marcarEtiqueta(base(), "TT + MS + PF");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.zpl).toMatch(/\^FDTT\+MS\+\^FS[\s\S]*\^FDPF\^FS/);
+  });
+
+  it("cabe até no canto estreito ao lado do avião", () => {
+    const r = marcarEtiqueta(base(AVIAO), "TT + MS + PF");
+    expect(r.ok && r.regiao.x).toBe(722);
+    if (r.ok) expect(r.zpl).toMatch(/\^FDTT\+\^FS[\s\S]*\^FDMS\+\^FS[\s\S]*\^FDPF\^FS/);
+  });
+
+  it("arranjoQueCabe: uma linha quando cabe, empilha quando não", () => {
+    expect(arranjoQueCabe("2TT", { x: 640, y: 10, w: 150, h: 120 })?.linhas).toEqual(["2TT"]);
+    expect(arranjoQueCabe("TT + MS + PF", { x: 722, y: 10, w: 78, h: 120 })).toEqual({ linhas: ["TT+", "MS+", "PF"], fonte: 38 });
+  });
+
+  it("a caixa preta não cresce além da altura (espessura = menor lado)", () => {
+    const r = marcarEtiqueta(base(), "MS");
+    expect(r.ok && r.zpl).toMatch(/\^GB150,120,120\^FS/);
   });
 });

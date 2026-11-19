@@ -121,9 +121,41 @@ export function textoSeguro(texto: string): string {
 
 /** Altura de fonte que cabe na caixa (A0 condensada: ~0,55 da altura por caractere), ou null se não cabe legível. */
 export function fonteQueCabe(texto: string, caixa: Caixa): number | null {
-  const n = Math.max(texto.length, 1);
-  const h = Math.min(Math.floor(caixa.h * 0.75), Math.floor((caixa.w - 8) / (n * 0.55)));
-  return h >= 30 ? h : null;
+  return arranjoQueCabe(texto, caixa)?.fonte ?? null;
+}
+
+/** Menor letra que ainda se lê na separação (pontos, 203 dpi ≈ 3,8 mm). */
+const FONTE_MINIMA = 30;
+
+/**
+ * Como escrever o texto na caixa com a MAIOR letra possível: numa linha só
+ * ("2TT + BM"), numa linha sem espaços ("TT+MS+PF") ou empilhando as siglas
+ * (TT+ / MS+ / PF). Antes era só a primeira: pacote com 3 produtos diferentes
+ * não cabia e ia pra etiqueta auxiliar (18/11/2026, envio 48573153721) — uma
+ * etiqueta a mais pra imprimir e colar, e fácil de perder.
+ */
+export function arranjoQueCabe(texto: string, caixa: Caixa): { linhas: string[]; fonte: number } | null {
+  const partes = texto.split("+").map((x) => x.trim()).filter(Boolean);
+  const candidatos: string[][] = [[texto], [texto.replace(/\s+/g, "")]];
+  for (let k = 2; k <= partes.length; k++) {
+    const porLinha = Math.ceil(partes.length / k);
+    const linhas: string[] = [];
+    for (let i = 0; i < partes.length; i += porLinha) linhas.push(partes.slice(i, i + porLinha).join("+"));
+    // Quem continua a lista leva o "+" no fim da linha de cima: "TT+" / "MS+" / "PF".
+    candidatos.push(linhas.map((l, i) => (i < linhas.length - 1 ? `${l}+` : l)));
+  }
+  let melhor: { linhas: string[]; fonte: number } | null = null;
+  for (const linhas of candidatos) {
+    const maior = Math.max(...linhas.map((l) => l.length), 1);
+    const fonte = Math.min(
+      Math.floor(caixa.h * 0.75),
+      Math.floor((caixa.h - 6) / linhas.length),
+      Math.floor((caixa.w - 8) / (maior * 0.55)),
+    );
+    if (fonte < FONTE_MINIMA) continue;
+    if (!melhor || fonte > melhor.fonte) melhor = { linhas, fonte };
+  }
+  return melhor;
 }
 
 export type ResultadoMarcacao =
@@ -138,11 +170,21 @@ export function marcarEtiqueta(zpl: string, textoBruto: string): ResultadoMarcac
   if (!/\^XZ/.test(limpo)) return { ok: false, motivo: "etiqueta sem ^XZ" };
   for (const regiao of REGIOES_CANDIDATAS) {
     if (regiao !== regiaoLivre(limpo, [regiao])) continue;
-    const fonte = fonteQueCabe(texto, regiao);
-    if (!fonte) continue;
-    const yTexto = regiao.y + Math.max(Math.floor((regiao.h - fonte) / 2), 0);
-    const bloco = `${INICIO}\n^FO${regiao.x},${regiao.y}^GB${regiao.w},${regiao.h},${regiao.w}^FS\n`
-      + `^FO${regiao.x},${yTexto}^A0N,${fonte},${fonte}^FB${regiao.w},1,0,C^FR^FD${texto}^FS\n${FIM}\n`;
+    const arranjo = arranjoQueCabe(texto, regiao);
+    if (!arranjo) continue;
+    const { linhas, fonte } = arranjo;
+    // Uma linha por campo, cada uma na sua altura. Um ^FB de várias linhas
+    // deixa o espaçamento por conta da impressora/motor (medido no Zebrash:
+    // ~1,5× a fonte) e o texto vazava pra fora da caixa preta.
+    const passo = Math.floor((regiao.h - 6) / linhas.length);
+    const y0 = regiao.y + 3 + Math.max(Math.floor((passo - fonte) / 2), 0);
+    const campos = linhas.map((l, i) =>
+      `^FO${regiao.x},${y0 + i * passo}^A0N,${fonte},${fonte}^FB${regiao.w},1,0,C^FR^FD${l}^FS`).join("\n");
+    // Espessura = o MENOR lado: no ZPL, espessura maior que a altura faz a caixa
+    // crescer até a espessura (era 150 numa caixa de 120 e encostava no
+    // quadro "Despachar" logo abaixo).
+    const preenchimento = Math.min(regiao.w, regiao.h);
+    const bloco = `${INICIO}\n^FO${regiao.x},${regiao.y}^GB${regiao.w},${regiao.h},${preenchimento}^FS\n${campos}\n${FIM}\n`;
     const ultimo = limpo.lastIndexOf("^XZ");
     return { ok: true, zpl: limpo.slice(0, ultimo) + bloco + limpo.slice(ultimo), regiao };
   }
