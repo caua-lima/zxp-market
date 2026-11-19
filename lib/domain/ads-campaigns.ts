@@ -412,10 +412,14 @@ export function agregarPorCampanha(
        */
       const atribuicaoIncerta = usarReal && !custoBate(c.cost, real.cost);
       /**
-       * Defasada e com investimento acima do consolidado: o investido de
-       * ontem já entrou nesta linha, a venda de ontem ainda não.
+       * Defasada: a venda atribuída de ontem ainda não está na API para
+       * NENHUMA campanha — inclusive as que quase não gastaram ontem, porque a
+       * venda de ontem pode vir de um clique de dias antes. Medido: Pura
+       * Folha - Full gastou R$ 0,97 em 18/11 e recebeu R$ 194,61 de venda
+       * atribuída nesse dia. Marcar só pela diferença de custo deixava essa
+       * campanha com cara de número fechado.
        */
-      const receitaParcial = real != null && defasadas && !custoBate(c.cost, real.cost) && c.cost > real.cost;
+      const receitaParcial = defasadas && (c.cost > 0 || (real?.cost ?? 0) > 0);
 
       const prints = usarReal ? real.prints : c.prints;
       const clicks = usarReal ? real.clicks : c.clicks;

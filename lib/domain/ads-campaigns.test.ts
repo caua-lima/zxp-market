@@ -460,11 +460,17 @@ describe("ML sem ONTEM consolidado — não é rateio", () => {
     expect(c.roasConsolidado).toBeCloseTo(26.9 / 29.93, 3);
   });
 
-  it("campanha que não gastou ontem não ganha marca nenhuma, mesmo defasada", () => {
-    const hoje = new Map([["7948602", { ...semOntem.get("7948602")!, cost: 68.54, clicks: 105, prints: 14619 }]]);
-    const [c] = agregarPorCampanha([puraFolhaAg], "pub", hoje, { campanhasDefasadas: true });
+  it("campanha que quase não gastou ontem TAMBÉM fica parcial — a venda de ontem pode ser de clique antigo", () => {
+    // Pura Folha - Full: R$ 0,97 de gasto em 18/11, R$ 194,61 de venda atribuída no mesmo dia.
+    const quaseNada = new Map([["7948602", { ...semOntem.get("7948602")!, cost: 67.57, clicks: 103, prints: 14400 }]]);
+    const [c] = agregarPorCampanha([puraFolhaAg], "pub", quaseNada, { campanhasDefasadas: true });
+    expect(c.receitaParcial).toBe(true);
+    expect(c.atribuicaoIncerta).toBe(false);
+  });
+
+  it("sem defasagem nada fica parcial", () => {
+    const [c] = agregarPorCampanha([puraFolhaAg], "pub", semOntem);
     expect(c.receitaParcial).toBe(false);
-    expect(c.lucroAproximado).toBe(false);
   });
 });
 
