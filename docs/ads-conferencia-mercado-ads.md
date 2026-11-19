@@ -94,3 +94,38 @@ A receita atribuída de **ontem** não existe na API pública enquanto o ML não
 consolida o dia (medido às 06:45; o painel usa uma API interna, com dado ao
 vivo). Nesse intervalo o app não tem de onde tirar esse número. Nesse caso o
 app avisa e mostra o ROAS dos dias já consolidados, sem esconder a diferença.
+
+## Depois das correções (simulado com os dados capturados às 06:45)
+
+Rodando a agregação nova sobre as mesmas respostas do ML (13–19/11), com a
+defasagem de ontem detectada:
+
+| | antes | depois | painel ML |
+|---|---|---|---|
+| Campanhas listadas | 14 | **15** | 15 |
+| "⚠ rateado" | 13 | **0** | — |
+| Investido somado | 274,83 | **407,95** | 406,84 (407 com as excluídas) |
+| Cliques/investido por campanha iguais ao painel | 0 de 14 | **12 de 15** | — |
+| Anúncios MS, LC, TT | 2 | **3** | 3 |
+| Receita/ROAS de ontem | ausente, sem aviso | ausente, **marcada "⏳ receita parcial"** + ROAS consolidado | — |
+
+As 3 campanhas que ainda diferem em investido nessa janela (Menta & Cereja,
+Abacaxi & Hortelã e Boldo & Menta - Agências: +R$ 0,74, +0,17, +0,20) têm
+anúncio que gastou alguns centavos em outra campanha no começo do período.
+Com ontem pendente, o app soma os anúncios e leva esse gasto junto. Quando o ML
+consolida, o app volta a usar o recurso de campanha, que bate centavo por
+centavo (medido em 06–12/11 e em "hoje").
+
+## Ainda não verificado contra a API real
+
+O app local não roda sem o `.env.local`, então três coisas só são confirmadas
+depois do deploy:
+
+1. nomes novos das métricas (`units_quantity`, `direct_units_quantity`,
+   `indirect_units_quantity`, `total_amount` na campanha). Se o ML recusar,
+   o app desce para o conjunto antigo e nada quebra; só "vendas atribuídas"
+   volta a contar itens;
+2. contagem de anúncios por `status` active/paused na listagem de métricas.
+   Se o ML usar outros valores, cai na contagem antiga;
+3. a checagem de ontem (`verificarConsolidacao`), que roda só quando o
+   período inclui ontem.
