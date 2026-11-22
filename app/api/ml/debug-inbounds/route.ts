@@ -45,6 +45,44 @@ export const GET = rotaDeDiagnostico("debug-inbounds", async (req) => {
     `/billing/integration/monthly/periods?group=ML&document_type=BILL&offset=0&limit=2`,
   ];
 
+  /**
+   * `?billing=AAAA-MM-01`: lê o DETALHE de um fechamento do faturamento e
+   * devolve só as linhas que parecem coleta/Full — é onde o custo da coleta
+   * pode aparecer depois que o ML cobra (o recurso de envios dá 403).
+   */
+  const chaveBilling = url.searchParams.get("billing");
+  if (chaveBilling) {
+    const linhas: Record<string, unknown>[] = [];
+    const status: number[] = [];
+    let total = 0;
+    for (let offset = 0; offset < 3000; offset += 1000) {
+      const r = await fetchML(
+        `${ML_API}/billing/integration/periods/key/${chaveBilling}/group/ML/details?document_type=BILL&limit=1000&offset=${offset}`,
+        { headers, cache: "no-store" }, { maxTentativas: 1 },
+      );
+      status.push(r.status);
+      if (!r.ok) { linhas.push({ erro: (await r.text()).slice(0, 600) }); break; }
+      const j = (await r.json()) as { results?: Record<string, unknown>[]; total?: number };
+      total = Number(j.total ?? 0);
+      linhas.push(...(j.results ?? []));
+      if ((j.results ?? []).length < 1000) break;
+    }
+    const texto = (o: unknown) => JSON.stringify(o);
+    const coleta = linhas.filter((l) => /colet|full|fulfil|inbound|pickup|armazen|storage/i.test(texto(l)));
+    const tipos = new Map<string, number>();
+    for (const l of linhas) {
+      const ci = (l.charge_info ?? {}) as Record<string, unknown>;
+      const k = String(ci.detail_type ?? ci.detail_sub_type ?? l.detail_type ?? "?") + " · " + String(ci.transaction_detail ?? ci.detail_description ?? "");
+      tipos.set(k, (tipos.get(k) ?? 0) + 1);
+    }
+    return { corpo: {
+      chave: chaveBilling, status, total, lidas: linhas.length,
+      tipos: Object.fromEntries([...tipos.entries()].sort((a, b) => b[1] - a[1]).slice(0, 40)),
+      coleta: coleta.slice(0, 15),
+      amostra: linhas[0] ?? null,
+    } };
+  }
+
   const resultados: { caminho: string; status: number; trecho: string }[] = [];
   for (const c of caminhos) {
     try {
