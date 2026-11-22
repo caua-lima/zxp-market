@@ -16,7 +16,7 @@ import AdsModeDescription from "@/components/tabs/ads/AdsModeDescription";
 import AdsOverview, { type OverviewTotais } from "@/components/tabs/ads/AdsOverview";
 import AdsFunnel from "@/components/tabs/ads/AdsFunnel";
 import AdsCampaignList from "@/components/tabs/ads/AdsCampaignList";
-import type { MetricasReais } from "@/lib/domain/ads-campaigns";
+import { agregarPorCampanha, type MetricasReais } from "@/lib/domain/ads-campaigns";
 import type { Consolidacao } from "@/lib/domain/ads-consolidacao";
 import AdsParticipacao from "@/components/tabs/ads/AdsParticipacao";
 import AdsDecisionPanel from "@/components/tabs/ads/AdsDecisionPanel";
@@ -153,6 +153,8 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
     id: string; name: string; status: string; gasto: number; totalAds: number;
     /** "N anúncios patrocinados" do painel — inclui quem não gastou no período. */
     anunciosCadastrados?: number;
+    dailyBudget?: number;
+    roasTarget?: number;
     real?: MetricasReais | null;
   }[]>([]);
   /** O ML ainda não consolidou ONTEM na API pública (ver lib/domain/ads-consolidacao.ts). */
@@ -171,7 +173,12 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
   const metricasReaisPorCampanha = useMemo(() => {
     const m = new Map<string, MetricasReais>();
     for (const c of campanhasResumo) {
-      if (c.id && c.real) m.set(String(c.id), { ...c.real, nome: c.name, anunciosCadastrados: c.anunciosCadastrados });
+      if (c.id && c.real) {
+        m.set(String(c.id), {
+          ...c.real, nome: c.name, anunciosCadastrados: c.anunciosCadastrados,
+          dailyBudget: c.dailyBudget, roasTarget: c.roasTarget,
+        });
+      }
     }
     return m;
   }, [campanhasResumo]);
@@ -257,6 +264,17 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
       .catch(() => {});
     return () => { vivo = false; };
   }, [periodoAnterior]);
+
+  /**
+   * Quantas campanhas a vista "Campanhas" vai listar — a MESMA conta da
+   * tabela, inclusive a campanha sem anúncio com gasto. O rótulo usava
+   * `campanhasEncontradas` (só quem tinha anúncio com gasto) e dizia 10 com
+   * 13 linhas embaixo.
+   */
+  const qtdCampanhas = useMemo(
+    () => agregarPorCampanha(items, "pub", metricasReaisPorCampanha, { campanhasDefasadas: !!consolidacao?.pendente }).length,
+    [items, metricasReaisPorCampanha, consolidacao],
+  );
 
   const t = useMemo(() => agregar(items), [items]);
   const tAnterior = useMemo(() => (itemsAnterior ? agregar(itemsAnterior) : null), [itemsAnterior]);
@@ -502,7 +520,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
                     onClick={() => setVista("campanhas")}
                     title="Orçamento, investimento, receita atribuída, ROAS e meta — por campanha"
                   >
-                    Campanhas ({campanhasEncontradas || 0})
+                    Campanhas ({qtdCampanhas})
                   </button>
                   <button
                     type="button" className={`seg-btn ${vista === "anuncios" ? "active" : ""}`}

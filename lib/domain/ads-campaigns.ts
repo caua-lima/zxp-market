@@ -241,6 +241,9 @@ export type MetricasReais = {
   nome?: string;
   /** "N anúncios patrocinados" do painel. */
   anunciosCadastrados?: number;
+  /** Orçamento diário e ROAS objetivo da campanha, da lista do ML. */
+  dailyBudget?: number;
+  roasTarget?: number;
 };
 
 export type OpcoesAgregacao = {
@@ -550,8 +553,9 @@ export function agregarPorCampanha(
         acos: receita > 0 ? (cost / receita) * 100 : null,
         roasMlAds: cost > 0 ? receitaAtribuida / cost : null,
         receitaAtribuida,
-        dailyBudget: c.dailyBudget,
-        roasTarget: c.roasTarget,
+        // Do anúncio quando veio; senão da lista de campanhas (quem não gastou no período).
+        dailyBudget: c.dailyBudget || real?.dailyBudget || 0,
+        roasTarget: c.roasTarget || real?.roasTarget || 0,
         margem,
         margemAntesAds,
         roasEquilibrio,

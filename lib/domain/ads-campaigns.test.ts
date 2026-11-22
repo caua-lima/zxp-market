@@ -605,3 +605,22 @@ describe("campanha fora da lista do ML", () => {
     expect(c.campaignName).toBe("Sem campanha identificada");
   });
 });
+
+describe("config da campanha sem anúncio com gasto", () => {
+  it("orçamento e ROAS objetivo vêm da lista do ML, não '— sem meta'", () => {
+    // Hoje (22/11): Sertanejo com 125 impressões, R$ 0 — painel: R$ 15/dia, meta 35x.
+    const reais = new Map([["7260494", {
+      clicks: 0, prints: 125, cost: 0, receitaAtribuida: 0, nome: "Sertanejo", dailyBudget: 15, roasTarget: 35,
+    }]]);
+    const c = agregarPorCampanha([item({ campaignId: "outra" })], "pub", reais).find((x) => x.campaignId === "7260494")!;
+    expect(c.dailyBudget).toBe(15);
+    expect(c.roasTarget).toBe(35);
+  });
+
+  it("o que veio do anúncio continua mandando", () => {
+    const reais = new Map([["c1", { clicks: 10, prints: 100, cost: 50, receitaAtribuida: 0, dailyBudget: 99, roasTarget: 99 }]]);
+    const [c] = agregarPorCampanha([item({ dailyBudget: 30, roasTarget: 12 })], "pub", reais);
+    expect(c.dailyBudget).toBe(30);
+    expect(c.roasTarget).toBe(12);
+  });
+});

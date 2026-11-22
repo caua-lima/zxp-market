@@ -677,6 +677,8 @@ export async function getAdsSettingsByItem(
      * respondeu com métricas, e aí a tela cai no que dá pra derivar do anúncio.
      */
     real: MetricasCampanha | null;
+    dailyBudget: number;
+    roasTarget: number;
   }[];
   anunciosTotal: number;
   anunciosNoPeriodo: number;
@@ -988,6 +990,13 @@ export async function getAdsSettingsByItem(
   const campanhasResumo = Array.from(campanhas.values())
     .map((c) => ({
       id: c.campaignId, name: c.campaignName || c.campaignId,
+      /**
+       * Config da campanha direto da lista do ML. Antes só chegava à tela via
+       * anúncio com gasto — campanha que não gastou no período aparecia
+       * "— sem meta" mesmo tendo orçamento e ROAS objetivo no painel.
+       */
+      dailyBudget: c.dailyBudget,
+      roasTarget: c.roasTarget,
       status: c.status,
       /**
        * Gasto REAL da campanha quando o ML respondeu com métricas. O valor
