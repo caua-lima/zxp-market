@@ -466,6 +466,29 @@ export async function sincronizarEnvios() {
   }
 }
 
+/**
+ * Custo e imposto por anúncio, do Dash, pra margem da página de promoções
+ * (promocoes.js). Guardado 10 min: a página pede a cada carregamento, e o
+ * custo não muda de minuto em minuto. O código da vigia fica aqui no fundo
+ * — a página do ML só recebe os números.
+ */
+async function custosDoDash(forcar) {
+  const { endereco, } = await config();
+  if (!endereco || !endereco.includes("/api/widget/vigias")) return { erro: "salve o endereço da vigia na extensão" };
+  const { custosCache } = await chrome.storage.local.get("custosCache");
+  if (!forcar && custosCache && Date.now() - custosCache.em < 10 * 60000) return custosCache;
+  try {
+    const r = await fetch(endereco.replace("/api/widget/vigias", "/api/widget/custos"), { cache: "no-store" });
+    if (r.status === 401) return { erro: "endereço da vigia vencido — gere outro no Dash" };
+    if (!r.ok) return { erro: `o Dash respondeu ${r.status}` };
+    const j = await r.json();
+    await chrome.storage.local.set({ custosCache: j });
+    return j;
+  } catch {
+    return custosCache || { erro: "sem conexão com o Dash" };
+  }
+}
+
 async function agendarEnvios() {
   await chrome.alarms.create(ALARME_ENVIOS, { delayInMinutes: 1, periodInMinutes: MINUTOS_ENVIOS });
 }
@@ -487,6 +510,7 @@ chrome.notifications.onClicked.addListener((nid) => {
 chrome.runtime.onMessage.addListener((msg, _sender, responder) => {
   if (msg && msg.tipo === "conferir") { conferir().then(responder); return true; }
   if (msg && msg.tipo === "envios") { sincronizarEnvios().then(responder); return true; }
+  if (msg && msg.tipo === "custos") { custosDoDash(!!msg.forcar).then(responder); return true; }
   if (msg && msg.tipo === "simular") { simularVaga().then(responder); return true; }
   if (msg && msg.tipo === "vigiar") { vigiarVarios(msg.texto).then(responder); return true; }
   if (msg && msg.tipo === "parar_alarme") { silenciarTudo().then(() => responder({ ok: true })); return true; }

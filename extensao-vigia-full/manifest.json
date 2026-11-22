@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ZXP — Vigia da agenda do Full",
-  "version": "2.6.0",
-  "description": "Confere a agenda dos envios pro Full (avisa quando abrir data) e lê a Gestão de envios Full — coleta, prazo de editar, recebido e custo — pro app, com o seu login do Mercado Livre neste Chrome.",
+  "version": "2.7.0",
+  "description": "Vigia da agenda do Full, leitura da Gestão de envios Full e margem de cada promoção na página de promoções do ML — com o seu login do Mercado Livre neste Chrome e os custos do Dash.",
   "permissions": [
     "alarms",
     "storage",
@@ -28,5 +28,28 @@
   },
   "icons": {
     "128": "icone.png"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://vendedores.mercadolivre.com.br/anuncios/lista/promos*",
+        "https://www.mercadolivre.com.br/anuncios/lista/promos*"
+      ],
+      "js": [
+        "promocoes.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "margem-promocao.js"
+      ],
+      "matches": [
+        "https://vendedores.mercadolivre.com.br/*",
+        "https://www.mercadolivre.com.br/*"
+      ]
+    }
+  ]
 }
