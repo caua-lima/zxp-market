@@ -9,6 +9,8 @@ import CustosColetaFull from "@/components/tabs/full/CustosColetaFull";
 import { addMovimento, ignorarRemessaFull, reabrirRemessaFull, salvarCustoRemessaFull, watchRemessasIgnoradas } from "@/lib/firebase/data";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import { fmtBRL } from "@/lib/domain/calc";
+import { aDescontarDoAnuncio } from "@/lib/domain/envio-full-agendado";
+import { useReservasFull } from "@/components/tabs/estoque/EnviosAgendados";
 
 // ── Remessas pro Full: baixa a partir do que o ML recebeu ─────────────────
 export default function RemessasFull({ movimentos, products = [] }: { movimentos: EstoqueMovimento[]; /** Pra o envio sair do cadastro de Agências do sabor. */ products?: Product[] }) {
@@ -37,6 +39,8 @@ export default function RemessasFull({ movimentos, products = [] }: { movimentos
    */
   // Lido no efeito, e nao na inicializacao do useState, de proposito:
   useEffect(() => watchRemessasIgnoradas(setIgnoradas), []);
+  /** Envios agendados: o que já saiu do anúncio de agência não sai de novo na baixa. */
+  const { reservas } = useReservasFull(movimentos);
 
   async function marcarResolvida(remessa: string) {
     try {
@@ -145,8 +149,10 @@ export default function RemessasFull({ movimentos, products = [] }: { movimentos
           data: r.data,
           obs: `Remessa Full #${r.remessa} · ML recebeu ${p.qtd}${dif !== 0 ? ` · você informou ${qtd} (${dif > 0 ? "+" : ""}${dif})` : ""}`,
         });
-        if (trazido > 0 && irmao) {
-          const ml = await descontarDoAnuncioDeAgencias(irmao, trazido);
+        // Agendado com "anúncio já baixado": essas unidades já saíram do anúncio no dia do agendamento.
+        const tirarDoAnuncio = aDescontarDoAnuncio(trazido, reservas.get(p.productId) ?? null);
+        if (tirarDoAnuncio > 0 && irmao) {
+          const ml = await descontarDoAnuncioDeAgencias(irmao, tirarDoAnuncio);
           if (!ml.ok) avisos.push(ml.texto);
         }
       }

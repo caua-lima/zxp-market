@@ -32,7 +32,7 @@ import SincronizarSkuMlModal, { type TrocaDeSku } from "@/components/tabs/estoqu
 import { AgendarEnvioModal, EnviosAgendadosPainel, ResumoDisponibilidade, novoIdDeEnvio, useReservasFull } from "@/components/tabs/estoque/EnviosAgendados";
 import { criarEnvioAgendado } from "@/lib/firebase/data";
 import { agruparProdutos, canalOposto, gruposExistentes, ROTULO_CANAL, sugerirCanal, sugerirGrupo, sugerirVersao, type Canal } from "@/lib/domain/grupo-produto";
-import { disponivelParaAgencias, proximosDias, rotuloDoDia, validarEnvio, type ReservaDoProduto } from "@/lib/domain/envio-full-agendado";
+import { aDescontarDoAnuncio, livreComReserva, proximosDias, rotuloDoDia, validarEnvio, type ReservaDoProduto } from "@/lib/domain/envio-full-agendado";
 import ImpostoMassaModal from "@/components/tabs/estoque/ImpostoMassaModal";
 import VincularSkuModal from "@/components/tabs/estoque/VincularSkuModal";
 import { DIAS_ALVO, hojeBR, todayISO, parseNum, mlbsDe, normMlb, custoMedioDe, anunciosDe, fullDe, precosDe, previsaoDe, coberturaFmt } from "@/components/tabs/estoque/estoque-compartilhado";
@@ -803,6 +803,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
           tipo={movModal.tipo}
           estoqueML={estoqueML}
           reservado={reservas.get(movModal.product.id)?.reservado ?? 0}
+          reservadoForaDoAnuncio={reservas.get(movModal.product.id)?.reservadoForaDoAnuncio ?? 0}
           irmaoAgencias={irmaoDeAgencias(movModal.product, data.products)}
           onClose={() => setMovModal(null)}
           onSaved={() => setMovModal(null)}
@@ -1033,7 +1034,7 @@ function ProductRow({
             </span>
           )}
           {reserva && reserva.reservado > 0 && (() => {
-            const d = disponivelParaAgencias(casaExibida, reserva.reservado);
+            const d = livreComReserva(casaExibida, reserva);
             return (
               <>
                 <span
@@ -1041,6 +1042,11 @@ function ProductRow({
                   style={{ display: "block", fontSize: ".75rem", color: "var(--warning)", fontWeight: 700, cursor: "help" }}
                 >
                   −{reserva.reservado} pro Full{reserva.proximaData ? ` · ${rotuloDoDia(reserva.proximaData)}` : ""}
+                  {reserva.reservadoForaDoAnuncio > 0 && (
+                    <span style={{ fontWeight: 600 }}>
+                      {reserva.reservadoForaDoAnuncio === reserva.reservado ? " · já fora do anúncio" : ` · ${reserva.reservadoForaDoAnuncio} já fora do anúncio`}
+                    </span>
+                  )}
                 </span>
                 <span
                   title="O que as agências podem anunciar: o que está em casa menos o que já tem envio agendado pro Full."
@@ -1309,7 +1315,7 @@ function MovimentosHistorico({ product, movs, onMov }: { product: Product; movs:
   );
 }
 
-function MovimentoModal({ product, tipo, estoqueML, reservado, onClose, onSaved, irmaoAgencias = null }: { product: Product; tipo: MovimentoTipo; estoqueML: EstoqueML; reservado: number; onClose: () => void; onSaved: () => void; /** Envio pro Full sai do cadastro de Agências do sabor (ver envio-full-agencias.ts). */ irmaoAgencias?: Product | null }) {
+function MovimentoModal({ product, tipo, estoqueML, reservado, reservadoForaDoAnuncio = 0, onClose, onSaved, irmaoAgencias = null }: { product: Product; tipo: MovimentoTipo; estoqueML: EstoqueML; reservado: number; /** Parte do agendado que já saiu do anúncio de agência — não sai de novo. */ reservadoForaDoAnuncio?: number; onClose: () => void; onSaved: () => void; /** Envio pro Full sai do cadastro de Agências do sabor (ver envio-full-agencias.ts). */ irmaoAgencias?: Product | null }) {
   const isEntrada = tipo === "entrada";
   const isSaldo = tipo === "saldo_inicial";
   const isAjuste = tipo === "ajuste";
@@ -1461,8 +1467,10 @@ function MovimentoModal({ product, tipo, estoqueML, reservado, onClose, onSaved,
       if (isEntrada && destinoFull.trim() !== "") {
         await criarEnvioAgendado({ productId: product.id, quantidade: destinoNum, data: diaFull, obs: obs.trim() }, idDoEnvio.current);
       }
-      if (trazido > 0 && irmaoAgencias) {
-        const ml = await descontarDoAnuncioDeAgencias(irmaoAgencias, trazido);
+      // O que o agendamento já tirou do anúncio não sai de novo (ver aDescontarDoAnuncio).
+      const tirarDoAnuncio = aDescontarDoAnuncio(trazido, { reservadoForaDoAnuncio });
+      if (tirarDoAnuncio > 0 && irmaoAgencias) {
+        const ml = await descontarDoAnuncioDeAgencias(irmaoAgencias, tirarDoAnuncio);
         if (!ml.ok) alert(ml.texto);
       }
       onSaved();

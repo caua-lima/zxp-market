@@ -7,6 +7,7 @@ import { mensagemDeErroDeSalvamento } from "@/lib/domain/salvar-formulario";
 import { criarEnvioAgendado, editarEnvioAgendado, mudarStatusEnvioAgendado, watchEnviosAgendados } from "@/lib/firebase/data";
 import {
   disponivelParaAgencias,
+  livreComReserva,
   proximosDias,
   quandoFalta,
   reservasPorProduto,
@@ -112,6 +113,8 @@ export function AgendarEnvioModal({
   const [qtd, setQtd] = useState(quantidadeInicial ? String(quantidadeInicial) : "");
   const [data, setData] = useState("");
   const [obs, setObs] = useState("");
+  /** O anúncio de agência no ML já foi baixado destas unidades (ver ANÚNCIO JÁ BAIXADO no domínio). */
+  const [anuncioJaBaixado, setAnuncioJaBaixado] = useState(false);
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const sujo = useFormularioSujo({ qtd, data, obs });
@@ -126,7 +129,7 @@ export function AgendarEnvioModal({
     if (invalido) { setErro(invalido); return; }
     setSaving(true);
     try {
-      await criarEnvioAgendado({ productId: product.id, quantidade: q, data, obs }, idDoEnvio.current);
+      await criarEnvioAgendado({ productId: product.id, quantidade: q, data, obs, anuncioJaBaixado }, idDoEnvio.current);
       onSaved();
     } catch (err) {
       setErro(mensagemDeErroDeSalvamento(err));
@@ -160,7 +163,15 @@ export function AgendarEnvioModal({
         <input id="agenda-obs" type="text" placeholder="Ex: coleta combinada, envio 3" value={obs} onChange={(e) => setObs(e.target.value)} />
       </div>
 
-      <ResumoDisponibilidade emCasa={emCasa} reservado={reservado + (Number.isInteger(q) && q > 0 ? q : 0)} />
+      <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: ".82rem", marginBottom: 10, cursor: "pointer" }}>
+        <input type="checkbox" checked={anuncioJaBaixado} onChange={(e) => setAnuncioJaBaixado(e.target.checked)} style={{ marginTop: 3 }} />
+        <span>
+          <b>Já tirei estas unidades do anúncio de agência no ML.</b> O app não desconta de novo — nem no &quot;livre&quot;, nem
+          quando a baixa do envio for lançada.
+        </span>
+      </label>
+
+      <ResumoDisponibilidade emCasa={emCasa} reservado={anuncioJaBaixado ? reservado : reservado + (Number.isInteger(q) && q > 0 ? q : 0)} />
 
       {erro && <div className="note note-danger" role="alert" style={{ marginBottom: 10 }}>{erro}</div>}
 
@@ -285,8 +296,11 @@ export function EnviosAgendadosPainel({
           <tbody>
             {linhas.map(({ produto, productId, item }) => {
               const e = item.envio;
-              const total = reservas.get(productId)?.reservado ?? item.restante;
-              const d = disponivelParaAgencias(produto ? emCasaDe(produto) : 0, total);
+              const reserva = reservas.get(productId) ?? null;
+              // Envio "já fora do anúncio" não desconta de novo (ver livreComReserva).
+              const d = reserva
+                ? livreComReserva(produto ? emCasaDe(produto) : 0, reserva)
+                : disponivelParaAgencias(produto ? emCasaDe(produto) : 0, item.restante);
               return (
                 <tr key={e.id}>
                   <td data-label="Produto" style={{ textAlign: "left", fontWeight: 600 }}>
@@ -304,6 +318,7 @@ export function EnviosAgendadosPainel({
                   <td data-label="Reservado" style={{ textAlign: "right", fontWeight: 700, whiteSpace: "nowrap" }}>
                     <div style={{ minWidth: 0 }}>
                       {item.restante} un
+                      {e.anuncioJaBaixado && <div style={{ fontSize: ".75rem", color: "var(--green)", fontWeight: 600 }}>já fora do anúncio</div>}
                       {item.atendido > 0 && <div style={{ fontSize: ".75rem", color: "var(--muted)", fontWeight: 400 }}>{item.atendido} de {e.quantidade} já saíram</div>}
                     </div>
                   </td>

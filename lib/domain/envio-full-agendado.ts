@@ -2,6 +2,20 @@
  * Envios AGENDADOS pro Full — as unidades que já têm destino marcado e por isso
  * não são mais das agências.
  *
+ * ─── ANÚNCIO JÁ BAIXADO ─────────────────────────────────────────────────
+ *
+ * Há dois jeitos de trabalhar com um envio agendado:
+ *
+ *  1. o anúncio de agência continua com tudo, e o app só AVISA quanto está
+ *     livre (em casa − agendado) — o desenho original, abaixo;
+ *  2. o anúncio já é baixado no dia do agendamento, pra ninguém vender o que
+ *     vai embora (coleta #80517703, 22/11/2026: anúncios acertados para o que
+ *     fica em casa três dias antes da coleta do dia 25).
+ *
+ * No segundo, o envio leva `anuncioJaBaixado`. Aí o "livre" é o próprio
+ * anúncio (`livreComReserva`) e a baixa do envio NÃO tira do anúncio de novo
+ * (`aDescontarDoAnuncio`) — tirar duas vezes zeraria os anúncios.
+ *
  * ─── O PROBLEMA ─────────────────────────────────────────────────────────
  *
  * "Em casa" e "agência" são o MESMO estoque: o anúncio fora do Full vende do
@@ -45,6 +59,11 @@ export type EnvioFullAgendado = {
   criadoEm: string;
   status: StatusEnvioAgendado;
   obs?: string;
+  /**
+   * O anúncio de agência no ML JÁ foi baixado destas unidades quando o envio
+   * foi agendado (ver ANÚNCIO JÁ BAIXADO, no topo).
+   */
+  anuncioJaBaixado?: boolean;
   createdBy?: string;
   createdAt?: number;
   updatedBy?: string;
@@ -67,6 +86,12 @@ export type EnvioComSaldo = {
 export type ReservaDoProduto = {
   /** Unidades ainda reservadas pro Full (soma dos envios em aberto). */
   reservado: number;
+  /**
+   * Parte de `reservado` que já saiu do anúncio de agência no ML (envios com
+   * `anuncioJaBaixado`). Essas não se descontam de novo — nem na tela, nem na
+   * baixa do envio.
+   */
+  reservadoForaDoAnuncio: number;
   envios: EnvioComSaldo[];
   /** O dia do próximo envio em aberto (o mais cedo). */
   proximaData: string | null;
@@ -146,6 +171,7 @@ export function reservasPorProduto(
     const emAberto = linhas.filter((l) => l.restante > 0);
     resultado.set(productId, {
       reservado: emAberto.reduce((s, l) => s + l.restante, 0),
+      reservadoForaDoAnuncio: emAberto.filter((l) => l.envio.anuncioJaBaixado).reduce((s, l) => s + l.restante, 0),
       envios: linhas,
       proximaData: emAberto.length ? emAberto[0].envio.data : null,
     });
@@ -170,6 +196,35 @@ export function disponivelParaAgencias(emCasa: number, reservado: number): Dispo
   const casa = Math.max(Number(emCasa) || 0, 0);
   const res = Math.max(Number(reservado) || 0, 0);
   return { livre: Math.max(casa - res, 0), reservado: res, faltam: Math.max(res - casa, 0) };
+}
+
+/**
+ * O "livre pras agências" de um produto com envio agendado.
+ *
+ * `emCasa` é o que o anúncio de agência declara. Envio marcado como
+ * `anuncioJaBaixado` já está FORA desse número — subtrair de novo mostraria
+ * "0 livres · faltam 185 p/ cobrir o Full" num produto com 35 unidades livres
+ * e o Full todo coberto (Menta Limão, coleta #80517703, 22/11/2026).
+ */
+export function livreComReserva(emCasa: number, reserva: Pick<ReservaDoProduto, "reservado" | "reservadoForaDoAnuncio"> | null): Disponibilidade {
+  if (!reserva) return disponivelParaAgencias(emCasa, 0);
+  const aindaNoAnuncio = Math.max(reserva.reservado - (reserva.reservadoForaDoAnuncio ?? 0), 0);
+  const d = disponivelParaAgencias(emCasa, aindaNoAnuncio);
+  return { ...d, reservado: Math.max(reserva.reservado, 0) };
+}
+
+/**
+ * Quanto tirar do anúncio de agência no ML ao dar baixa de `quantidade`
+ * unidades pro Full.
+ *
+ * O que o agendamento já tirou do anúncio (`reservadoForaDoAnuncio`) não sai
+ * de novo. Sem isto, a coleta #80517703 (1.750 un, anúncios já acertados no
+ * dia do agendamento) zeraria os anúncios na baixa do dia 25.
+ */
+export function aDescontarDoAnuncio(quantidade: number, reserva: Pick<ReservaDoProduto, "reservadoForaDoAnuncio"> | null): number {
+  const q = Math.max(Math.trunc(Number(quantidade) || 0), 0);
+  const jaFora = Math.max(Number(reserva?.reservadoForaDoAnuncio) || 0, 0);
+  return Math.max(q - jaFora, 0);
 }
 
 const DIAS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];

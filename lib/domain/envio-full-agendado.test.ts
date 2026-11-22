@@ -10,6 +10,7 @@ import {
   validarEnvio,
   type EnvioFullAgendado,
   type SaidaFull,
+  aDescontarDoAnuncio, livreComReserva,
 } from "./envio-full-agendado";
 
 const HOJE = "2026-10-15"; // quinta
@@ -200,5 +201,64 @@ describe("planejarDestino — a tela de destinação", () => {
   });
   it("recusa quantidade negativa, fracionada ou NaN", () => {
     for (const q of [-1, 1.5, NaN]) expect(planejarDestino(null, q, "2026-10-21", HOJE)).toMatchObject({ acao: "invalido" });
+  });
+});
+
+/**
+ * Coleta Full #80517703, agendada para 25/11/2026. Os anúncios de agência foram
+ * acertados no dia 22 para o que fica em casa — Menta Limão: 145 + 110 do
+ * pedido Trot's − 220 da coleta = 35 no anúncio.
+ */
+describe("envio com o anúncio de agência JÁ baixado", () => {
+  const hoje = "2026-11-22";
+  const envio = (over: Partial<EnvioFullAgendado> = {}): EnvioFullAgendado => ({
+    id: "e1", productId: "mentaLimaoFull", quantidade: 220, data: "2026-11-25",
+    criadoEm: hoje, status: "agendado", ...over,
+  });
+
+  it("a reserva sabe quanto já está fora do anúncio", () => {
+    const r = reservasPorProduto([envio({ anuncioJaBaixado: true })], [], hoje).get("mentaLimaoFull")!;
+    expect(r.reservado).toBe(220);
+    expect(r.reservadoForaDoAnuncio).toBe(220);
+  });
+
+  it("o livre é o próprio anúncio (35), não '0 livres · faltam 185'", () => {
+    const r = reservasPorProduto([envio({ anuncioJaBaixado: true })], [], hoje).get("mentaLimaoFull")!;
+    const d = livreComReserva(35, r);
+    expect(d.livre).toBe(35);
+    expect(d.faltam).toBe(0);
+    expect(d.reservado).toBe(220);
+  });
+
+  it("sem a marcação, o comportamento de sempre: em casa − agendado", () => {
+    const r = reservasPorProduto([envio()], [], hoje).get("mentaLimaoFull")!;
+    expect(r.reservadoForaDoAnuncio).toBe(0);
+    expect(livreComReserva(255, r).livre).toBe(35);
+  });
+
+  it("na baixa do dia 25 o anúncio NÃO é baixado de novo", () => {
+    const r = reservasPorProduto([envio({ anuncioJaBaixado: true })], [], hoje).get("mentaLimaoFull")!;
+    expect(aDescontarDoAnuncio(220, r)).toBe(0);
+  });
+
+  it("se foi mais do que o agendado, só o excedente sai do anúncio", () => {
+    const r = reservasPorProduto([envio({ anuncioJaBaixado: true })], [], hoje).get("mentaLimaoFull")!;
+    expect(aDescontarDoAnuncio(230, r)).toBe(10);
+  });
+
+  it("envio sem a marcação continua baixando o anúncio inteiro", () => {
+    const r = reservasPorProduto([envio()], [], hoje).get("mentaLimaoFull")!;
+    expect(aDescontarDoAnuncio(220, r)).toBe(220);
+    expect(aDescontarDoAnuncio(220, null)).toBe(220);
+  });
+
+  it("depois da baixa a reserva some — e o que está fora do anúncio também", () => {
+    const r = reservasPorProduto(
+      [envio({ anuncioJaBaixado: true })],
+      [{ productId: "mentaLimaoFull", tipo: "saida_full", quantidade: 220, data: "2026-11-25" }],
+      "2026-11-25",
+    ).get("mentaLimaoFull")!;
+    expect(r.reservado).toBe(0);
+    expect(r.reservadoForaDoAnuncio).toBe(0);
   });
 });

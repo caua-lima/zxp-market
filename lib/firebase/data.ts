@@ -574,7 +574,7 @@ export function watchEnviosAgendados(cb: (envios: EnvioFullAgendado[]) => void):
 
 /** Agenda um envio. Recusa (com o motivo em português) o que não faz sentido. */
 export async function criarEnvioAgendado(
-  e: NovoEnvio & { obs?: string },
+  e: NovoEnvio & { obs?: string; anuncioJaBaixado?: boolean },
   /**
    * Id fixo por abertura da tela: gravar de novo (retry depois de um timeout,
    * duplo clique) cai no MESMO documento em vez de agendar o envio duas vezes.
@@ -594,6 +594,8 @@ export async function criarEnvioAgendado(
     criadoEm: hoje,
     status: "agendado",
     obs: e.obs?.trim() || undefined,
+    // Só grava quando verdadeiro: envio antigo sem o campo continua no fluxo de sempre.
+    anuncioJaBaixado: e.anuncioJaBaixado ? true : undefined,
     createdBy: email,
     createdAt: Date.now(),
   };
