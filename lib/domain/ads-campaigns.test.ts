@@ -213,8 +213,10 @@ describe("anúncio em duas campanhas: o ML manda, não a soma dos anúncios", ()
     lucroLiquido: 200, lucroDiretoLiquido: 180, diretoDisponivel: true,
     dailyBudget: 1000, roasTarget: 35,
   };
+  // As DUAS campanhas, como a lista do ML devolve: o total fecha (96,14 x 95,22).
   const reais = new Map([
     ["358764369", { clicks: 260, prints: 62027, cost: 65.46, receitaAtribuida: 1606.40 }],
+    ["358764370", { clicks: 102, prints: 9269, cost: 30.68, receitaAtribuida: 247.20 }],
   ]);
 
   it("sem as métricas reais, a campanha herda o total do anúncio — o bug", () => {
@@ -310,8 +312,13 @@ describe("motivo quando nao ha lucro a mostrar", () => {
   });
 
   it("anuncio em duas campanhas: numero na tela, com aviso do que foi estimado", () => {
-    const reais = new Map([["c1", { clicks: 10, prints: 100, cost: 99, receitaAtribuida: 100 }]]);
-    const [c] = agregarPorCampanha([base], "geral", reais);
+    // c2 ficou com o gasto de c1 carimbado: 100 derivado x 6 real. O total fecha (105 x 105).
+    const reais = new Map([
+      ["c1", { clicks: 10, prints: 100, cost: 99, receitaAtribuida: 100 }],
+      ["c2", { clicks: 1, prints: 10, cost: 6, receitaAtribuida: 0 }],
+    ]);
+    const c = agregarPorCampanha([base, { ...base, campaignId: "c2", cost: 100 }], "geral", reais)
+      .find((x) => x.campaignId === "c1")!;
     expect(c.atribuicaoIncerta).toBe(true);
     expect(c.lucroAposAds).not.toBeNull();
     expect(c.lucroAproximado).toBe(true);
@@ -432,11 +439,12 @@ describe("ML sem ONTEM consolidado — não é rateio", () => {
     vendasAtribuidas: 1, vendasDiretas: 1,
   }]]);
 
-  it("o bug: sem saber da defasagem, acusa 'rateado' numa campanha de 1 anúncio", () => {
-    // Modo "geral": o único em que ainda existe rateio de receita entre campanhas.
+  it("sem saber da defasagem o número sai errado, mas o total não fecha e não vira 'rateado'", () => {
+    // Era o bug de 19/11: 13 de 14 campanhas "rateadas". O total das campanhas
+    // (sem ontem) não fecha com o dos anúncios — então é atraso, não rateio.
     const [c] = agregarPorCampanha([puraFolhaAg], "geral", semOntem);
-    expect(c.cost).toBeCloseTo(29.93, 2); // menos da metade do painel
-    expect(c.atribuicaoIncerta).toBe(true);
+    expect(c.cost).toBeCloseTo(29.93, 2); // por isso a defasagem precisa ser informada
+    expect(c.atribuicaoIncerta).toBe(false);
   });
 
   it("com a defasagem informada: investido e cliques batem com o painel", () => {
@@ -622,5 +630,33 @@ describe("config da campanha sem anúncio com gasto", () => {
     const [c] = agregarPorCampanha([item({ dailyBudget: 30, roasTarget: 12 })], "pub", reais);
     expect(c.dailyBudget).toBe(30);
     expect(c.roasTarget).toBe(12);
+  });
+});
+
+describe("atraso de minutos entre as APIs não é rateio", () => {
+  // 22/11 11:18 — Abacaxi & Hortelã: anúncio 2 cliques / R$ 0,91; campanha (e painel) 0 / R$ 0.
+  const abacaxi = item({ campaignId: "7948476", campaignName: "Abacaxi & Hortelã - Agências", clicks: 2, prints: 478, cost: 0.91 });
+  const menta = item({ campaignId: "7261128", campaignName: "Menta Stronger - Full", clicks: 18, prints: 1097, cost: 6.5 });
+  const reais = new Map([
+    ["7948476", { clicks: 0, prints: 478, cost: 0, receitaAtribuida: 0 }],
+    ["7261128", { clicks: 18, prints: 1097, cost: 6.5, receitaAtribuida: 125.79 }],
+  ]);
+
+  it("mostra o número do painel e não acusa rateio", () => {
+    const c = agregarPorCampanha([abacaxi, menta], "geral", reais).find((x) => x.campaignId === "7948476")!;
+    expect(c.cost).toBe(0);
+    expect(c.clicks).toBe(0);
+    expect(c.atribuicaoIncerta).toBe(false);
+  });
+
+  it("anúncio em duas campanhas (total fecha) continua marcado", () => {
+    // Gasto de B carimbado em A: A derivado 96,14 x real 65,46; B real 30,68 sem anúncio. Total fecha.
+    const a = item({ campaignId: "A", cost: 96.14 });
+    const reaisAB = new Map([
+      ["A", { clicks: 260, prints: 62027, cost: 65.46, receitaAtribuida: 1606.4 }],
+      ["B", { clicks: 102, prints: 9269, cost: 30.68, receitaAtribuida: 247.2 }],
+    ]);
+    const r = agregarPorCampanha([a], "geral", reaisAB);
+    expect(r.find((x) => x.campaignId === "A")!.atribuicaoIncerta).toBe(true);
   });
 });

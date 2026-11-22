@@ -262,8 +262,8 @@ export type OpcoesAgregacao = {
  * suspeita. Dois centavos ou 2% cobrem arredondamento e o atraso normal entre
  * as duas consultas; acima disso é anúncio rodando em mais de uma campanha.
  */
-function custoBate(derivado: number, real: number): boolean {
-  return Math.abs(derivado - real) <= Math.max(0.02 * real, 0.02);
+function custoBate(derivado: number, real: number, minimo = 0.02): boolean {
+  return Math.abs(derivado - real) <= Math.max(0.02 * real, minimo);
 }
 
 export function agregarPorCampanha(
@@ -395,6 +395,29 @@ export function agregarPorCampanha(
     mapa.set(id, nova(id, real.nome ?? ""));
   }
 
+  /**
+   * ─── RATEIO DE VERDADE × ATRASO ENTRE AS DUAS APIS ────────────────────
+   *
+   * Anúncio em duas campanhas TROCA gasto de uma para a outra: a campanha
+   * carimbada fica com mais, a outra com menos, e o TOTAL fecha. Atraso entre
+   * as APIs (a de anúncio atualiza minutos antes da de campanha) MUDA o
+   * total. Medido em 22/11 às 11:18: Abacaxi & Hortelã com 2 cliques e
+   * R$ 0,91 no anúncio e 0 na campanha (e no painel) — virava "⚠ rateado"
+   * numa campanha de um anúncio só.
+   *
+   * Só se fala em rateio quando o total das campanhas com métrica real fecha
+   * com o total dos anúncios delas.
+   */
+  let derivadoTotal = 0;
+  let realTotal = 0;
+  for (const c of mapa.values()) {
+    const r = metricasReais?.get(c.campaignId);
+    if (!r) continue;
+    derivadoTotal += c.cost;
+    realTotal += r.cost;
+  }
+  const fontesSincronizadas = custoBate(derivadoTotal, realTotal);
+
   return Array.from(mapa.values())
     .map((c) => {
       const real = metricasReais?.get(c.campaignId) ?? null;
@@ -413,7 +436,7 @@ export function agregarPorCampanha(
        * ontem) — era ela que acendia "rateado" em 13 de 14 campanhas de um
        * anúncio só.
        */
-      const atribuicaoIncerta = usarReal && !custoBate(c.cost, real.cost);
+      const atribuicaoIncerta = usarReal && fontesSincronizadas && !custoBate(c.cost, real.cost, 1);
       /**
        * Defasada: a venda atribuída de ontem ainda não está na API para
        * NENHUMA campanha — inclusive as que quase não gastaram ontem, porque a
