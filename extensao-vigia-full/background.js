@@ -2,7 +2,7 @@ import { caminhoDasDatasDaColeta, ESCOLHA_O_ENDERECO, lerRespostaDaColeta } from
 import { proximoHorario } from "./horario.js";
 import {
   SITE, caminhoDaLista, caminhoDoDetalhe, enderecoDosEnvios, enxugarDetalhe, enxugarLinha,
-  lerDetalhe, lerLista, listaJaCobreOQueImporta,
+  lerDetalhe, lerLista,
 } from "./envios.js";
 
 /**
@@ -429,14 +429,16 @@ export async function sincronizarEnvios() {
   const registrar = (o) => chrome.storage.local.set({ envios: { em: Date.now(), ...o } });
   if (!destino) { await registrar({ erro: "Salve o endereço da vigia primeiro." }); return { ok: false }; }
   try {
-    // 1) A lista, do mais novo pro mais antigo, até onde ainda muda algo (no máximo 5 páginas).
-    const linhas = [];
-    for (let pagina = 1; pagina <= 5; pagina++) {
-      const l = lerLista(await lerHtml(caminhoDaLista(pagina)));
-      if (!l) { if (pagina === 1) throw new Error("A página de envios do ML mudou de formato."); break; }
-      linhas.push(...l.resultados.map(enxugarLinha));
-      if (pagina * l.porPagina >= l.total || listaJaCobreOQueImporta(l.resultados, Date.now())) break;
-    }
+    /**
+     * 1) A lista: só a primeira página. Medido em 22/11/2026: a página que o
+     * ML entrega por fetch ignora ?page= e ?offset= (sempre os 20 mais
+     * recentes — a paginação é feita no navegador). Os 20 mais recentes
+     * cobrem todo envio agendado e os finalizados de uns 3 meses, que é o que
+     * o app usa.
+     */
+    const l = lerLista(await lerHtml(caminhoDaLista(1)));
+    if (!l) throw new Error("A página de envios do ML mudou de formato.");
+    const linhas = l.resultados.map(enxugarLinha);
     const r1 = await postarEnvios(destino, { lista: linhas });
     // 2) O detalhe só de quem o app pediu (agendados, recebendo, recém-finalizados).
     const detalhes = [];

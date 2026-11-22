@@ -226,11 +226,16 @@ export default function EnviosFullML({ movimentos, products, podeEditar }: {
                       </td>
                       <td data-label="Unidades" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                         {e.declarado} enviadas
-                        {(sit === "recebendo" || sit === "finalizado") && (
+                        {(sit === "recebendo" || sit === "finalizado") && (e.detalheLido ? (
                           <div style={{ fontSize: ".75rem", color: e.recebido < e.declarado ? "var(--warning)" : "var(--green)" }}>
                             {e.recebido} recebidas{e.recebido < e.declarado ? ` · faltam ${e.declarado - e.recebido}` : ""}
                           </div>
-                        )}
+                        ) : (
+                          // Sem o detalhe, a lista do ML só diz quantas ficaram À VENDA — não quantas chegaram.
+                          <div style={{ fontSize: ".75rem", color: e.aVenda < e.declarado ? "var(--warning)" : "var(--green)" }}>
+                            {e.aVenda} à venda{e.aVenda < e.declarado ? ` · ${e.declarado - e.aVenda} com diferença` : ""}
+                          </div>
+                        ))}
                       </td>
                       <td data-label="Custo da coleta" style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                         {e.custo ? fmtBRL(e.custo.valor) : "—"}
