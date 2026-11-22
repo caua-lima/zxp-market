@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ZXP — Vigia da agenda do Full",
-  "version": "2.5.0",
-  "description": "Confere a página de agendamento dos envios pro Full (com o seu login do Mercado Livre neste Chrome) e avisa quando abrir data.",
+  "version": "2.6.0",
+  "description": "Confere a agenda dos envios pro Full (avisa quando abrir data) e lê a Gestão de envios Full — coleta, prazo de editar, recebido e custo — pro app, com o seu login do Mercado Livre neste Chrome.",
   "permissions": [
     "alarms",
     "storage",

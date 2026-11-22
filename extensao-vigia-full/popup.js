@@ -31,14 +31,31 @@ async function mostrarProxima() {
 // A janelinha aberta acompanha cada conferência (antes ficava com a hora de quando abriu).
 chrome.storage.onChanged.addListener((mudou, area) => {
   if (area === "local" && mudou.ultimo) mostrar(mudou.ultimo.newValue);
+  if (area === "local" && mudou.envios) mostrarEnvios(mudou.envios.newValue);
 });
+
+/** Última leitura dos envios pro Full (background.js › sincronizarEnvios). */
+function mostrarEnvios(e) {
+  const el = $("envios");
+  if (!e) { el.textContent = "Lê sozinho de 20 em 20 min."; el.className = "mudo"; return; }
+  el.textContent = `${relogio(e.em)} · ${e.erro || e.texto || ""}`;
+  el.className = e.erro ? "erro" : "mudo";
+}
 
 async function iniciar() {
   const { endereco = "", ultimo = null, pulso = true } = await chrome.storage.local.get(["endereco", "ultimo", "pulso"]);
   $("endereco").value = endereco;
   $("pulso").checked = pulso;
   mostrar(ultimo);
+  mostrarEnvios((await chrome.storage.local.get("envios")).envios);
 }
+
+$("lerEnvios").addEventListener("click", async () => {
+  $("envios").textContent = "Lendo os envios no ML…";
+  $("envios").className = "mudo";
+  const r = await chrome.runtime.sendMessage({ tipo: "envios" }).catch(() => null);
+  if (!r) mostrarEnvios((await chrome.storage.local.get("envios")).envios);
+});
 
 $("salvar").addEventListener("click", async () => {
   const valor = $("endereco").value.trim();

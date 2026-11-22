@@ -1,5 +1,9 @@
 import { caminhoDasDatasDaColeta, ESCOLHA_O_ENDERECO, lerRespostaDaColeta } from "./leitura.js";
 import { proximoHorario } from "./horario.js";
+import {
+  SITE, caminhoDaLista, caminhoDoDetalhe, enderecoDosEnvios, enxugarDetalhe, enxugarLinha,
+  lerDetalhe, lerLista, listaJaCobreOQueImporta,
+} from "./envios.js";
 
 /**
  * Vigia da agenda do Full — o trabalho em segundo plano da extensão.
@@ -388,9 +392,86 @@ async function agendar(periodo = MINUTOS) {
   await chrome.alarms.create(ALARME, { when: proximoHorario(periodo) });
 }
 
-chrome.runtime.onInstalled.addListener(() => agendar());
-chrome.runtime.onStartup.addListener(() => agendar());
+/**
+ * ─── ENVIOS PRO FULL (2.6) ───────────────────────────────────────────────
+ *
+ * Além da vigia de data, a extensão lê a "Gestão de envios Full" — agenda da
+ * coleta, prazo de editar, recebido por produto e custo da coleta — e manda
+ * pro app (/api/widget/envios-full, mesmo código da vigia). O app reserva o
+ * estoque, desce o anúncio de agência quando o prazo de editar passa e
+ * preenche o custo. Ver envios.js e lib/ml/envios-full-sync.ts.
+ *
+ * Alarme próprio, de 20 em 20 min: o que muda aqui muda em horas, não em
+ * segundos — e cada rodada abre algumas páginas do painel.
+ */
+const ALARME_ENVIOS = "envios-full";
+const MINUTOS_ENVIOS = 20;
+const VERSAO = chrome.runtime.getManifest().version;
+
+async function lerHtml(caminho) {
+  const r = await fetch(SITE + caminho, { credentials: "include", cache: "no-store" });
+  if (!r.ok) throw new Error(`ML respondeu ${r.status}`);
+  if (/\/login|\/jms\//.test(r.url)) throw new Error("login");
+  return r.text();
+}
+
+async function postarEnvios(endereco, corpo) {
+  const r = await fetch(endereco, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...corpo, versao: VERSAO }) });
+  if (r.status === 401) throw new Error("endereco_vencido");
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.details || `app respondeu ${r.status}`);
+  return j;
+}
+
+export async function sincronizarEnvios() {
+  const { endereco } = await config();
+  const destino = enderecoDosEnvios(endereco);
+  const registrar = (o) => chrome.storage.local.set({ envios: { em: Date.now(), ...o } });
+  if (!destino) { await registrar({ erro: "Salve o endereço da vigia primeiro." }); return { ok: false }; }
+  try {
+    // 1) A lista, do mais novo pro mais antigo, até onde ainda muda algo (no máximo 5 páginas).
+    const linhas = [];
+    for (let pagina = 1; pagina <= 5; pagina++) {
+      const l = lerLista(await lerHtml(caminhoDaLista(pagina)));
+      if (!l) { if (pagina === 1) throw new Error("A página de envios do ML mudou de formato."); break; }
+      linhas.push(...l.resultados.map(enxugarLinha));
+      if (pagina * l.porPagina >= l.total || listaJaCobreOQueImporta(l.resultados, Date.now())) break;
+    }
+    const r1 = await postarEnvios(destino, { lista: linhas });
+    // 2) O detalhe só de quem o app pediu (agendados, recebendo, recém-finalizados).
+    const detalhes = [];
+    for (const id of (r1.detalhar || []).slice(0, 15)) {
+      try {
+        const d = lerDetalhe(await lerHtml(caminhoDoDetalhe(id)));
+        if (d) detalhes.push(enxugarDetalhe(d));
+      } catch { /* um envio que não abriu não derruba a rodada */ }
+    }
+    const r2 = detalhes.length ? await postarEnvios(destino, { detalhes }) : r1;
+    const texto = `${linhas.length} envios lidos · ${detalhes.length} detalhados`
+      + (r2.anuncios && r2.anuncios.length ? ` · anúncio: ${r2.anuncios.join("; ")}` : "")
+      + (r2.avisos && r2.avisos.length ? ` · ⚠ ${r2.avisos.join("; ")}` : "");
+    await registrar({ ok: true, texto });
+    if (r2.anuncios && r2.anuncios.length) {
+      notificar("envios", "Envio pro Full travou", `Anúncio de agência ajustado: ${r2.anuncios.join("; ")}`);
+    }
+    return { ok: true, texto };
+  } catch (e) {
+    const msg = String(e && e.message || e);
+    const erro = msg === "login" ? "Entre no Mercado Livre neste Chrome pra ler os envios."
+      : msg === "endereco_vencido" ? ENDERECO_VENCIDO : `Envios: ${msg}`;
+    await registrar({ erro });
+    return { ok: false, erro };
+  }
+}
+
+async function agendarEnvios() {
+  await chrome.alarms.create(ALARME_ENVIOS, { delayInMinutes: 1, periodInMinutes: MINUTOS_ENVIOS });
+}
+
+chrome.runtime.onInstalled.addListener(() => { agendar(); agendarEnvios(); });
+chrome.runtime.onStartup.addListener(() => { agendar(); agendarEnvios(); });
 chrome.alarms.onAlarm.addListener(async (a) => {
+  if (a.name === ALARME_ENVIOS) { sincronizarEnvios(); return; }
   if (a.name !== ALARME) return;
   await agendar(); // já deixa a próxima marcada (se a volta falhar no meio, a vigia não para)
   conferir();
@@ -403,6 +484,7 @@ chrome.notifications.onClicked.addListener((nid) => {
 // A janelinha pede "conferir agora".
 chrome.runtime.onMessage.addListener((msg, _sender, responder) => {
   if (msg && msg.tipo === "conferir") { conferir().then(responder); return true; }
+  if (msg && msg.tipo === "envios") { sincronizarEnvios().then(responder); return true; }
   if (msg && msg.tipo === "simular") { simularVaga().then(responder); return true; }
   if (msg && msg.tipo === "vigiar") { vigiarVarios(msg.texto).then(responder); return true; }
   if (msg && msg.tipo === "parar_alarme") { silenciarTudo().then(() => responder({ ok: true })); return true; }
