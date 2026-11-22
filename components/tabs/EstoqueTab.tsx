@@ -141,10 +141,21 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
   /** Envios agendados pro Full e o que cada produto tem reservado (já abatido pelas baixas do livro). */
   const { reservas } = useReservasFull(movimentos);
   /** O "em casa" de um produto: o mesmo número da coluna, pra o painel e a linha não discordarem. */
+  /**
+   * O "em casa" de um produto, pela MESMA regra da coluna da linha
+   * (`casaDoIrmao` em ProdutoRow): produto do Full sem livro próprio mostra o
+   * que está em casa no cadastro de Agências do sabor. Sem isto o painel
+   * "Envios agendados" e o modal "Agendar Full" diziam "em casa 0 · 0 livres"
+   * pra todo sabor com Agências (coleta #80517703, 22/11/2026), enquanto a
+   * linha do produto dizia 35.
+   */
   const emCasaDe = useCallback((p: Product) => {
     const f = fullDe(p, estoqueML);
-    return estoqueForaDoFull(Math.max(p.qtdLocal ?? 0, 0), f.proprio, f.ehFull);
-  }, [estoqueML]);
+    const casa = Math.max(p.qtdLocal ?? 0, 0);
+    const irmao = f.ehFull && casa <= 0 ? irmaoDeAgencias(p, data.products) : null;
+    if (irmao) return fullDe(irmao, estoqueML).proprio;
+    return estoqueForaDoFull(casa, f.proprio, f.ehFull);
+  }, [estoqueML, data.products]);
 
   /**
    * Unidades contadas duas vezes: já no Full e ainda no livro do galpão,
