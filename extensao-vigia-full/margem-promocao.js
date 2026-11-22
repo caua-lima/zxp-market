@@ -70,4 +70,4 @@ export function repasseParaMeta(precoFinal, custo, impostoPct, meta) {
 
 const brl = (n) => `R$ ${Math.abs(n).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
 export const reais = (n) => `${n < 0 ? "−" : ""}${brl(n)}`;
-export const pct = (n) => `${n.toFixed(1).replace(".", ",")}%`;
+export const pct = (n) => `${n < 0 ? "−" : ""}${Math.abs(n).toFixed(1).replace(".", ",")}%`;

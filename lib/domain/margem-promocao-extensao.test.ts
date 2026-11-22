@@ -65,5 +65,8 @@ describe("faixas de cor iguais às do Dash", () => {
     expect(reais(1234.5)).toBe("R$ 1.234,50");
     expect(reais(-2.61)).toBe("−R$ 2,61");
     expect(pct(12.345)).toBe("12,3%");
+    // Menta & Cereja a R$ 18,09: lucro −R$ 0,01 aparecia "-0,0%" (hífen e sinal perdido).
+    expect(pct(-0.04)).toBe("−0,0%");
+    expect(pct(-3.21)).toBe("−3,2%");
   });
 });
