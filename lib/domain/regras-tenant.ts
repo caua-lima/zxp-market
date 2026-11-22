@@ -29,6 +29,7 @@ export const BLOCOS_DO_TENANT = [
   "/full_remessas/{docId}",
   "/full_envios_agendados/{docId}",
   "/full_agenda_vigias/{docId}",
+  "/full_envios_ml/{docId}",
   "/vendas_presenciais/{docId}",
   "/fin_contas/{docId}",
   "/fin_movimentos/{docId}",

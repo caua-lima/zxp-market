@@ -49,6 +49,7 @@ export const DESTINOS: Readonly<Record<string, DecisaoDeColecao>> = {
   full_envios_agendados: { destino: "tenant", motivo: "envios agendados pro Full (a API do ML não expõe o agendamento)" },
   vendas_presenciais: { destino: "tenant", motivo: "vendas do PDV (presencial, fora do ML)" },
   full_agenda_vigias: { destino: "tenant", motivo: "envios do Full vigiados até o ML abrir data" },
+  full_envios_ml: { destino: "tenant", motivo: "envios do Full lidos do painel do ML (agenda, recebido, custo)" },
   fin_contas: { destino: "tenant", motivo: "Financeiro privado do owner: contas (MP, banco, caixa)" },
   fin_movimentos: { destino: "tenant", motivo: "Financeiro privado do owner: entradas, saídas e transferências" },
   fin_obrigacoes: { destino: "tenant", motivo: "Financeiro privado do owner: contas a pagar e baixas" },

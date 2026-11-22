@@ -378,6 +378,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Envios pro Full como o PAINEL do ML os mostra (agenda, prazo de editar,
+    // recebido, custo da coleta) — lidos pela extensão do Chrome e gravados
+    // pelo servidor (lib/ml/envios-full-sync.ts). A tela só lê.
+    match /full_envios_ml/{docId} {
+      allow read: if veOperacao();
+      allow write: if false;
+    }
+
     // Envios AGENDADOS pro Full: unidades com destino marcado, que as agências
     // não podem mais anunciar. É plano, não estoque — não mexe no livro. Quem
     // edita estoque agenda (o dono não é o único que dá entrada na mercadoria).
@@ -869,6 +877,10 @@ service cloud.firestore {
         allow write: if escritaLiberadaT() && (podeEditarT('estoque'));
       }
       match /full_agenda_vigias/{docId} {
+        allow read: if veOperacaoT();
+        allow write: if escritaLiberadaT() && (false);
+      }
+      match /full_envios_ml/{docId} {
         allow read: if veOperacaoT();
         allow write: if escritaLiberadaT() && (false);
       }

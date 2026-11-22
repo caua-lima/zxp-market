@@ -194,6 +194,12 @@ export const INVENTARIO: readonly ItemDeBackup[] = [
     perda: "Basta ligar a vigia de novo na aba Full com o número do envio.",
   },
   {
+    colecao: "full_envios_ml",
+    classe: "efemero",
+    conteudo: "Envios pro Full como o painel do ML mostra (agenda, prazo de editar, recebido, custo da coleta), lidos pela extensão.",
+    perda: "A extensão relê o painel do ML na próxima rodada.",
+  },
+  {
     colecao: "ao_vivo",
     classe: "efemero",
     conteudo: "O sinal da última venda, que a barra ao vivo escuta pra somar na hora.",
