@@ -299,7 +299,7 @@ export function agregarPorCampanha(
 
   const nova = (id: string, nome: string): Acc => ({
     campaignId: id,
-    campaignName: nome || (id === CAMPANHA_SEM_ID ? "Sem campanha identificada" : id),
+    campaignName: nome || (id === CAMPANHA_SEM_ID ? "Sem campanha identificada" : ""),
     anuncios: 0, prints: 0, clicks: 0, cost: 0, receita: 0, unidades: 0,
     // Calculado no fecho a partir de lucroAntesAds — aqui nao acumula nada.
     lucroAposAds: null, roas: null, acos: null, roasMlAds: null, receitaAtribuida: 0,
@@ -519,7 +519,14 @@ export function agregarPorCampanha(
 
       return {
         campaignId: c.campaignId,
-        campaignName: c.campaignName || real?.nome || c.campaignId,
+        /**
+         * Sem nome = a campanha não está na lista do ML (excluída no período,
+         * ou de fora da busca), mas o anúncio gastou nela. Medido em 16–22/11:
+         * o anúncio do Açaí em Pó gastou R$ 24,28 na 352947089, que o painel
+         * não lista mais — e soma no investimento total. Só o número cru na
+         * tela parecia defeito.
+         */
+        campaignName: c.campaignName || real?.nome || `excluída ou fora da lista do ML (${c.campaignId})`,
         anuncios: c.anuncios,
         anunciosCadastrados: real?.anunciosCadastrados ?? null,
         prints,

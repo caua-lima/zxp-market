@@ -591,3 +591,17 @@ describe("campanha sem nenhum anúncio com gasto", () => {
     expect(agregarPorCampanha([item()], "pub", reais).some((c) => c.campaignId === "morta")).toBe(false);
   });
 });
+
+describe("campanha fora da lista do ML", () => {
+  it("ganha um nome que explica, não o id cru", () => {
+    // 16–22/11: anúncio do Açaí em Pó gastou R$ 24,28 na 352947089, ausente do painel.
+    const [c] = agregarPorCampanha([item({ campaignId: "352947089", campaignName: "", cost: 24.28 })], "pub");
+    expect(c.campaignName).toBe("excluída ou fora da lista do ML (352947089)");
+    expect(rotuloCampanha(c.campaignName)).toBe("Campanha excluída ou fora da lista do ML (352947089)");
+  });
+
+  it("sem campanha nenhuma continua 'Sem campanha identificada'", () => {
+    const [c] = agregarPorCampanha([item({ campaignId: "", campaignName: "" })], "pub");
+    expect(c.campaignName).toBe("Sem campanha identificada");
+  });
+});

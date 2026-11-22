@@ -90,9 +90,11 @@ export default function AdsCampaignList({ itens, modo, metricasReais, consolidac
                 <td className={t.campanha}>
                   <span className={t.topo}><span className={t.nome} title={c.campaignName || c.campaignId}>{rotuloCampanha(c.campaignName)}</span></span>
                   <span className={t.produto}>
-                    {/* Cadastrados = o que o painel do ML mostra; "com gasto" = quem entrou na conta do período. */}
-                    {c.anunciosCadastrados ?? c.anuncios} anúncio(s)
-                    {c.anunciosCadastrados != null && c.anunciosCadastrados !== c.anuncios && ` (${c.anuncios} com gasto)`}
+                    {/* Cadastrados = o que o painel do ML mostra HOJE; "gastaram" = quem entrou na conta do período.
+                        Diferem quando um anúncio saiu da campanha no meio do período (Pura Folha - Full: 0 hoje, 1 gastou). */}
+                    {c.anunciosCadastrados == null || c.anunciosCadastrados === c.anuncios
+                      ? `${c.anuncios} anúncio(s)`
+                      : `${c.anunciosCadastrados} anúncio(s) hoje · ${c.anuncios} gastou(aram) no período`}
                     {" · "}{num(c.clicks)} cliques
                     {/* Um anúncio desta campanha roda em outra também: o "≈" do lucro e esta marca dizem o mesmo fato. */}
                     {c.atribuicaoIncerta && <span title={c.avisoLucro ?? undefined} style={{ marginLeft: 6, cursor: "help", color: "var(--warning)" }}>⚠ rateado</span>}
