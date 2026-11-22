@@ -5,6 +5,7 @@ import AvisoDaFonte from "@/components/AvisoDaFonte";
 import type { EstoqueMovimento, Product } from "@/lib/domain/types";
 import { watchMovimentos } from "@/lib/firebase/data";
 import RemessasFull from "@/components/tabs/full/RemessasFull";
+import EnviosFullML from "@/components/tabs/full/EnviosFullML";
 import EstoqueRetidoFull, { type EstoqueFullRetido } from "@/components/tabs/full/EstoqueRetidoFull";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import TelaHeader from "@/components/TelaHeader";
@@ -78,6 +79,9 @@ export default function FullTab({ products }: { products: Product[] }) {
       />
 
       <VigiaAgendaFull podeEditar={podeEditarEstoque} />
+
+      {/* Agenda, prazo, recebido e custo de cada envio, lidos do painel do ML pela extensão. */}
+      <EnviosFullML movimentos={movimentos} products={products} podeEditar={podeEditarEstoque} />
 
       <CustosDeEnviosFull />
 

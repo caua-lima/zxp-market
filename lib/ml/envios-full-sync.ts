@@ -67,6 +67,11 @@ function mapaPorMlb(produtos: readonly Produto[]): Map<string, string> {
   return mapa;
 }
 
+/** O mapa MLB → produto que a sincronização usa — exposto pra tela usar o mesmo. */
+export async function mapaDeProdutosDoEstoque(): Promise<Map<string, string>> {
+  return mapaPorMlb(await carregarProdutos());
+}
+
 /** O cadastro "… Agências" do mesmo sabor — a mesma regra de irmaoDeAgencias (envio-full-agencias.ts). */
 function irmaoDeAgencias(produto: Produto, produtos: readonly Produto[]): Produto | null {
   if (produto.canal === "agencias") return null;
