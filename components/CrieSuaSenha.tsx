@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { getAuth, updatePassword } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 import { authedFetch } from "@/lib/api/authed-fetch";
 
 /**
@@ -28,16 +28,28 @@ export default function CrieSuaSenha({ nome, onSair, onPronto }: { nome: string;
     setSalvando(true);
     setErro(null);
     try {
-      await updatePassword(usuario, senha);
-      const r = await authedFetch("/api/acesso/senha-definida", { method: "POST" });
-      if (!r.ok) throw new Error("marca");
+      /**
+       * Pelo SERVIDOR (/api/conta/senha), não com updatePassword no navegador:
+       * o Firebase recusava a troca com "faça login de novo" quando a sessão
+       * não era recente, e a pessoa ficava presa nesta tela (Vitor, 23/11). O
+       * servidor também guarda a cópia cifrada pro "Ver senha" e tira a marca.
+       * Trocar a senha encerra as sessões: entra de novo na hora, com a nova.
+       */
+      const r = await authedFetch("/api/conta/senha", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ senha }),
+      });
+      if (!r.ok) {
+        const j = (await r.json().catch(() => null)) as { details?: string } | null;
+        throw new Error(j?.details || "servidor");
+      }
+      if (usuario.email) await signInWithEmailAndPassword(getAuth(), usuario.email, senha).catch(() => {});
       onPronto();
     } catch (err) {
       const code = (err as { code?: string })?.code ?? "";
       setErro(
         code === "auth/requires-recent-login" ? "Por segurança, saia e entre de novo com a senha que você recebeu, e crie a nova logo em seguida."
           : code === "auth/weak-password" ? "Senha fraca: use pelo menos 8 caracteres, misturando letras e números."
-            : (err as Error)?.message === "marca" ? "A senha foi trocada, mas não consegui confirmar no app. Toque em Salvar de novo."
+            : (err as Error)?.message && (err as Error).message !== "servidor" ? (err as Error).message
               : "Não consegui salvar agora. Tente de novo.",
       );
     } finally {
