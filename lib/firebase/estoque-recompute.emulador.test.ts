@@ -110,3 +110,30 @@ describe("recomputeProdutoComVersao — concorrência real (S13)", () => {
     expect(prod.qtdLocal).toBe(N);
   });
 });
+
+describe("recomputeProdutoComVersao — um sabor, um custo (23/11/2026)", () => {
+  it("compra nas Agências muda o custo do Full também; a quantidade continua de cada um", async () => {
+    await env.withSecurityRulesDisabled(async (c) => {
+      const db = c.firestore();
+      await setDoc(doc(db, "estoque", "par-full"), { name: "Sabor", grupo: "Sabor", canal: "full", custo: "10", ativo: true });
+      await setDoc(doc(db, "estoque", "par-ag"), { name: "Sabor Agências", grupo: "Sabor", canal: "agencias", custo: "10", ativo: true });
+    });
+    const db = ctx();
+    await criarMovimentoAuditado(db, {
+      id: "par-1", productId: "par-full", tipo: "entrada", quantidade: 100, custoUnit: 10, estoqueAntes: 0, data: "2026-11-01",
+    }, DONO.email, { entidadeLabel: "teste" });
+    await recomputeProdutoComVersao(db, "par-full");
+    await criarMovimentoAuditado(db, {
+      id: "par-2", productId: "par-ag", tipo: "entrada", quantidade: 100, custoUnit: 12, estoqueAntes: 100, data: "2026-11-22",
+    }, DONO.email, { entidadeLabel: "teste" });
+    await recomputeProdutoComVersao(db, "par-ag");
+
+    const full = (await getDoc(doc(db, "estoque", "par-full"))).data()!;
+    const ag = (await getDoc(doc(db, "estoque", "par-ag"))).data()!;
+    expect(full.custoMedio).toBe(11);
+    expect(ag.custoMedio).toBe(11);
+    expect(full.qtdLocal).toBe(100);
+    expect(ag.qtdLocal).toBe(100);
+    expect(full.custoMedioFaixas).toEqual(ag.custoMedioFaixas);
+  });
+});

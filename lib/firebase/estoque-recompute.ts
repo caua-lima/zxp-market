@@ -12,7 +12,10 @@ import {
   where,
 } from "firebase/firestore";
 import type { CustoFaixa, EstoqueMovimento } from "@/lib/domain/types";
-import { faixasAlteradas, reconstruirCusto } from "@/lib/domain/custo-medio";
+import { faixasAlteradas } from "@/lib/domain/custo-medio";
+import { custoInicialDoGrupo, membrosDoCusto, reconstruirCustoDoGrupo, type ProdutoDoCusto } from "@/lib/domain/custo-grupo";
+
+type ProdutoLido = ProdutoDoCusto & { custoMedioFaixas?: CustoFaixa[]; estoqueVersao?: number };
 
 /**
  * Tentativas antes de desistir — cobre concorrência real (várias pessoas
@@ -68,47 +71,61 @@ export async function recomputeProdutoComVersao(
 
   for (let tentativa = 1; tentativa <= RECOMPUTE_MAX_TENTATIVAS; tentativa++) {
     const prodSnapAntes = await getDoc(prodRef);
-    const prodData = prodSnapAntes.data() as
-      | { custo?: string | number; custoMedioFaixas?: CustoFaixa[]; estoqueVersao?: number }
-      | undefined;
-    const versaoAntes = Number(prodData?.estoqueVersao ?? 0);
+    const prodData = { id: productId, ...(prodSnapAntes.data() as Omit<ProdutoLido, "id"> | undefined) } as ProdutoLido;
 
-    const snap = await getDocs(query(collection(db, traduzirCaminho("estoque_movimentos")), where("productId", "==", productId)));
-    const movs = snap.docs.map((d) => d.data() as EstoqueMovimento);
+    /**
+     * UM SABOR, UM CUSTO (lib/domain/custo-grupo.ts): o Full e o "… Agências"
+     * do mesmo grupo dividem a média. Os dois são lidos e gravados juntos —
+     * recalcular um sem o outro deixaria as duas telas com custos diferentes.
+     */
+    const grupo = String(prodData.grupo ?? "").trim();
+    const candidatos: ProdutoLido[] = grupo
+      ? (await getDocs(query(collection(db, traduzirCaminho("estoque")), where("grupo", "==", grupo))))
+        .docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ProdutoLido, "id">) }))
+      : [];
+    const membros = membrosDoCusto(prodData, candidatos.some((c) => c.id === productId) ? candidatos : [prodData, ...candidatos]);
+    const versoesAntes = new Map(membros.map((m) => [m.id, Number((m.id === productId ? prodData : m).estoqueVersao ?? 0)]));
+
+    const movsPorMembro = new Map<string, EstoqueMovimento[]>();
+    for (const m of membros) {
+      const snap = await getDocs(query(collection(db, traduzirCaminho("estoque_movimentos")), where("productId", "==", m.id)));
+      movsPorMembro.set(m.id, snap.docs.map((d) => d.data() as EstoqueMovimento));
+    }
 
     /**
      * O custo ANTERIOR ao livro é o `custo` manual do cadastro — nunca o
      * `custoMedio` atual, que é derivado do próprio livro. Usar o derivado
      * como ponto de partida faria a média se realimentar e subir sozinha a
-     * cada recálculo.
+     * cada recálculo. No par, vale o do Full (custoInicialDoGrupo).
      */
-    const custoInicial = Number(String(prodData?.custo ?? "").replace(",", ".")) || 0;
-
-    const { qtdLocal, custoMedio, faixas } = reconstruirCusto(movs, custoInicial);
-    const mudancas = faixasAlteradas(prodData?.custoMedioFaixas, faixas);
+    const { custoMedio, faixas, qtdLocal } = reconstruirCustoDoGrupo(movsPorMembro, custoInicialDoGrupo(membros));
+    const mudancas = faixasAlteradas(prodData.custoMedioFaixas, faixas);
 
     try {
       await runTransaction(db, async (tx) => {
-        const atual = await tx.get(prodRef);
-        const versaoAtual = Number((atual.data() as { estoqueVersao?: number } | undefined)?.estoqueVersao ?? 0);
-        if (versaoAtual !== versaoAntes) {
-          throw new RecomputeConflitoDeVersao();
-        }
-        tx.update(prodRef, {
-          qtdLocal,
-          custoMedio,
-          custoMedioFaixas: faixas,
-          estoqueVersao: versaoAtual + 1,
-          /**
-           * EST-02: o agregado está em dia com o livro.
-           *
-           * Gravar a movimentação e recalcular o produto são duas escritas
-           * (a primeira, fora desta função). Se o recálculo falhar depois
-           * disso, o livro tem o movimento e o produto fica com o número
-           * antigo — quem chama marca `custoDesatualizado: true` nesse caso;
-           * aqui, tendo chegado até a gravação, ele volta a `false`.
-           */
-          custoDesatualizado: false,
+        const refs = membros.map((m) => doc(db, traduzirCaminho("estoque"), m.id));
+        const atuais = await Promise.all(refs.map((r) => tx.get(r)));
+        atuais.forEach((a, i) => {
+          const v = Number((a.data() as { estoqueVersao?: number } | undefined)?.estoqueVersao ?? 0);
+          if (v !== versoesAntes.get(membros[i].id)) throw new RecomputeConflitoDeVersao();
+        });
+        refs.forEach((r, i) => {
+          tx.update(r, {
+            qtdLocal: qtdLocal.get(membros[i].id) ?? 0,
+            custoMedio,
+            custoMedioFaixas: faixas,
+            estoqueVersao: (versoesAntes.get(membros[i].id) ?? 0) + 1,
+            /**
+             * EST-02: o agregado está em dia com o livro.
+             *
+             * Gravar a movimentação e recalcular o produto são duas escritas
+             * (a primeira, fora desta função). Se o recálculo falhar depois
+             * disso, o livro tem o movimento e o produto fica com o número
+             * antigo — quem chama marca `custoDesatualizado: true` nesse caso;
+             * aqui, tendo chegado até a gravação, ele volta a `false`.
+             */
+            custoDesatualizado: false,
+          });
         });
       });
       // Quem chamou decide o que fazer com isso — corrigir movimento antigo
