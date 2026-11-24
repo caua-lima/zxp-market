@@ -35,7 +35,7 @@ import { agruparProdutos, canalOposto, gruposExistentes, ROTULO_CANAL, sugerirCa
 import { aDescontarDoAnuncio, livreComReserva, proximosDias, rotuloDoDia, validarEnvio, type ReservaDoProduto } from "@/lib/domain/envio-full-agendado";
 import ImpostoMassaModal from "@/components/tabs/estoque/ImpostoMassaModal";
 import VincularSkuModal from "@/components/tabs/estoque/VincularSkuModal";
-import { DIAS_ALVO, hojeBR, todayISO, parseNum, mlbsDe, normMlb, custoMedioDe, anunciosDe, fullDe, precosDe, previsaoDe, coberturaFmt } from "@/components/tabs/estoque/estoque-compartilhado";
+import { DIAS_ALVO, hojeBR, todayISO, parseNum, mlbsDe, normMlb, custoMedioDe, anunciosDe, fullDe, estoqueDoSaborParaBlend, precosDe, previsaoDe, coberturaFmt } from "@/components/tabs/estoque/estoque-compartilhado";
 import type { EstoqueML, Forecast, PlanoSku } from "@/components/tabs/estoque/estoque-compartilhado";
 import { filtrarProdutos, proximaAcao, ordenarPorUrgencia, contarSinais, resumoDoEstoque, FILTRO_ESTOQUE_VAZIO, type FiltroEstoque, type ProdutoNaLista, DIAS_COBERTURA_BAIXA } from "@/lib/domain/estoque-situacao";
 import DetalheProduto from "@/components/tabs/estoque/DetalheProduto";
@@ -803,6 +803,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
         <EntradaMassaModal
           produtos={data.products}
           estoqueML={estoqueML}
+          reservas={reservas}
           onClose={() => setEntradaMassa(false)}
           onSaved={() => setEntradaMassa(false)}
         />
@@ -816,6 +817,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
           reservado={reservas.get(movModal.product.id)?.reservado ?? 0}
           reservadoForaDoAnuncio={reservas.get(movModal.product.id)?.reservadoForaDoAnuncio ?? 0}
           irmaoAgencias={irmaoDeAgencias(movModal.product, data.products)}
+          baseDoSabor={estoqueDoSaborParaBlend(movModal.product, data.products, estoqueML, (id) => reservas.get(id)?.reservadoForaDoAnuncio ?? 0)}
           onClose={() => setMovModal(null)}
           onSaved={() => setMovModal(null)}
         />
@@ -1326,7 +1328,7 @@ function MovimentosHistorico({ product, movs, onMov }: { product: Product; movs:
   );
 }
 
-function MovimentoModal({ product, tipo, estoqueML, reservado, reservadoForaDoAnuncio = 0, onClose, onSaved, irmaoAgencias = null }: { product: Product; tipo: MovimentoTipo; estoqueML: EstoqueML; reservado: number; /** Parte do agendado que já saiu do anúncio de agência — não sai de novo. */ reservadoForaDoAnuncio?: number; onClose: () => void; onSaved: () => void; /** Envio pro Full sai do cadastro de Agências do sabor (ver envio-full-agencias.ts). */ irmaoAgencias?: Product | null }) {
+function MovimentoModal({ product, tipo, estoqueML, reservado, reservadoForaDoAnuncio = 0, onClose, onSaved, irmaoAgencias = null, baseDoSabor }: { product: Product; tipo: MovimentoTipo; estoqueML: EstoqueML; reservado: number; /** Parte do agendado que já saiu do anúncio de agência — não sai de novo. */ reservadoForaDoAnuncio?: number; onClose: () => void; onSaved: () => void; /** Envio pro Full sai do cadastro de Agências do sabor (ver envio-full-agencias.ts). */ irmaoAgencias?: Product | null; /** Estoque do sabor inteiro pra média da compra (custo-grupo.ts). */ baseDoSabor?: number }) {
   const isEntrada = tipo === "entrada";
   const isSaldo = tipo === "saldo_inicial";
   const isAjuste = tipo === "ajuste";
@@ -1369,7 +1371,9 @@ function MovimentoModal({ product, tipo, estoqueML, reservado, reservadoForaDoAn
   // ENTRADA: blenda a compra nova contra tudo que você tem (Full + fora do
   // Full — ver estoqueForaDoFull pra como "fora do Full" é contado sem
   // duplicar casa e anúncio próprio).
-  const estoqueAtual = full + estoqueForaDoFull(casa, proprio, ehFull);
+  // Com par Full/Agências, o custo é do SABOR: a base é o sabor inteiro
+  // (lib/domain/custo-grupo.ts), não só este cadastro.
+  const estoqueAtual = baseDoSabor ?? full + estoqueForaDoFull(casa, proprio, ehFull);
   /**
    * A média ponderada saiu daqui e virou função pura (custoMedioAposEntrada),
    * porque a entrada em massa precisa do MESMO cálculo. Duas cópias da

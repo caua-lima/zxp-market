@@ -37,6 +37,12 @@ export type ProdutoParaEntrada = {
   proprio: number;
   /** O produto tem anúncio Full. */
   ehFull: boolean;
+  /**
+   * O estoque do SABOR inteiro (Full + Agências + reservado fora do anúncio),
+   * quando o produto divide o custo com o par — ver lib/domain/custo-grupo.ts.
+   * Ausente: a base é só deste cadastro.
+   */
+  baseDoSabor?: number;
 };
 
 /** Uma linha digitada pelo usuário. */
@@ -100,6 +106,7 @@ export function custoMedioAposEntrada(
 
 /** O estoque que entra no blend: Full + o que está fora dele. */
 export function estoqueParaBlend(p: ProdutoParaEntrada): number {
+  if (p.baseDoSabor != null && Number.isFinite(p.baseDoSabor)) return Math.max(p.baseDoSabor, 0);
   return Math.max(p.full, 0) + estoqueForaDoFull(p.casa, p.proprio, p.ehFull);
 }
 

@@ -8,7 +8,7 @@ import { custoComDesconto, descontoValido } from "@/lib/domain/preco-com-descont
 import { addMovimento } from "@/lib/firebase/data";
 import type { Product } from "@/lib/domain/types";
 import {
-  custoMedioDe, fullDe, parseNum, todayISO,
+  custoMedioDe, estoqueDoSaborParaBlend, fullDe, parseNum, todayISO,
 } from "@/components/tabs/estoque/estoque-compartilhado";
 import type { EstoqueML } from "@/components/tabs/estoque/estoque-compartilhado";
 
@@ -19,9 +19,11 @@ import type { EstoqueML } from "@/components/tabs/estoque/estoque-compartilhado"
  * são telas inteiras, com estado e validação próprios, que só apareciam
  * quando alguém clicava — e ocupavam um sexto do arquivo.
  */
-export default function EntradaMassaModal({ produtos, estoqueML, onClose, onSaved }: {
+export default function EntradaMassaModal({ produtos, estoqueML, reservas, onClose, onSaved }: {
   produtos: Product[];
   estoqueML: EstoqueML;
+  /** Reservas pro Full — a parte já fora do anúncio de agência ainda está em casa e entra na base. */
+  reservas?: ReadonlyMap<string, { reservadoForaDoAnuncio?: number }>;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -51,8 +53,9 @@ export default function EntradaMassaModal({ produtos, estoqueML, onClose, onSave
     return {
       id: p.id, nome: p.name || p.id, custoMedio: custoMedioDe(p),
       full, casa: p.qtdLocal ?? 0, proprio, ehFull,
+      baseDoSabor: estoqueDoSaborParaBlend(p, produtos, estoqueML, (id) => reservas?.get(id)?.reservadoForaDoAnuncio ?? 0),
     };
-  }), [produtos, estoqueML]);
+  }), [produtos, estoqueML, reservas]);
 
   /** O desconto que vale pra uma linha: o dela, ou o da nota. `null` = digitado e inválido. */
   const descontoDa = (v: { desc: string }): number | null => {

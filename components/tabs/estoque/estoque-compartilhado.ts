@@ -25,6 +25,7 @@ import { consolidarEstoqueAnuncios, ehFullLogistic, estoqueForaDoFull } from "@/
 import { calcularLucroEstoque, medirTaxas } from "@/lib/domain/estoque-lucro";
 import type { FinanceiroProduto, LucroEstoque } from "@/lib/domain/estoque-lucro";
 import { impostoNaData } from "@/lib/domain/types";
+import { membrosDoCusto } from "@/lib/domain/custo-grupo";
 import type { Product } from "@/lib/domain/types";
 export type MlItem = { available: number; sold: number; status: string; price: number; regularPrice: number; hasPromo: boolean; logistic: string; inventoryId?: string; poolProprio?: string };
 
@@ -226,3 +227,27 @@ export type PlanoSku = {
 };
 
 export type ResumoSku = { produtos: number; anunciosDaConta: number; anunciosLidos: number; semSku: number; semMatch: number; aproximados: number; aVincular: number };
+
+/**
+ * O estoque contra o qual uma COMPRA se mistura: o sabor inteiro (pedido do
+ * dono, 23/11/2026 — ver lib/domain/custo-grupo.ts). O Full e o "… Agências"
+ * dividem um custo médio, então a base é a soma dos dois: o que está no Full,
+ * o que está em casa e o que já saiu do anúncio de agência reservado pra uma
+ * coleta (continua em casa, só não está à venda). Produto sem par: só ele,
+ * como sempre foi.
+ */
+export function estoqueDoSaborParaBlend(
+  p: Product,
+  produtos: readonly Product[],
+  estoqueML: EstoqueML,
+  foraDoAnuncio: (id: string) => number = () => 0,
+): number {
+  const membros = membrosDoCusto(p, produtos);
+  // O "fora do anúncio" só existe no par: é o anúncio de AGÊNCIA que deixou de
+  // contar essas unidades. Sozinho, o produto já as tem em casa (qtdLocal).
+  const comPar = membros.length > 1;
+  return membros.reduce((s, m) => {
+    const { qtd, proprio, ehFull } = fullDe(m, estoqueML);
+    return s + Math.max(qtd, 0) + estoqueForaDoFull(m.qtdLocal ?? 0, proprio, ehFull) + (comPar ? Math.max(foraDoAnuncio(m.id), 0) : 0);
+  }, 0);
+}
