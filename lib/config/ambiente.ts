@@ -52,6 +52,8 @@ export const OPCIONAIS = [
   "ML_SELLER_ID",
   "BOOTSTRAP_OWNER_EMAILS",
   "GITHUB_TOKEN",
+  // Chave do cofre de senhas (lib/senhas-cofre.ts). Sem ela, usa a FIREBASE_PRIVATE_KEY.
+  "SENHAS_COFRE_CHAVE",
   "GITHUB_REPO",
   "GITHUB_BRANCH",
   // Cobrança (S25) — sem as duas primeiras, a cobrança fica desligada.

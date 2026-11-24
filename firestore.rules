@@ -386,6 +386,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Cópia CIFRADA das senhas de acesso, pro "Ver senha" (lib/senhas-cofre.ts).
+    // Ninguém lê pelo cliente: só o servidor, que confere quem pode ver.
+    match /senhas_cofre/{docId} {
+      allow read, write: if false;
+    }
+
     // Envios AGENDADOS pro Full: unidades com destino marcado, que as agências
     // não podem mais anunciar. É plano, não estoque — não mexe no livro. Quem
     // edita estoque agenda (o dono não é o único que dá entrada na mercadoria).
@@ -883,6 +889,9 @@ service cloud.firestore {
       match /full_envios_ml/{docId} {
         allow read: if veOperacaoT();
         allow write: if escritaLiberadaT() && (false);
+      }
+      match /senhas_cofre/{docId} {
+        allow read: if false; allow write: if escritaLiberadaT() && (false);
       }
       match /vendas_presenciais/{docId} {
         allow read: if veOperacaoT();

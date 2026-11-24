@@ -200,6 +200,12 @@ export const INVENTARIO: readonly ItemDeBackup[] = [
     perda: "A extensão relê o painel do ML na próxima rodada.",
   },
   {
+    colecao: "senhas_cofre",
+    classe: "efemero",
+    conteudo: "Cópia cifrada das senhas de acesso, pro \"Ver senha\" da aba Acesso.",
+    perda: "O \"Ver senha\" fica vazio até cada senha ser definida de novo; o login continua funcionando.",
+  },
+  {
     colecao: "ao_vivo",
     classe: "efemero",
     conteudo: "O sinal da última venda, que a barra ao vivo escuta pra somar na hora.",
