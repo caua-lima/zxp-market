@@ -107,12 +107,53 @@
   botao.style.cssText = "position:fixed;right:16px;bottom:16px;z-index:99999;padding:8px 12px;border-radius:20px;border:1px solid #ddd;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);font:600 12px system-ui,-apple-system,sans-serif;cursor:pointer;color:#333;";
   botao.addEventListener("click", () => { botao.textContent = "ZXP · atualizando custos…"; carregar(true); });
   document.documentElement.appendChild(botao);
-  // Reabre o aviso de oportunidades depois de fechado.
-  const botaoOps = document.createElement("button");
-  botaoOps.type = "button";
-  botaoOps.style.cssText = "position:fixed;right:16px;bottom:56px;z-index:99999;padding:8px 12px;border-radius:20px;border:0;background:#00a650;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.2);font:700 12px system-ui,-apple-system,sans-serif;cursor:pointer;display:none;";
-  botaoOps.addEventListener("click", () => mostrarPopup());
-  document.documentElement.appendChild(botaoOps);
+  /**
+   * O CARD DO TOPO — sempre visível (pedido do dono, 23/11/2026: "não aparece
+   * nada lá em cima"). Sem oportunidade ele diz que conferiu e não achou, com a
+   * versão da extensão: assim dá pra saber que ela está rodando.
+   */
+  const VERSAO = (() => { try { return chrome.runtime.getManifest().version; } catch { return ""; } })();
+  const card = document.createElement("div");
+  card.className = "zxp-card";
+  document.documentElement.appendChild(card);
+  let cardMinimizado = false;
+  card.addEventListener("click", (e) => {
+    const acao = e.target?.dataset?.acao;
+    if (acao === "ir") irPara(0);
+    else if (acao === "lista") mostrarPopup();
+    else if (acao === "min") { cardMinimizado = true; desenharCard(); }
+    else if (cardMinimizado) { cardMinimizado = false; desenharCard(); }
+  });
+  function desenharCard() {
+    const n = oportunidades.length;
+    card.classList.toggle("zxp-card-verde", n > 0);
+    if (cardMinimizado) {
+      card.innerHTML = n ? `▲ ${n} oportunidade${n === 1 ? "" : "s"}` : "ZXP ✓";
+      card.title = "Clique pra abrir";
+      card.style.cursor = "pointer";
+      return;
+    }
+    card.style.cursor = "default";
+    card.title = "";
+    if (!dados) { card.innerHTML = `<b>ZXP</b> · procurando oportunidades de margem…`; return; }
+    if (n > 0) {
+      const total = oportunidades.reduce((s, o) => s + o.ganho, 0);
+      card.innerHTML = `<div style="display:flex;justify-content:space-between;gap:10px;align-items:start">
+          <div><div style="font-size:15px">▲ ${n} oportunidade${n === 1 ? "" : "s"} de melhoria na margem</div>
+          <div style="font-weight:500;opacity:.95">+${M.reais(total)} por venda somando todas · preço parecido, lucro maior</div></div>
+          <button type="button" class="zxp-x" data-acao="min" title="Minimizar">–</button></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button type="button" class="zxp-btn zxp-btn-branco" data-acao="ir">Ir aos anúncios →</button>
+          <button type="button" class="zxp-btn zxp-btn-contorno" data-acao="lista">Ver lista</button></div>`;
+    } else {
+      card.innerHTML = `<div style="display:flex;justify-content:space-between;gap:10px;align-items:start">
+          <div><div><b>ZXP</b> · nenhuma oportunidade de margem agora</div>
+          <div style="font-weight:500;color:#666">Conferi ${analisados} anúncio${analisados === 1 ? "" : "s"} com promoção ativa: nenhuma outra oferta de preço parecido paga mais. Quando aparecer, ela pisca em verde aqui.</div></div>
+          <button type="button" class="zxp-x" data-acao="min" title="Minimizar">–</button></div>
+        <div style="font-weight:500;color:#999;font-size:11px;margin-top:4px">extensão ${VERSAO}</div>`;
+    }
+  }
+
   function atualizarBotao() {
     if (!dados) { botao.textContent = "ZXP · carregando custos…"; return; }
     if (dados.erro) { botao.textContent = `ZXP · ${dados.erro}`; botao.style.color = "#f23d4f"; return; }
@@ -120,8 +161,7 @@
     botao.style.color = "#333";
     botao.textContent = `ZXP · margem com custos de ${hora} · meta ${M.pct(Number(dados.metaMargem) || 10)} ↻`;
     botao.title = "Clique pra buscar de novo os custos do Dash (depois de mudar custo ou imposto no Estoque).";
-    botaoOps.style.display = oportunidades.length ? "block" : "none";
-    botaoOps.textContent = `▲ ${oportunidades.length} oportunidade${oportunidades.length === 1 ? "" : "s"} de margem`;
+    desenharCard();
   }
 
   // ── Oportunidades de margem: outra promoção, preço parecido, lucro maior ──
@@ -138,11 +178,17 @@
     .zxp-modal li { margin:6px 0; }
     .zxp-btn { border:0;border-radius:8px;padding:9px 14px;font:600 13px system-ui,-apple-system,sans-serif;cursor:pointer; }
     .zxp-btn-verde { background:#00a650;color:#fff; } .zxp-btn-claro { background:#f0f0f0;color:#333; }
+    .zxp-card { position:fixed;top:72px;right:16px;z-index:99999;max-width:380px;background:#fff;color:#333;border:1px solid #ddd;border-radius:12px;padding:10px 12px;box-shadow:0 4px 16px rgba(0,0,0,.15);font:600 13px/1.4 system-ui,-apple-system,sans-serif; }
+    .zxp-card-verde { background:#00a650;color:#fff;border-color:#00a650;animation:zxpCard 1.1s ease-in-out infinite; }
+    @keyframes zxpCard { 0%,100% { box-shadow:0 0 0 4px rgba(0,166,80,.45),0 4px 16px rgba(0,0,0,.2); } 50% { box-shadow:0 0 0 0 rgba(0,166,80,0),0 4px 16px rgba(0,0,0,.2); } }
+    .zxp-x { border:0;background:transparent;color:inherit;font:700 16px system-ui;cursor:pointer;line-height:1;padding:0 2px; }
+    .zxp-btn-branco { background:#fff;color:#00a650; } .zxp-btn-contorno { background:transparent;color:#fff;border:1px solid #fff; }
     .zxp-nav { position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:99999;background:#fff;border:2px solid #00a650;border-radius:24px;padding:6px 8px 6px 14px;display:flex;gap:8px;align-items:center;box-shadow:0 4px 16px rgba(0,0,0,.2);font:600 13px system-ui,-apple-system,sans-serif;color:#333; }
   `;
   document.documentElement.appendChild(estilo);
 
   let oportunidades = []; // [{ box, nome, ganho, ativa, candidata, titulo }]
+  let analisados = 0; // anúncios com promoção ativa nesta tela
   let popupJaMostrado = false;
   let navIdx = -1;
   let assinaturaOps = "";
@@ -165,10 +211,12 @@
 
   function procurarOportunidades() {
     const achadas = [];
+    analisados = 0;
     for (const linha of document.querySelectorAll(".sc-list-row")) {
       const promos = [...linha.querySelectorAll(".sc-list-collapsible-row__promotion-box")].map(lerBox).filter((p) => p && p.precoFinal != null && p.recebe != null);
       const ativa = promos.find((p) => p.situacao === "ativa");
       if (!ativa) continue;
+      analisados += 1;
       const desc = linha.querySelector(".sc-list-description") || linha;
       const mlb = M.mlbDaLinha(desc.innerText);
       const item = mlb && dados && !dados.erro ? dados.itens[mlb] : null;
@@ -186,7 +234,7 @@
 
   function aplicarOportunidades() {
     const achadas = procurarOportunidades();
-    const assinatura = achadas.map((o) => `${o.nome}|${o.candidata.precoFinal}|${o.candidata.recebe}`).join("¦");
+    const assinatura = analisados + "#" + achadas.map((o) => `${o.nome}|${o.candidata.precoFinal}|${o.candidata.recebe}`).join("¦");
     if (assinatura === assinaturaOps && achadas.every((o) => o.box.classList.contains("zxp-oportunidade"))) return;
     assinaturaOps = assinatura;
     document.querySelectorAll(".zxp-oportunidade").forEach((b) => b.classList.remove("zxp-oportunidade", "zxp-oportunidade-atual"));
