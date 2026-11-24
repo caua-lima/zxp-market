@@ -71,3 +71,48 @@ export function repasseParaMeta(precoFinal, custo, impostoPct, meta) {
 const brl = (n) => `R$ ${Math.abs(n).toFixed(2).replace(".", ",").replace(/\B(?=(\d{3})+(?!\d))/g, ".")}`;
 export const reais = (n) => `${n < 0 ? "−" : ""}${brl(n)}`;
 export const pct = (n) => `${n < 0 ? "−" : ""}${Math.abs(n).toFixed(1).replace(".", ",")}%`;
+
+/**
+ * OPORTUNIDADE DE MARGEM (pedido do dono, 23/11/2026).
+ *
+ * Num anúncio com uma promoção ATIVA, outra promoção oferecida pelo ML (as de
+ * "Participar") é oportunidade quando:
+ *   - o preço final é PARECIDO com o da ativa (até `tolerancia`, 8% por padrão
+ *     — trocar 19,90 por 19,30 é a mesma faixa pro comprador; trocar por 15,00
+ *     não é a mesma decisão), e
+ *   - o lucro por venda SOBE pelo menos `minimo` (R$ 0,05).
+ *
+ * Exemplo do dono: ativa a R$ 19,90 recebendo R$ 16,17; outra a R$ 19,30
+ * recebendo R$ 16,98 → +R$ 0,81 de repasse, imposto até cai: oportunidade.
+ *
+ * A diferença de lucro NÃO depende do custo (é o mesmo produto): Δlucro =
+ * Δ"você recebe" − Δimposto. Por isso funciona até em anúncio sem custo no Dash.
+ *
+ * @param {{ precoFinal: number, recebe: number }} ativa
+ * @param {{ precoFinal: number, recebe: number }} candidata
+ * @returns {{ ganho: number, difPreco: number, difPrecoPct: number } | null}
+ */
+export function oportunidadeDeMargem(ativa, candidata, impostoPct = 0, { tolerancia = 0.08, minimo = 0.05 } = {}) {
+  const pa = Number(ativa?.precoFinal), ra = Number(ativa?.recebe);
+  const pc = Number(candidata?.precoFinal), rc = Number(candidata?.recebe);
+  if (!(pa > 0) || !(pc > 0) || !Number.isFinite(ra) || !Number.isFinite(rc)) return null;
+  const difPreco = pc - pa;
+  const difPrecoPct = difPreco / pa;
+  if (Math.abs(difPrecoPct) > tolerancia + 1e-9) return null;
+  const taxa = Math.max(Number(impostoPct) || 0, 0) / 100;
+  const ganho = (rc - ra) - difPreco * taxa;
+  if (ganho < minimo - 1e-9) return null;
+  return { ganho, difPreco, difPrecoPct: difPrecoPct * 100 };
+}
+
+/**
+ * Situação de uma promoção pelo texto do cabeçalho dela: "ATIVA", "PROGRAMADA"
+ * ou "oferecida" (as de "Participar", que o ML propõe).
+ */
+export function situacaoDaPromocao(cabecalho, botoes = "") {
+  const t = String(cabecalho || "").toUpperCase();
+  if (/\bATIVA\b/.test(t)) return "ativa";
+  if (/\bPROGRAMADA\b/.test(t)) return "programada";
+  if (/participar/i.test(String(botoes)) && !/deixar de participar/i.test(String(botoes))) return "oferecida";
+  return "outra";
+}

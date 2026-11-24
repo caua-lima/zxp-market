@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lerReais, margemDaPromocao, mlbDaLinha, pct, reais, repasseParaMeta, statusDaMargem } from "../../extensao-vigia-full/margem-promocao.js";
+import { lerReais, margemDaPromocao, mlbDaLinha, oportunidadeDeMargem, pct, reais, repasseParaMeta, situacaoDaPromocao, statusDaMargem } from "../../extensao-vigia-full/margem-promocao.js";
 import { simularPreco } from "./preco-simulacao";
 
 describe("leitura dos números da página de promoções", () => {
@@ -68,5 +68,37 @@ describe("faixas de cor iguais às do Dash", () => {
     // Menta & Cereja a R$ 18,09: lucro −R$ 0,01 aparecia "-0,0%" (hífen e sinal perdido).
     expect(pct(-0.04)).toBe("−0,0%");
     expect(pct(-3.21)).toBe("−3,2%");
+  });
+});
+
+describe("oportunidade de margem (outra promoção, preço parecido, lucro maior)", () => {
+  it("exemplo do dono: 19,90 recebendo 16,17 → 19,30 recebendo 16,98 é oportunidade", () => {
+    const op = oportunidadeDeMargem({ precoFinal: 19.9, recebe: 16.17 }, { precoFinal: 19.3, recebe: 16.98 }, 4)!;
+    // +0,81 de repasse e o imposto ainda cai 4% × 0,60.
+    expect(op.ganho).toBeCloseTo(0.81 + 0.6 * 0.04, 6);
+    expect(op.difPrecoPct).toBeCloseTo(-3.015, 2);
+  });
+
+  it("preço muito diferente não conta, mesmo com repasse maior", () => {
+    expect(oportunidadeDeMargem({ precoFinal: 19.9, recebe: 16.17 }, { precoFinal: 24.9, recebe: 19.5 }, 4)).toBeNull();
+    expect(oportunidadeDeMargem({ precoFinal: 19.9, recebe: 16.17 }, { precoFinal: 15, recebe: 17 }, 4)).toBeNull();
+  });
+
+  it("lucro igual ou menor não é oportunidade", () => {
+    // Boldo & Menta (23/11): ativa 19,90 → 16,70; relâmpago 19,69 → 15,13.
+    expect(oportunidadeDeMargem({ precoFinal: 19.9, recebe: 16.7 }, { precoFinal: 19.69, recebe: 15.13 }, 4)).toBeNull();
+    expect(oportunidadeDeMargem({ precoFinal: 19.9, recebe: 16.7 }, { precoFinal: 19.9, recebe: 16.72 }, 4)).toBeNull();
+  });
+
+  it("preço um pouco maior: desconta o imposto a mais", () => {
+    const op = oportunidadeDeMargem({ precoFinal: 20, recebe: 16 }, { precoFinal: 21, recebe: 17 }, 10)!;
+    expect(op.ganho).toBeCloseTo(1 - 0.1, 6);
+  });
+
+  it("situação pelo cabeçalho da promoção", () => {
+    expect(situacaoDaPromocao("Com redução de tarifas | 23 a 30/nov | ATIVA", "Alterar")).toBe("ativa");
+    expect(situacaoDaPromocao("Oferta relâmpago 27/nov PROGRAMADA", "Alterar")).toBe("programada");
+    expect(situacaoDaPromocao("Nova proposta! Black Friday", "Participar")).toBe("oferecida");
+    expect(situacaoDaPromocao("Oferta relâmpago", "Deixar de participar")).toBe("outra");
   });
 });
