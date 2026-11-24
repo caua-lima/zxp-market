@@ -21,6 +21,7 @@ import { useAccess } from "@/components/tabs/AccessGuard";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { recarregarPagina } from "@/lib/ir-para";
 import TelaHeader from "@/components/TelaHeader";
+import Modal from "@/components/Modal";
 import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
 import { fonteCarregada, FONTE_CARREGANDO } from "@/lib/domain/estado-fonte";
 
@@ -52,6 +53,24 @@ export default function AccessControlTab({
 
   const [entries, setEntries] = useState<AccessEntry[]>([]);
   const [convite, setConvite] = useState<string | null>(null);
+  /**
+   * O resultado de "Salvar alterações" / "Adicionar e-mail", num popup.
+   *
+   * Antes o formulário só limpava em silêncio (e o erro era uma linha
+   * pequena): quem editava não sabia se tinha gravado, e a senha recém-criada
+   * sumia junto com o formulário — sem ter como copiar pra passar à pessoa.
+   * A senha só aparece AQUI, uma vez: o Firebase guarda hash, não a senha, e
+   * depois de fechar não há como mostrá-la de novo (Editar → nova senha).
+   */
+  const [resultado, setResultado] = useState<{
+    ok: boolean;
+    titulo: string;
+    linhas: string[];
+    senha?: string;
+    trocaNoPrimeiroLogin?: boolean;
+  } | null>(null);
+  const [senhaDoResultadoVisivel, setSenhaDoResultadoVisivel] = useState(false);
+  const [copiado, setCopiado] = useState(false);
   /** Etapa 6: prazo do acesso ("" = permanente), só ao adicionar e só no modo empresa. */
   const [prazo, setPrazo] = useState("");
   const modoEmpresa = modoEmpresaAtivo();
@@ -218,22 +237,47 @@ export default function AccessControlTab({
         if (!res.ok) {
           const j = await res.json().catch(() => null);
           setError("Acesso salvo, mas falhou criar o login: " + (j?.error ?? res.status));
+          setResultado({
+            ok: false,
+            titulo: "Acesso salvo, mas a senha NÃO foi criada",
+            linhas: [
+              `${displayName.trim() || normalizedEmail} · ${roleLabel(effectiveRole)}`,
+              `O login por senha falhou (${j?.error ?? res.status}). A pessoa ainda não consegue entrar com senha — tente salvar a senha de novo.`,
+            ],
+          });
           return;
         }
       }
 
+      const trocaNoPrimeiroLogin = Boolean(payload.trocarSenha);
+      setResultado({
+        ok: true,
+        titulo: editingEmail ? "Alterações salvas" : "Acesso criado",
+        linhas: [
+          `${displayName.trim() || normalizedEmail} · ${roleLabel(effectiveRole)}`,
+          normalizedEmail,
+          password
+            ? (editingEmail ? "Senha de login trocada." : "Login por e-mail e senha criado.")
+            : (editingEmail ? "Senha não mudou." : "Sem senha: só entra com o Google (se o e-mail for uma conta Google)."),
+          ...(avisoDaTroca ? [avisoDaTroca] : []),
+        ],
+        senha: password || undefined,
+        trocaNoPrimeiroLogin: Boolean(password) && trocaNoPrimeiroLogin,
+      });
+      setSenhaDoResultadoVisivel(false);
+      setCopiado(false);
       resetForm();
       if (avisoDaTroca) setConvite(avisoDaTroca);
     } catch (e) {
       // S25: o servidor recusa pelo plano — dizer isso, não um "não foi possível" genérico.
       const motivo = e instanceof Error ? e.message : "";
-      setError(
-        motivo === "limite_do_plano"
-          ? "O plano atual chegou ao limite de pessoas. Troque de plano em Plano, acima, ou remova alguém."
-          : motivo === "empresa_bloqueada"
-            ? "A empresa está em modo somente leitura (assinatura). Reative em Plano, acima."
-            : "Não foi possível salvar a entrada de acesso.",
-      );
+      const texto = motivo === "limite_do_plano"
+        ? "O plano atual chegou ao limite de pessoas. Troque de plano em Plano, acima, ou remova alguém."
+        : motivo === "empresa_bloqueada"
+          ? "A empresa está em modo somente leitura (assinatura). Reative em Plano, acima."
+          : "Não foi possível salvar a entrada de acesso.";
+      setError(texto);
+      setResultado({ ok: false, titulo: "Nada foi salvo", linhas: [texto] });
     }
   }
 
@@ -373,6 +417,45 @@ Ela passa a administrar o time, o plano e a conexão com o Mercado Livre. Você 
 
   return (
     <div className="dash">
+      {resultado && (
+        <Modal open onClose={() => setResultado(null)}>
+          <div className="modal-title" style={{ color: resultado.ok ? "var(--green)" : "var(--red-text)" }}>
+            {resultado.ok ? "✓ " : "⚠ "}{resultado.titulo}
+          </div>
+          <div style={{ display: "grid", gap: 4, margin: "8px 0 12px", fontSize: ".9rem" }}>
+            {resultado.linhas.map((l) => <div key={l}>{l}</div>)}
+          </div>
+          {resultado.senha && (
+            <div className="note" style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: ".8rem", color: "var(--muted)", marginBottom: 6 }}>
+                Senha de login — copie agora e passe pra pessoa. Depois de fechar, não dá pra ver de novo.
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <code style={{ fontSize: "1.05rem", fontWeight: 700, letterSpacing: ".04em", padding: "4px 8px", background: "var(--surface2)", borderRadius: 6 }}>
+                  {senhaDoResultadoVisivel ? resultado.senha : "•".repeat(Math.max(resultado.senha.length, 8))}
+                </code>
+                <button type="button" className="btn btn-ghost btn-xs" aria-pressed={senhaDoResultadoVisivel} onClick={() => setSenhaDoResultadoVisivel((v) => !v)}>
+                  {senhaDoResultadoVisivel ? "Ocultar" : "Ver senha"}
+                </button>
+                <button
+                  type="button" className="btn btn-primary btn-xs"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(resultado.senha!).then(() => setCopiado(true), () => setCopiado(false));
+                  }}
+                >
+                  {copiado ? "Copiada ✓" : "Copiar"}
+                </button>
+              </div>
+              {resultado.trocaNoPrimeiroLogin && (
+                <div style={{ fontSize: ".8rem", marginTop: 6 }}>No primeiro login a pessoa troca por uma senha dela.</div>
+              )}
+            </div>
+          )}
+          <div className="modal-btns">
+            <button type="button" className="btn btn-primary" onClick={() => setResultado(null)}>OK</button>
+          </div>
+        </Modal>
+      )}
       <TelaHeader
         titulo="Acesso"
         subtitulo={`${entries.length} pessoa(s) com acesso`}
@@ -490,8 +573,9 @@ Ela passa a administrar o time, o plano e a conexão com o Mercado Livre. Você 
               <div className="hint">
                 <b>Gerar senha provisória:</b> copie e passe pra pessoa — no primeiro login ela cria a própria. 
                 Preenchendo, cria um login por e-mail/senha (além do Google). Reeditar troca a senha.
-                {" "}<b>Ver</b> mostra só o que você está digitando agora — senha já cadastrada não
-                dá pra exibir, o Firebase guarda um hash irreversível, não a senha.
+                {" "}<b>Ver</b> mostra só o que você está digitando agora. Ao salvar, a senha aparece num aviso
+                com <b>Copiar</b> — é a única vez: senha já cadastrada não dá pra exibir (o Firebase guarda um
+                hash irreversível). Esqueceu? Editar → gere uma nova → Salvar.
               </div>
             </div>
 
