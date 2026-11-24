@@ -357,13 +357,13 @@ Ela passa a administrar o time, o plano e a conexão com o Mercado Livre. Você 
 
   const owners = entries.filter((e) => e.role === "owner").length;
   const AUDIT_ACAO_LABEL: Record<AuditEvent["acao"], string> = {
-    criar: "criou", editar: "editou", arquivar: "arquivou", reativar: "reativou", excluir: "excluiu",
+    criar: "criou", editar: "editou", arquivar: "arquivou", reativar: "reativou", excluir: "excluiu", visualizar: "viu",
   };
   const AUDIT_ENTIDADE_LABEL: Record<AuditEvent["entidade"], string> = {
     custo: "custo", meta: "meta", acesso: "acesso", produto: "produto", movimento: "movimentação de estoque",
   };
   const AUDIT_TONE: Record<AuditEvent["acao"], string> = {
-    criar: "var(--green)", editar: "var(--brand)", arquivar: "var(--yellow)", reativar: "var(--green)", excluir: "var(--red)",
+    criar: "var(--green)", editar: "var(--brand)", arquivar: "var(--yellow)", reativar: "var(--green)", excluir: "var(--red)", visualizar: "var(--muted)",
   };
   /**
    * Cada papel com a sua cor. Antes owner e colaborador saíam quase no mesmo

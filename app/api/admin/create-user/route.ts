@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAccess } from "@/lib/api-auth";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase/admin";
 import { caminhoDoTime } from "@/lib/empresas";
+import { guardarSenha } from "@/lib/senhas-cofre";
 
 /**
  * Cria (ou atualiza a senha de) um usuário de login por e-mail/senha.
@@ -44,14 +45,18 @@ export async function POST(req: Request) {
     }
 
     const auth = getAdminAuth();
+    let criado = false;
     try {
       const existing = await auth.getUserByEmail(email);
       await auth.updateUser(existing.uid, { password });
-      return NextResponse.json({ ok: true, updated: true });
     } catch {
       await auth.createUser({ email, password, emailVerified: true });
-      return NextResponse.json({ ok: true, created: true });
+      criado = true;
     }
+    // Cópia cifrada pro "Ver senha" (lib/senhas-cofre.ts). Falhar aqui não
+    // desfaz a senha: só o "Ver senha" fica sem ela até a próxima troca.
+    await guardarSenha(email, password, gate.email).catch(() => {});
+    return NextResponse.json({ ok: true, ...(criado ? { created: true } : { updated: true }) });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: "create_user_failed", details: msg }, { status: 500 });
