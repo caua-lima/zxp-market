@@ -22,6 +22,7 @@ import { useAuth } from "@/lib/firebase/auth-context";
 import { recarregarPagina } from "@/lib/ir-para";
 import TelaHeader from "@/components/TelaHeader";
 import Modal from "@/components/Modal";
+import { VerSenhaModal } from "@/components/VerSenhaModal";
 import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
 import { fonteCarregada, FONTE_CARREGANDO } from "@/lib/domain/estado-fonte";
 
@@ -70,6 +71,8 @@ export default function AccessControlTab({
     trocaNoPrimeiroLogin?: boolean;
   } | null>(null);
   const [senhaDoResultadoVisivel, setSenhaDoResultadoVisivel] = useState(false);
+  /** "Ver senha" de uma pessoa da lista (cofre cifrado, só o Master — ver VerSenhaModal). */
+  const [verSenhaDe, setVerSenhaDe] = useState<{ email: string; nome: string } | null>(null);
   const [copiado, setCopiado] = useState(false);
   /** Etapa 6: prazo do acesso ("" = permanente), só ao adicionar e só no modo empresa. */
   const [prazo, setPrazo] = useState("");
@@ -417,6 +420,13 @@ Ela passa a administrar o time, o plano e a conexão com o Mercado Livre. Você 
 
   return (
     <div className="dash">
+      {verSenhaDe && (
+        <VerSenhaModal
+          email={verSenhaDe.email} nome={verSenhaDe.nome}
+          podeAlterar={verSenhaDe.email === meuEmail}
+          onClose={() => setVerSenhaDe(null)}
+        />
+      )}
       {resultado && (
         <Modal open onClose={() => setResultado(null)}>
           <div className="modal-title" style={{ color: resultado.ok ? "var(--green)" : "var(--red-text)" }}>
@@ -693,6 +703,13 @@ Ela passa a administrar o time, o plano e a conexão com o Mercado Livre. Você 
                   {canEdit && (
                     <div className="row-actions">
                       <button type="button" className="btn btn-warning btn-xs" onClick={() => startEdit(entry)}>Editar</button>
+                      <button
+                        type="button" className="btn btn-ghost btn-xs"
+                        onClick={() => setVerSenhaDe({ email: entry.email, nome: entry.displayName || entry.email })}
+                        title="Ver a senha de login desta pessoa (fica registrado na trilha de auditoria)"
+                      >
+                        Ver senha
+                      </button>
                       {entry.email !== meuEmail && (
                         <button type="button" className="btn btn-ghost btn-xs" onClick={() => enviarConvite(entry.email)} title="Manda pra pessoa o link de criar a senha">
                           Enviar convite

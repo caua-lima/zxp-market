@@ -57,6 +57,7 @@ import Dashboard from "@/components/dashboard/Dashboard";
 import { MlAccountStatus } from "@/components/MlAccountStatus";
 import { ZxpMark } from "@/components/ZxpMark";
 import { AvatarUpload } from "@/components/AvatarUpload";
+import { BotaoMinhaSenha } from "@/components/VerSenhaModal";
 import MyProfileModal from "@/components/MyProfileModal";
 import CommandPalette from "@/components/CommandPalette";
 import AvisoDeAssinatura from "@/components/AvisoDeAssinatura";
@@ -432,6 +433,7 @@ function AppShell() {
         extras={(
           <>
             <PushNotificationToggle />
+            <BotaoMinhaSenha />
             <button type="button" className="btn btn-ghost btn-xs" onClick={() => void signOut()}>Sair</button>
           </>
         )}
@@ -664,6 +666,7 @@ function AppShell() {
               >
                 {swappingAccount ? 'Trocando...' : 'Trocar'}
               </button>
+              <BotaoMinhaSenha style={{ flex: 1, justifyContent: "center" }} />
               <button
                 type="button"
                 className="btn btn-ghost btn-xs"

@@ -3,6 +3,7 @@
 import { Suspense, useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { BotaoMinhaSenha } from "@/components/VerSenhaModal";
 import { useAuth } from "@/lib/firebase/auth-context";
 import LoginCard from "@/components/LoginCard";
 import { AccessGuard, useAccess } from "@/components/tabs/AccessGuard";
@@ -60,6 +61,7 @@ function TelaDeTarefas() {
           <PushNotificationToggle />
           {podeVer("etiquetas") && <Link className="btn btn-ghost btn-sm" href="/etiquetas">Etiquetas</Link>}
           {papel !== "equipe" && <Link className="btn btn-ghost btn-sm" href="/">Painel</Link>}
+          <BotaoMinhaSenha className="btn btn-ghost btn-sm" />
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => void signOut()}>Sair</button>
         </div>
       </header>
