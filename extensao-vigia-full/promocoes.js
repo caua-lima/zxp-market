@@ -47,6 +47,7 @@
     return M.lerReais(el ? el.textContent : col3.innerText);
   };
 
+  const abertos = new Set(); // contas abertas com um clique na marca
   function marcar() {
     if (!dados || dados.erro) return;
     for (const box of document.querySelectorAll(".sc-list-collapsible-row__promotion-box")) {
@@ -83,9 +84,34 @@
         } else {
           const meta = Number(dados.metaMargem) || 10;
           const st = M.statusDaMargem(r.margem, meta);
-          el.textContent = `Margem ${M.pct(r.margem)} · lucro ${M.reais(r.lucro)}`;
-          el.style.cssText += `background:${FUNDO[st]};color:${COR[st]};`;
+          el.style.cssText += `background:${FUNDO[st]};color:${COR[st]};cursor:pointer;`;
           const falta = M.repasseParaMeta(precoFinal, item.custo, item.impostoPct, meta);
+          /**
+           * Clicar abre a conta da promoção (pedido do dono, 25/11/2026):
+           * preço, você recebe, custo, imposto e o resultado. Fica aberta mesmo
+           * se a lista for redesenhada (a chave é o anúncio + o preço).
+           */
+          const chave = `${mlb}|${precoFinal}`;
+          // Texto corrido ("− Custo R$ 13,00"): a coluna do ML é estreita, e rótulo e valor lado a lado eram cortados.
+          const linhaConta = (rot, val, forte) => `<div style="${forte ? "font-weight:700;border-top:1px solid currentColor;margin-top:3px;padding-top:3px" : "font-weight:500"}">${rot} <b>${val}</b></div>`;
+          const desenhar = () => {
+            const aberto = abertos.has(chave);
+            el.innerHTML = `<div>Margem ${M.pct(r.margem)} · lucro ${M.reais(r.lucro)} <span style="font-weight:500;opacity:.7">${aberto ? "▴" : "▾"}</span></div>`
+              + (aberto ? `<div style="margin-top:5px">`
+                + linhaConta("Preço final", M.reais(precoFinal))
+                + linhaConta("Você recebe", M.reais(recebe))
+                + linhaConta("− Custo", M.reais(item.custo))
+                + linhaConta(`− Imposto ${M.pct(item.impostoPct)}`, M.reais(r.imposto))
+                + linhaConta("= Lucro", M.reais(r.lucro), true)
+                + `<div style="font-weight:500;opacity:.8;margin-top:3px">meta ${M.pct(meta)}${st !== "saudavel" && falta != null ? `<br>pra bater: receber ${M.reais(falta)}` : ""}</div>`
+                + `</div>` : "");
+          };
+          desenhar();
+          el.addEventListener("click", (e) => {
+            e.preventDefault(); e.stopPropagation();
+            if (abertos.has(chave)) abertos.delete(chave); else abertos.add(chave);
+            desenhar();
+          });
           el.title = [
             `${item.nome}`,
             `Você recebe ${M.reais(recebe)} (o ML já tirou tarifa e envio do Full)`,
@@ -94,6 +120,7 @@
             `= lucro ${M.reais(r.lucro)} · margem ${M.pct(r.margem)} do preço final`,
             `Meta do mês: ${M.pct(meta)}`,
             st !== "saudavel" && falta != null ? `Pra bater a meta neste preço, o "você recebe" teria de ser ${M.reais(falta)} (faltam ${M.reais(falta - recebe)}).` : "",
+            "Clique pra abrir ou fechar a conta.",
           ].filter(Boolean).join("\n");
         }
       }
