@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ZXP — Vigia da agenda do Full",
-  "version": "2.8.1",
-  "description": "Vigia da agenda do Full, leitura da Gestão de envios Full e margem de cada promoção na página de promoções do ML — com o seu login do Mercado Livre neste Chrome e os custos do Dash.",
+  "version": "2.9.0",
+  "description": "Vigia da agenda do Full, leitura da Gestão de envios Full e margem de cada promoção na página de promoções do ML e no resumo de custos ao modificar um anúncio — com o seu login do Mercado Livre neste Chrome e os custos do Dash.",
   "permissions": [
     "alarms",
     "storage",
@@ -37,6 +37,16 @@
       ],
       "js": [
         "promocoes.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://vendedores.mercadolivre.com.br/anuncios/*/modificar/*",
+        "https://www.mercadolivre.com.br/anuncios/*/modificar/*"
+      ],
+      "js": [
+        "margem-anuncio.js"
       ],
       "run_at": "document_idle"
     }
