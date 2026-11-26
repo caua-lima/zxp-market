@@ -1,6 +1,7 @@
 import "server-only";
 import { custoDoVendedor } from "@/lib/domain/frete-vendedor";
-import { motivoDoCancelamento } from "@/lib/domain/separacao-pacote";
+import { aplicarDatasHerdadas, motivoDoCancelamento } from "@/lib/domain/separacao-pacote";
+import { getAdminDb } from "@/lib/firebase/admin";
 import { fetchML } from "./fetch-ml";
 import { sellerIdAtual } from "@/lib/ml/vendedor";
 
@@ -126,9 +127,24 @@ export async function fetchOrdersLive(
       offset += results.length;
       if (offset >= total || results.length === 0) break;
     }
-    return all;
+    // Separação de pacote: a venda fica no dia da COMPRA (lib/domain/separacao-pacote.ts).
+    return aplicarDatasHerdadas(all, await pedidosComDataHerdada(), fromISO, toISO);
   } catch {
     return null;
+  }
+}
+
+/**
+ * Os pedidos da separação que já herdaram a data da compra (poucos: só os de
+ * pacote separado). Falha de leitura não derruba a busca ao vivo — volta vazio,
+ * e o resultado fica como o ML mandou.
+ */
+async function pedidosComDataHerdada(): Promise<FirebaseFirestore.DocumentData[]> {
+  try {
+    const snap = await getAdminDb().collection("ml_orders").where("separacao_resolvida", "==", true).get();
+    return snap.docs.map((d) => ({ ...d.data(), order_id: String(d.get("order_id") ?? d.id) }) as FirebaseFirestore.DocumentData).filter((d) => d.date_created_ml);
+  } catch {
+    return [];
   }
 }
 

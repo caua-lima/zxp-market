@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canceladoPorSeparacao, motivoDoCancelamento, nasceuDeSeparacao, origemDaSeparacao, type PedidoParaOrigem } from "./separacao-pacote";
+import { canceladoPorSeparacao, motivoDoCancelamento, nasceuDeSeparacao, origemDaSeparacao, type PedidoParaOrigem, aplicarDatasHerdadas } from "./separacao-pacote";
 
 // Formas reais (pacote 2000016125187359, 18/11/2026), sem dado do comprador.
 const original = {
@@ -79,5 +79,32 @@ describe("data da venda na separação de pacote (origemDaSeparacao)", () => {
 
   it("original criado DEPOIS do novo não serve", () => {
     expect(origemDaSeparacao({ buyerId: "B1", dateCreated: "2026-11-17T20:00:00.000-04:00", itens: ["MLB4982932025"] }, originais)).toBeNull();
+  });
+});
+
+describe("aplicarDatasHerdadas (busca ao vivo do ML)", () => {
+  // Pacote 2000016184147947: compra 21/11 11:13 (-04), separado 26/11 05:25 (-04).
+  const herdado = { order_id: "N1", date_created: "2026-11-21T11:13:17.000-04:00", date_created_ml: "2026-11-26T05:25:18.000-04:00", total_amount: 26.89 };
+  const aoVivoHoje = [{ order_id: "N1", date_created: "2026-11-26T05:25:18.000-04:00", total_amount: 26.89 }, { order_id: "X", date_created: "2026-11-26T09:00:00.000-03:00", total_amount: 10 }];
+
+  it("hoje: o pedido da separação sai (a venda é do dia 21)", () => {
+    const r = aplicarDatasHerdadas(aoVivoHoje, [herdado], "2026-11-26T00:00:00.000-03:00", "2026-11-26T23:59:59.999-03:00");
+    expect(r.map((o) => o.order_id)).toEqual(["X"]);
+  });
+
+  it("dia 21: o pedido entra com a data da compra, mesmo a busca não tendo trazido", () => {
+    const r = aplicarDatasHerdadas([], [herdado], "2026-11-21T00:00:00.000-03:00", "2026-11-21T23:59:59.999-03:00");
+    expect(r).toHaveLength(1);
+    expect(r[0].date_created).toBe("2026-11-21T11:13:17.000-04:00");
+  });
+
+  it("período que cobre os dois dias: entra UMA vez, com a data da compra", () => {
+    const r = aplicarDatasHerdadas(aoVivoHoje, [herdado], "2026-11-01T00:00:00.000-03:00", "2026-11-30T23:59:59.999-03:00");
+    expect(r.filter((o) => o.order_id === "N1")).toHaveLength(1);
+    expect(r.find((o) => o.order_id === "N1")!.date_created).toBe("2026-11-21T11:13:17.000-04:00");
+  });
+
+  it("sem herdados: devolve o que veio", () => {
+    expect(aplicarDatasHerdadas(aoVivoHoje, [], "2026-11-26T00:00:00.000-03:00", "2026-11-26T23:59:59.999-03:00")).toEqual(aoVivoHoje);
   });
 });

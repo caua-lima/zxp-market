@@ -130,3 +130,47 @@ export function origemDaSeparacao(
     packId: melhor.c.packId ? String(melhor.c.packId) : null,
   };
 }
+
+/**
+ * A busca AO VIVO do ML (`/orders/search` por `date_created`) não conhece a
+ * data herdada: devolve os pedidos da separação no dia em que o pacote foi
+ * separado. Medido em 26/11/2026 no pacote 2000016184147947 (compra 21/11,
+ * separado 26/11): a lista de vendas (Firestore) mostrava 21/11, e o
+ * Dashboard (ao vivo) tirava R$ 83,72 do dia 21 e punha no dia 26.
+ *
+ * Aplica sobre o resultado ao vivo o que está gravado (`separacao-datas`):
+ *   · pedido herdado que veio na busca: ganha a data da compra; se ela cai fora
+ *     do período, sai do resultado (a venda é de outro dia);
+ *   · pedido herdado cuja data da COMPRA está no período mas cuja data do ML
+ *     não estava (a busca não o trouxe): entra, com o que está gravado.
+ *
+ * Puro. `herdados` = documentos gravados com `date_created_ml`.
+ */
+export function aplicarDatasHerdadas<T extends { order_id?: unknown; date_created?: unknown }>(
+  aoVivo: readonly T[],
+  herdados: readonly (T & { date_created_ml?: unknown })[],
+  fromISO: string,
+  toISO: string,
+): T[] {
+  const ini = Date.parse(fromISO);
+  const fim = Date.parse(toISO);
+  const noPeriodo = (d: unknown) => { const t = Date.parse(String(d ?? "")); return Number.isFinite(t) && t >= ini && t <= fim; };
+  const porId = new Map<string, T & { date_created_ml?: unknown }>();
+  for (const h of herdados) if (h.date_created_ml && h.date_created) porId.set(String(h.order_id ?? ""), h);
+  if (porId.size === 0) return [...aoVivo];
+
+  const saida: T[] = [];
+  const vistos = new Set<string>();
+  for (const o of aoVivo) {
+    const id = String(o.order_id ?? "");
+    const h = porId.get(id);
+    vistos.add(id);
+    if (!h) { saida.push(o); continue; }
+    if (noPeriodo(h.date_created)) saida.push({ ...o, date_created: h.date_created });
+  }
+  for (const [id, h] of porId) {
+    if (vistos.has(id) || !noPeriodo(h.date_created)) continue;
+    saida.push(h);
+  }
+  return saida;
+}
