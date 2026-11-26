@@ -119,20 +119,40 @@ export function textoSeguro(texto: string): string {
   return String(texto ?? "").toUpperCase().replace(/[^A-Z0-9 +]/g, "").replace(/\s+/g, " ").trim();
 }
 
-/** Altura de fonte que cabe na caixa (A0 condensada: ~0,55 da altura por caractere), ou null se não cabe legível. */
+/** Altura de fonte que cabe na caixa, ou null se não cabe legível. */
 export function fonteQueCabe(texto: string, caixa: Caixa): number | null {
   return arranjoQueCabe(texto, caixa)?.fonte ?? null;
 }
 
 /** Menor letra que ainda se lê na separação (pontos, 203 dpi ≈ 3,8 mm). */
 const FONTE_MINIMA = 30;
+/** Folga de cada lado dentro da moldura (pontos). */
+const FOLGA = 10;
+
+/**
+ * Largura de um caractere da fonte 0 da Zebra (`^A0N,f,f`), em frações da
+ * fonte, POR CIMA. Era um 0,55 fixo pra tudo, e o "M" ocupa ~0,85: "2MS" e
+ * "MC+" não cabiam, a impressora imprimia o excesso POR CIMA das outras letras
+ * e, com o texto invertido (^FR), a sobreposição se apagava — o borrão "M/C"
+ * e "2∑M" das etiquetas de 26/11/2026.
+ */
+export function larguraDoCaractere(c: string): number {
+  if (c === "M" || c === "W") return 0.9;
+  if (c === " ") return 0.32;
+  if (c === "I" || c === "1") return 0.4;
+  if (/[0-9+]/.test(c)) return 0.64;
+  return 0.72;
+}
+export function larguraDoTexto(texto: string, fonte: number): number {
+  return [...texto].reduce((s, c) => s + larguraDoCaractere(c), 0) * fonte;
+}
 
 /**
  * Como escrever o texto na caixa com a MAIOR letra possível: numa linha só
  * ("2TT + BM"), numa linha sem espaços ("TT+MS+PF") ou empilhando as siglas
- * (TT+ / MS+ / PF). Antes era só a primeira: pacote com 3 produtos diferentes
- * não cabia e ia pra etiqueta auxiliar (18/11/2026, envio 48573153721) — uma
- * etiqueta a mais pra imprimir e colar, e fácil de perder.
+ * (TT / MS / PF, uma por linha — sem o "+" pendurado, que só roubava largura).
+ * Antes era só a primeira: pacote com 3 produtos diferentes não cabia e ia
+ * pra etiqueta auxiliar (18/11/2026, envio 48573153721).
  */
 export function arranjoQueCabe(texto: string, caixa: Caixa): { linhas: string[]; fonte: number } | null {
   const partes = texto.split("+").map((x) => x.trim()).filter(Boolean);
@@ -141,22 +161,25 @@ export function arranjoQueCabe(texto: string, caixa: Caixa): { linhas: string[];
     const porLinha = Math.ceil(partes.length / k);
     const linhas: string[] = [];
     for (let i = 0; i < partes.length; i += porLinha) linhas.push(partes.slice(i, i + porLinha).join("+"));
-    // Quem continua a lista leva o "+" no fim da linha de cima: "TT+" / "MS+" / "PF".
-    candidatos.push(linhas.map((l, i) => (i < linhas.length - 1 ? `${l}+` : l)));
+    candidatos.push(linhas);
   }
+  const util = caixa.w - 2 * FOLGA;
   let melhor: { linhas: string[]; fonte: number } | null = null;
   for (const linhas of candidatos) {
-    const maior = Math.max(...linhas.map((l) => l.length), 1);
+    const maiorFator = Math.max(...linhas.map((l) => larguraDoTexto(l, 1)), 0.01);
     const fonte = Math.min(
-      Math.floor(caixa.h * 0.75),
-      Math.floor((caixa.h - 6) / linhas.length),
-      Math.floor((caixa.w - 8) / (maior * 0.55)),
+      Math.floor((caixa.h - 2 * FOLGA) * 0.8),
+      Math.floor((caixa.h - 2 * FOLGA) / linhas.length),
+      Math.floor(util / maiorFator),
     );
     if (fonte < FONTE_MINIMA) continue;
     if (!melhor || fonte > melhor.fonte) melhor = { linhas, fonte };
   }
   return melhor;
 }
+
+/** Espessura da moldura da sigla (pontos). */
+const MOLDURA = 5;
 
 export type ResultadoMarcacao =
   | { ok: true; zpl: string; regiao: Caixa }
@@ -176,15 +199,17 @@ export function marcarEtiqueta(zpl: string, textoBruto: string): ResultadoMarcac
     // Uma linha por campo, cada uma na sua altura. Um ^FB de várias linhas
     // deixa o espaçamento por conta da impressora/motor (medido no Zebrash:
     // ~1,5× a fonte) e o texto vazava pra fora da caixa preta.
-    const passo = Math.floor((regiao.h - 6) / linhas.length);
-    const y0 = regiao.y + 3 + Math.max(Math.floor((passo - fonte) / 2), 0);
+    const passo = Math.floor((regiao.h - 2 * FOLGA) / linhas.length);
+    const y0 = regiao.y + FOLGA + Math.max(Math.floor((passo - fonte) / 2), 0);
+    /**
+     * PRETO SOBRE BRANCO, dentro de uma moldura — sem ^FR. O texto invertido
+     * (branco na caixa preta) se apaga onde duas letras se sobrepõem, e foi o
+     * que borrou as siglas em 26/11/2026. Preto sobre branco, no pior caso,
+     * fica com letras encostadas, mas legíveis.
+     */
     const campos = linhas.map((l, i) =>
-      `^FO${regiao.x},${y0 + i * passo}^A0N,${fonte},${fonte}^FB${regiao.w},1,0,C^FR^FD${l}^FS`).join("\n");
-    // Espessura = o MENOR lado: no ZPL, espessura maior que a altura faz a caixa
-    // crescer até a espessura (era 150 numa caixa de 120 e encostava no
-    // quadro "Despachar" logo abaixo).
-    const preenchimento = Math.min(regiao.w, regiao.h);
-    const bloco = `${INICIO}\n^FO${regiao.x},${regiao.y}^GB${regiao.w},${regiao.h},${preenchimento}^FS\n${campos}\n${FIM}\n`;
+      `^FO${regiao.x},${y0 + i * passo}^A0N,${fonte},${fonte}^FB${regiao.w},1,0,C^FD${l}^FS`).join("\n");
+    const bloco = `${INICIO}\n^FO${regiao.x},${regiao.y}^GB${regiao.w},${regiao.h},${MOLDURA}^FS\n${campos}\n${FIM}\n`;
     const ultimo = limpo.lastIndexOf("^XZ");
     return { ok: true, zpl: limpo.slice(0, ultimo) + bloco + limpo.slice(ultimo), regiao };
   }

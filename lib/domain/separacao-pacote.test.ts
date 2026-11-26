@@ -93,9 +93,9 @@ describe("aplicarDatasHerdadas (busca ao vivo do ML)", () => {
   });
 
   it("dia 21: o pedido entra com a data da compra, mesmo a busca não tendo trazido", () => {
-    const r = aplicarDatasHerdadas([], [herdado], "2026-11-21T00:00:00.000-03:00", "2026-11-21T23:59:59.999-03:00");
+    const r = aplicarDatasHerdadas<{ order_id?: unknown; date_created?: unknown }>([], [herdado], "2026-11-21T00:00:00.000-03:00", "2026-11-21T23:59:59.999-03:00");
     expect(r).toHaveLength(1);
-    expect(r[0].date_created).toBe("2026-11-21T11:13:17.000-04:00");
+    expect((r[0] as { date_created?: unknown }).date_created).toBe("2026-11-21T11:13:17.000-04:00");
   });
 
   it("período que cobre os dois dias: entra UMA vez, com a data da compra", () => {

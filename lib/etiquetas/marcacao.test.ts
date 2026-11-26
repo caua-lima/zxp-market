@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { arranjoQueCabe, caixasOcupadas, etiquetaAuxiliar, marcarEtiqueta, regiaoLivre, semMarcacao, textoSeguro } from "./marcacao";
+import { arranjoQueCabe, larguraDoTexto, caixasOcupadas, etiquetaAuxiliar, marcarEtiqueta, regiaoLivre, semMarcacao, textoSeguro } from "./marcacao";
 
 const base = (extra = "") => [
   "^XA", "^CI28", "^LH5,15",
@@ -40,8 +40,9 @@ describe("marcarEtiqueta — nunca cobre o que o ML desenhou", () => {
     const r = marcarEtiqueta(base(), "TT^FS^XA");
     expect(r.ok && r.zpl.includes("^FDTTFSXA^FS")).toBe(true);
   });
-  it("5 produtos ainda cabem empilhados; 7 com quantidade já não — não marca ilegível", () => {
-    expect(marcarEtiqueta(base(), "2TT + BM + MS + LC + PF").ok).toBe(true);
+  it("3 produtos cabem empilhados; 5 já não cabem legíveis — vai etiqueta auxiliar, não borrão", () => {
+    expect(marcarEtiqueta(base(), "2TT + BM + MS").ok).toBe(true);
+    expect(marcarEtiqueta(base(), "2TT + BM + MS + LC + PF").ok).toBe(false);
     expect(marcarEtiqueta(base(), "2TT + 3BM + 4MS + 2LC + 5PF + 2AH + 3AC").ok).toBe(false);
   });
 });
@@ -61,22 +62,34 @@ describe("pacote com vários produtos (envio 48573153721: TT + MS + PF)", () => 
     const r = marcarEtiqueta(base(), "TT + MS + PF");
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.zpl).toMatch(/\^FDTT\+MS\+\^FS[\s\S]*\^FDPF\^FS/);
+    expect(r.zpl).toMatch(/\^FDTT\+MS\^FS[\s\S]*\^FDPF\^FS/);
   });
 
   it("cabe até no canto estreito ao lado do avião", () => {
     const r = marcarEtiqueta(base(AVIAO), "TT + MS + PF");
     expect(r.ok && r.regiao.x).toBe(722);
-    if (r.ok) expect(r.zpl).toMatch(/\^FDTT\+\^FS[\s\S]*\^FDMS\+\^FS[\s\S]*\^FDPF\^FS/);
+    if (r.ok) expect(r.zpl).toMatch(/\^FDTT\^FS[\s\S]*\^FDMS\^FS[\s\S]*\^FDPF\^FS/);
   });
 
   it("arranjoQueCabe: uma linha quando cabe, empilha quando não", () => {
     expect(arranjoQueCabe("2TT", { x: 640, y: 10, w: 150, h: 120 })?.linhas).toEqual(["2TT"]);
-    expect(arranjoQueCabe("TT + MS + PF", { x: 722, y: 10, w: 78, h: 120 })).toEqual({ linhas: ["TT+", "MS+", "PF"], fonte: 38 });
+    expect(arranjoQueCabe("TT + MS + PF", { x: 722, y: 10, w: 78, h: 120 })).toEqual({ linhas: ["TT", "MS", "PF"], fonte: 33 });
   });
 
-  it("a caixa preta não cresce além da altura (espessura = menor lado)", () => {
+  it("preto sobre branco numa moldura — sem ^FR (texto invertido borrava, 26/11/2026)", () => {
     const r = marcarEtiqueta(base(), "MS");
-    expect(r.ok && r.zpl).toMatch(/\^GB150,120,120\^FS/);
+    expect(r.ok && r.zpl).toMatch(/\^GB150,120,5\^FS/);
+    expect(r.ok && r.zpl).not.toMatch(/\^FR/);
+  });
+
+  it("as siglas das etiquetas borradas de 26/11 cabem com folga (largura real das letras)", () => {
+    for (const [texto, regiao] of [["2MS", { x: 640, y: 10, w: 150, h: 120 }], ["MC + MS", { x: 722, y: 10, w: 78, h: 120 }]] as const) {
+      const a = arranjoQueCabe(texto, regiao)!;
+      expect(a).not.toBeNull();
+      for (const l of a.linhas) expect(larguraDoTexto(l, a.fonte)).toBeLessThanOrEqual(regiao.w - 20);
+      expect(a.linhas.length * a.fonte).toBeLessThanOrEqual(regiao.h - 20);
+    }
+    // No canto estreito "2MS" não cabe legível: vai a etiqueta auxiliar, nunca letra encavalada.
+    expect(arranjoQueCabe("2MS", { x: 722, y: 10, w: 78, h: 120 })).toBeNull();
   });
 });
