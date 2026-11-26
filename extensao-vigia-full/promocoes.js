@@ -371,9 +371,23 @@
     const rotRecebe = fs.find((el) => /^Você recebe$/i.test(el.textContent.trim()));
     const rotPreco = fs.find((el) => /^Preço final$/i.test(el.textContent.trim()));
     if (!rotRecebe || !rotPreco) return;
-    const valRecebe = naMesmaLinha(dlg, rotRecebe, (el) => el.tagName !== "INPUT" && M.lerReais(el.textContent) != null)[0];
     const campoPreco = naMesmaLinha(dlg, rotPreco, (el) => el.tagName === "INPUT" ? /\d/.test(el.value) && !el.disabled : M.lerReais(el.textContent) != null)[0];
-    if (!valRecebe || !campoPreco) return;
+    if (!campoPreco) return;
+    /**
+     * A janela tem DUAS colunas (Promoção e "Exclusivo meli+"). O "Você recebe"
+     * que vale é o da MESMA coluna do preço final em uso: o valor cujo campo de
+     * preço mais próximo (na horizontal) é o nosso. Quando o ML mostra "-" na
+     * nossa coluna (desconto fora da regra da campanha), não pega o da vizinha.
+     */
+    const camposDaLinha = naMesmaLinha(dlg, rotPreco, (el) => el.tagName === "INPUT");
+    const centro = (el) => { const r = el.getBoundingClientRect(); return r.left + r.width / 2; };
+    const valRecebe = naMesmaLinha(dlg, rotRecebe, (el) => el.tagName !== "INPUT" && M.lerReais(el.textContent) != null)
+      .find((v) => {
+        const cx = centro(v);
+        const maisPerto = camposDaLinha.reduce((a, b) => (Math.abs(centro(b) - cx) < Math.abs(centro(a) - cx) ? b : a), camposDaLinha[0] || campoPreco);
+        return maisPerto === campoPreco;
+      });
+    if (!valRecebe) { dlg.querySelectorAll(".zxp-margem-modal").forEach((e) => e.remove()); assinaturaModal = ""; return; }
     const recebe = M.lerReais(valRecebe.textContent);
     const preco = campoPreco.tagName === "INPUT" ? M.lerReais(`R$ ${campoPreco.value}`) : M.lerReais(campoPreco.textContent);
 

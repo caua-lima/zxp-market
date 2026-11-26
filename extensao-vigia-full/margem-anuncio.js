@@ -33,64 +33,64 @@
     return m ? m[0].toUpperCase() : null;
   }
 
-  /** O elemento-folha cujo texto é exatamente `texto` (ignora espaços). */
-  function folhaComTexto(raiz, texto) {
-    const alvo = texto.toLowerCase();
-    const it = document.createTreeWalker(raiz, NodeFilter.SHOW_ELEMENT);
-    for (let el = it.currentNode; el; el = it.nextNode()) {
-      if (el.closest && el.closest(".zxp-margem-anuncio")) continue;
-      if (el.children.length === 0 && el.textContent.trim().toLowerCase() === alvo) return el;
-    }
-    return null;
+  /**
+   * O "Resumo de custos" é um micro-frontend do ML dentro de um SHADOW DOM
+   * (#remote-module-container-sc-costcalculator-…, modo "open"): uma busca
+   * comum no document não o enxerga. Por isso a leitura varre o document E
+   * cada shadow root aberto. Medido em 25/11/2026.
+   */
+  function raizes() {
+    const lista = [document];
+    for (const el of document.querySelectorAll("*")) if (el.shadowRoot) lista.push(el.shadowRoot);
+    return lista;
   }
 
-  /** Sobe a partir de `el` até achar um ancestral cujo texto tem um "R$". */
-  function blocoComValor(el, limite = 4) {
-    let b = el;
-    for (let i = 0; i < limite && b; i++) {
-      b = b.parentElement;
-      if (b && /R\$\s*[\d.]+/.test(b.innerText)) return b;
+  /** Folhas de texto em ordem de documento (sem script/style e sem a nossa marca). */
+  function folhas(raiz) {
+    return [...raiz.querySelectorAll("*")].filter((el) => el.children.length === 0
+      && el.tagName !== "SCRIPT" && el.tagName !== "STYLE" && !(el.closest && el.closest(".zxp-margem-anuncio")));
+  }
+
+  /** O primeiro valor em R$ que vem DEPOIS do rótulo, na ordem da tela. */
+  function valorDepoisDe(fs, rotulo) {
+    const i = fs.findIndex((el) => el.textContent.trim().toLowerCase() === rotulo.toLowerCase());
+    if (i < 0) return null;
+    for (let j = i + 1; j < Math.min(fs.length, i + 12); j++) {
+      const v = M.lerReais(fs[j].textContent);
+      if (v != null) return { el: fs[j], valor: v };
     }
     return null;
   }
 
   /**
-   * Lê o "Resumo de custos": o "Você recebe" (repasse) e o preço da unidade
-   * ("Preço de 1 unidade … R$ 39,94/u"). Sem o painel na tela, null.
+   * Lê o "Resumo de custos": o "Você recebe" (repasse, `.rm-card-profit__amount`)
+   * e o preço da unidade ("Preço de 1 unidade … R$ 39,94/u"). Sem o painel, null.
    */
   function lerResumo() {
-    const titulo = folhaComTexto(document.body, "Resumo de custos");
-    const raiz = titulo ? (titulo.closest("aside,section,[role=dialog]") || titulo.parentElement?.parentElement || document.body) : document.body;
-    const rotulo = folhaComTexto(raiz, "Você recebe");
-    if (!rotulo) return null;
-    const blocoRecebe = blocoComValor(rotulo);
-    if (!blocoRecebe) return null;
-    const recebe = M.lerReais(blocoRecebe.innerText.slice(blocoRecebe.innerText.indexOf("Você recebe")));
-
-    // Preço: a linha "Preço de 1 unidade" do próprio painel; sem ela, o campo de preço da tela.
-    let preco = null;
-    const linhas = [...raiz.querySelectorAll("*")].filter((e) => e.children.length === 0 && /^Preço de\b/i.test(e.textContent.trim()));
-    for (const l of linhas) {
-      const b = blocoComValor(l);
-      if (b) { preco = M.lerReais(b.innerText.slice(b.innerText.search(/Preço de/i))); if (preco) break; }
+    for (const raiz of raizes()) {
+      const fs = folhas(raiz);
+      if (!fs.some((el) => /^Você recebe$/i.test(el.textContent.trim()))) continue;
+      const amount = raiz.querySelector(".rm-card-profit__amount");
+      const rec = amount ? { el: amount, valor: M.lerReais(amount.textContent) } : valorDepoisDe(fs, "Você recebe");
+      const pre = valorDepoisDe(fs, "Preço de");
+      if (!rec || rec.valor == null) continue;
+      const blocoRecebe = rec.el.closest('[class*="card-profit"]:not([class*="__"])') || rec.el.parentElement?.parentElement || rec.el.parentElement;
+      return { recebe: rec.valor, preco: pre ? pre.valor : null, blocoRecebe };
     }
-    if (preco == null) {
-      const campo = [...document.querySelectorAll("input")].find((i) => /preço|price/i.test(i.getAttribute("aria-label") || i.name || i.id || "") && /\d/.test(i.value));
-      if (campo) preco = M.lerReais(`R$ ${campo.value}`);
-    }
-    return { recebe, preco, blocoRecebe };
+    return null;
   }
 
   let ultima = "";
   function marcar() {
     const r = lerResumo();
-    if (!r || r.recebe == null) { document.querySelectorAll(".zxp-margem-anuncio").forEach((e) => e.remove()); ultima = ""; return; }
+    if (!r || r.recebe == null) { ultima = ""; return; }
     const mlb = mlbDaPagina();
     const assinatura = `${mlb}|${r.preco}|${r.recebe}|${dados ? (dados.em || dados.erro) : ""}`;
-    const existente = document.querySelector(".zxp-margem-anuncio");
-    if (assinatura === ultima && existente && r.blocoRecebe.contains(existente)) return;
+    const prox = r.blocoRecebe.nextElementSibling;
+    const existente = prox && prox.classList.contains("zxp-margem-anuncio") ? prox : null;
+    if (assinatura === ultima && existente) return;
     ultima = assinatura;
-    document.querySelectorAll(".zxp-margem-anuncio").forEach((e) => e.remove());
+    raizes().forEach((rz) => rz.querySelectorAll(".zxp-margem-anuncio").forEach((e) => e.remove()));
 
     const el = document.createElement("div");
     el.className = "zxp-margem-anuncio";
@@ -126,14 +126,16 @@
       }
     }
     el.addEventListener("click", () => { el.textContent = "ZXP · atualizando custos…"; carregar(true); });
-    r.blocoRecebe.appendChild(el);
+    // Logo ABAIXO do cartão: ele tem altura fixa e overflow escondido, e por dentro a marca sumia.
+    r.blocoRecebe.insertAdjacentElement("afterend", el);
   }
 
-  let pendente = 0;
-  new MutationObserver(() => {
-    clearTimeout(pendente);
-    pendente = setTimeout(marcar, 250);
-  }).observe(document.body, { childList: true, subtree: true, characterData: true });
+  /**
+   * Mudança dentro do shadow DOM não chega a um observador do document, e o
+   * painel abre e fecha com a seção "Condições de venda". Uma conferida a cada
+   * 0,7 s é barata (a marca só é refeita quando preço ou repasse mudam).
+   */
+  setInterval(marcar, 700);
 
   await carregar(false);
 })();
