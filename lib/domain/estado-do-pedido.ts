@@ -35,7 +35,7 @@
  * torna velha a leitura do envio.
  */
 
-import { motivoDoCancelamento, nasceuDeSeparacao } from "./separacao-pacote";
+import { canceladoEm, motivoDoCancelamento, nasceuDeSeparacao } from "./separacao-pacote";
 
 type RawItem = Record<string, unknown>;
 
@@ -108,6 +108,9 @@ export function estadoDoPedido(o: Record<string, unknown>): Record<string, unkno
      */
     motivo_cancelamento: motivoDoCancelamento(o),
     pedido_da_separacao: nasceuDeSeparacao(o),
+    // Hora do cancelamento (`cancel_detail.date`): na separação de pacote, é o
+    // que liga o original aos pedidos novos (lib/domain/separacao-pacote.ts).
+    ...(canceladoEm(o) ? { cancelado_em: canceladoEm(o) } : {}),
     // A versão do retrato. Só entra quando o ML mandou: sem ela o documento
     // continua com a versão que tinha (ver podeGravarEstado).
     ...(versaoDoPedido(o.last_updated) !== null ? { last_updated: String(o.last_updated) } : {}),

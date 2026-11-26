@@ -3,6 +3,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { getMlAccessToken } from "../token";
 import { requireAccess } from "@/lib/api-auth";
 import { estadoDoPedido } from "@/lib/domain/estado-do-pedido";
+import { herdarDatasDaSeparacao } from "@/lib/ml/separacao-datas";
 import { gravarPedidos } from "@/lib/ml/gravar-pedido";
 
 export async function POST(req: Request) {
@@ -55,6 +56,7 @@ export async function POST(req: Request) {
       orderId: String(order.id),
       estado: estadoDoPedido(order),
     })));
+    await herdarDatasDaSeparacao(adminDb).catch(() => {});
 
     return NextResponse.json({
       ok: true,

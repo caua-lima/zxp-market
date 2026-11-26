@@ -100,7 +100,9 @@ export async function GET(req: Request) {
 
     const porPacote = new Map<string, FirebaseFirestore.DocumentData[]>();
     for (const d of ordersMap.values()) {
-      const chave = String(d.pack_id ?? "") || String(d.order_id ?? "");
+      // Separação de pacote: os envios novos ganham pack_id novo, mas a compra é a do
+      // pacote original (pack_original, lib/ml/separacao-datas.ts) — uma linha só.
+      const chave = String(d.pack_original ?? "") || String(d.pack_id ?? "") || String(d.order_id ?? "");
       const arr = porPacote.get(chave) ?? [];
       arr.push(d);
       porPacote.set(chave, arr);

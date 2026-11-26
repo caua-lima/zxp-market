@@ -29,7 +29,23 @@ export function fatosPermanentes(estado: Record<string, unknown>): Record<string
   return {
     ...(estado.motivo_cancelamento ? { motivo_cancelamento: estado.motivo_cancelamento } : {}),
     ...(estado.pedido_da_separacao === true ? { pedido_da_separacao: true } : {}),
+    ...(estado.cancelado_em ? { cancelado_em: estado.cancelado_em } : {}),
   };
+}
+
+/**
+ * Pedido da separação de pacote que já HERDOU a data da compra
+ * (lib/ml/separacao-datas.ts): o `date_created` gravado é o da compra, e o do
+ * ML (a hora da separação) fica em `date_created_ml`. Um retrato novo do ML
+ * traz de novo a hora da separação — sem isto, a próxima sincronização
+ * devolvia a venda pro dia em que o pacote foi separado.
+ */
+export function manterDataHerdada(
+  dados: Record<string, unknown>,
+  antes: FirebaseFirestore.DocumentData | undefined,
+): Record<string, unknown> {
+  if (!antes?.date_created_ml || !antes?.date_created || dados.date_created == null) return dados;
+  return { ...dados, date_created: antes.date_created, date_created_ml: dados.date_created };
 }
 
 /**
@@ -78,7 +94,7 @@ export async function gravarPedidos(
       lote.forEach((p, k) => {
         const antes = snaps[k].exists ? snaps[k].data() : undefined;
         const { gravar, motivo } = podeGravarEstado(versaoDoPedido(p.estado.last_updated), antes?.last_updated);
-        const dados = { ...(p.complemento ?? {}), ...fatosPermanentes(p.estado), ...(gravar ? p.estado : {}) };
+        const dados = manterDataHerdada({ ...(p.complemento ?? {}), ...fatosPermanentes(p.estado), ...(gravar ? p.estado : {}) }, antes);
         // Retrato velho e nada de outra API: não há o que gravar, e tocar o
         // documento só mudaria o `updatedAt` de algo que não mudou.
         if (Object.keys(dados).length > 0) {

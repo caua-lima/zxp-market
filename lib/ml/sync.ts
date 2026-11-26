@@ -13,6 +13,7 @@ import {
 import { MAX_AVISOS_POR_SYNC, instanteDaConfirmacao } from "@/lib/domain/confirmacao-de-venda";
 import { estadoDoPedido, mapOrderItems } from "@/lib/domain/estado-do-pedido";
 import { canceladoPorSeparacao, nasceuDeSeparacao } from "@/lib/domain/separacao-pacote";
+import { herdarDatasDaSeparacao } from "@/lib/ml/separacao-datas";
 import { gravarPedidos } from "@/lib/ml/gravar-pedido";
 import { sellerIdAtual } from "@/lib/ml/vendedor";
 
@@ -466,6 +467,9 @@ export async function syncOrdersRange(
     }
     return { orderId, estado: estadoDoPedido(o), complemento };
   }));
+
+  // Separação de pacote: os pedidos novos herdam a data da compra (lib/ml/separacao-datas.ts).
+  await herdarDatasDaSeparacao(db).catch((e) => console.error("herdarDatasDaSeparacao", e));
 
   await notificarVendasPendentes(all);
 

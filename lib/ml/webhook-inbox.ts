@@ -11,6 +11,7 @@ import { criarEventoEPublicar, especDoPush } from "@/lib/notification-dispatch";
 import { instanteDaConfirmacao } from "@/lib/domain/confirmacao-de-venda";
 import { estadoDoPedido, mapOrderItems } from "@/lib/domain/estado-do-pedido";
 import { canceladoPorSeparacao, nasceuDeSeparacao } from "@/lib/domain/separacao-pacote";
+import { herdarDatasDaSeparacao } from "@/lib/ml/separacao-datas";
 import { buildCancelContent, buildOrderDeepLink } from "@/lib/domain/notifications";
 import {
   APAGAR,
@@ -191,6 +192,14 @@ export async function processarNotificacaoDePedido(orderId: string, sellerId: st
   const estado = estadoDoPedido(order);
   const [gravacao] = await gravarPedidos(db, [{ orderId, estado }]);
   const antes = gravacao.antes;
+  /**
+   * Separação de pacote: o pedido novo herda a data da compra
+   * (lib/ml/separacao-datas.ts). Roda tanto no pedido novo quanto no
+   * cancelamento do original — qualquer um dos dois pode chegar primeiro.
+   */
+  if (nasceuDeSeparacao(order) || canceladoPorSeparacao(order)) {
+    await herdarDatasDaSeparacao(db).catch((e) => console.error("herdarDatasDaSeparacao", e));
+  }
 
   /**
    * ── Tempo real ──
