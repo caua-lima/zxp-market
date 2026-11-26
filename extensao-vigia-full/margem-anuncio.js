@@ -72,10 +72,23 @@
       if (!fs.some((el) => /^Você recebe$/i.test(el.textContent.trim()))) continue;
       const amount = raiz.querySelector(".rm-card-profit__amount");
       const rec = amount ? { el: amount, valor: M.lerReais(amount.textContent) } : valorDepoisDe(fs, "Você recebe");
-      const pre = valorDepoisDe(fs, "Preço de");
+      /**
+       * Preço: o valor da linha "Preço de …" (`.rm-section-charges__value`,
+       * "R$ 36,87/u"). Com o menu de faixas aberto, a busca pelo texto pegaria
+       * a primeira opção ("1 unidade") e não a escolhida.
+       */
+      const valPreco = raiz.querySelector(".rm-section-charges__value");
+      const pre = valPreco && /\/u/.test(valPreco.textContent) ? { valor: M.lerReais(valPreco.textContent) } : valorDepoisDe(fs, "Preço de");
       if (!rec || rec.valor == null) continue;
+      /**
+       * Preço de atacado (pedido do dono, 25/11/2026): escolhendo "10 unidades"
+       * no "Preço de", o ML refaz o resumo POR UNIDADE daquela faixa (R$ 27,62 de
+       * R$ 36,87). A conta é a mesma; a marca só diz de qual faixa é.
+       */
+      const botaoFaixa = [...raiz.querySelectorAll("button")].find((b) => /^\d+\s+unidades?$/i.test(b.innerText.trim()));
+      const faixa = botaoFaixa ? botaoFaixa.innerText.trim() : null;
       const blocoRecebe = rec.el.closest('[class*="card-profit"]:not([class*="__"])') || rec.el.parentElement?.parentElement || rec.el.parentElement;
-      return { recebe: rec.valor, preco: pre ? pre.valor : null, blocoRecebe };
+      return { recebe: rec.valor, preco: pre ? pre.valor : null, faixa, blocoRecebe };
     }
     return null;
   }
@@ -85,7 +98,7 @@
     const r = lerResumo();
     if (!r || r.recebe == null) { ultima = ""; return; }
     const mlb = mlbDaPagina();
-    const assinatura = `${mlb}|${r.preco}|${r.recebe}|${dados ? (dados.em || dados.erro) : ""}`;
+    const assinatura = `${mlb}|${r.preco}|${r.recebe}|${r.faixa}|${dados ? (dados.em || dados.erro) : ""}`;
     const prox = r.blocoRecebe.nextElementSibling;
     const existente = prox && prox.classList.contains("zxp-margem-anuncio") ? prox : null;
     if (assinatura === ultima && existente) return;
@@ -109,7 +122,9 @@
         else {
           const meta = Number(dados.metaMargem) || 10;
           const st = M.statusDaMargem(m.margem, meta);
-          el.innerHTML = `<div style="font-size:14px">Margem ${M.pct(m.margem)} · lucro ${M.reais(m.lucro)}</div>`
+          const atacado = r.faixa && !/^1\s+unidade$/i.test(r.faixa)
+            ? `<div style="font-weight:700;font-size:11px;letter-spacing:.02em;text-transform:uppercase;opacity:.9">Atacado · ${r.faixa} · por unidade</div>` : "";
+          el.innerHTML = atacado + `<div style="font-size:14px">Margem ${M.pct(m.margem)} · lucro ${M.reais(m.lucro)}</div>`
             + `<div style="font-weight:500;font-size:11px;opacity:.85">custo ${M.reais(item.custo)} · imposto ${M.pct(item.impostoPct)} · meta ${M.pct(meta)} · ZXP</div>`;
           el.style.cssText += `background:${FUNDO[st]};color:${COR[st]};`;
           const falta = M.repasseParaMeta(r.preco, item.custo, item.impostoPct, meta);
