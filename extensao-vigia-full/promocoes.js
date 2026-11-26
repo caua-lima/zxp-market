@@ -323,11 +323,105 @@
     if (acao === "sair") { navIdx = -1; nav.style.display = "none"; document.querySelectorAll(".zxp-oportunidade-atual").forEach((b) => b.classList.remove("zxp-oportunidade-atual")); }
   });
 
+  // ── Margem dentro da janela "Altere os detalhes da promoção" (pedido do dono, 25/11/2026) ──
+  /**
+   * A janela não diz o MLB. Ele vem do anúncio em que você clicou ("Alterar",
+   * "Participar"…) — guardado no clique — e, sem isso, do título do produto
+   * que a janela mostra, procurado na lista.
+   */
+  let mlbDoUltimoClique = null;
+  document.addEventListener("click", (e) => {
+    const linha = e.target && e.target.closest && e.target.closest(".sc-list-row");
+    if (!linha) return;
+    const mlb = M.mlbDaLinha((linha.querySelector(".sc-list-description") || linha).innerText);
+    if (mlb) mlbDoUltimoClique = mlb;
+  }, true);
+
+  const folhas = (raiz) => [...raiz.querySelectorAll("*")].filter((el) => el.children.length === 0 && !el.closest(".zxp-margem-modal"));
+  const meio = (el) => { const r = el.getBoundingClientRect(); return { y: r.top + r.height / 2, x: r.left, h: r.height, w: r.width }; };
+
+  /**
+   * Os rótulos ("Você recebe", "Preço final") ficam numa coluna e os valores
+   * em outra — o que liga um ao outro é estar na MESMA ALTURA da tela. Ler por
+   * posição não depende das classes do ML, que mudam.
+   */
+  function naMesmaLinha(raiz, rotulo, filtro) {
+    const r = meio(rotulo);
+    return folhas(raiz).concat([...raiz.querySelectorAll("input")])
+      .filter((el) => el !== rotulo && filtro(el))
+      .map((el) => ({ el, m: meio(el) }))
+      .filter(({ m }) => m.w > 0 && m.x > r.x + r.w - 1 && Math.abs(m.y - r.y) <= Math.max(r.h, m.h, 24))
+      .sort((a, b) => a.m.x - b.m.x)
+      .map((x) => x.el);
+  }
+
+  function janelaDaPromocao() {
+    for (const d of document.querySelectorAll('[role="dialog"], .andes-modal, [class*="modal"]')) {
+      if (d.offsetParent === null && getComputedStyle(d).position !== "fixed") continue;
+      if (/Você recebe/i.test(d.innerText) && /Preço final/i.test(d.innerText)) return d;
+    }
+    return null;
+  }
+
+  let assinaturaModal = "";
+  function marcarModal() {
+    const dlg = janelaDaPromocao();
+    if (!dlg) { assinaturaModal = ""; return; }
+    const fs = folhas(dlg);
+    const rotRecebe = fs.find((el) => /^Você recebe$/i.test(el.textContent.trim()));
+    const rotPreco = fs.find((el) => /^Preço final$/i.test(el.textContent.trim()));
+    if (!rotRecebe || !rotPreco) return;
+    const valRecebe = naMesmaLinha(dlg, rotRecebe, (el) => el.tagName !== "INPUT" && M.lerReais(el.textContent) != null)[0];
+    const campoPreco = naMesmaLinha(dlg, rotPreco, (el) => el.tagName === "INPUT" ? /\d/.test(el.value) && !el.disabled : M.lerReais(el.textContent) != null)[0];
+    if (!valRecebe || !campoPreco) return;
+    const recebe = M.lerReais(valRecebe.textContent);
+    const preco = campoPreco.tagName === "INPUT" ? M.lerReais(`R$ ${campoPreco.value}`) : M.lerReais(campoPreco.textContent);
+
+    let mlb = mlbDoUltimoClique;
+    if (!mlb) {
+      const titulo = folhas(dlg).map((e) => e.textContent.trim()).find((t) => t.length > 20 && !/R\$/.test(t)) || "";
+      const linha = [...document.querySelectorAll(".sc-list-row")].find((l) => titulo && (l.querySelector(".sc-list-description") || l).innerText.includes(titulo.slice(0, 30)));
+      if (linha) mlb = M.mlbDaLinha((linha.querySelector(".sc-list-description") || linha).innerText);
+    }
+
+    const assinatura = `${mlb}|${preco}|${recebe}|${dados ? (dados.em || dados.erro) : ""}`;
+    const existente = dlg.querySelector(".zxp-margem-modal");
+    if (assinatura === assinaturaModal && existente) return;
+    assinaturaModal = assinatura;
+    dlg.querySelectorAll(".zxp-margem-modal").forEach((e) => e.remove());
+
+    const el = document.createElement("div");
+    el.className = "zxp-margem-modal";
+    el.style.cssText = "margin-top:6px;padding:4px 9px;border-radius:7px;font:600 12px/1.4 system-ui,-apple-system,sans-serif;display:inline-block;cursor:help;";
+    const item = mlb && dados && !dados.erro ? dados.itens[mlb] : null;
+    const r = item && preco > 0 && recebe != null ? M.margemDaPromocao({ recebe, precoFinal: preco, custo: item.custo, impostoPct: item.impostoPct }) : null;
+    if (!dados || dados.erro) { el.textContent = dados ? `ZXP · ${dados.erro}` : "ZXP · carregando custos…"; el.style.cssText += "background:#f0f0f0;color:#666;"; }
+    else if (!item) { el.textContent = "ZXP · anúncio sem cadastro no Estoque"; el.style.cssText += "background:#f0f0f0;color:#666;"; }
+    else if (!r) { el.textContent = "ZXP · produto sem custo no Estoque"; el.style.cssText += "background:#f0f0f0;color:#666;"; }
+    else {
+      const meta = Number(dados.metaMargem) || 10;
+      const st = M.statusDaMargem(r.margem, meta);
+      el.textContent = `Margem ${M.pct(r.margem)} · lucro ${M.reais(r.lucro)}`;
+      el.style.cssText += `background:${FUNDO[st]};color:${COR[st]};`;
+      el.title = [
+        item.nome,
+        `Você recebe ${M.reais(recebe)} − custo ${M.reais(item.custo)} − imposto ${M.pct(item.impostoPct)} sobre ${M.reais(preco)} (${M.reais(r.imposto)})`,
+        `= lucro ${M.reais(r.lucro)} · margem ${M.pct(r.margem)} · meta ${M.pct(meta)}`,
+      ].join("\n");
+    }
+    valRecebe.parentElement.appendChild(el);
+  }
+  // Digitar no preço/desconto muda o valor do campo sem mexer no DOM: escuta o input também.
+  let pendenteModal = 0;
+  document.addEventListener("input", () => { clearTimeout(pendenteModal); pendenteModal = setTimeout(marcarModal, 400); }, true);
+
   let pendente = 0;
   new MutationObserver(() => {
     clearTimeout(pendente);
     pendente = setTimeout(() => { marcar(); aplicarOportunidades(); }, 300);
-  }).observe(document.body, { childList: true, subtree: true });
+    clearTimeout(pendenteModal);
+    pendenteModal = setTimeout(marcarModal, 150);
+  }).observe(document.body, { childList: true, subtree: true, characterData: true });
 
   atualizarBotao();
   await carregar(false);

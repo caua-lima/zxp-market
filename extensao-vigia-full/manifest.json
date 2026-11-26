@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ZXP — Vigia da agenda do Full",
-  "version": "2.9.0",
+  "version": "2.9.1",
   "description": "Vigia da agenda do Full, leitura da Gestão de envios Full e margem de cada promoção na página de promoções do ML e no resumo de custos ao modificar um anúncio — com o seu login do Mercado Livre neste Chrome e os custos do Dash.",
   "permissions": [
     "alarms",
