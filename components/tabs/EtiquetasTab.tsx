@@ -76,6 +76,17 @@ export default function EtiquetasTab() {
   const [colar, setColar] = useState(false);
   const [textoColado, setTextoColado] = useState("");
   const [arrastando, setArrastando] = useState(false);
+  /**
+   * Etiquetas que a pessoa tirou da impressão (pedido do dono, 27/11/2026:
+   * a auxiliar gasta etiqueta). Pela `chave` da saída — some do PDF, do
+   * "Imprimir" e do ZPL baixado, e volta com um clique. Arquivo novo zera.
+   */
+  const [excluidas, setExcluidas] = useState<Set<string>>(new Set());
+  const alternarExclusao = (chave: string) => setExcluidas((atual) => {
+    const n = new Set(atual);
+    if (n.has(chave)) n.delete(chave); else n.add(chave);
+    return n;
+  });
   const inputRef = useRef<HTMLInputElement>(null);
   const cache = useRef(new Map<string, string>());
   const emAndamento = useRef(new Set<string>());
@@ -126,6 +137,7 @@ export default function EtiquetasTab() {
     }
     setFalhaLeitura(null);
     setLido({ lote, arquivos: textos.map((t) => t.nome), ignorados });
+    setExcluidas(new Set());
     void consultar(lote);
   }, [consultar]);
 
@@ -148,6 +160,10 @@ export default function EtiquetasTab() {
     () => (lido ? montarSaida(lido.lote.etiquetas, resolvidos, { marcar, duplicados: lido.lote.duplicados }) : []),
     [lido, resolvidos, marcar],
   );
+  /** O que vai pra impressora: a saída menos as excluídas. */
+  const impressas = useMemo(() => saida.filter((s) => !excluidas.has(s.chave)), [saida, excluidas]);
+  const auxiliares = saida.filter((s) => s.tipo === "auxiliar");
+  const auxiliaresExcluidas = auxiliares.filter((s) => excluidas.has(s.chave)).length;
   const linhas = useMemo(() => (lido ? linhasDaLista(lido.lote.etiquetas, resolvidos, lido.lote.duplicados) : []), [lido, resolvidos]);
   const totais = useMemo(() => {
     const t = new Map<string, number>();
@@ -189,7 +205,7 @@ export default function EtiquetasTab() {
 
   const pngsDaSaida = useCallback(async (): Promise<Uint8Array[]> => {
     const out: Uint8Array[] = [];
-    for (const s of saida) {
+    for (const s of impressas) {
       let png = cache.current.get(s.chave);
       if (!png) {
         png = await renderizarEtiqueta(s.zpl);
@@ -198,7 +214,7 @@ export default function EtiquetasTab() {
       out.push(base64ParaBytes(png));
     }
     return out;
-  }, [saida]);
+  }, [impressas]);
 
   const gerarPdf = useCallback(async (modo: "pdf" | "imprimir") => {
     setOcupado(modo);
@@ -228,8 +244,8 @@ export default function EtiquetasTab() {
 
   const baixarZpl = useCallback(() => {
     if (!lido) return;
-    baixar(zplDeSaida(saida, lido.lote.prefixo), `etiquetas-${marcar ? "marcadas-" : ""}${carimbo()}.txt`, "text/plain;charset=utf-8");
-  }, [lido, saida, marcar]);
+    baixar(zplDeSaida(impressas, lido.lote.prefixo), `etiquetas-${marcar ? "marcadas-" : ""}${carimbo()}.txt`, "text/plain;charset=utf-8");
+  }, [lido, impressas, marcar]);
 
   const desenhadas = saida.filter((s) => previas[s.chave]).length;
   const comErro = saida.filter((s) => errosRender[s.chave]).length;
@@ -243,7 +259,7 @@ export default function EtiquetasTab() {
           ? `${lido.lote.etiquetas.length} etiqueta(s) · ${lido.arquivos.join(", ")}`
           : "Conversor ZPL do Mercado Livre: prévia, PDF, sigla de separação e lista — tudo aqui, sem site externo"}
         acao={lido
-          ? { rotulo: ocupado === "imprimir" ? "Preparando…" : "Imprimir etiquetas", onClick: () => void gerarPdf("imprimir"), desabilitada: !!ocupado || !saida.length }
+          ? { rotulo: ocupado === "imprimir" ? "Preparando…" : "Imprimir etiquetas", onClick: () => void gerarPdf("imprimir"), desabilitada: !!ocupado || !impressas.length }
           : { rotulo: "Abrir arquivo do ML", onClick: () => inputRef.current?.click() }}
         secundarias={lido ? [
           { rotulo: "Abrir outro arquivo", onClick: () => inputRef.current?.click() },
@@ -321,23 +337,37 @@ export default function EtiquetasTab() {
                 {ocupado === "lista" ? "Gerando…" : "Lista de separação (PDF)"}
               </button>
               <span style={{ fontSize: ".78rem", color: comErro ? "var(--red-text)" : "var(--muted)", marginLeft: "auto" }}>
-                {tudoPronto ? `${saida.length} etiqueta(s) prontas` : `Desenhando ${desenhadas}/${saida.length}…`}
+                {tudoPronto ? `${impressas.length} etiqueta(s) pra imprimir` : `Desenhando ${desenhadas}/${saida.length}…`}
+                {excluidas.size ? ` · ${excluidas.size} excluída(s)` : ""}
                 {comErro ? ` · ${comErro} com erro` : ""}
               </span>
             </div>
+            {auxiliares.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10, alignItems: "center", fontSize: ".82rem" }}>
+                <span style={{ color: "var(--muted)" }}>
+                  {auxiliares.length} etiqueta(s) auxiliar(es) de separação{auxiliaresExcluidas ? ` · ${auxiliaresExcluidas} fora da impressão` : ""}.
+                </span>
+                {auxiliaresExcluidas < auxiliares.length
+                  ? <button type="button" className="btn btn-ghost btn-xs" onClick={() => setExcluidas((a) => new Set([...a, ...auxiliares.map((x) => x.chave)]))}>Excluir todas as auxiliares</button>
+                  : <button type="button" className="btn btn-ghost btn-xs" onClick={() => setExcluidas((a) => new Set([...a].filter((c) => !auxiliares.some((x) => x.chave === c))))}>Voltar as auxiliares</button>}
+              </div>
+            )}
           </section>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 12 }}>
             {saida.map((s) => {
               const png = previas[s.chave];
               const erro = errosRender[s.chave];
+              const fora = excluidas.has(s.chave);
               return (
-                <button
-                  key={s.chave} type="button" onClick={() => png && setAmpliada(s)}
+                <div
+                  key={s.chave}
                   className="panel"
-                  style={{ padding: 8, textAlign: "left", cursor: png ? "zoom-in" : "default", display: "flex", flexDirection: "column", gap: 6, font: "inherit", color: "inherit" }}
+                  style={{ padding: 8, textAlign: "left", display: "flex", flexDirection: "column", gap: 6, opacity: fora ? 0.45 : 1 }}
                 >
-                  <div style={{ aspectRatio: "2 / 3", width: "100%", background: "#fff", borderRadius: 6, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border)" }}>
+                  <div role={png ? "button" : undefined} tabIndex={png ? 0 : undefined} onClick={() => png && setAmpliada(s)}
+                    onKeyDown={(e) => { if (png && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setAmpliada(s); } }}
+                    style={{ cursor: png ? "zoom-in" : "default", aspectRatio: "2 / 3", width: "100%", background: "#fff", borderRadius: 6, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border)" }}>
                     {png
                       // eslint-disable-next-line @next/next/no-img-element
                       ? <img src={`data:image/png;base64,${png}`} alt={`Etiqueta ${s.origem + 1}`} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
@@ -352,7 +382,14 @@ export default function EtiquetasTab() {
                   {s.texto && <div style={{ fontSize: ".74rem" }}>{descreverTexto(s.texto, nomes)}</div>}
                   <div style={{ fontSize: ".72rem", color: "var(--muted)" }}>{s.envio ? `Envio ${s.envio}` : "sem envio"}</div>
                   {s.aviso && <div style={{ fontSize: ".72rem", color: "var(--warning)" }}>{s.aviso}</div>}
-                </button>
+                  {fora && s.tipo === "auxiliar" && s.texto && (
+                    <div style={{ fontSize: ".72rem", color: "var(--warning)" }}>Fora da impressão: escreva {s.texto} à mão no pacote.</div>
+                  )}
+                  <button type="button" className={fora ? "btn btn-primary btn-xs" : "btn btn-ghost btn-xs"} onClick={() => alternarExclusao(s.chave)}
+                    title={fora ? "Volta pra impressão" : "Tira esta etiqueta do PDF, do Imprimir e do ZPL"}>
+                    {fora ? "Excluída · voltar" : "Excluir da impressão"}
+                  </button>
+                </div>
               );
             })}
           </div>
