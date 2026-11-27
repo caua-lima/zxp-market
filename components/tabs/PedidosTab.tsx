@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePaginacaoProgressiva } from "@/components/usePaginacaoProgressiva";
 import { useDeepLinkConsumido } from "@/components/useDeepLinkConsumido";
 import Drawer from "@/components/Drawer";
 import CampoFaixa from "@/components/CampoFaixa";
@@ -492,6 +493,18 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
     });
   }, [pedidos, busca, filtro, valorMin, valorMax, margemMin, margemMax, statusFiltro, produtoFiltro, adsFiltro, adsByItem, logisticaFiltro, faixaMargem, metaMargem]);
 
+  /**
+   * Só os ÚLTIMOS 15 na tela, e "Ver mais" (pedido do dono, 27/11/2026). A
+   * lista vem do mais novo pro mais antigo; KPIs e totais continuam sobre
+   * TODOS os filtrados — só o desenho das linhas é que pagina. Trocar período
+   * ou filtro volta pros 15.
+   */
+  const paginaPedidos = usePaginacaoProgressiva(
+    JSON.stringify([range.from, range.to, busca, filtro, valorMin, valorMax, margemMin, margemMax, statusFiltro, produtoFiltro, adsFiltro, logisticaFiltro, faixaMargem]),
+    15,
+  );
+  const pedidosNaTela = filtrados.slice(0, paginaPedidos.limite);
+
   const statusOptions = useMemo(
     () => Array.from(new Set(pedidos.map((p) => p.status).filter(Boolean))).sort(),
     [pedidos],
@@ -831,7 +844,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
           <>
           {/* Celular: cartões (clicáveis pra abrir o detalhe) */}
           <div className="ped-cards">
-            {filtrados.map((p) => {
+            {pedidosNaTela.map((p) => {
               const custos = p.cmv + p.envio + p.taxaML + p.imposto;
               return (
                 <div key={p.order_id} className={`ped-card ${p.lucro >= 0 ? "pos" : "neg"}`} onClick={() => setDetalhe(p.order_id)}>
@@ -876,7 +889,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
                 </tr>
               </thead>
               <tbody>
-                {filtrados.map((p) => {
+                {pedidosNaTela.map((p) => {
                   const custos = p.cmv + p.envio + p.taxaML + p.imposto;
                   const prej = p.lucro < 0;
                   return (
@@ -918,6 +931,13 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
               </tbody>
             </table>
           </div>
+          {filtrados.length > pedidosNaTela.length && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", justifyContent: "center", padding: "14px 0 4px" }}>
+              <span style={{ fontSize: ".82rem", color: "var(--muted)" }}>Mostrando {pedidosNaTela.length} de {filtrados.length} pedidos</span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={paginaPedidos.mostrarMais}>Ver mais {Math.min(15, filtrados.length - pedidosNaTela.length)}</button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={paginaPedidos.mostrarTudo}>Ver todos</button>
+            </div>
+          )}
           </>
         )}
       </div>
