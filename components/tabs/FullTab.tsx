@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import AvisoDaFonte from "@/components/AvisoDaFonte";
 import type { EstoqueMovimento, Product } from "@/lib/domain/types";
 import { watchMovimentos } from "@/lib/firebase/data";
-import RemessasFull from "@/components/tabs/full/RemessasFull";
 import EnviosFullML from "@/components/tabs/full/EnviosFullML";
-import EstoqueRetidoFull, { type EstoqueFullRetido } from "@/components/tabs/full/EstoqueRetidoFull";
+import { type EstoqueFullRetido } from "@/components/tabs/full/EstoqueRetidoFull";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import TelaHeader from "@/components/TelaHeader";
 import VigiaAgendaFull from "@/components/tabs/full/VigiaAgendaFull";
@@ -62,14 +61,6 @@ export default function FullTab({ products }: { products: Product[] }) {
     setTentando(false);
   }
 
-  /** Custo médio por produto, pra estimar o valor imobilizado no retido. */
-  const custoPorProduto = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const p of products) {
-      m.set(p.id, p.custoMedio ?? (Number(String(p.custo ?? "0").replace(",", ".")) || 0));
-    }
-    return m;
-  }, [products]);
 
   return (
     <div className="dash">
@@ -94,8 +85,7 @@ export default function FullTab({ products }: { products: Product[] }) {
           aoTentar={tentarDeNovo} tentando={tentando}
         />
       )}
-      <EstoqueRetidoFull dados={retido} custoPorProduto={custoPorProduto} />
-      <RemessasFull movimentos={movimentos} products={products} />
+      {/* "Estoque retido no Full" e "Remessas pro Full" saíram (pedido do dono, 27/11/2026). */}
     </div>
   );
 }

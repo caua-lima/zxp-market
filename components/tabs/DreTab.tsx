@@ -17,7 +17,7 @@ import { useAccess } from "@/components/tabs/AccessGuard";
 import type { DadosDre } from "@/lib/domain/dre-apresentacao";
 import {
   lerConferencia, pendenciasDaColetaFull, pendenciaDeProjecao, estadoGeral,
-  rotuloDoEstado, explicarEstado, corDoEstado, rotuloDoResultado,
+  rotuloDoResultado,
   cabecalhoDeExportacao, type Pendencia,
 } from "@/lib/domain/apuracao-financeira";
 
@@ -534,62 +534,7 @@ export default function DreTab() {
         </div>
       )}
 
-      {/*
-        ─── O PAINEL DE PENDÊNCIAS ──────────────────────────────────────────
-
-        Cada pendência já existia como notinha cinza espalhada pela tela, ao
-        lado da linha a que pertencia. Espalhadas, elas nunca somam: dava pra
-        ler a DRE inteira sem perceber que TRÊS coisas faltavam ao mesmo tempo.
-
-        Juntas e no topo, com a direção do erro em cada uma, viram a resposta
-        pra única pergunta que importa: "posso mandar este número pra fora?"
-      */}
-      <div className="panel" style={{ borderLeft: `3px solid ${corDoEstado(estado)}` }}>
-        <div className="panel-head" style={{ marginBottom: pendencias.length ? 8 : 0 }}>
-          <span className="panel-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            Estado da apuração
-            <span style={{
-              fontSize: ".75rem", fontWeight: 700, letterSpacing: ".03em", textTransform: "uppercase",
-              color: corDoEstado(estado), border: `1px solid ${corDoEstado(estado)}`,
-              borderRadius: 999, padding: "1px 8px",
-            }}>
-              {rotuloDoEstado(estado)}
-            </span>
-          </span>
-          <span className="panel-sub">apurado em {new Date().toLocaleString("pt-BR")}</span>
-        </div>
-        <div style={{ fontSize: ".82rem", color: "var(--muted)", lineHeight: 1.6 }}>
-          {explicarEstado(estado)}
-        </div>
-        {pendencias.length > 0 && (
-          <ul style={{ margin: "10px 0 0", padding: 0, listStyle: "none", display: "grid", gap: 8 }}>
-            {pendencias.map((p) => (
-              <li key={p.chave} style={{
-                padding: "8px 10px", borderRadius: 8, background: "var(--surface2)",
-                border: "1px solid var(--border)",
-              }}>
-                <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
-                  <span style={{ fontSize: ".82rem", fontWeight: 700 }}>{p.titulo}</span>
-                  {/*
-                    A direção do erro é o que torna a pendência acionável:
-                    saber que o resultado está OTIMISTA dá o que fazer; "há
-                    uma pendência" não dá.
-                  */}
-                  <span style={{
-                    fontSize: ".75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em",
-                    color: p.efeito === "otimista" ? "var(--red)" : p.efeito === "pessimista" ? "var(--green)" : "var(--muted)",
-                  }}>
-                    {p.efeito === "indefinido" ? "efeito desconhecido" : `resultado ${p.efeito}`}
-                  </span>
-                </div>
-                <div style={{ fontSize: ".8rem", color: "var(--muted)", lineHeight: 1.55, marginTop: 2 }}>
-                  {p.detalhe}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {/* O painel "Estado da apuração" saiu da tela (pedido do dono, 27/11/2026). */}
 
       {/*
         Repasse estimado × recebido: as MESMAS vendas, vistas pelo dinheiro em

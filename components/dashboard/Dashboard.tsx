@@ -1,6 +1,7 @@
 "use client";
 
 import ChecklistDeAtivacao from "@/components/dashboard/ChecklistDeAtivacao";
+import VerMais from "@/components/VerMais";
 import ColetaFullDoPeriodo from "@/components/dashboard/ColetaFullDoPeriodo";
 import CurvaABC from "@/components/dashboard/CurvaABC";
 import VendasPorCanal from "@/components/dashboard/VendasPorCanal";
@@ -45,8 +46,6 @@ import ActionCenter from "./ActionCenter";
 import ExecutiveKpis, { Delta } from "./ExecutiveKpis";
 import RevenueLineChart from "./RevenueLineChart";
 import DayDetailModal from "./DayDetailModal";
-import ProdutosEmRisco from "./ProdutosEmRisco";
-import { findProdutosEmRisco } from "@/lib/domain/risk";
 import { isTaskAtrasada, type Task } from "@/lib/domain/types";
 import { watchTasks } from "@/lib/firebase/data";
 import { margemSemProdutos, termosPadraoDoMes } from "@/lib/domain/margem-sem-produtos";
@@ -2302,35 +2301,41 @@ export default function Dashboard({ data, onVerEstoque, onVerMetas, onNavigate }
             </div>
           </div>
 
-          {/* Produtos em risco — estoque baixo e/ou margem abaixo da meta */}
-          <ProdutosEmRisco
-            produtos={findProdutosEmRisco(data.products, mlMetrics?.anuncios ?? [], goals?.metaMargem ?? 10, estoqueForecast)}
-            onVerEstoque={onVerEstoque}
-          />
+          {/*
+            27/11/2026 (pedido do dono): "Produtos em risco" saiu do Dashboard, e
+            os painéis de detalhe abaixo começam fechados, com "ver mais".
+          */}
+          <VerMais titulo="Lucro por anúncio">
+            <LucroPorAnuncioPanel anuncios={mlMetrics?.anuncios ?? []} from={mlMetrics?.from} to={mlMetrics?.to} />
+          </VerMais>
 
-          {/* Lucro por anúncio — com filtro de data próprio */}
-          <LucroPorAnuncioPanel anuncios={mlMetrics?.anuncios ?? []} from={mlMetrics?.from} to={mlMetrics?.to} />
-
-          {/* Média de vendas por dia */}
-          <MediaVendasDia anuncios={mlMetrics?.anuncios ?? []} from={mlMetrics?.from} to={mlMetrics?.to} />
+          <VerMais titulo="Média de vendas por dia">
+            <MediaVendasDia anuncios={mlMetrics?.anuncios ?? []} from={mlMetrics?.from} to={mlMetrics?.to} />
+          </VerMais>
 
 
           {/* Melhores dias da semana */}
           <MelhoresDias serie={melhoresDiasMetrics?.serieDiaria ?? []} from={melhoresDiasMetrics?.from} to={melhoresDiasMetrics?.to} />
 
           {/* O mesmo produto nos dois anúncios: só agências, só Full e os dois juntos */}
-          <VendasPorCanal curvaBruta={mlMetrics?.curvaBruta} produtos={data.products} />
+          <VerMais titulo="Vendas por canal">
+            <VendasPorCanal curvaBruta={mlMetrics?.curvaBruta} produtos={data.products} />
+          </VerMais>
 
           {/* Curva ABC: vendas brutas e lucro (mesma classificação) */}
-          <CurvaABC
-            curvaBruta={mlMetrics?.curvaBruta}
-            vendasBrutasDoPeriodo={mlMetrics ? (mlMetrics.conciliacao?.vendasBrutas ?? fatLiquido) : undefined}
-            anuncios={mlMetrics?.anuncios ?? []}
-            produtos={data.products}
-          />
+          <VerMais titulo="Curva ABC">
+            <CurvaABC
+              curvaBruta={mlMetrics?.curvaBruta}
+              vendasBrutasDoPeriodo={mlMetrics ? (mlMetrics.conciliacao?.vendasBrutas ?? fatLiquido) : undefined}
+              anuncios={mlMetrics?.anuncios ?? []}
+              produtos={data.products}
+            />
+          </VerMais>
 
           {/* Devoluções detalhadas */}
-          <DevolucoesPanel total={mlMetrics?.devolucoes ?? 0} emAndamento={mlMetrics?.devolucoesEmAndamento} detalhe={mlMetrics?.devolucoesDetalhe ?? []} />
+          <VerMais titulo="Devoluções">
+            <DevolucoesPanel total={mlMetrics?.devolucoes ?? 0} emAndamento={mlMetrics?.devolucoesEmAndamento} detalhe={mlMetrics?.devolucoesDetalhe ?? []} />
+          </VerMais>
         </>
       )}
     </div>

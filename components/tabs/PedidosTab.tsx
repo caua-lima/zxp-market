@@ -17,7 +17,7 @@ import { authedFetch } from "@/lib/api/authed-fetch";
 import DateRangePicker from "@/components/dashboard/DateRangePicker";
 import { gravarChaveApp, lerChaveApp } from "@/lib/storage";
 import { hojeNaOperacao } from "@/lib/domain/periodos";
-import { ehVendaValida, margemPonderada, naFaixaDeMargem, resumoDeMargem, type FaixaDeMargem } from "@/lib/domain/pedidos-margem";
+import { ehVendaValida, margemPonderada, naFaixaDeMargem, type FaixaDeMargem } from "@/lib/domain/pedidos-margem";
 
 type ItemPedido = {
   produto: string;
@@ -391,9 +391,6 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
   // porque a regra dele é outra: deixa de fora cancelado e sem cadastro, que é
   // o que faz a contagem na tela bater com a conta do dia (ver pedidos-margem).
   const [faixaMargem, setFaixaMargem] = useState<FaixaDeMargem>("");
-  // A ponte "sem Ads → com Ads" só aparece se o Ads do período carregou: sem
-  // ele, "com Ads" sairia igual a "sem Ads" e pareceria que o Ads é zero.
-  const [adsCarregado, setAdsCarregado] = useState(false);
   // Filtros frequentes salvos no navegador (localStorage) — não é modelo
   // global, não precisa de Firestore nem de rule nova.
   // Mesma leitura preguiçosa dos planejados em EstoqueTab: o efeito que
@@ -438,11 +435,9 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
       if (resPedidos.ok) setPedidos((await resPedidos.json()).pedidos ?? []);
       else setPedidos([]);
       setAdsByItem(resAds?.ok ? (await resAds.json()).adsByItem ?? {} : {});
-      setAdsCarregado(Boolean(resAds?.ok));
     } catch {
       setPedidos([]);
       setAdsByItem({});
-      setAdsCarregado(false);
     } finally {
       setLoading(false);
     }
@@ -570,17 +565,6 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
    */
   const margemDoFiltro = margemPonderada(filtrados).margem;
 
-  // A ponte, sobre o PERÍODO inteiro — nunca sobre a lista filtrada: o Ads é
-  // custo do período, descontá-lo só do que sobrou num filtro daria uma
-  // margem que não existe.
-  const adsDoPeriodo = useMemo(
-    () => Object.values(adsByItem).reduce((s, v) => s + (Number(v) || 0), 0),
-    [adsByItem],
-  );
-  const resumo = useMemo(
-    () => resumoDeMargem(pedidos, { limiar: metaMargem, ads: adsDoPeriodo }),
-    [pedidos, metaMargem, adsDoPeriodo],
-  );
   const hoje = hojeNaOperacao();
   const ehHoje = range.from === hoje && range.to === hoje;
   // saudável (bateu a meta de margem) / atenção (positiva mas abaixo) / prejuízo (<0)
@@ -624,64 +608,7 @@ export default function PedidosTab({ metaMargem = 10, openOrderId, chaveDeNavega
         <div className="kpi k-acc"><div className="k-lbl">Ticket médio</div><div className="k-val">{fmtBRL(filtrados.length ? totalValor / filtrados.length : 0)}</div><div className="k-sub">por pedido</div></div>
       </div>
 
-      {/*
-        Quantos pedidos batem a meta de margem — e a ponte até a margem do
-        Dashboard. Sem isto, "quase todo pedido acima de 10%" e "o dia a 3,8%"
-        pareciam um erro de cálculo; era Ads (que o pedido não carrega) e peso
-        por valor. Sempre sobre o PERÍODO inteiro, não sobre os filtros.
-      */}
-      {!loading && resumo.comCusto > 0 && (() => {
-        const meta = fmtPct(metaMargem, Number.isInteger(metaMargem) ? 0 : 1);
-        const pctAcima = (resumo.acima / resumo.comCusto) * 100;
-        return (
-          <div className="panel" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <span style={{ fontSize: ".85rem", fontWeight: 700 }}>
-                {resumo.acima} de {resumo.comCusto} pedidos com margem ≥ {meta} ({fmtPct(pctAcima, 0)})
-              </span>
-              {([
-                ["acima", `Margem ≥ ${meta} (${resumo.acima})`, "var(--green)"],
-                ["abaixo", `Margem < ${meta} (${resumo.abaixo})`, "var(--warning)"],
-              ] as const).map(([id, label, cor]) => (
-                <button
-                  key={id} type="button" className="chip-filtro" aria-pressed={faixaMargem === id}
-                  onClick={() => setFaixaMargem(faixaMargem === id ? "" : id)}
-                  style={{
-                    fontSize: ".82rem", fontWeight: 600, padding: "5px 12px", borderRadius: 20, cursor: "pointer",
-                    background: faixaMargem === id ? cor : "var(--surface2)", color: faixaMargem === id ? "#fff" : "var(--muted)",
-                    border: `1px solid ${faixaMargem === id ? cor : "var(--border)"}`,
-                  }}
-                >{label}</button>
-              ))}
-            </div>
-
-            {resumo.margemSemAds != null && (
-              <div style={{ fontSize: ".85rem", lineHeight: 1.6 }}>
-                Margem dos pedidos <b>{fmtPct(resumo.margemSemAds, 1)}</b> (antes do Ads, por valor)
-                {adsCarregado && resumo.margemComAds != null ? (
-                  <>
-                    {" "}− Ads do período <b>{fmtBRL(resumo.ads)}</b>
-                    {resumo.receita > 0 && <> ({fmtPct((resumo.ads / resumo.receita) * 100, 1)} da receita)</>}
-                    {" "}= <b style={{ color: resumo.margemComAds >= 0 ? "var(--green)" : "var(--red-text)" }}>{fmtPct(resumo.margemComAds, 1)}</b>
-                    {" "}— é a margem que o Dashboard mostra. O Ads é gasto do período, não de um pedido, por isso nenhuma linha abaixo o desconta.
-                  </>
-                ) : (
-                  <> · <span style={{ color: "var(--muted)" }}>o gasto de Ads do período não carregou — a margem com Ads fica indisponível (não é zero).</span></>
-                )}
-              </div>
-            )}
-
-            {(resumo.semCadastro > 0 || resumo.naoVendas > 0) && (
-              <div style={{ fontSize: ".78rem", color: "var(--muted)" }}>
-                Fora da conta:
-                {resumo.semCadastro > 0 && <> {resumo.semCadastro} sem cadastro (custo desconhecido — a margem deles não é real)</>}
-                {resumo.semCadastro > 0 && resumo.naoVendas > 0 && " ·"}
-                {resumo.naoVendas > 0 && <> {resumo.naoVendas} cancelado(s)/devolvido(s)</>}
-              </div>
-            )}
-          </div>
-        );
-      })()}
+      {/* O resumo "X de Y pedidos com margem ≥ meta" saiu (pedido do dono, 27/11/2026). */}
 
       {/* Busca + filtros */}
       <input

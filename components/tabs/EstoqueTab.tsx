@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import VerMais from "@/components/VerMais";
 import { explicarFonte } from "@/lib/domain/estado-fonte";
 import { CUSTO_FAIXA_SENTINELA, custoNaData, impostoNaData, rotuloDoMovimento, TIPO_MOVIMENTO_LABEL, type EstoqueMovimento, type MovimentoTipo, type Product } from "@/lib/domain/types";
 import { normalizarSigla } from "@/lib/etiquetas/siglas";
@@ -10,8 +11,8 @@ import { motivoDaListaVazia } from "@/lib/domain/estoque-vazio";
 import { useFormularioSujo } from "@/components/useFormularioSujo";
 import { addMovimento, deleteMovimento, deleteProduct, excluirTransferencia, logAudit, upsertProduct, watchMovimentos, watchRemessasIgnoradas, recalcularProduto, updateMovimento } from "@/lib/firebase/data";
 import { unidadesPendentesPorProduto, type Remessa } from "@/lib/domain/remessas";
-import { fmtBRL, fmtPct } from "@/lib/domain/calc";
-import { getCoverageStatus, COVERAGE_STATUS_LABEL, ehFullLogistic, estoqueForaDoFull, type CoverageStatus } from "@/lib/domain/estoque";
+import { fmtBRL } from "@/lib/domain/calc";
+import { ehFullLogistic, estoqueForaDoFull } from "@/lib/domain/estoque";
 import { custoMedioAposEntrada } from "@/lib/domain/entrada-massa";
 import { mediaDiariaAjustada } from "@/lib/domain/reposicao";
 import Modal from "@/components/Modal";
@@ -19,7 +20,6 @@ import EditarMovimentoModal from "@/components/tabs/estoque/EditarMovimentoModal
 import type { UserData } from "@/components/useUserData";
 import { authedFetch } from "@/lib/api/authed-fetch";
 import { useAccess } from "@/components/tabs/AccessGuard";
-import { gravarChaveApp, lerChaveApp } from "@/lib/storage";
 import TelaHeader from "@/components/TelaHeader";
 import { resumirEstadoDaTela } from "@/lib/domain/estado-da-tela";
 import EntradaMassaModal from "@/components/tabs/estoque/EntradaMassaModal";
@@ -35,7 +35,7 @@ import { agruparProdutos, canalOposto, gruposExistentes, ROTULO_CANAL, sugerirCa
 import { aDescontarDoAnuncio, livreComReserva, proximosDias, rotuloDoDia, validarEnvio, type ReservaDoProduto } from "@/lib/domain/envio-full-agendado";
 import ImpostoMassaModal from "@/components/tabs/estoque/ImpostoMassaModal";
 import VincularSkuModal from "@/components/tabs/estoque/VincularSkuModal";
-import { DIAS_ALVO, hojeBR, todayISO, parseNum, mlbsDe, normMlb, custoMedioDe, anunciosDe, fullDe, estoqueDoSaborParaBlend, precosDe, previsaoDe, coberturaFmt } from "@/components/tabs/estoque/estoque-compartilhado";
+import { DIAS_ALVO, hojeBR, todayISO, parseNum, mlbsDe, normMlb, custoMedioDe, anunciosDe, fullDe, estoqueDoSaborParaBlend, precosDe } from "@/components/tabs/estoque/estoque-compartilhado";
 import type { EstoqueML, Forecast, PlanoSku } from "@/components/tabs/estoque/estoque-compartilhado";
 import { filtrarProdutos, proximaAcao, ordenarPorUrgencia, contarSinais, resumoDoEstoque, FILTRO_ESTOQUE_VAZIO, type FiltroEstoque, type ProdutoNaLista, DIAS_COBERTURA_BAIXA } from "@/lib/domain/estoque-situacao";
 import DetalheProduto from "@/components/tabs/estoque/DetalheProduto";
@@ -481,7 +481,9 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
 
       {/* Antes da lista de produtos: e decisao de COMPRA, e vem antes de
           qualquer ajuste fino de cadastro. */}
-      <EnviosAgendadosPainel produtos={data.products} reservas={reservas} podeEditar={canEdit} emCasaDe={emCasaDe} />
+      <VerMais titulo="Envios agendados pro Full" sub={(() => { const n = [...reservas.values()].reduce((s, r) => s + r.reservado, 0); return n ? `${n} un reservadas` : undefined; })()}>
+        <EnviosAgendadosPainel produtos={data.products} reservas={reservas} podeEditar={canEdit} emCasaDe={emCasaDe} />
+      </VerMais>
 
 
       {/* Produto cadastrado sem nenhum anúncio ligado nunca recebe venda no
@@ -724,7 +726,7 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
         )}
       </div>
 
-      <PrevisaoPanel products={filtered} estoqueML={estoqueML} forecast={forecast} />
+      {/* "Previsão de vendas e reposição" saiu (pedido do dono, 27/11/2026). */}
       </>
       )}
 
@@ -1639,185 +1641,8 @@ function MovimentoModal({ product, tipo, estoqueML, reservado, reservadoForaDoAn
 }
 
 
-const STATUS_COBERTURA_COR: Record<CoverageStatus, string> = {
-  critico: "var(--red)", repor: "var(--warning)", saudavel: "var(--green)",
-  encalhado: "var(--warning)", "sem-giro": "var(--muted)",
-};
 
-// Planejamento da lista de reposição — só um "marcar como já resolvido",
-// fica no navegador (localStorage), não precisa de Firestore/rule nova.
-const PLANEJADOS_KEY = "estoque:planejados";
-function lerPlanejados(): Set<string> {
-  if (typeof window === "undefined") return new Set();
-  try {
-    const raw = lerChaveApp(PLANEJADOS_KEY);
-    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
-  } catch { return new Set(); }
-}
-function gravarPlanejados(ids: Set<string>) {
-  gravarChaveApp(PLANEJADOS_KEY, JSON.stringify(Array.from(ids)));
-}
 
-const STATUS_PESO: Record<CoverageStatus, number> = { critico: 0, repor: 1, "sem-giro": 2, encalhado: 3, saudavel: 4 };
-
-function PrevisaoPanel({ products, estoqueML, forecast }: { products: Product[]; estoqueML: EstoqueML; forecast: Forecast }) {
-  // Uma linha por produto com estoque: com centenas de produtos, desenha 60 por vez (ver usePaginacaoProgressiva).
-  const pgPrev = usePaginacaoProgressiva("previsao");
-  /**
-   * O que já está planejado sai do localStorage NO PRIMEIRO RENDER.
-   *
-   * Era `useState(new Set())` mais um efeito que substituía o conteúdo
-   * logo depois — um quadro com a lista vazia antes da lista de verdade,
-   * e cada linha piscando de 'não planejado' pra 'planejado'.
-   *
-   * `lerChaveApp` devolve null sem `window`, então a leitura preguiçosa é
-   * segura no servidor. E o servidor nunca renderiza este painel — o
-   * portão de autenticação devolve null antes —, então não há hidratação
-   * pra divergir.
-   */
-  const [planejados, setPlanejados] = useState<Set<string>>(() => lerPlanejados());
-  function togglePlanejado(id: string) {
-    setPlanejados((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      gravarPlanejados(next);
-      return next;
-    });
-  }
-
-  /**
-   * Sem filtro: produto recém-criado não tem estoque, venda nem preço, e
-   * sumir da lista dava a impressão de que o cadastro não funcionou. Quem
-   * ainda não tem dado cai no fim e diz o que está faltando.
-   */
-  const linhas = products
-    .map((p) => {
-      const f = previsaoDe(p, estoqueML, forecast);
-      const vendasPeriodo = forecast.vendas[p.id] ?? 0;
-      const coberturaDias = Number.isFinite(f.cobertura) ? f.cobertura : null;
-      const status = getCoverageStatus(coberturaDias, f.total, vendasPeriodo);
-      return { p, f, status };
-    })
-    .sort((a, b) =>
-      STATUS_PESO[a.status] - STATUS_PESO[b.status]
-      || b.f.valorPotencial - a.f.valorPotencial
-      || b.f.total - a.f.total
-      || (a.p.name || "").localeCompare(b.p.name || ""),
-    );
-
-  return (
-    <div className="panel">
-      <div className="panel-head" style={{ marginBottom: 6 }}>
-        <span className="panel-title">Previsão de vendas e reposição</span>
-        <span className="panel-sub">
-          preço atual do ML · média dos últimos {forecast.dias} dias · repor p/ cobrir {DIAS_ALVO} dias ·
-          lucro projetado com comissão e frete MEDIDOS nas vendas do período
-        </span>
-      </div>
-      {linhas.length === 0 ? (
-        <div style={{ color: "var(--muted)", fontSize: ".82rem", padding: "8px 0" }}>Nenhum produto cadastrado ainda.</div>
-      ) : (
-        <div className="table-wrapper" style={{ border: "none" }}>
-          <table className="tbl-modern tbl-cards">
-            <thead>
-              <tr>
-                <th style={{ textAlign: "left" }}>Produto</th>
-                <th style={{ textAlign: "left" }}>Status</th>
-                <th style={{ textAlign: "right" }}>Preço ML</th>
-                <th style={{ textAlign: "right" }}>Estoque total</th>
-                <th style={{ textAlign: "right" }}>Vendas/dia</th>
-                <th style={{ textAlign: "right" }}>Cobertura</th>
-                <th style={{ textAlign: "right" }}>Repor (Full)</th>
-                <th style={{ textAlign: "right" }}>Custo estimado</th>
-                <th style={{ textAlign: "right" }}>Venda potencial</th>
-                <th style={{ textAlign: "right" }}>Lucro projetado</th>
-                <th style={{ textAlign: "center" }}>Planejado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {linhas.slice(0, pgPrev.limite).map(({ p, f, status }) => {
-                const cob = coberturaFmt(f.cobertura);
-                const emCasa = Math.min(f.reporQtd, f.casa);
-                const comprar = Math.max(0, f.reporQtd - emCasa);
-                const custoEstimado = comprar * custoMedioDe(p);
-                const planejado = planejados.has(p.id);
-                return (
-                  <tr key={p.id} style={{ opacity: planejado ? 0.55 : 1 }}>
-                    <td style={{ textAlign: "left", fontWeight: 600 }}>
-                      {p.name || "Sem nome"}
-                      {mlbsDe(p).length === 0 ? (
-                        <span style={{ display: "block", fontSize: ".75rem", fontWeight: 400, color: "var(--warning)" }}>
-                          sem anúncio vinculado — use “Vincular por SKU”
-                        </span>
-                      ) : f.total === 0 && f.mediaDiaria === 0 ? (
-                        <span style={{ display: "block", fontSize: ".75rem", fontWeight: 400, color: "var(--muted)" }}>
-                          sem estoque nem venda ainda
-                        </span>
-                      ) : null}
-                    </td>
-                    <td data-label="Status" style={{ textAlign: "left", whiteSpace: "nowrap" }}>
-                      <span className="severity-chip" style={{ color: STATUS_COBERTURA_COR[status], background: "transparent", border: `1px solid ${STATUS_COBERTURA_COR[status]}` }}>
-                        {COVERAGE_STATUS_LABEL[status]}
-                      </span>
-                    </td>
-                    <td data-label="Preço ML" style={{ textAlign: "right", whiteSpace: "nowrap" }}>{f.precoMax > 0 ? (f.precoMin === f.precoMax ? fmtBRL(f.precoMax) : `${fmtBRL(f.precoMin)}–${fmtBRL(f.precoMax)}`) : "—"}</td>
-                    <td data-label="Estoque total" style={{ textAlign: "right", fontWeight: 700, whiteSpace: "nowrap" }}>{f.total} un</td>
-                    <td data-label="Vendas/dia" style={{ textAlign: "right", color: f.mediaDiaria > 0 ? "var(--text)" : "var(--muted)" }}>{f.mediaDiaria > 0 ? f.mediaDiaria.toFixed(1) : "—"}</td>
-                    <td data-label="Cobertura" style={{ textAlign: "right", color: cob.cor, fontWeight: 700 }}>{cob.txt}</td>
-                    <td data-label="Repor (Full)" style={{ textAlign: "right" }}>
-                      {f.reporQtd > 0 ? (
-                        <span style={{ color: "var(--yellow)", fontWeight: 700 }}>
-                          {f.reporQtd} un
-                          {emCasa > 0 && (
-                            <span style={{ display: "block", fontSize: ".75rem", color: "var(--muted)", fontWeight: 400 }}>
-                              {emCasa} em casa{comprar > 0 ? ` · comprar ${comprar}` : ""}
-                            </span>
-                          )}
-                        </span>
-                      ) : <span style={{ color: "var(--muted)" }}>ok</span>}
-                    </td>
-                    <td data-label="Custo estimado" style={{ textAlign: "right", color: custoEstimado > 0 ? "var(--red)" : "var(--muted)", whiteSpace: "nowrap" }} title="Unidades a comprar (descontando o que já tem em casa) × custo médio">
-                      {custoEstimado > 0 ? fmtBRL(custoEstimado) : "—"}
-                    </td>
-                    <td data-label="Venda potencial" style={{ textAlign: "right", color: "var(--green)", fontWeight: 700, whiteSpace: "nowrap" }}>{fmtBRL(f.valorPotencial)}</td>
-                    {/* Lucro projetado: o que a venda potencial vira DEPOIS de
-                        comissão, frete, custo e imposto. É a coluna que separa
-                        "estoque valioso" de "estoque que dá prejuízo girar". */}
-                    <td
-                      data-label="Lucro projetado"
-                      style={{
-                        textAlign: "right", fontWeight: 700, whiteSpace: "nowrap",
-                        color: f.lucro == null ? "var(--muted)" : f.lucro.lucroTotal >= 0 ? "var(--green)" : "var(--red)",
-                      }}
-                      title={
-                        f.lucro == null
-                          ? "Sem venda no período (ou sem preço no anúncio): não dá pra medir a comissão e o frete reais deste produto."
-                          : `${fmtBRL(f.lucro.lucroUnitario)} por unidade × ${f.total} un · margem ${fmtPct(f.lucro.margem, 1)}`
-                      }
-                    >
-                      {f.lucro == null ? "—" : (
-                        <>
-                          {fmtBRL(f.lucro.lucroTotal)}
-                          <span style={{ display: "block", fontSize: ".75rem", fontWeight: 400, color: "var(--muted)" }}>
-                            {fmtBRL(f.lucro.lucroUnitario)}/un · {fmtPct(f.lucro.margem, 1)}
-                          </span>
-                        </>
-                      )}
-                    </td>
-                    <td data-label="Planejado" style={{ textAlign: "center" }}>
-                      <input type="checkbox" checked={planejado} onChange={() => togglePlanejado(p.id)} aria-label={`Marcar ${p.name || "produto"} como reposição já planejada`} />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-            <RodapeDePagina limite={pgPrev.limite} total={linhas.length} tamanho={pgPrev.tamanho} aoMostrarMais={pgPrev.mostrarMais} aoMostrarTudo={pgPrev.mostrarTudo} rotulo="produtos" />
-        </div>
-      )}
-    </div>
-  );
-}
 
 export function ProductModal({ product: initial, isNew, onClose, onSave, todosProdutos = [] }: { product: Product; isNew: boolean; onClose: () => void; onSave: (p: Product) => Promise<void>; /** Pra sugerir os grupos que já existem. */ todosProdutos?: Product[] }) {
   const [p, setP] = useState<Product>({ ...initial, mlbs: mlbsDe(initial).length ? mlbsDe(initial) : [""] });

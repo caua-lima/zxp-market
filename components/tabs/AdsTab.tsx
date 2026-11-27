@@ -19,7 +19,6 @@ import AdsCampaignList from "@/components/tabs/ads/AdsCampaignList";
 import { agregarPorCampanha, type MetricasReais } from "@/lib/domain/ads-campaigns";
 import type { Consolidacao } from "@/lib/domain/ads-consolidacao";
 import AdsParticipacao from "@/components/tabs/ads/AdsParticipacao";
-import AdsDecisionPanel from "@/components/tabs/ads/AdsDecisionPanel";
 import AdsChat from "@/components/tabs/ads/AdsChat";
 import AdsDataQuality from "@/components/tabs/ads/AdsDataQuality";
 import AdsFilters, { AdsStatusQuickFilters, type FiltrosAdsState } from "@/components/tabs/ads/AdsFilters";
@@ -115,15 +114,6 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
   const [itemsAnterior, setItemsAnterior] = useState<AdItem[] | null>(null);
   const periodoAnterior = useMemo(() => derivarPeriodoAnterior(range, isoOf(new Date())), [range]);
 
-  /**
-   * Dias do periodo — entra na CONFIANCA das recomendacoes, nao no calculo.
-   * Dois dias de dados nao sustentam decisao de verba por maior que seja o
-   * numero que aparece.
-   */
-  const diasDoPeriodo = useMemo(() => {
-    const ms = Date.parse(range.to + "T00:00:00Z") - Date.parse(range.from + "T00:00:00Z");
-    return Number.isFinite(ms) ? Math.max(Math.round(ms / 86400000) + 1, 1) : 1;
-  }, [range]);
 
   const [busca, setBusca] = useState("");
   // A ordem da tabela mora aqui: o seletor "Ordenar por" e o cabeçalho mexem no mesmo estado,
@@ -567,7 +557,7 @@ export default function AdsTab({ metaMargem = 10, products = [] }: { metaMargem?
                   )}
 
                   {vista === "decisoes" && (
-                    <AdsDecisionPanel linhas={linhas} changelog={changelog} onAbrirAnuncio={abrirAnuncio} diasDoPeriodo={diasDoPeriodo} />
+                    {/* "Decisões de Ads" saiu (pedido do dono, 27/11/2026). */}
                   )}
 
                   {/* Flutuante (position:fixed), então a posição no JSX não
