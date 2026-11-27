@@ -222,10 +222,22 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
       .catch((err) => setFalha(`Não consegui mudar o prazo de "${t.title}": ${mensagemDeErroDeSalvamento(err)}`));
   }
 
-  async function excluir(t: Task) {
-    if (!confirm(`Excluir a tarefa "${t.title}"?`)) return;
+  /**
+   * Excluir tarefa é SÓ do Master (pedido do dono, 27/11/2026: "só pra mim").
+   * Antes era de todo mundo menos o Colaborador, e a vista Semana — a padrão —
+   * nem tinha o botão. Agora: quadro, lista e a janela de editar, só pro dono.
+   */
+  async function excluir(t: Task): Promise<boolean> {
+    if (!isOwner) return false;
+    if (!confirm(`Excluir a tarefa "${t.title}"? Não dá pra desfazer.`)) return false;
     setFalha(null);
-    await deleteTask(t.id).catch((err) => setFalha(`Não consegui excluir "${t.title}": ${mensagemDeErroDeSalvamento(err)}`));
+    try {
+      await deleteTask(t.id);
+      return true;
+    } catch (err) {
+      setFalha(`Não consegui excluir "${t.title}": ${mensagemDeErroDeSalvamento(err)}`);
+      return false;
+    }
   }
 
   const minhas = minhasVisiveis.filter((t) => t.assignedTo === email).length;
@@ -353,7 +365,7 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
           nomeDe={(e) => pessoas.find((p) => p.email === e)?.displayName || e || "—"}
           onMover={mover}
           onEditar={setEditTask}
-          onExcluir={colaborador ? undefined : excluir}
+          onExcluir={isOwner ? (t) => void excluir(t) : undefined}
           rotuloEditar={colaborador ? "Ver" : "Editar"}
         />
       ) : (
@@ -372,7 +384,7 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
                         task={t}
                         onMover={(s) => mover(t, s)}
                         onEditar={() => setEditTask(t)}
-                        onExcluir={colaborador ? undefined : () => excluir(t)}
+                        onExcluir={isOwner ? () => void excluir(t) : undefined}
                         rotuloEditar={colaborador ? "Ver" : "Editar"}
                       />
                     ))
@@ -392,7 +404,8 @@ export default function TarefasTab({ openTaskId, chaveDeNavegacao = 0 }: { openT
       )}
       {editTask && (colaborador
         ? <DetalheDaTarefa task={editTask} onMover={(s) => { void mover(editTask, s); setEditTask(null); }} onClose={() => setEditTask(null)} />
-        : <TaskModal pessoas={pessoas} minhaEmail={emailReal} task={editTask} onClose={() => setEditTask(null)} />
+        : <TaskModal pessoas={pessoas} minhaEmail={emailReal} task={editTask} onClose={() => setEditTask(null)}
+            onExcluir={isOwner ? async () => { if (await excluir(editTask)) setEditTask(null); } : undefined} />
       )}
     </div>
   );
@@ -637,7 +650,9 @@ function DetalheDaTarefa({ task, onMover, onClose }: { task: Task; onMover: (s: 
   );
 }
 
-function TaskModal({ pessoas, minhaEmail, task, prazoInicial, onClose }: {
+function TaskModal({ pessoas, minhaEmail, task, prazoInicial, onClose, onExcluir }: {
+  /** Só o Master recebe: aparece "Excluir tarefa" no rodapé da janela. */
+  onExcluir?: () => Promise<void>;
   pessoas: PessoaDiretorio[];
   minhaEmail: string;
   task: Task | null;
@@ -741,7 +756,8 @@ function TaskModal({ pessoas, minhaEmail, task, prazoInicial, onClose }: {
 
       <div className="config-field">
         <label htmlFor={id("desc")}>Descrição (opcional)</label>
-        <input id={id("desc")} type="text" placeholder="Detalhes da tarefa…" value={description} onChange={(e) => setDescription(e.target.value)} />
+        {/* Várias linhas: Enter pula de linha (pedido do dono, 27/11/2026 — passo a passo numerado). */}
+        <textarea id={id("desc")} rows={5} placeholder={"Detalhes da tarefa…\n1. Primeiro passo\n2. Segundo passo"} value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
 
       <div className="form-grid">
@@ -804,6 +820,11 @@ function TaskModal({ pessoas, minhaEmail, task, prazoInicial, onClose }: {
         >
           Cancelar
         </button>
+        {task && onExcluir && (
+          <button type="button" className="btn btn-danger" disabled={saving} onClick={() => void onExcluir()} style={{ marginLeft: "auto" }}>
+            Excluir tarefa
+          </button>
+        )}
       </div>
     </Modal>
   );

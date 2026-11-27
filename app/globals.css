@@ -333,9 +333,9 @@ tbody td{padding:11px 13px;white-space:nowrap}
 /* Config modal */
 .config-field{margin-bottom:16px}
 .config-field label{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;min-width:0;font-size:.8125rem;line-height:1.35;color:var(--muted);text-transform:none;letter-spacing:0;font-weight:600;margin-bottom:6px;white-space:normal;overflow-wrap:anywhere}
-.config-field input,.config-field select{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-size:.95rem;outline:none;width:100%;appearance:textfield;-webkit-appearance:textfield;-moz-appearance:textfield;transition:border-color .18s}
+.config-field input,.config-field select,.config-field textarea{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-size:.95rem;outline:none;width:100%;appearance:textfield;-webkit-appearance:textfield;-moz-appearance:textfield;transition:border-color .18s}
 .config-field input::-webkit-outer-spin-button,.config-field input::-webkit-inner-spin-button{-webkit-appearance:none}
-.config-field input:focus,.config-field select:focus{border-color:var(--focus);box-shadow:0 0 0 3px var(--focus-bg)}
+.config-field input:focus,.config-field select:focus,.config-field textarea:focus{border-color:var(--focus);box-shadow:0 0 0 3px var(--focus-bg)}
 .config-field .hint{font-size:.75rem;color:var(--muted);margin-top:4px}
 .config-sep{border:none;border-top:1px solid var(--border);margin:18px 0}
 .config-section-title{font-size:.82rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:14px;font-weight:700}
@@ -541,7 +541,7 @@ canvas.chart-canvas{width:100%!important;height:100%!important}
   .seg .seg-btn{flex:1 1 auto;text-align:center}
   .panel-head{align-items:flex-start}
   .modal-box{padding:20px 18px}
-  .config-field input,.config-field select{font-size:16px} /* evita zoom do iOS */
+  .config-field input,.config-field select,.config-field textarea{font-size:16px} /* evita zoom do iOS */
 }
 
 /* Sidebar layout */
@@ -844,7 +844,8 @@ select.inp{appearance:none;-webkit-appearance:none;background-image:linear-gradi
 .kanban-card.pri-doing::before{background:var(--yellow)}
 .kanban-card.pri-done::before{background:var(--green)}
 .kanban-card-title{font-weight:700;font-size:.88rem;line-height:1.35;overflow-wrap:anywhere;padding-left:6px}
-.kanban-card-desc{font-size:.82rem;color:var(--muted);margin-top:5px;line-height:1.5;overflow-wrap:anywhere;padding-left:6px}
+.kanban-card-desc{font-size:.82rem;color:var(--muted);margin-top:5px;line-height:1.5;overflow-wrap:anywhere;padding-left:6px;white-space:pre-wrap}
+.config-field textarea{resize:vertical;min-height:110px;line-height:1.45;font-family:inherit}
 .kanban-card-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px;padding-left:6px}
 .kanban-card-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;padding-top:9px;border-top:1px solid var(--border);padding-left:6px}
 .kanban-move-btns{display:flex;gap:4px}
