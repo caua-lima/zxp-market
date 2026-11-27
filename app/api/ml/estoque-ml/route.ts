@@ -42,19 +42,25 @@ export async function GET(req: Request) {
     // available_quantity com o total do pool, não com uma fatia — sem este
     // campo não há como saber que são o mesmo estoque, e somar os dois dobra
     // o número (ver consolidarEstoqueAnuncios em lib/domain/estoque.ts).
-    for (let i = 0; i < arr.length; i += 20) {
-      const chunk = arr.slice(i, i + 20);
-      const res = await fetchML(
-        `${ML_API}/items?ids=${chunk.join(",")}&attributes=id,available_quantity,sold_quantity,status,price,original_price,shipping,inventory_id,item_relations`,
-        { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" }, cache: "no-store" },
-      );
-      if (!res.ok) continue;
-      const rows = (await res.json()) as { code?: number; body?: Record<string, unknown> }[];
-      for (const row of rows) {
-        const b = row?.body;
-        if (!b) continue;
+    /**
+     * NENHUM BLOCO PODE SUMIR CALADO (26/11/2026: "o estoque está zerado de
+     * todos os produtos"). Era `if (!res.ok) continue`: um bloco de 20 que
+     * falhava (rate limit, erro do ML) simplesmente não entrava, e a resposta
+     * saía como se fosse completa — a tela trocava o estoque inteiro por ela e
+     * os anúncios do bloco perdido viravam ZERO. Medido: uma resposta com 2
+     * anúncios de 42, e a aba mostrando "0 Full + 0 Agências" em tudo.
+     *
+     * Agora o bloco que falha é refeito em metades até o anúncio sozinho; o
+     * que nem assim vier sai em `faltando`, com `incompleto: true`, e a tela
+     * mantém o que já tinha pra esses anúncios em vez de zerar.
+     */
+    const headersMl = { Authorization: `Bearer ${token}`, Accept: "application/json" };
+    const ATRIBUTOS = "id,available_quantity,sold_quantity,status,price,original_price,shipping,inventory_id,item_relations";
+    const faltando: string[] = [];
+    const falhas: string[] = [];
+    const guardar = (b: Record<string, unknown>) => {
         const id = String(b.id ?? "").toUpperCase();
-        if (!id) continue;
+        if (!id) return;
         const base = Number(b.price ?? 0);
         const orig = Number(b.original_price ?? 0);
         const logistic = String((b.shipping as Record<string, unknown>)?.logistic_type ?? "");
@@ -75,8 +81,34 @@ export async function GET(req: Request) {
             return rel.length ? { poolProprio: [id, ...rel].sort().join("+") } : {};
           })()),
         };
+    };
+    async function buscarBloco(chunk: string[]): Promise<void> {
+      let res: Response | null = null;
+      try {
+        res = await fetchML(`${ML_API}/items?ids=${chunk.join(",")}&attributes=${ATRIBUTOS}`, { headers: headersMl, cache: "no-store" });
+      } catch { res = null; }
+      if (res?.ok) {
+        const rows = (await res.json().catch(() => [])) as { code?: number; body?: Record<string, unknown> }[];
+        const vieram = new Set<string>();
+        for (const row of Array.isArray(rows) ? rows : []) {
+          if (row?.body && (row.code == null || row.code === 200) && row.body.id) { guardar(row.body); vieram.add(String(row.body.id).toUpperCase()); }
+        }
+        const naoVieram = chunk.filter((id) => !vieram.has(id));
+        if (!naoVieram.length) return;
+        if (chunk.length === 1) { faltando.push(...naoVieram); falhas.push(`${chunk[0]}: sem corpo`); return; }
+        for (const id of naoVieram) await buscarBloco([id]);
+        return;
       }
+      if (chunk.length > 1) {
+        const meio = Math.ceil(chunk.length / 2);
+        await buscarBloco(chunk.slice(0, meio));
+        await buscarBloco(chunk.slice(meio));
+        return;
+      }
+      faltando.push(chunk[0]);
+      falhas.push(`${chunk[0]}: HTTP ${res?.status ?? "sem resposta"}`);
     }
+    for (let i = 0; i < arr.length; i += 20) await buscarBloco(arr.slice(i, i + 20));
 
     // Preço REAL de venda (Central de Promoções / ofertas): endpoint sale_price.
     // O `price` de lista nem sempre reflete a promoção ativa; o sale_price sim.
@@ -104,7 +136,8 @@ export async function GET(req: Request) {
       await Promise.all(idsPromo.slice(i, i + 8).map((id) => enrichPromo(id)));
     }
 
-    return NextResponse.json({ estoque });
+    if (faltando.length) console.error("estoque-ml incompleto", falhas.join(" | "));
+    return NextResponse.json({ estoque, ...(faltando.length ? { incompleto: true, faltando, falhas } : {}) });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: "estoque_ml_failed", details: msg }, { status: 500 });

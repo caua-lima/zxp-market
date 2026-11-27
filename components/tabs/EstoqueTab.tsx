@@ -121,7 +121,17 @@ export default function EstoqueTab({ uid, data }: { uid: string; data: UserData 
          */
         authedFetch("/api/ml/gestao-full", { cache: "no-store" }).catch(() => null),
       ]);
-      if (rMl.ok) setEstoqueML((await rMl.json()).estoque ?? {});
+      if (rMl.ok) {
+        /**
+         * Resposta INCOMPLETA (o ML não devolveu alguns anúncios) não zera o
+         * que já estava na tela: os que faltaram ficam com o último valor
+         * conhecido. Trocar o mapa inteiro por ela zerava o estoque de todos
+         * os produtos daqueles anúncios (26/11/2026).
+         */
+        const j = (await rMl.json()) as { estoque?: EstoqueML; incompleto?: boolean };
+        const novo = j.estoque ?? {};
+        setEstoqueML((antes) => (j.incompleto ? { ...antes, ...novo } : novo));
+      }
       if (rFc.ok) { const j = await rFc.json(); setForecast({ vendas: j.vendas ?? {}, dias: j.dias ?? DIAS_ALVO, financeiro: j.financeiro ?? {} }); }
       if (rFull?.ok) {
         const j = await rFull.json();
