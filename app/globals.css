@@ -1536,3 +1536,16 @@ summary{min-height:28px}
 .topo-fixo .topbar{position:relative;top:auto;z-index:2;margin-bottom:0}
 /* O 28px abaixo do topo vem da regra global `header{margin-bottom:28px}`: passa pro invólucro, pro espaço até o conteúdo seguir igual. */
 .topo-fixo{margin-bottom:28px}
+
+/* ── VerMais (components/VerMais.tsx): painel que começa fechado ── */
+details.ver-mais > summary { list-style: none; cursor: pointer; }
+details.ver-mais > summary::-webkit-details-marker { display: none; }
+details.ver-mais:not([open]) > summary.ver-mais-barra {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 18px;
+}
+details.ver-mais:not([open]) > summary:hover { border-color: var(--accent, var(--border)); }
+.ver-mais-fechado { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.ver-mais-acao { margin-left: auto; }
+details.ver-mais .ver-mais-aberto { display: none; }
+details.ver-mais[open] .ver-mais-fechado { display: none; }
+details.ver-mais[open] .ver-mais-aberto { display: block; text-align: right; padding: 0 4px 6px; }
