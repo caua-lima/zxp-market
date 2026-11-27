@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import VerMais from "@/components/VerMais";
 import { papelDe, roleLabel, type AccessEntry, type AuditEvent, type PermissionTab } from "@/lib/domain/types";
 import MudancasPanel from "@/components/tabs/acesso/MudancasPanel";
 import ManutencaoPanel from "@/components/tabs/acesso/ManutencaoPanel";
@@ -737,11 +738,7 @@ Ela passa a administrar o time, o plano e a conexão com o Mercado Livre. Você 
           </div>
         </div>
 
-        <div className="panel">
-          <div className="panel-head" style={{ marginBottom: 4 }}>
-            <span className="panel-title">Trilha de auditoria</span>
-            <span className="panel-sub">últimas {auditLog.length} ações</span>
-          </div>
+        <VerMais titulo="Trilha de auditoria" sub={`últimas ${auditLog.length} ações`}>
           <div style={{ fontSize: ".82rem", color: "var(--muted)", marginBottom: 14 }}>
             Registro imutável de quem criou, editou, arquivou ou excluiu custos, metas e acessos. Não cobre edição campo a campo (ex.: digitar num valor de custo) — só ações discretas, pra não virar ruído.
           </div>
@@ -779,7 +776,7 @@ Ela passa a administrar o time, o plano e a conexão com o Mercado Livre. Você 
               ))
             )}
           </div>
-        </div>
+        </VerMais>
 
         {/* Junto da auditoria de proposito: uma cobre o que muda nos DADOS,
             a outra o que muda no SISTEMA. Ver MudancasPanel.tsx. */}
